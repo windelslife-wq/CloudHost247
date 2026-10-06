@@ -1,0 +1,9 @@
+.modal-header h5, .modal button.close span {
+    color: #fff !important;
+}
+.dataTables_wrapper div.dataTables_length select{
+    width: 50px !important;
+}
+#usage select{
+    width: 100px;
+}

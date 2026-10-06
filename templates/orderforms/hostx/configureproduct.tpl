@@ -342,7 +342,7 @@ var _localLang = {
 			</div>
 			<div class="opreatingHTML">	
 				<div class="col-sm-12 col-md-12 col-lg-12">
-					<img src="modules/addons/soyoustart/images/30.gif" style="margin-left: 33%;" id="showOVHloader">
+					<img src="{$WEB_ROOT}/modules/addons/soyoustart/templates/assets/images/loading.gif" style="margin-left: 33%;" id="showOVHloader">
 				</div>
 		</div>
 	{elseif $configoption.optionname eq "Disk"}

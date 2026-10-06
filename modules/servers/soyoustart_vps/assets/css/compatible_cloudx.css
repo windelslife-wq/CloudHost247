@@ -1,0 +1,16 @@
+.sticky-header-body .modal, .modal {
+    margin-top: unset;
+}
+.module-client-area h3 {
+    font-family: "Open Sans",sans-serif;
+}
+
+.module-client-area .primary-content.form-control {
+    min-height: unset !important;
+}
+#usage select{
+    width: 100px;
+    min-height: unset;
+    padding: 5px;
+
+}

@@ -1,8 +1,8 @@
 # CloudHost247 — module inventory
 
-Every module below was delivered as a ZIP archive in the repository root. The
-archives have been extracted into their proper WHMCS locations and the archives
-themselves removed.
+All **20** modules below were delivered as ZIP archives in the repository root.
+The archives have been extracted into their proper WHMCS locations and the
+archives themselves removed.
 
 ## Addon modules — `modules/addons/`
 
@@ -17,6 +17,7 @@ themselves removed.
 | `phoneservices` | `WHMCS Phone Number Platform.zip` | Virtual numbers, VoIP, SMS, eSIM, usage analytics. Optional Composer deps — see below. |
 | `smmaddon` | `smm_whmcs_module.zip` | SMM panel admin area (orders, services, logs, settings). Import `schema.sql`. |
 | `xtreme_currency_rates` | `xtreme_currency_rates_6.0.zip` | Automatic currency exchange rates. ionCube-encoded; requires the ionCube Loader. |
+| `soyoustart` | `WGS-OVH-v8.0.8-Sourcecode.zip` | WGS OVH / SoYouStart **admin** addon: API consumer setup, product & price settings, order management, existing-server import, server status, email templates. |
 
 ## Provisioning (server) modules — `modules/servers/`
 
@@ -27,6 +28,13 @@ themselves removed.
 | `cloudhost247_lteproxy` | `cloudhost247_lteproxy.zip` | CloudHost247 LTE proxy reseller provisioning, with AJAX endpoints under `ajax/`. |
 | `smmprovisioning` | `smm_whmcs_module.zip` | SMM order provisioning. Shares `modules/addons/smmaddon/lib/` (`Helper`, `ApiClient`), so `smmaddon` must be present. |
 | `Smtphosting` | `smtphosting-whmcs-v3.zip` | ModulesGarden-style SMTP hosting reseller module (ships its own `vendor/`). |
+| `soyoustart` | `WGS-OVH-v8.0.8-Sourcecode.zip` | OVH / SoYouStart **dedicated server** provisioning. |
+| `soyoustart_vps` | `WGS-OVH-v8.0.8-Sourcecode.zip` | OVH / SoYouStart **VPS** provisioning. |
+
+> `modules/addons/soyoustart` and `modules/servers/soyoustart` share a name but
+> are **not** a conflict: WHMCS resolves addon and provisioning modules in
+> separate namespaces, and the OVH product is designed as an addon (admin
+> tooling) plus two provisioning modules.
 
 ## Payment gateways — `modules/gateways/`
 
@@ -40,12 +48,27 @@ themselves removed.
 |---|---|
 | `templates/hostx/` | `3dsecure.zip` (`.tpl` files, `images/`, `theme.yaml`) **+** `fonts.zip` (`css/`, `js/`, `img/`, `fonts/`, `webfonts/`, `includes/`, `hostx_includes/`, `banners/`, `flags/`, `marketconnect/`, `store/`, …) **+** `pages.zip` (`TPL/`) **+** `Announcement Bar CloudHost247.zip` |
 | `templates/orderforms/hostx/` | `orderforms.zip` |
+| `templates/orderforms/ovh_cart/` + `templates/orderforms/index.php` | `WGS-OVH-v8.0.8-Sourcecode.zip` |
+| `crons/` (`emailSend.php`, `getIpStatus.php`, `getServer.php`, `priceSync.php`) | `WGS-OVH-v8.0.8-Sourcecode.zip` |
+| `lang/overrides/english.php` (48 OVH strings merged in) | `WGS-OVH-v8.0.8-Sourcecode.zip` |
 | root `*.php` legal/info pages | `pages.zip` (`PHP/`) |
 
 > `3dsecure.zip` was misleadingly named: it contains the complete **Hostx**
 > client-area theme (`theme.yaml` → `name: "Hostx"`), not a 3-D Secure gateway.
 > `fonts.zip` likewise held the theme's asset/include directories, not just
 > fonts. The two were merged into the single `templates/hostx/` theme directory.
+
+## WGS OVH v8.0.8 — nesting correction
+
+The archive was double-nested as
+`WGS-OVH-v8.0.8-Sourcecode/whmcs/<real tree>`. Both wrapper levels were stripped
+so the payload lands on the real WHMCS paths
+(`modules/addons/soyoustart`, `modules/servers/soyoustart`,
+`modules/servers/soyoustart_vps`, `templates/orderforms/ovh_cart`, `crons`,
+`lang/overrides`) instead of an archive-named folder.
+
+`templates/orderforms/ovh_cart` declares `config: parent: standard_cart`, so the
+templates it does not override are inherited from WHMCS core.
 
 ## Duplicate resolution
 
@@ -74,6 +97,20 @@ themselves removed.
   the footer block were repointed at the correctly spelled names, and
   `templates/hostx/refund-and-vancellation-policy.tpl` was renamed to
   `refund-and-cancellation-policy.tpl`.
+* `WGS-OVH-v8.0.8-Sourcecode.zip` shipped five stray working copies next to the
+  real files — `classes/ConsumerSetting.php__`, `assets/images/imap.svg_bkp`,
+  `assets/images/logo.svg__`, `templates/clientareanew.tpl_bk` and
+  `assets/js/script.js__`. The live versions were installed; the backups were
+  not.
+* `templates/orderforms/hostx/configureproduct.tpl_ovh` was an older OVH variant
+  sitting beside the maintained `configureproduct.tpl` (which already contains
+  the SoYouStart logic plus `{$WEB_ROOT}`-qualified asset URLs and the `w-hidden`
+  class). The stale `.tpl_ovh` copy was removed.
+* `lang/overrides/english.php` existed in both the repo (590 keys) and the OVH
+  archive (48 keys). Key sets were compared — **zero collisions** — so the 48 OVH
+  strings were appended under a marked section rather than overwriting the file.
+  A pre-existing in-file duplicate (`$_LANG['domainregister']` defined twice,
+  the second winning) was commented out so the file now has 638 unique keys.
 * The identical `get_currency()`, `wgs_fetch_product_detail_according_to_language_hostx()`,
   `wgs_get_dynmic_translation_page()` and `wgs_pricing_format_data()` copies that
   were duplicated across 11 landing pages are now a single guarded
@@ -111,6 +148,32 @@ themselves removed.
   `assets/img/inner-bg.png` and `assets/images/banner-bg.jpg` →
   `templates/hostx/images/term_bg_1.jpg`; added the `images/blog-3.jpg` fallback
   used by `blog.tpl`.
+* `templates/orderforms/hostx/configureproduct.tpl` loaded its OVH spinner from
+  `modules/addons/soyoustart/images/30.gif`, which does not exist in the OVH
+  package; repointed at the real
+  `modules/addons/soyoustart/templates/assets/images/loading.gif`.
+* `templates/orderforms/ovh_cart/*.tpl` referenced all 50 of its CSS/image
+  assets with root-relative `templates/orderforms/{$carttpl}/…` URLs, which
+  break under friendly URLs. Rewritten to `{$WEB_ROOT}/templates/orderforms/{$carttpl}/…`,
+  matching the convention already used by the hostx order form.
+* `templates/orderforms/index.php` shipped with `header("Location: ../../../../index.php")`
+  — four levels up from `templates/orderforms/`. Corrected to `../../index.php`.
 * Created `templates/hostx/css/overrides/override.css` and
   `templates/hostx/js/overrides/override.js` from the shipped `*.new` seeds —
   `includes/head.tpl` / `footer.tpl` reference the non-`.new` names.
+
+## Expected (non-resolvable) duplicate content
+
+A content hash sweep found 309 groups of byte-identical files. They are all
+required by WHMCS / module conventions and were deliberately **not** merged:
+
+* `templates/hostx/fonts` ↔ `templates/orderforms/hostx/fonts` and
+  `templates/hostx/images` ↔ `templates/orderforms/hostx/images` ↔
+  `templates/orderforms/ovh_cart/images` — each theme/order form is served from
+  its own URL path and must carry its own assets.
+* `modules/servers/soyoustart/assets/images` ↔
+  `modules/servers/soyoustart_vps/assets/images` — two independent provisioning
+  modules.
+* `modules/servers/Smtphosting/templates/admin/**` ↔
+  `.../templates/client/default/**` — ModulesGarden ships parallel admin/client
+  UI trees.

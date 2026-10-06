@@ -14,13 +14,15 @@ WHMCS installation. Core WHMCS files (`init.php`, `clientarea.php`, `cart.php`,
 .
 ├── *.php                       Custom client-area landing & legal pages
 │                               (deploy to the WHMCS root)
+├── crons/                      OVH / SoYouStart sync cron scripts
 ├── includes/
 │   └── hostx_page_functions.php  Shared helpers for the landing pages
 ├── lang/overrides/             Language overrides
 ├── templates/
 │   ├── hostx/                  "Hostx" client-area theme (tpl, css, js, images,
 │   │                           fonts, includes, hostx_includes, marketconnect …)
-│   └── orderforms/hostx/       Matching order form template
+│   ├── orderforms/hostx/       Matching order form template
+│   └── orderforms/ovh_cart/    OVH / SoYouStart order form (parent: standard_cart)
 ├── modules/
 │   ├── addons/                 WHMCS addon modules
 │   ├── servers/                WHMCS provisioning (server) modules
@@ -52,5 +54,9 @@ per-module install notes and the duplicate-resolution decisions.
   `composer install` inside that directory to enable the Twilio/Vonage/eSIM
   providers; without it the module's own classes still autoload via
   `modules/addons/phoneservices/autoload.php`.
-* `modules/addons/xtreme_currency_rates` is ionCube-encoded and requires the
-  ionCube Loader PHP extension.
+* `modules/addons/xtreme_currency_rates` and `modules/addons/hostx` are
+  ionCube-encoded and require the ionCube Loader PHP extension.
+* The OVH / SoYouStart crons in `crons/` expect to run from the WHMCS root
+  (`php -q crons/priceSync.php`). Suggested schedule: `getServer.php` and
+  `getIpStatus.php` every 5 minutes, `emailSend.php` every 10 minutes,
+  `priceSync.php` daily.

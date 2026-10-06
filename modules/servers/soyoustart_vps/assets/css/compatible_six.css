@@ -1,0 +1,164 @@
+/* making compatibility with six template */
+
+.justify-content-between {
+    justify-content: space-between !important;
+}
+
+.badge-success {
+    color: #fff;
+    background-color: #28a745;
+}
+
+.badge {
+    display: inline-block;
+    padding: .25em .4em;
+    font-size: 75%;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: .25rem;
+    transition: color .15s ease-in-out, background-color .15s ease-in-out, border-color .15s ease-in-out, box-shadow .15s ease-in-out;
+}
+
+.tab-content .row {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.col-2 {
+    flex: 0 0 16.6666666667%;
+    max-width: 16.6666666667%;
+}
+
+.col-4 {
+    flex: 0 0 33.3333333333%;
+    max-width: 33.3333333333%;
+}
+
+.col {
+    flex-basis: 0;
+    flex-grow: 1;
+    max-width: 100%;
+}
+
+.status {
+    border: none;
+    background-color: unset;
+}
+
+.text-center,
+#clientAreaFTPmang th,
+#clientAreaIpmang th {
+    text-align: center !important;
+}
+
+.justify-content-center {
+    justify-content: center !important;
+}
+
+.table-responsive {
+    width: 100%;
+}
+
+.col-3 {
+    flex: 0 0 25%;
+    max-width: 25%;
+}
+
+.modal .modal-header {
+    background-color: #eee;
+}
+
+.modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 1rem 1rem;
+    border-bottom: 1px solid #dee2e6;
+    border-top-left-radius: calc(.3rem - 1px);
+    border-top-right-radius: calc(.3rem - 1px);
+}
+
+.modal-header .close {
+    padding: 1rem 1rem;
+    margin: -1rem -1rem -1rem auto;
+}
+
+body {
+    font-family: "Open Sans", sans-serif;
+}
+
+.col-9 {
+    flex: 0 0 75%;
+    max-width: 75%;
+}
+
+.btn-secondary {
+    color: #fff;
+    background-color: #6c757d;
+    border-color: #6c757d;
+}
+
+.btn-secondary:hover {
+    color: #fff;
+    background-color: #5a6268;
+    border-color: #545b62;
+}
+
+
+
+@media (min-width: 768px) {
+    #getFirewallRules .modal-dialog {
+        width: 1140px !important;
+    }
+}
+
+.dataTables_wrapper .dataTables_info {
+    background: #fff;
+}
+
+.form-row {
+    display: flex;
+    flex-wrap: wrap;
+    margin-right: -5px;
+    margin-left: -5px;
+}
+
+.float-right {
+    float: right !important;
+}
+
+.d-none {
+    display: none !important;
+}
+
+.mt-4,
+.my-4 {
+    margin-top: 1.5rem !important;
+}
+
+.col-6 {
+    flex: 0 0 50%;
+    max-width: 50%;
+}
+
+.mt-3,
+.my-3 {
+    margin-top: 1rem !important;
+}
+.mt-5, .my-5 {
+    margin-top: 3rem !important;
+}
+.mb-3, .my-3 {
+    margin-bottom: 1rem !important;
+}
+.nav-tabs>li.active>a, .nav-tabs>li.active>a:focus, .nav-tabs>li.active>a:hover {
+    border: none;
+}
+table.dataTable {
+    width: 100% !important;
+
+}
+

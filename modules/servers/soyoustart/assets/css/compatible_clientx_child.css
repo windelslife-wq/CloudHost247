@@ -1,0 +1,22 @@
+.modal .modal-header h5{
+    font-weight: bolder;
+    color: #212529 !important;
+}
+.dataTables_info {
+    position: unset;
+}
+div.dataTables_wrapper div.dataTables_length select {
+    width: 40px;
+}
+#impi h5 {
+    font-size: 18px;
+    font-weight: bolder;
+    color: #212529 !important;
+}
+#monitoring h5 {
+    color: #212529 !important;
+}
+.modal .modal-header h5{
+    font-weight: bolder;
+    color: #212529 !important;
+}

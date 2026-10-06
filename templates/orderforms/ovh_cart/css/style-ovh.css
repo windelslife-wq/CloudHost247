@@ -1,0 +1,822 @@
+html {
+    position: relative;
+    min-height: 100%;
+}
+
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+    margin: 0;
+}
+
+a:hover,
+a:focus {
+    text-decoration: none;
+}
+
+ul,
+li {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.installText {
+    padding-left: 10px;
+    font-size: 11px;
+}
+
+
+
+
+/*css start herre*/
+
+.bil-title {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.bil-title h3 {
+    font-size: 18px;
+    color: #000000;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: 'Raleway', sans-serif;
+}
+
+.billingcycle-sec {
+    margin: 20px 0 0px;
+    width: 100%;
+    clear: both;
+    display: inherit;
+}
+
+.billingcycle-box {
+    background: #def8ff;
+    border: 2px solid #0050d7;
+    border-radius: 5px;
+    padding: 10px 0px 25px;
+    margin-bottom: 20px;
+}
+
+.billingcycle-box p {
+    display: block;
+    color: #686e81;
+    font-size: 12px;
+    line-height: normal;
+    margin: 0px;
+    padding-top: 5px;
+    text-align: center;
+    font-weight: 500;
+    font-family: 'Raleway', sans-serif;
+    line-height: 18px;
+
+}
+
+/*.list-section {
+    border: 2px solid #c6eff9;
+}*/
+
+.billingcycle-box p strong {
+    display: block;
+    width: 100%;
+    color: #333640;
+    font-size: 18px;
+    margin: 0px;
+    padding: 15px 0px;
+    font-family: 'Open Sans', sans-serif;
+    letter-spacing: -0.3px;
+}
+.billingcycle-box:hover {
+    background: #ffffff;
+    cursor: pointer;
+    border-color: #0050d7;
+}
+.billingcycle-box:hover p strong {
+    color: #2d84fb;
+}
+
+.custom-radios {
+    text-align: right;
+    margin: 4px 12px 0;
+    padding: 0;
+}
+
+.custom-radios .checkbox-custom,
+.custom-radios .radio-custom {
+    opacity: 0;
+    position: absolute !important;
+}
+
+.custom-radios .checkbox-custom,
+.custom-radios .checkbox-custom-label,
+.custom-radios .radio-custom,
+.custom-radios .radio-custom-label {
+    display: inline-block;
+    vertical-align: middle;
+    margin: 5px 0;
+    cursor: pointer;
+}
+
+.custom-radios .checkbox-custom-label,
+.custom-radios .radio-custom-label {
+    position: relative;
+    outline: none !important;
+    color: #000;
+}
+
+.soyoustartHeading {
+    margin: 10px 0;
+}
+
+.custom-radios .checkbox-custom+.checkbox-custom-label:before,
+.custom-radios .radio-custom+.radio-custom-label:before {
+    content: '';
+    background: #f9f9f9;
+    border: 1px solid #c2c5ca;
+    display: inline-block;
+    vertical-align: middle;
+    width: 16px;
+    height: 16px;
+    padding: 2px;
+    margin-right: 0px;
+    text-align: center;
+}
+
+.custom-radios .checkbox-custom:checked+.checkbox-custom-label:before {
+    content: "\f00c";
+    font-family: 'FontAwesome';
+    background: rebeccapurple;
+    color: #fff;
+    line-height: normal;
+    font-size: 12px;
+    font-weight: normal;
+}
+
+.custom-radios .radio-custom+.radio-custom-label:before {
+    border-radius: 2px;
+}
+
+.custom-radios .radio-custom:checked+.radio-custom-label:before {
+    content: "\f00c";
+    font-family: 'FontAwesome';
+    color: #fff;
+    background: #2d84fb;
+    border-color: #2d84fb;
+    font-size: 10px;
+}
+
+.custom-radios .checkbox-custom:focus+.checkbox-custom-label,
+.custom-radios .radio-custom:focus+.radio-custom-label {
+    outline: 1px solid #ddd;
+    /* focus style */
+}
+
+.bil-title h4, label#billingcycleheader {
+    /* margin: 17px 0 0px; */
+    padding: 0px;
+    color: #333640;
+    font-size: 18px;
+    font-weight: 700!important;
+    font-family: 'Raleway', sans-serif;
+}
+
+.bil-title h4 img {
+    margin-right: 6px;
+    vertical-align: sub;
+}
+
+.bil-title p {
+    margin: 10px 0 0px;
+    padding: 0px;
+    color: #333640;
+    font-weight: 500;
+    line-height: 21px;
+    font-size: 13px;
+}
+
+.config-box p strong {
+    font-size: 16px;
+    color: #333640;
+}
+
+.lg-icons {
+    text-align: center;
+}
+
+.os-icons img {
+    /* width: 32px;
+    height: 32px; */
+    margin-right: 12px;
+    margin-top: 4px;
+    object-fit: contain;
+}
+
+.opreatingHTML .col-md-4 {
+    display: inline-block !important;
+}
+
+
+.operating-box:hover {
+    background: inherit;
+}
+
+.op-select {
+    border: none;
+    width: 100%;
+    padding: 8px 30px 10px 8px !important;
+    appearance: none;
+    -webkit-appearance: none;
+    color: #474c5a;
+    font-size: 11px;
+    outline: none;
+    background-repeat: no-repeat;
+    background-position: 93% center;
+    line-height: 18px;
+    border: 1px solid #bef1ff;
+    border-radius: 2px 2px 8px 8px;
+    cursor: pointer;
+}
+
+#orderfrm .col-md-8 h3 {
+    font-size: 18px;
+    color: #000000;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: 'Raleway', sans-serif;
+}
+
+#order-modern .col-md-8 .configoptions {
+    border: none;
+}
+
+.soyoustartHtml .col-sm-12.col-md-12.col-lg-12 {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.opreatingHTML {
+    clear: both;
+    display: inline-block;
+    width: 100%;
+    margin-top: 15px;
+}
+
+#order-modern select.op-select {
+    border: none;
+    border-top: 1px solid #ccc;
+}
+
+.Diskconfig {
+    background-color: transparent;
+    margin-top: 0px;
+}
+
+.list-section .list-radio-btn p {
+    border-bottom: 1px solid #e9eaeb;
+    padding: 10px;
+}
+
+.Diskconfig p {
+    font-size: 15px;
+    color: #222222;
+    font-weight: 600;
+}
+
+#orderfrm .list-section .list-radio-btn [type="radio"]:checked+label {
+    background-color: #ffffff;
+}
+
+#orderfrm .list-section .list-radio-btn p label:nth-child(even) {
+    background-color: #ffffff;
+}
+
+#orderfrm .list-section .list-radio-btn p label {
+    border-bottom: none;
+}
+
+
+.form-control:focus {
+    box-shadow: none;
+    outline: none;
+}
+
+.C-panel .soyoustartRadio {
+    margin-top: 0;
+    position: relative;
+    /*z-index: 1;*/
+}
+
+.opreatingHTML {
+    margin-top: 0;
+}
+
+.billingcycle-box {
+    position: relative;
+    height: 135px;
+}
+
+.radioname {
+    height: auto;
+    font-size: 12px;
+    margin: 0;
+    font-size: 15px;
+    line-height: 17px;
+    padding-left: 10px;
+}
+
+.C-panel .logo-part {
+    align-items: center;
+    height: 100%;
+}
+
+.C-panel .logo_section img {
+    margin-left: -5px;
+}
+
+.billingcycle-box h4 {
+    font-size: 12px;
+    margin: 0px;
+    padding: 13px 0px;
+    font-family: 'Open Sans', sans-serif;
+    text-align: center;
+    font-weight: 700!important;
+    line-height: 16px;
+    width: 100%;
+    color: #333640;
+}
+
+.singleSelected {
+    height: 158px;
+    cursor: pointer;
+}
+
+.doubleSelected {
+    height: 186px;
+}
+
+.VPSOpreatingapp p {
+    margin: 0px;
+}
+
+.dedicatedOpreating {
+    height: 160px;
+}
+.tabcontent .col-md-3 {
+    float: left;
+}
+
+.tabcontent .col-md-3 .custom-radios input {
+    height: auto;
+    display: none !important;
+}
+
+.opreatingHTML .tab .col-lg-6 {
+    float: left;
+}
+
+.datacenter-sec .row {
+    width: 100%;
+}
+
+/*===============29-sept-2020==========*/
+.billingcycle-box.config-box .custom-radios .radio-custom+.radio-custom-label:before,
+.billingcycle-sec .custom-radios .radio-custom:checked+.radio-custom-label:before {
+    line-height: 10px;
+}
+
+.panel-check>.check h6.check-title {
+    line-height: 20px;
+}
+
+#main-menu .navbar-nav .btn {
+    height: auto;
+    color: #fff;
+}
+
+/*===============29-sept-2020-end==========*/
+.custom-radios .form-control {
+    right: 15px;
+    top: 17px;
+    width: 30px;
+    height: 16px;
+}
+
+.billingcycle-box.tabbox {
+    height: 90px;
+    padding: 10px;
+}
+
+.billingcycle-box.tabbox label {
+    padding-left: 10px;
+}
+
+.htmlOS {
+    box-shadow: 0 0 0.2em rgb(0 14 156 / 40%);
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.tabbox select {
+    width: 80%;
+    border: 1px solid #0050d7;
+    border-radius: 4px;
+    height: 35px;
+}
+
+.list-radio-btn label {
+    cursor: pointer;
+}
+#order-standard_cart .field-container{
+    background: #ffffff !important;
+}
+div#productConfigurableOptions {
+    padding: 20px;
+    background: #ffffff;
+}
+div#productConfigurableOptions .col-md-4 {
+    padding: 0px 10px;
+    margin-bottom: 10px;
+}
+
+.billingcycle-box:has(.checked),
+.billingcycle-box.active,
+.billingcycle-box:hover
+.location-center.addonSection:hover
+ {
+    background: #fff;
+    border-color: #0050d7;
+}
+
+.billingcycle-box:has(.checked) .op-select {
+    background: #FFF;
+}
+
+.billingcycle-box {
+    padding: 10px;
+    height: auto;
+    background: #ffffff;
+    border: 1px solid #edecec;
+    box-shadow: 0px 0px 20px #00000014;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: unset;
+    margin: 0;
+    margin-bottom: 10px;
+    overflow: hidden;
+    transition: all 0.4s;
+}
+
+.custom-radios {
+    text-align: right;
+    margin: 0px 0px 0;
+}
+
+.billingcycle-box .op-select, .location-center .op-select {
+    padding: 8px 20px 10px 8px !important;
+    line-height: 18px;
+    border: none;
+    border-radius: 3px;
+    color: #363636;
+    font-weight: 600;
+    appearance: auto;
+    border: 1px solid #ededed;
+}
+
+.os-icons img {
+    margin-right: 0;
+    height: 72px;
+    width: 72px;
+}
+
+.bil-title h4 {
+    align-items: center;
+    display: flex;
+}
+
+.bil-title h4 img {
+    margin-right: 10px;
+    vertical-align: sub;
+    width: 28px;
+}
+
+#productConfigurableOptions .list-radio-btn {
+    background: #fff;
+}
+
+.location-center {
+    margin-top: 25px;
+    background: #fafafa;
+    width: 100%;
+    padding: 20px;
+    border-radius: 5px;
+    border: 1px solid transparent;
+}
+.location-center.addonSection:hover {
+    border-color: #0050d7;
+}
+.location-center .list-section .list-radio-btn p label {
+    color: #2f2f2f !important;
+}
+
+label.radioname {
+    text-transform: capitalize;
+}
+
+.billingcycle-box label.radioname, .location-center.addonSection {
+    cursor:pointer
+}
+.location-center.bil-title h4{
+    margin: 0px !important;
+}
+.billingcycle-box label.radioname {
+    width: 100%;
+    max-width: calc(100% - 35px);
+}
+
+.list-section .list-radio-btn p label {
+    display: block;
+    padding: 0;
+    background-color: transparent !important;
+    border: none !important;
+    margin-left: 10px;
+    margin-bottom: 0;
+    width: 100%;
+    max-width: calc(100% - 45px);
+}
+.list-section .list-radio-btn p {
+    display: flex;
+    align-items: center;
+}
+
+.error{
+    color: red!important;
+    font-family: bolder;
+}
+.billingcycle-box.config-box.serverLocation {
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: space-between;
+    min-height: 79px;
+    margin-bottom: 15px;
+    height: unset;
+}
+.billingcycle-box.config-box.serverLocation p {
+    margin: 0px 8px 0px 0px;
+    padding: 0px;
+    color: #181818;
+    font-weight: 500;
+    line-height: 21px;
+    font-size: 13px;
+    text-align: left;    
+
+}
+.billingcycle-sec.configurable-sec .col-md-6 {
+    padding: 0px 10px;
+}
+/*.bil-title.titlelicense h4 img {
+    display: none;
+}*/
+select#osFamily {
+    border-color: #e4e4e4;
+}
+#order-standard_cart .order-summary .loader {
+    top: 6px;
+    padding-right: 2px;
+}
+.billingcycle-box.config-box.serverLocation.active {
+    border-color: #0050d7;
+}
+.billingcycle-box.config-box.serverLocation.active:after, 
+.billingcycle-box.operating-box.active:after,
+.billingcycle-box.licenseControl.active:after,
+.location-center.addonSection.active:after,
+.billing-inner.active:after{
+    width: 0;
+    height: 0;
+    border-right: 30px solid #0050d7;
+    border-bottom: 30px solid transparent;
+    position: absolute;
+    top: -6px;
+    content: "";
+    right: 0px;
+    z-index: 0;
+}
+
+.billingcycle-box.config-box.serverLocation.active:before,
+.billingcycle-box.operating-box.active:before,
+.billingcycle-box.licenseControl.active:before,
+.location-center.addonSection.active:before,
+.billing-inner.active:before {
+    content: "\f00c";
+    font-family: 'Font Awesome 5 Pro';
+    position: absolute;
+    right: 3px;
+    top: 2px;
+    z-index: 99;
+    color: #fff;
+    font-weight: 500;
+    font-size: 10px;
+    line-height: normal;
+}
+.billing-inner.active {
+    border-color: #0050d7;
+    background: #fff;
+}
+.billing-inner {
+    background:#fafafa;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 5px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s;
+    cursor: pointer;
+    border:1px solid transparent;
+    min-height: 156px;
+    box-shadow: 0px 0px 2px #0000001f;
+}
+.billing-main .col-md-6 {
+    padding: 0px 10px;
+}
+
+.billing-inner a {
+    display: inline-block;
+    padding: 6px 17px;
+    background: #0050d7;
+    color: #fff;
+    border-radius: 5px;
+    margin-top: 10px;
+    text-transform: capitalize;
+    font-size: 14px;
+    font-weight: 500;
+}
+.billing-inner h6 {
+    font-weight: 700;
+    margin: 7px 0px;
+    /* color: #; */
+}
+
+.billing-inner span {
+    margin-top: 5px;
+    display: block;
+    color: #5e636e;
+}
+.row.billing-main {
+    margin-top: 10px;
+}
+.billing-inner:hover {
+    transform: translateY(-5px);
+    box-shadow: 4px 8px 14px #00000014;
+    border-color: #0050d7;
+}
+div#productConfigurableOptions .row {
+    margin: 0;
+}
+.billingcycle-box.singleSelected.licenseControl {
+    min-height: 180px;
+}
+div#productConfigurableOptions .row .location-center .row {
+    margin: 0 -15px;
+}
+.C-panel.billingcycle-box {
+    box-shadow: none;
+}
+.col-md-6.billingcycle p {
+    font-weight: bolder;
+    font-size: 20px;
+    line-height: 34px;
+}
+
+#serverLocation img{
+    width: 42px;
+}
+
+.addonPrices{
+    text-transform: capitalize;
+    font-weight: 700;
+}
+.location-center.addonSection {
+    position: relative;
+    overflow: hidden;
+}
+
+.location-center.addonSection.active {
+    border-color: #0050d7;
+}
+#order-standard_cart .product-info .product-title {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+#order-standard_cart .product-info li {
+    margin-bottom: 4px;
+    font-size: 13px;
+}
+#order-standard_cart .product-info {
+    margin: 20px 0 20px 0;
+    background: #ffffff !important;
+}
+#order-standard_cart .field-container .billing-inner span {
+    font-size: 14px;
+    font-weight: 600;
+}
+#order-standard_cart .summary-container .clearfix {
+    font-size: 11px;
+    margin-bottom: 12px;
+}
+
+#order-standard_cart .summary-container span.pull-left.float-left {
+    font-weight: 500;
+    width: 100%;
+    max-width: 60%;
+}
+
+#order-standard_cart .summary-container span.pull-right.float-right {
+    width: 100%;
+    max-width: 40%;
+    text-align: end;
+}
+#order-standard_cart .summary-container {
+    background-color: #ffffff;
+        padding: 0;
+}
+#order-standard_cart .order-summary {
+    background-color: #fff;
+    border-radius: 4px;
+}
+#order-standard_cart .order-summary {
+    background-color: #fff;
+    border-bottom: transparent;
+}
+#order-standard_cart .order-summary .total-due-today span {
+    display: block;
+    text-align: right;
+    font-weight: 700;
+}
+#order-standard_cart .order-summary .total-due-today .amt {
+    font-size: 20px;
+    font-weight: 700;
+}
+.total-due-today {
+    display: flex;
+    align-items: center;
+    flex-direction: row-reverse;
+    justify-content: space-between;
+}
+#order-standard_cart .order-summary h2 {
+    color: #222529;
+    font-size: 22px;
+    font-weight: 700;
+    padding: 0;
+    margin-bottom: 20px;
+}
+.billingcycle-box.operating-box .lg-icons img {
+    width: 100%;
+    max-width: 50px;
+}
+/* .location-center.bil-title {
+    margin-bottom: 25px;
+} */
+#orderSummary {
+    background: #fff;
+    padding: 20px;
+}
+#orderSummary #btnCompleteProductConfig {
+    background: #2152da;
+    font-size: 14px;
+}
+#order-standard_cart .order-summary .loader {
+    color: #3054dd;
+}
+#order-standard_cart .header-lined.customHeader h1 {
+    font-size: 25px;
+    margin-bottom: 10px;
+    font-weight: 700;
+}
+.header-lined.customHeader {
+    padding: 20px;
+    background: #fff;
+}
+
+.icheckbox_square-blue, .iradio_square-blue {
+    background: url(../images/blue.svg) no-repeat;
+    background-position: -120px 0;
+}
+.billingcycle-box.config-box.serverLocation:hover, .billingcycle-box:hover {
+    transform: translateY(-5px);
+    box-shadow: 4px 8px 14px #00000014;
+}
+.btn.disabled,
+.btn:disabled {
+    cursor: no-drop;
+}
