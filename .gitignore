@@ -22,6 +22,7 @@ desktop.ini
 modules/addons/domainbroker/node_modules
 modules/addons/cloudhost247services/node_modules
 modules/addons/cloudhost247ai/node_modules
+modules/addons/cloudhost247marketing/node_modules
 modules/addons/domainbroker/storage/*
 !modules/addons/domainbroker/storage/.gitkeep
 modules/addons/digitalproducts/storage/*
