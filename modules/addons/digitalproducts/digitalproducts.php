@@ -1,296 +1,52 @@
 <?php
-/**
- * WHMCS Digital Products Marketplace Module
- *
- * A complete solution for selling downloadable digital products,
- * modules, plugins and scripts through WHMCS.
- *
- * @package    DigitalProducts
- * @author     Your Name
- * @copyright  2024 Your Company
- * @license    https://www.whmcs.com/license/ WHMCS License
- * @version    1.0.0
- * @link       https://yourcompany.com
- */
+/** CloudHost247 Digital Products Marketplace — WHMCS addon entry point. */
+if (!defined('WHMCS')) die('This file cannot be accessed directly');
 
-if (!defined("WHMCS")) {
-    die("This file cannot be accessed directly");
-}
+require_once __DIR__ . '/autoload.php';
 
+use DigitalProducts\Core\Migrator;
 use WHMCS\Database\Capsule;
 
-/**
- * Module Configuration
- *
- * @return array
- */
 function digitalproducts_config()
 {
     return [
-        'name'        => 'Digital Products Marketplace',
-        'description' => 'Sell downloadable digital products, modules, plugins and scripts with version management, licensing and secure downloads.',
-        'author'      => 'Your Company',
-        'language'    => 'english',
-        'version'     => '1.0.0',
-        'fields'      => [
-            'download_limit' => [
-                'FriendlyName' => 'Default Download Limit',
-                'Type'         => 'text',
-                'Size'         => '5',
-                'Default'      => '5',
-                'Description'  => 'Maximum number of downloads per purchase (0 = unlimited)',
-            ],
-            'link_expiry_hours' => [
-                'FriendlyName' => 'Download Link Expiry',
-                'Type'         => 'text',
-                'Size'         => '5',
-                'Default'      => '48',
-                'Description'  => 'Hours until download link expires',
-            ],
-            'license_enabled' => [
-                'FriendlyName' => 'Enable License Keys',
-                'Type'         => 'yesno',
-                'Default'      => 'on',
-                'Description'  => 'Generate license keys for each purchase',
-            ],
-            'storage_path' => [
-                'FriendlyName' => 'File Storage Path',
-                'Type'         => 'text',
-                'Size'         => '50',
-                'Default'      => '',
-                'Description'  => 'Absolute path to store files (leave empty for default: WHMCS_ROOT/storage/digitalproducts/)',
-            ],
-            'email_delivery' => [
-                'FriendlyName' => 'Email Download Info',
-                'Type'         => 'yesno',
-                'Default'      => 'on',
-                'Description'  => 'Send download info email after purchase',
-            ],
-        ]
+        'name' => 'CloudHost247 Digital Products',
+        'description' => 'Secure downloadable products, version releases, entitlements and licensing for WHMCS.',
+        'author' => 'CloudHost247', 'language' => 'english', 'version' => DIGITALPRODUCTS_VERSION,
+        'fields' => [
+            'download_limit' => ['FriendlyName' => 'Default download limit', 'Type' => 'text', 'Size' => '8', 'Default' => '5', 'Description' => 'Downloads per entitlement; 0 means unlimited.'],
+            'link_expiry_hours' => ['FriendlyName' => 'Download-link expiry (hours)', 'Type' => 'text', 'Size' => '8', 'Default' => '48', 'Description' => '0 means links do not expire.'],
+            'access_mode' => ['FriendlyName' => 'Default version access', 'Type' => 'dropdown', 'Options' => 'current_version,purchase_version', 'Default' => 'current_version', 'Description' => 'Current release or the release purchased.'],
+            'license_enabled' => ['FriendlyName' => 'License keys', 'Type' => 'yesno', 'Default' => 'on', 'Description' => 'Enable license generation by default.'],
+            'email_delivery' => ['FriendlyName' => 'Purchase email', 'Type' => 'yesno', 'Default' => 'on', 'Description' => 'Send the WHMCS email template after access is granted.'],
+            'update_notifications' => ['FriendlyName' => 'Update notifications', 'Type' => 'yesno', 'Default' => '', 'Description' => 'Queue release notifications from cron.'],
+            'max_upload_size' => ['FriendlyName' => 'Maximum upload size (bytes)', 'Type' => 'text', 'Size' => '14', 'Default' => '524288000', 'Description' => 'The web server upload limit must also allow this value.'],
+            'allowed_extensions' => ['FriendlyName' => 'Allowed extensions', 'Type' => 'text', 'Size' => '60', 'Default' => 'zip,tar.gz,pdf,js,css,php,json,xml,txt,md', 'Description' => 'Comma-separated allowlist.'],
+            'storage_path' => ['FriendlyName' => 'Private storage path', 'Type' => 'text', 'Size' => '70', 'Default' => '', 'Description' => 'Must be outside the WHMCS document root. DIGITALPRODUCTS_STORAGE is also supported.'],
+            'api_rate_limit' => ['FriendlyName' => 'API requests per minute', 'Type' => 'text', 'Size' => '8', 'Default' => '60', 'Description' => 'Sensitive license operations have an additional limit.'],
+        ],
     ];
 }
 
-/**
- * Module Activation
- *
- * @return array
- */
 function digitalproducts_activate()
 {
-    try {
-        // Create products table
-        if (!Capsule::schema()->hasTable('mod_digitalproducts_products')) {
-            Capsule::schema()->create('mod_digitalproducts_products', function ($table) {
-                $table->increments('id');
-                $table->integer('product_id')->unsigned()->unique();
-                $table->string('product_name', 255);
-                $table->text('description')->nullable();
-                $table->enum('status', ['active', 'inactive', 'retired'])->default('active');
-                $table->integer('current_file_id')->unsigned()->nullable();
-                $table->integer('download_limit')->unsigned()->default(0);
-                $table->integer('link_expiry_hours')->unsigned()->default(48);
-                $table->boolean('license_enabled')->default(true);
-                $table->timestamps();
-                $table->index('product_id');
-            });
-        }
-
-        // Create files table
-        if (!Capsule::schema()->hasTable('mod_digitalproducts_files')) {
-            Capsule::schema()->create('mod_digitalproducts_files', function ($table) {
-                $table->increments('id');
-                $table->integer('product_id')->unsigned();
-                $table->string('version', 50)->default('1.0.0');
-                $table->string('filename', 255);
-                $table->string('original_name', 255);
-                $table->string('file_path', 500);
-                $table->string('file_hash', 64)->nullable();
-                $table->bigInteger('file_size')->unsigned()->default(0);
-                $table->text('changelog')->nullable();
-                $table->integer('download_count')->unsigned()->default(0);
-                $table->enum('status', ['active', 'inactive'])->default('active');
-                $table->timestamps();
-                $table->index('product_id');
-                $table->index(['product_id', 'status']);
-            });
-        }
-
-        // Create licenses table
-        if (!Capsule::schema()->hasTable('mod_digitalproducts_licenses')) {
-            Capsule::schema()->create('mod_digitalproducts_licenses', function ($table) {
-                $table->increments('id');
-                $table->integer('product_id')->unsigned();
-                $table->integer('service_id')->unsigned();
-                $table->integer('client_id')->unsigned();
-                $table->string('license_key', 64)->unique();
-                $table->enum('status', ['active', 'suspended', 'expired', 'cancelled'])->default('active');
-                $table->text('domains')->nullable();
-                $table->integer('activations_limit')->unsigned()->default(0);
-                $table->integer('activations_count')->unsigned()->default(0);
-                $table->dateTime('expires_at')->nullable();
-                $table->timestamps();
-                $table->index('license_key');
-                $table->index('service_id');
-                $table->index('client_id');
-                $table->index('product_id');
-            });
-        }
-
-        // Create download logs table
-        if (!Capsule::schema()->hasTable('mod_digitalproducts_downloads')) {
-            Capsule::schema()->create('mod_digitalproducts_downloads', function ($table) {
-                $table->increments('id');
-                $table->integer('file_id')->unsigned();
-                $table->integer('product_id')->unsigned();
-                $table->integer('service_id')->unsigned();
-                $table->integer('client_id')->unsigned();
-                $table->string('license_key', 64)->nullable();
-                $table->string('download_token', 128)->nullable();
-                $table->string('ip_address', 45)->nullable();
-                $table->text('user_agent')->nullable();
-                $table->enum('status', ['success', 'failed', 'expired', 'limit'])->default('success');
-                $table->timestamps();
-                $table->index('file_id');
-                $table->index('client_id');
-                $table->index('service_id');
-                $table->index('download_token');
-            });
-        }
-
-        // Create API tokens table for external access
-        if (!Capsule::schema()->hasTable('mod_digitalproducts_api_tokens')) {
-            Capsule::schema()->create('mod_digitalproducts_api_tokens', function ($table) {
-                $table->increments('id');
-                $table->integer('client_id')->unsigned();
-                $table->string('token_name', 100);
-                $table->string('api_token', 128)->unique();
-                $table->text('permissions')->nullable();
-                $table->string('ip_restriction', 255)->nullable();
-                $table->dateTime('last_used_at')->nullable();
-                $table->dateTime('expires_at')->nullable();
-                $table->timestamps();
-                $table->index('client_id');
-                $table->index('api_token');
-            });
-        }
-
-        return [
-            'status'  => 'success',
-            'description' => 'Digital Products module activated successfully. Database tables created.',
-        ];
-    } catch (Exception $e) {
-        return [
-            'status'  => 'error',
-            'description' => 'Failed to activate module: ' . $e->getMessage(),
-        ];
-    }
+    try { (new Migrator())->migrate(); return ['status' => 'success', 'description' => 'CloudHost247 Digital Products activated. Existing data was preserved and migrations were applied.']; }
+    catch (\Throwable $e) { if (function_exists('logActivity')) logActivity('DigitalProducts activation failed: ' . $e->getMessage()); return ['status' => 'error', 'description' => 'Activation failed. Check the WHMCS activity log.']; }
 }
-
-/**
- * Module Deactivation
- *
- * @return array
- */
-function digitalproducts_deactivate()
-{
-    try {
-        // We intentionally DO NOT drop tables on deactivation
-        // to prevent data loss. Use upgrade function for cleanup.
-
-        return [
-            'status'  => 'success',
-            'description' => 'Module deactivated. Database tables preserved to prevent data loss.',
-        ];
-    } catch (Exception $e) {
-        return [
-            'status'  => 'error',
-            'description' => 'Failed to deactivate: ' . $e->getMessage(),
-        ];
-    }
-}
-
-/**
- * Module Upgrade
- *
- * @param array $vars
- */
-function digitalproducts_upgrade($vars)
-{
-    $version = $vars['version'];
-
-    try {
-        // Future upgrade paths go here
-        // if ($version < '1.1.0') { ... }
-    } catch (Exception $e) {
-        // Log error but don't crash
-        logActivity('DigitalProducts Upgrade Error: ' . $e->getMessage());
-    }
-}
-
-/**
- * Admin Area Output
- *
- * @param array $vars
- * @return string
- */
-function digitalproducts_output($vars)
-{
-    require_once __DIR__ . '/lib/Admin.php';
-
-    $admin = new DigitalProducts\Admin($vars);
-    return $admin->render();
-}
-
-/**
- * Admin Area Sidebar
- *
- * @param array $vars
- * @return string
- */
+function digitalproducts_deactivate() { return ['status' => 'success', 'description' => 'Deactivated without dropping products, purchases, licenses, files or audit history.']; }
+function digitalproducts_upgrade($vars) { require_once __DIR__ . '/autoload.php'; try { (new Migrator())->migrate(); } catch (\Throwable $e) { if (function_exists('logActivity')) logActivity('DigitalProducts upgrade failed: ' . $e->getMessage()); } }
+function digitalproducts_output($vars) { require_once __DIR__ . '/lib/Admin.php'; return (new DigitalProducts\Admin($vars))->render(); }
 function digitalproducts_sidebar($vars)
 {
-    $moduleLink = $vars['modulelink'];
-
-    return <<<HTML
-<div class="panel panel-default">
-    <div class="panel-heading">
-        <h3 class="panel-title"><i class="fa fa-bars"></i> Quick Navigation</h3>
-    </div>
-    <div class="list-group">
-        <a href="{$moduleLink}&action=dashboard" class="list-group-item">
-            <i class="fa fa-dashboard fa-fw"></i> Dashboard
-        </a>
-        <a href="{$moduleLink}&action=products" class="list-group-item">
-            <i class="fa fa-cubes fa-fw"></i> Digital Products
-        </a>
-        <a href="{$moduleLink}&action=upload" class="list-group-item">
-            <i class="fa fa-upload fa-fw"></i> Upload File
-        </a>
-        <a href="{$moduleLink}&action=versions" class="list-group-item">
-            <i class="fa fa-code-fork fa-fw"></i> Version Management
-        </a>
-        <a href="{$moduleLink}&action=licenses" class="list-group-item">
-            <i class="fa fa-key fa-fw"></i> License Keys
-        </a>
-        <a href="{$moduleLink}&action=downloads" class="list-group-item">
-            <i class="fa fa-download fa-fw"></i> Download Logs
-        </a>
-        <a href="{$moduleLink}&action=settings" class="list-group-item">
-            <i class="fa fa-cog fa-fw"></i> Settings
-        </a>
-    </div>
-</div>
-
-<div class="panel panel-info">
-    <div class="panel-heading">
-        <h3 class="panel-title"><i class="fa fa-info-circle"></i> Module Info</h3>
-    </div>
-    <div class="panel-body">
-        <p><strong>Version:</strong> {$vars['version']}</p>
-        <p><strong>PHP:</strong> " . PHP_VERSION . "</p>
-        <hr>
-        <p class="small text-muted">Secure digital product delivery with licensing.</p>
-    </div>
-</div>
-HTML;
+    $link = htmlspecialchars($vars['modulelink'], ENT_QUOTES, 'UTF-8');
+    return '<div class="panel panel-default"><div class="panel-heading"><strong><i class="fa fa-cloud-download"></i> Digital Products</strong></div><div class="list-group">'
+        . '<a class="list-group-item" href="' . $link . '&action=dashboard">Dashboard</a>'
+        . '<a class="list-group-item" href="' . $link . '&action=products">Products</a>'
+        . '<a class="list-group-item" href="' . $link . '&action=upload">Upload version</a>'
+        . '<a class="list-group-item" href="' . $link . '&action=versions">Versions</a>'
+        . '<a class="list-group-item" href="' . $link . '&action=entitlements">Entitlements</a>'
+        . '<a class="list-group-item" href="' . $link . '&action=licenses">Licenses</a>'
+        . '<a class="list-group-item" href="' . $link . '&action=downloads">Downloads</a>'
+        . '<a class="list-group-item" href="' . $link . '&action=api">API tokens</a>'
+        . '<a class="list-group-item" href="' . $link . '&action=settings">Settings</a></div><div class="panel-body small text-muted">CloudHost247 v' . htmlspecialchars(DIGITALPRODUCTS_VERSION, ENT_QUOTES, 'UTF-8') . '</div></div>';
 }

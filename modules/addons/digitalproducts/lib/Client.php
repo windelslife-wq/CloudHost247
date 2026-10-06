@@ -1,132 +1,56 @@
 <?php
-/**
- * DigitalProducts Client Class
- *
- * Handles all client area rendering and functionality.
- *
- * @package    DigitalProducts
- * @version    1.0.0
- */
-
 namespace DigitalProducts;
 
+use DigitalProducts\Core\Csrf;
+use DigitalProducts\Security\TokenService;
 use WHMCS\Database\Capsule;
-use Exception;
-
-if (!defined("WHMCS")) {
-    die("This file cannot be accessed directly");
-}
 
 class Client
 {
-    protected $vars;
-    protected $core;
-    protected $clientId;
+    protected $vars; protected $core; protected $clientId;
+    public function __construct(array $vars = []) { $this->vars = $vars; $this->core = new Core(); $this->clientId = (int) ($_SESSION['uid'] ?? 0); }
+    public function clientId() { return $this->clientId; }
 
-    public function __construct($vars)
+    public function handleRequest()
     {
-        $this->vars = $vars;
-        $this->core = new Core();
-        $this->clientId = (int)($_SESSION['uid'] ?? 0);
+        if (!$this->clientId || ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST' || ($_POST['dp_action'] ?? '') !== 'generate_token') return;
+        Csrf::verify();
+        $entitlementId = (int) ($_POST['entitlement_id'] ?? 0); $versionId = (int) ($_POST['version_id'] ?? 0);
+        $entitlement = Capsule::table('mod_digitalproducts_entitlements')->where('id', $entitlementId)->where('client_id', $this->clientId)->where('status', 'active')->first();
+        if (!$entitlement) throw new \RuntimeException('Download access could not be verified.');
+        $product = Capsule::table('mod_digitalproducts_products')->where('id', $entitlement->product_id)->first();
+        if (!$versionId) $versionId = ($entitlement->access_mode === 'purchase_version' ? (int) $entitlement->purchase_version_id : (int) ($product->current_version_id ?? 0));
+        $version = Capsule::table('mod_digitalproducts_versions')->where('id', $versionId)->where('product_id', $entitlement->product_id)->where('status', 'active')->first();
+        if (!$version) throw new \RuntimeException('This version is no longer available.');
+        $issued = (new TokenService())->issue($entitlement->id, $version->id, $this->clientId);
+        header('Location: ' . $issued['url']); exit;
     }
 
-    public function render($action)
+    public function viewData()
     {
-        if (!$this->clientId) {
-            return '<div class="alert alert-danger">You must be logged in to access this area.</div>';
+        $rows = $this->clientId ? $this->core->getClientDownloads($this->clientId) : [];
+        $downloads = [];
+        foreach ($rows as $row) {
+            $limit = (int) $row->download_limit; $used = (int) $row->downloads_used;
+            $downloads[] = ['entitlement_id' => (int) $row->entitlement_id, 'product_name' => $row->name ?: $row->product_name, 'product_type' => $row->product_type ?: 'software', 'description' => $row->description, 'current_version' => $row->version, 'purchased_version' => $row->purchased_version ?: $row->version, 'purchase_date' => $row->purchase_date, 'license_key' => $row->license_key, 'license_status' => $row->license_status, 'downloads_used' => $used, 'downloads_remaining' => $limit === 0 ? null : max(0, $limit - $used), 'download_remaining' => $limit === 0 ? null : max(0, $limit - $used), 'download_limit' => $limit, 'file_size' => $row->file_size, 'checksum' => $row->checksum_sha256, 'changelog' => $row->changelog ?: $row->release_notes, 'new_version' => $row->purchased_version && $row->purchased_version !== $row->version];
         }
-
-        ob_start();
-        echo '<div class="digitalproducts-client">';
-
-        switch ($action) {
-            case 'downloads':
-            default:
-                $this->renderDownloads();
-                break;
-        }
-
-        echo '</div>';
-        return ob_get_clean();
+        return ['downloads' => $downloads, 'csrf_field' => Csrf::field(), 'modulelink' => $this->vars['modulelink'] ?? 'index.php?m=digitalproducts'];
     }
 
-    protected function renderDownloads()
+    public function productData($entitlementId)
     {
-        $downloads = $this->core->getClientDownloads($this->clientId);
-
-        echo '<div class="panel panel-default">';
-        echo '<div class="panel-heading"><h3 class="panel-title"><i class="fa fa-download"></i> My Downloads</h3></div>';
-        echo '<div class="panel-body">';
-        echo '<p class="text-muted">Your purchased digital products are listed below. Download links are valid for 48 hours.</p>';
-        echo '</div>';
-
-        if (count($downloads) === 0) {
-            echo '<div class="panel-body text-center text-muted">';
-            echo '<p><i class="fa fa-inbox fa-3x" style="color:#ddd;"></i></p>';
-            echo '<p>You have no active digital product downloads.</p>';
-            echo '<p><a href="cart.php" class="btn btn-primary">Browse Products</a></p>';
-            echo '</div>';
-        } else {
-            echo '<div class="table-responsive">';
-            echo '<table class="table table-striped">';
-            echo '<thead><tr><th>Product</th><th>Version</th><th>License Key</th><th>Purchased</th><th>Next Due</th><th>Downloads</th><th>Action</th></tr></thead>';
-            echo '<tbody>';
-
-            foreach ($downloads as $item) {
-                $downloadCount = $this->core->getDownloadCount($this->clientId, $item->service_id, $item->file_id);
-                $downloadLimit = (int)($item->download_limit ?? 0);
-                $canDownload = $downloadLimit === 0 || $downloadCount < $downloadLimit;
-                $licenseStatusLabel = '';
-
-                if ($item->license_key) {
-                    $licStatus = $item->license_status ?? 'active';
-                    $licClass = $licStatus === 'active' ? 'label-success' : 'label-warning';
-                    $licenseStatusLabel = ' <span class="label ' . $licClass . '">' . ucfirst($licStatus) . '</span>';
-                }
-
-                $downloadBtn = $canDownload
-                    ? '<form method="post" action="modules/addons/digitalproducts/download.php" style="display:inline;">' .
-                      '<input type="hidden" name="service_id" value="' . $item->service_id . '">' .
-                      '<input type="hidden" name="file_id" value="' . $item->file_id . '">' .
-                      '<button type="submit" class="btn btn-success btn-sm"><i class="fa fa-download"></i> Download</button>' .
-                      '</form>'
-                    : '<button class="btn btn-default btn-sm" disabled title="Download limit reached"><i class="fa fa-ban"></i> Limit Reached</button>';
-
-                $limitText = $downloadLimit === 0 ? 'Unlimited' : ($downloadCount . '/' . $downloadLimit);
-
-                echo '<tr>';
-                echo '<td><strong>' . $this->escape($item->product_name) . '</strong></td>';
-                echo '<td><span class="badge badge-info">' . $this->escape($item->version) . '</span></td>';
-                echo '<td>';
-                if ($item->license_key) {
-                    echo '<code>' . $this->escape($item->license_key) . '</code>' . $licenseStatusLabel;
-                } else {
-                    echo '<span class="text-muted">-</span>';
-                }
-                echo '</td>';
-                echo '<td>' . date('Y-m-d', strtotime($item->purchase_date)) . '</td>';
-                echo '<td>' . date('Y-m-d', strtotime($item->nextduedate)) . '</td>';
-                echo '<td>' . $limitText . '</td>';
-                echo '<td>' . $downloadBtn . '</td>';
-                echo '</tr>';
-
-                // Show changelog if available
-                $file = $this->core->getFileById($item->file_id);
-                if ($file && !empty($file->changelog)) {
-                    echo '<tr class="active"><td colspan="7" style="padding-left:30px;">';
-                    echo '<small class="text-muted"><strong>Changelog:</strong> ' . nl2br($this->escape($file->changelog)) . '</small>';
-                    echo '</td></tr>';
-                }
-            }
-
-            echo '</tbody></table></div>';
-        }
-
-        echo '</div>';
+        if (!$this->clientId) return null;
+        $entitlement = Capsule::table('mod_digitalproducts_entitlements as e')->join('mod_digitalproducts_products as p', 'p.id', '=', 'e.product_id')->where('e.id', (int) $entitlementId)->where('e.client_id', $this->clientId)->where('e.status', 'active')->select('e.*', 'p.name', 'p.product_name', 'p.description', 'p.product_type')->first();
+        if (!$entitlement) return null;
+        $product = ['name' => $entitlement->name ?: $entitlement->product_name, 'description' => $entitlement->description, 'product_type' => $entitlement->product_type, 'purchased_version' => null];
+        $product['versions'] = Capsule::table('mod_digitalproducts_versions')->where('product_id', $entitlement->product_id)->whereIn('status', ['active', 'retired'])->select('version', 'file_size', 'checksum_sha256', 'release_notes', 'changelog', 'min_php', 'max_php', 'min_whmcs', 'max_whmcs', 'required_extensions', 'release_date', 'status')->orderBy('release_date', 'desc')->get();
+        if ($entitlement->purchase_version_id) $product['purchased_version'] = Capsule::table('mod_digitalproducts_versions')->where('id', $entitlement->purchase_version_id)->value('version');
+        $license = Capsule::table('mod_digitalproducts_licenses')->where('service_id', $entitlement->service_id)->where('product_id', $entitlement->product_id)->first();
+        $licenseData = null;
+        if ($license) $licenseData = ['key' => (new License())->displayKey($license), 'status' => $license->status, 'expires_at' => $license->expires_at, 'activations' => $license->activations_count, 'activation_limit' => $license->domain_limit ?: $license->activation_limit];
+        return ['product' => $product, 'entitlement' => $entitlement, 'license' => $licenseData];
     }
 
-    protected function escape($text)
-    {
-        return htmlspecialchars($text ?? '', ENT_QUOTES, 'UTF-8');
-    }
+    // Kept for third-party templates that called the original method.
+    public function render($action = 'downloads') { return ''; }
 }

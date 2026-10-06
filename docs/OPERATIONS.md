@@ -95,7 +95,26 @@ valuations retroactively.
 - `sitemap.html` is the human-readable mirror; update it when adding new
   public landing pages.
 
-## 6. Testing & lint gates
+## 6. Digital Products Marketplace
+
+The addon is upgraded in place at `modules/addons/digitalproducts/`; do not install a
+second digital-products module. Configure `DIGITALPRODUCTS_STORAGE` to a writable path
+outside the WHMCS document root and set `DIGITALPRODUCTS_ENCRYPTION_KEY` before creating
+licenses. Activate it from WHMCS Addon Modules so its additive migrations can preserve
+legacy products and files.
+
+Run maintenance every five minutes:
+
+```text
+*/5 * * * * /usr/bin/php -q /path/to/whmcs/modules/addons/digitalproducts/cron/digitalproducts.php
+```
+
+The cron expires download tokens and rate-limit windows; it never silently deletes
+download history. Verify a real paid staging order, a duplicate payment hook, a
+cancellation, and a wrong-customer token before production release. See
+[`DIGITAL_PRODUCTS.md`](DIGITAL_PRODUCTS.md) for storage, schema and incident response.
+
+## 7. Testing & lint gates
 
 From `modules/addons/cloudhost247services/`:
 

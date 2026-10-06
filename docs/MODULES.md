@@ -14,7 +14,7 @@ for this repository rather than imported — see `docs/DOMAIN_BROKER.md`.
 | `tools_center` | `cloudhost247_lteproxy.zip` → `Use this All DNS Checker/whmcs-tools-center` | Alternative "Tools Center" addon. Identical problem space to `CloudHost247_tools` but it *proxies* all work to a separate API service (`modules/addons/tools_center/external-api/`, deploy on its own host and set the endpoint + token in the module settings). Enable **either** this or `CloudHost247_tools`, not both. |
 | `hostx_tools` | `WHMCS Domain Lookup.zip` | Domain availability / WHOIS / DNS lookup widgets for the HostX theme. |
 | `customaffiliate` | `customaffiliate.zip` and `WHMCS Affiliate Commission Logic.zip` (identical payloads) | Custom affiliate commission logic. Import `schema.sql` on first install. |
-| `digitalproducts` | `WHMCS Digital Product Module.zip` | Digital / downloadable product delivery & licensing. |
+| `digitalproducts` | `WHMCS Digital Product Module.zip` | CloudHost247 Digital Products: WHMCS-linked releases, private expiring downloads, entitlements, licenses and audit logging. Upgraded in place; see [`DIGITAL_PRODUCTS.md`](DIGITAL_PRODUCTS.md). |
 | `phoneservices` | `WHMCS Phone Number Platform.zip` | Virtual numbers, VoIP, SMS, eSIM, usage analytics. Optional Composer deps — see below. |
 | `smmaddon` | `smm_whmcs_module.zip` | SMM panel admin area (orders, services, logs, settings). Import `schema.sql`. |
 | `xtreme_currency_rates` | `xtreme_currency_rates_6.0.zip` | Automatic currency exchange rates. ionCube-encoded; requires the ionCube Loader. |

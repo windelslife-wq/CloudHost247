@@ -1,455 +1,129 @@
 <?php
-/**
- * DigitalProducts Core Class
- *
- * Main core functionality for the module.
- *
- * @package    DigitalProducts
- * @version    1.0.0
- */
-
 namespace DigitalProducts;
 
+use DigitalProducts\Core\Clock;
+use DigitalProducts\Core\Settings;
+use DigitalProducts\Security\TokenService;
+use DigitalProducts\Storage\StorageFactory;
 use WHMCS\Database\Capsule;
-use Exception;
 
-if (!defined("WHMCS")) {
-    die("This file cannot be accessed directly");
-}
-
+/** Compatibility facade for the original addon API plus the hardened model. */
 class Core
 {
-    /**
-     * Module settings cache
-     */
-    protected $settings = null;
-
-    /**
-     * Get module settings
-     */
+    protected $settings;
     public function getSettings()
     {
         if ($this->settings === null) {
             $this->settings = [];
-            $rows = Capsule::table('tbladdonmodules')
-                ->where('module', 'digitalproducts')
-                ->get();
-
-            foreach ($rows as $row) {
-                $this->settings[$row->setting] = $row->value;
-            }
+            foreach (Settings::DEFAULTS as $key => $default) $this->settings[$key] = Settings::get($key, $default);
+            try { foreach (Capsule::table('tbladdonmodules')->where('module', 'digitalproducts')->get() as $row) $this->settings[$row->setting] = $row->value; } catch (\Throwable $e) {}
         }
-
         return $this->settings;
     }
 
-    /**
-     * Get storage path for files
-     */
-    public function getStoragePath()
-    {
-        $settings = $this->getSettings();
-        $customPath = isset($settings['storage_path']) ? trim($settings['storage_path']) : '';
+    public function getStoragePath() { return StorageFactory::make()->root(); }
 
-        if (!empty($customPath)) {
-            $path = rtrim($customPath, '/');
-        } else {
-            $path = ROOTDIR . '/storage/digitalproducts';
-        }
-
-        // Ensure directory exists
-        if (!is_dir($path)) {
-            if (!mkdir($path, 0755, true)) {
-                throw new Exception("Failed to create storage directory: {$path}");
-            }
-        }
-
-        // Protect with .htaccess
-        $htaccess = $path . '/.htaccess';
-        if (!file_exists($htaccess)) {
-            file_put_contents($htaccess, "Options -Indexes\ndeny from all\n");
-        }
-
-        return $path;
-    }
-
-    /**
-     * Get a digital product by WHMCS product ID
-     */
     public function getProductByWhmcsId($productId)
     {
-        return Capsule::table('mod_digitalproducts_products')
-            ->where('product_id', $productId)
-            ->first();
+        return Capsule::table('mod_digitalproducts_products')->where('whmcs_product_id', (int) $productId)->first();
     }
 
-    /**
-     * Get all active digital products
-     */
     public function getAllProducts($status = 'active')
     {
-        $query = Capsule::table('mod_digitalproducts_products')
-            ->select(
-                'mod_digitalproducts_products.*',
-                'tblproducts.name as whmcs_product_name',
-                'tblproducts.paytype'
-            )
-            ->leftJoin('tblproducts', 'tblproducts.id', '=', 'mod_digitalproducts_products.product_id');
-
-        if ($status) {
-            $query->where('mod_digitalproducts_products.status', $status);
-        }
-
-        return $query->get();
+        $query = Capsule::table('mod_digitalproducts_products as p')->leftJoin('tblproducts as w', 'w.id', '=', 'p.whmcs_product_id')->select('p.*', 'w.name as whmcs_product_name', 'w.paytype');
+        if ($status !== null) $query->where('p.status', $status);
+        return $query->orderBy('p.created_at', 'desc')->get();
     }
 
-    /**
-     * Get file by ID
-     */
     public function getFileById($fileId)
     {
-        return Capsule::table('mod_digitalproducts_files')
-            ->where('id', $fileId)
-            ->first();
+        $v = Capsule::table('mod_digitalproducts_versions')->where('id', (int) $fileId)->first();
+        if (!$v) return null;
+        $v->filename = basename((string) $v->storage_key); $v->original_name = $v->original_filename; $v->file_hash = $v->checksum_sha256; $v->changelog = $v->changelog ?: $v->release_notes; return $v;
     }
 
-    /**
-     * Get latest active file for a product
-     */
-    public function getLatestFile($productId)
-    {
-        return Capsule::table('mod_digitalproducts_files')
-            ->where('product_id', $productId)
-            ->where('status', 'active')
-            ->orderBy('created_at', 'desc')
-            ->first();
-    }
+    public function getLatestFile($productId) { return Capsule::table('mod_digitalproducts_versions')->where('product_id', (int) $productId)->where('status', 'active')->orderBy('release_date', 'desc')->first(); }
+    public function getProductFiles($productId, $status = null) { $q = Capsule::table('mod_digitalproducts_versions')->where('product_id', (int) $productId); if ($status) $q->where('status', $status); return $q->orderBy('release_date', 'desc')->get(); }
 
-    /**
-     * Get all files for a product
-     */
-    public function getProductFiles($productId, $status = null)
-    {
-        $query = Capsule::table('mod_digitalproducts_files')
-            ->where('product_id', $productId);
-
-        if ($status) {
-            $query->where('status', $status);
-        }
-
-        return $query->orderBy('created_at', 'desc')->get();
-    }
-
-    /**
-     * Get client services with download access
-     */
     public function getClientDownloads($clientId)
     {
-        return Capsule::table('tblhosting')
-            ->join('mod_digitalproducts_products', 'mod_digitalproducts_products.product_id', '=', 'tblhosting.packageid')
-            ->leftJoin('mod_digitalproducts_files', 'mod_digitalproducts_files.id', '=', 'mod_digitalproducts_products.current_file_id')
-            ->leftJoin('mod_digitalproducts_licenses', function($join) {
-                $join->on('mod_digitalproducts_licenses.service_id', '=', 'tblhosting.id')
-                     ->on('mod_digitalproducts_licenses.product_id', '=', 'mod_digitalproducts_products.id');
-            })
-            ->where('tblhosting.userid', $clientId)
-            ->where('tblhosting.domainstatus', 'Active')
-            ->where('mod_digitalproducts_products.status', 'active')
-            ->whereNotNull('mod_digitalproducts_products.current_file_id')
-            ->select(
-                'tblhosting.id as service_id',
-                'tblhosting.packageid as whmcs_product_id',
-                'tblhosting.regdate as purchase_date',
-                'tblhosting.nextduedate',
-                'mod_digitalproducts_products.id as dp_product_id',
-                'mod_digitalproducts_products.product_name',
-                'mod_digitalproducts_products.download_limit',
-                'mod_digitalproducts_products.link_expiry_hours',
-                'mod_digitalproducts_files.id as file_id',
-                'mod_digitalproducts_files.filename',
-                'mod_digitalproducts_files.original_name',
-                'mod_digitalproducts_files.version',
-                'mod_digitalproducts_files.file_size',
-                'mod_digitalproducts_files.created_at as file_date',
-                'mod_digitalproducts_licenses.license_key',
-                'mod_digitalproducts_licenses.status as license_status'
-            )
-            ->get();
+        $rows = Capsule::table('mod_digitalproducts_entitlements as e')->join('mod_digitalproducts_products as p', 'p.id', '=', 'e.product_id')->leftJoin('mod_digitalproducts_versions as v', 'v.id', '=', 'p.current_version_id')->leftJoin('mod_digitalproducts_versions as pv', 'pv.id', '=', 'e.purchase_version_id')->leftJoin('mod_digitalproducts_licenses as l', function ($join) { $join->on('l.product_id', '=', 'e.product_id')->on('l.service_id', '=', 'e.service_id'); })->where('e.client_id', (int) $clientId)->where('e.status', 'active')->where('p.status', 'active')->select('e.id as entitlement_id', 'e.service_id', 'e.order_id', 'e.client_id', 'e.purchase_version_id', 'e.access_mode', 'e.download_limit', 'e.downloads_used', 'e.purchased_at as purchase_date', 'p.id as dp_product_id', 'p.whmcs_product_id', 'p.name', 'p.product_name', 'p.description', 'p.product_type', 'p.current_version_id', 'p.status as product_status', 'v.id as file_id', 'v.version', 'v.file_size', 'v.checksum_sha256', 'v.changelog', 'v.release_notes', 'pv.version as purchased_version', 'l.license_hash', 'l.license_encrypted', 'l.license_key', 'l.status as license_status')->get();
+        $license = new License();
+        foreach ($rows as $row) { if ($row->license_encrypted) $row->license_key = $license->displayKey($row); $row->nextduedate = null; $row->download_count = (int) $row->downloads_used; $row->download_limit = (int) ($row->download_limit ?: 0); }
+        return $rows;
     }
 
-    /**
-     * Get download count for a client/service/file
-     */
     public function getDownloadCount($clientId, $serviceId, $fileId)
     {
-        return Capsule::table('mod_digitalproducts_downloads')
-            ->where('client_id', $clientId)
-            ->where('service_id', $serviceId)
-            ->where('file_id', $fileId)
-            ->where('status', 'success')
-            ->count();
+        return (int) Capsule::table('mod_digitalproducts_downloads')->where('client_id', (int) $clientId)->where('service_id', (int) $serviceId)->where('version_id', (int) $fileId)->where('status', 'success')->count();
     }
 
-    /**
-     * Log download attempt
-     */
-    public function logDownload($data)
+    public function logDownload(array $data)
     {
-        return Capsule::table('mod_digitalproducts_downloads')->insertGetId([
-            'file_id' => $data['file_id'],
-            'product_id' => $data['product_id'],
-            'service_id' => $data['service_id'],
-            'client_id' => $data['client_id'],
-            'license_key' => $data['license_key'] ?? null,
-            'download_token' => $data['download_token'] ?? null,
-            'ip_address' => $_SERVER['REMOTE_ADDR'] ?? '',
-            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
-            'status' => $data['status'] ?? 'success',
-            'created_at' => date('Y-m-d H:i:s'),
-            'updated_at' => date('Y-m-d H:i:s'),
-        ]);
+        $status = (string) ($data['status'] ?? 'success');
+        if ($status === 'failed') $status = 'denied';
+        if ($status === 'limit') $status = 'limit_exceeded';
+        return Capsule::table('mod_digitalproducts_downloads')->insertGetId(['file_id' => (int) ($data['file_id'] ?? 0), 'product_id' => (int) ($data['product_id'] ?? 0), 'version_id' => (int) ($data['version_id'] ?? $data['file_id'] ?? 0), 'entitlement_id' => (int) ($data['entitlement_id'] ?? 0), 'token_id' => (int) ($data['token_id'] ?? 0), 'service_id' => (int) ($data['service_id'] ?? 0), 'order_id' => (int) ($data['order_id'] ?? 0), 'client_id' => (int) ($data['client_id'] ?? 0), 'ip_hash' => hash('sha256', \DigitalProducts\Core\Http::ip()), 'user_agent' => \DigitalProducts\Core\Http::userAgent(), 'status' => $status, 'failure_reason' => $data['failure_reason'] ?? null, 'created_at' => Clock::now(), 'updated_at' => Clock::now()]);
     }
 
-    /**
-     * Validate service belongs to client and is active
-     */
     public function validateServiceOwnership($serviceId, $clientId)
     {
-        $service = Capsule::table('tblhosting')
-            ->where('id', $serviceId)
-            ->where('userid', $clientId)
-            ->where('domainstatus', 'Active')
-            ->first();
-
-        return $service !== null;
+        return Capsule::table('tblhosting as h')->join('mod_digitalproducts_products as p', 'p.whmcs_product_id', '=', 'h.packageid')->where('h.id', (int) $serviceId)->where('h.userid', (int) $clientId)->whereIn('h.domainstatus', ['Active', 'Completed'])->where('p.status', 'active')->exists();
     }
 
-    /**
-     * Generate secure download token
-     */
     public function generateToken($serviceId, $fileId, $clientId)
     {
-        $token = bin2hex(random_bytes(32));
-        $expiresAt = date('Y-m-d H:i:s', strtotime('+48 hours'));
-
-        // Store in session for quick validation, database for persistence
-        $_SESSION['dp_download_' . $token] = [
-            'service_id' => $serviceId,
-            'file_id' => $fileId,
-            'client_id' => $clientId,
-            'expires_at' => $expiresAt,
-        ];
-
-        return $token;
+        $entitlement = Capsule::table('mod_digitalproducts_entitlements')->where('service_id', (int) $serviceId)->where('client_id', (int) $clientId)->where('status', 'active')->first();
+        if (!$entitlement) return null;
+        $versionId = (int) $fileId;
+        return (new TokenService())->issue($entitlement->id, $versionId, $clientId);
     }
 
-    /**
-     * Validate download token
-     */
     public function validateToken($token)
     {
-        // Check session first
-        if (isset($_SESSION['dp_download_' . $token])) {
-            $data = $_SESSION['dp_download_' . $token];
-            if (strtotime($data['expires_at']) > time()) {
-                return $data;
-            }
-        }
-
-        return false;
+        $row = (new TokenService())->find($token);
+        return $row ? ['token_id' => $row->id, 'entitlement_id' => $row->entitlement_id, 'version_id' => $row->version_id, 'client_id' => $row->client_id, 'expires_at' => $row->expires_at] : false;
     }
 
-    /**
-     * Increment file download count
-     */
-    public function incrementFileDownloadCount($fileId)
-    {
-        Capsule::table('mod_digitalproducts_files')
-            ->where('id', $fileId)
-            ->increment('download_count');
-    }
+    public function incrementFileDownloadCount($fileId) { return Capsule::table('mod_digitalproducts_versions')->where('id', (int) $fileId)->increment('download_count'); }
 
-    /**
-     * Get dashboard statistics
-     */
     public function getDashboardStats()
     {
-        $products = Capsule::table('mod_digitalproducts_products')->count();
-        $files = Capsule::table('mod_digitalproducts_files')->count();
-        $downloads = Capsule::table('mod_digitalproducts_downloads')->count();
-        $licenses = Capsule::table('mod_digitalproducts_licenses')->count();
-        $todayDownloads = Capsule::table('mod_digitalproducts_downloads')
-            ->whereDate('created_at', date('Y-m-d'))
-            ->count();
-
-        return [
-            'products' => $products,
-            'files' => $files,
-            'downloads' => $downloads,
-            'licenses' => $licenses,
-            'today_downloads' => $todayDownloads,
-        ];
+        return ['products' => Capsule::table('mod_digitalproducts_products')->count(), 'active_products' => Capsule::table('mod_digitalproducts_products')->where('status', 'active')->count(), 'files' => Capsule::table('mod_digitalproducts_versions')->count(), 'versions' => Capsule::table('mod_digitalproducts_versions')->count(), 'purchases' => Capsule::table('mod_digitalproducts_entitlements')->count(), 'licenses' => Capsule::table('mod_digitalproducts_licenses')->where('status', 'active')->count(), 'downloads' => Capsule::table('mod_digitalproducts_downloads')->where('status', 'success')->count(), 'today_downloads' => Capsule::table('mod_digitalproducts_downloads')->where('status', 'success')->whereDate('created_at', date('Y-m-d'))->count(), 'month_downloads' => Capsule::table('mod_digitalproducts_downloads')->where('status', 'success')->where('created_at', '>=', date('Y-m-01 00:00:00'))->count(), 'failed_downloads' => Capsule::table('mod_digitalproducts_downloads')->where('status', '!=', 'success')->count()];
     }
 
-    /**
-     * Get download logs with pagination
-     */
-    public function getDownloadLogs($page = 1, $perPage = 25, $filters = [])
+    public function getDownloadLogs($page = 1, $perPage = 25, array $filters = [])
     {
-        $query = Capsule::table('mod_digitalproducts_downloads')
-            ->select(
-                'mod_digitalproducts_downloads.*',
-                'mod_digitalproducts_products.product_name',
-                'mod_digitalproducts_files.version',
-                'mod_digitalproducts_files.original_name',
-                'tblclients.firstname',
-                'tblclients.lastname',
-                'tblclients.email'
-            )
-            ->leftJoin('mod_digitalproducts_products', 'mod_digitalproducts_products.id', '=', 'mod_digitalproducts_downloads.product_id')
-            ->leftJoin('mod_digitalproducts_files', 'mod_digitalproducts_files.id', '=', 'mod_digitalproducts_downloads.file_id')
-            ->leftJoin('tblclients', 'tblclients.id', '=', 'mod_digitalproducts_downloads.client_id')
-            ->orderBy('mod_digitalproducts_downloads.created_at', 'desc');
-
-        if (!empty($filters['client_id'])) {
-            $query->where('mod_digitalproducts_downloads.client_id', $filters['client_id']);
-        }
-        if (!empty($filters['product_id'])) {
-            $query->where('mod_digitalproducts_downloads.product_id', $filters['product_id']);
-        }
-        if (!empty($filters['status'])) {
-            $query->where('mod_digitalproducts_downloads.status', $filters['status']);
-        }
-        if (!empty($filters['date_from'])) {
-            $query->whereDate('mod_digitalproducts_downloads.created_at', '>=', $filters['date_from']);
-        }
-        if (!empty($filters['date_to'])) {
-            $query->whereDate('mod_digitalproducts_downloads.created_at', '<=', $filters['date_to']);
-        }
-
-        $total = $query->count();
-        $results = $query->forPage($page, $perPage)->get();
-
-        return [
-            'data' => $results,
-            'total' => $total,
-            'page' => $page,
-            'per_page' => $perPage,
-            'last_page' => ceil($total / $perPage),
-        ];
+        $query = Capsule::table('mod_digitalproducts_downloads as d')->leftJoin('mod_digitalproducts_products as p', 'p.id', '=', 'd.product_id')->leftJoin('mod_digitalproducts_versions as v', 'v.id', '=', 'd.version_id')->leftJoin('tblclients as c', 'c.id', '=', 'd.client_id')->select('d.*', 'p.name as product_name', 'p.product_name', 'v.version', 'v.original_filename', 'c.firstname', 'c.lastname', 'c.email')->orderBy('d.created_at', 'desc');
+        foreach (['client_id', 'product_id', 'status'] as $field) if (!empty($filters[$field])) $query->where('d.' . $field, $filters[$field]);
+        if (!empty($filters['date_from'])) $query->whereDate('d.created_at', '>=', $filters['date_from']); if (!empty($filters['date_to'])) $query->whereDate('d.created_at', '<=', $filters['date_to']);
+        $total = (clone $query)->count(); $page = max(1, (int) $page); $perPage = min(100, max(1, (int) $perPage));
+        return ['data' => $query->forPage($page, $perPage)->get(), 'total' => $total, 'page' => $page, 'per_page' => $perPage, 'last_page' => max(1, (int) ceil($total / $perPage))];
     }
 
-    /**
-     * Get WHMCS products not yet linked
-     */
     public function getUnlinkedWhmcsProducts()
     {
-        $linkedIds = Capsule::table('mod_digitalproducts_products')
-            ->pluck('product_id')
-            ->toArray();
-
-        return Capsule::table('tblproducts')
-            ->whereNotIn('id', $linkedIds)
-            ->where('hidden', 0)
-            ->select('id', 'name', 'type')
-            ->get();
+        $linked = Capsule::table('mod_digitalproducts_products')->pluck('whmcs_product_id')->toArray(); $q = Capsule::table('tblproducts')->where('hidden', 0); if ($linked) $q->whereNotIn('id', $linked); return $q->select('id', 'name', 'type')->orderBy('name')->get();
     }
 
-    /**
-     * Create digital product from WHMCS product
-     */
-    public function createDigitalProduct($whmcsProductId, $data = [])
+    public function createDigitalProduct($whmcsProductId, array $data = [])
     {
-        $existing = $this->getProductByWhmcsId($whmcsProductId);
-        if ($existing) {
-            throw new Exception("Product already linked to digital products.");
-        }
-
-        $whmcsProduct = Capsule::table('tblproducts')
-            ->where('id', $whmcsProductId)
-            ->first();
-
-        if (!$whmcsProduct) {
-            throw new Exception("WHMCS product not found.");
-        }
-
-        $settings = $this->getSettings();
-        $downloadLimit = isset($data['download_limit']) ? (int)$data['download_limit'] : ($settings['download_limit'] ?? 5);
-        $linkExpiry = isset($data['link_expiry_hours']) ? (int)$data['link_expiry_hours'] : ($settings['link_expiry_hours'] ?? 48);
-        $licenseEnabled = isset($data['license_enabled']) ? (bool)$data['license_enabled'] : ($settings['license_enabled'] == 'on');
-
-        $id = Capsule::table('mod_digitalproducts_products')->insertGetId([
-            'product_id' => $whmcsProductId,
-            'product_name' => $data['product_name'] ?? $whmcsProduct->name,
-            'description' => $data['description'] ?? '',
-            'status' => 'active',
-            'download_limit' => $downloadLimit,
-            'link_expiry_hours' => $linkExpiry,
-            'license_enabled' => $licenseEnabled,
-            'created_at' => date('Y-m-d H:i:s'),
-            'updated_at' => date('Y-m-d H:i:s'),
-        ]);
-
-        return $id;
+        $whmcsProductId = (int) $whmcsProductId; if (!$whmcsProductId || !$this->getProductByWhmcsId($whmcsProductId)) { $product = Capsule::table('tblproducts')->where('id', $whmcsProductId)->first(); if (!$product) throw new \RuntimeException('WHMCS product not found.'); } else throw new \RuntimeException('Product already linked.');
+        $name = trim((string) ($data['name'] ?? $data['product_name'] ?? $product->name)); $slug = $this->slug($data['slug'] ?? $name); $baseSlug = $slug; $suffix = 2; while (Capsule::table('mod_digitalproducts_products')->where('slug', $slug)->exists()) $slug = $baseSlug . '-' . $suffix++;
+        return Capsule::table('mod_digitalproducts_products')->insertGetId(['product_id' => $whmcsProductId, 'whmcs_product_id' => $whmcsProductId, 'product_name' => $name, 'name' => $name, 'slug' => $slug, 'short_description' => $data['short_description'] ?? '', 'description' => $data['description'] ?? '', 'product_type' => $data['product_type'] ?? 'software', 'status' => $data['status'] ?? 'draft', 'download_limit' => (int) ($data['download_limit'] ?? Settings::int('download_limit', 5)), 'link_expiry_hours' => (int) ($data['link_expiry_hours'] ?? Settings::int('link_expiry_hours', 48)), 'download_expiry_hours' => (int) ($data['download_expiry_hours'] ?? Settings::int('link_expiry_hours', 48)), 'access_mode' => $data['access_mode'] ?? Settings::get('access_mode', 'current_version'), 'license_enabled' => !isset($data['license_enabled']) || (bool) $data['license_enabled'], 'created_at' => Clock::now(), 'updated_at' => Clock::now()]);
     }
 
-    /**
-     * Update digital product
-     */
-    public function updateDigitalProduct($dpProductId, $data)
+    public function updateDigitalProduct($id, array $data)
     {
-        $update = [];
-        $allowed = ['product_name', 'description', 'status', 'current_file_id', 'download_limit', 'link_expiry_hours', 'license_enabled'];
-
-        foreach ($allowed as $field) {
-            if (isset($data[$field])) {
-                $update[$field] = $data[$field];
-            }
-        }
-
-        if (empty($update)) {
-            return false;
-        }
-
-        $update['updated_at'] = date('Y-m-d H:i:s');
-
-        return Capsule::table('mod_digitalproducts_products')
-            ->where('id', $dpProductId)
-            ->update($update);
+        $allowed = ['product_name', 'name', 'slug', 'short_description', 'description', 'product_type', 'status', 'current_version_id', 'current_file_id', 'download_limit', 'link_expiry_hours', 'download_expiry_hours', 'access_mode', 'license_enabled', 'license_expiry_mode']; $update = []; foreach ($allowed as $key) if (array_key_exists($key, $data)) $update[$key] = $data[$key]; if (!$update) return false; $update['updated_at'] = Clock::now(); return Capsule::table('mod_digitalproducts_products')->where('id', (int) $id)->update($update);
     }
 
-    /**
-     * Delete digital product and related data
-     */
-    public function deleteDigitalProduct($dpProductId)
+    public function deleteDigitalProduct($id)
     {
-        // Get files to delete from disk
-        $files = Capsule::table('mod_digitalproducts_files')
-            ->where('product_id', $dpProductId)
-            ->get();
-
-        foreach ($files as $file) {
-            if (file_exists($file->file_path)) {
-                unlink($file->file_path);
-            }
-        }
-
-        Capsule::table('mod_digitalproducts_downloads')
-            ->where('product_id', $dpProductId)
-            ->delete();
-
-        Capsule::table('mod_digitalproducts_licenses')
-            ->where('product_id', $dpProductId)
-            ->delete();
-
-        Capsule::table('mod_digitalproducts_files')
-            ->where('product_id', $dpProductId)
-            ->delete();
-
-        Capsule::table('mod_digitalproducts_products')
-            ->where('id', $dpProductId)
-            ->delete();
-
-        return true;
+        // Destructive deletion is intentionally gone. Existing purchases and
+        // audit history must remain addressable; retire the product instead.
+        return $this->updateDigitalProduct($id, ['status' => 'retired']);
     }
+
+    protected function slug($value) { $slug = strtolower(trim(preg_replace('/[^a-z0-9]+/i', '-', (string) $value), '-')); return $slug ?: 'product-' . bin2hex(random_bytes(4)); }
 }

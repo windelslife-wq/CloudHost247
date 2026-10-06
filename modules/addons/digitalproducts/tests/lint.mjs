@@ -1,0 +1,11 @@
+import { loadNodeRuntime, createNodeFsMountHandler } from '../../cloudhost247services/node_modules/@php-wasm/node/index.js';
+import { PHP, ProcessIdAllocator } from '../../cloudhost247services/node_modules/@php-wasm/universal/index.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(here, '..');
+const id = await loadNodeRuntime('8.3', { withIntl: true, emscriptenOptions: { processId: new ProcessIdAllocator().claim() } });
+const php = new PHP(id); php.mkdir('/app'); await php.mount('/app', createNodeFsMountHandler(root));
+const result = await php.run({ scriptPath: '/app/tests/lint.php' });
+process.stdout.write(result.text || ''); if (result.errors) process.stderr.write(result.errors);
+const m = (result.text || '').match(/FILES=(\d+) BAD=(\d+)/); process.exit(!m || Number(m[2]) ? 1 : 0);

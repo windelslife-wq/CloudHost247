@@ -1,0 +1,31 @@
+<?php
+require_once __DIR__ . '/bootstrap.php';
+use DigitalProducts\Core\Crypto;
+use DigitalProducts\Core\Csrf;
+use DigitalProducts\Core\StorageException;
+use DigitalProducts\Security\UploadValidator;
+use DigitalProducts\Storage\LocalPrivateStorage;
+
+$_SESSION = [];
+DPTest::ok('csrf token round trip', Csrf::token() !== '' && Csrf::verify(Csrf::token()));
+DPTest::throws('csrf rejects forged value', DigitalProducts\Core\AuthorizationException::class, function () { Csrf::verify('forged'); });
+putenv('DIGITALPRODUCTS_ENCRYPTION_KEY=test-only-key');
+$secret = 'CH247-ABCD-EFGH-IJKL-MNOP';
+DPTest::same('encrypted license decrypts', $secret, Crypto::decrypt(Crypto::encrypt($secret)));
+$root = sys_get_temp_dir() . '/dp-sec-' . bin2hex(random_bytes(3)); @mkdir($root . '/document', 0700, true);
+if (!defined('ROOTDIR')) define('ROOTDIR', $root . '/document');
+DPTest::throws('webroot storage refused', StorageException::class, function () use ($root) { new LocalPrivateStorage($root . '/document/private'); });
+$private = new LocalPrivateStorage($root . '/private');
+DPTest::ok('private storage created', is_dir($private->root()));
+$fixture = $root . '/fixture.txt'; file_put_contents($fixture, 'safe content');
+$key = $private->put($fixture, 3, 9, 'txt');
+DPTest::ok('opaque storage key', strpos($key, 'product-3/version-9/') === 0 && strpos($key, 'fixture') === false);
+DPTest::same('stored checksum', hash_file('sha256', $fixture), $private->checksum($key));
+$upload = ['error' => UPLOAD_ERR_OK, 'name' => 'safe.txt', 'tmp_name' => $fixture, 'size' => filesize($fixture)];
+DPTest::same('upload allowlist', 'txt', (new UploadValidator())->validate($upload)['extension']);
+$bad = $upload; $bad['name'] = '../escape.php';
+DPTest::throws('upload traversal refused', DigitalProducts\Core\ValidationException::class, function () use ($bad) { (new UploadValidator())->validate($bad); });
+$bad = $upload; $bad['name'] = "bad\0.txt";
+DPTest::throws('null filename refused', DigitalProducts\Core\ValidationException::class, function () use ($bad) { (new UploadValidator())->validate($bad); });
+$private->delete($key); @unlink($fixture); @rmdir($root . '/private'); @rmdir($root . '/document'); @rmdir($root);
+exit(DPTest::summary());

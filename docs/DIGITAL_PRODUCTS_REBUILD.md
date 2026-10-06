@@ -3,10 +3,12 @@
 ## Audit findings, rebuild plan, security hardening & definition of done
 
 **Repository:** `windelslife-wq/CloudHost247` (this checkout)
-**Working branch:** `arena/c52c742a-cloudhost247`
-**Module under work:** `modules/addons/digitalproducts/` — **upgrade in place, no second module**
-**Status of this document:** work brief. Nothing below has been implemented yet; §3 is the
-result of an actual read of the shipped code, not an assumption.
+**Module under work:** `modules/addons/digitalproducts/` — **upgraded in place, no second module**
+**Status of this document:** audit and implementation record. The original §3 findings
+were verified against the shipped module; the implementation now lives in the existing
+module. See [`DIGITAL_PRODUCTS.md`](DIGITAL_PRODUCTS.md) and the module README for the
+operator-facing runbook. Staging WHMCS sign-off remains required for payment/email/server
+integration.
 
 ---
 
