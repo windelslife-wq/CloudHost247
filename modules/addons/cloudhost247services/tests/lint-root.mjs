@@ -40,3 +40,4 @@ if (res.errors) process.stderr.write(res.errors);
 const m = (res.text || '').match(/BAD=(\d+)/);
 if (!m || m[1] !== '0') { console.error('Root landing gate failed.'); process.exit(1); }
 console.log('ROOT_LINT_OK');
+process.exit(0);
