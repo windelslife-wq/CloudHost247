@@ -1,0 +1,11 @@
+#order-standard_cart .summary-container,
+#order-standard_cart .order-summary,
+#order-standard_cart .product-info,
+.header-lined.customHeader,
+#orderSummary {
+    background: #fafafa;
+}
+#order-standard_cart .product-info {
+    margin: 20px 0 20px 0;
+    background: #fafafa !important;
+}

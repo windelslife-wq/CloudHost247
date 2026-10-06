@@ -1,0 +1,1506 @@
+i.detail {
+    height: 40px;
+    background: url(../images/detail.svg) no-repeat center;
+    background-size: 40px;
+    display: block;
+}
+
+i.usage {
+    height: 40px;
+    background: url(../images/usage.svg) no-repeat center;
+    background-size: 40px;
+    display: block;
+}
+
+i.power {
+    height: 40px;
+    background: url(../images/power.svg) no-repeat center;
+    background-size: 40px;
+    display: block;
+}
+
+i.resources {
+    height: 40px;
+    background: url(../images/resources.svg) no-repeat center;
+    background-size: 40px;
+    display: block;
+}
+
+i.interventions {
+    height: 40px;
+    background: url(../images/interventions.svg) no-repeat center;
+    background-size: 40px;
+    display: block;
+}
+
+i.ftp_backup {
+    height: 40px;
+    background: url(../images/ftpbackup.svg) no-repeat center;
+    background-size: 40px;
+    display: block;
+}
+
+i.manage_ips {
+    height: 40px;
+    background: url(../images/ips.svg) no-repeat center;
+    background-size: 40px;
+    display: block;
+}
+
+i.monitoring {
+    height: 40px;
+    background: url(../images/monitoring.svg) no-repeat center;
+    background-size: 40px;
+    display: block;
+}
+
+i.service_info {
+    height: 40px;
+    background: url(../images/serviceinfo.svg) no-repeat center;
+    background-size: contain;
+    display: block;
+}
+
+i.hardware_info {
+    height: 40px;
+    background: url(../images/hardwareinfo.svg) no-repeat center;
+    background-size: contain;
+    display: block;
+}
+
+i.cpu_info {
+    height: 40px;
+    background: url(../images/cpuinfo.svg) no-repeat center;
+    background-size: contain;
+    display: block;
+}
+
+i.lc_info {
+    height: 40px;
+    background: url(../images/licensescp.svg) no-repeat center;
+    background-size: contain;
+    display: block;
+}
+
+.ftpBackupactionBtn .box {
+    border-radius: 3px;
+    padding: 10px 10px 8px;
+    border: 1px solid #ececec;
+    min-width: 110px;
+}
+
+.ftpBackupactionBtn .box p {
+    margin: 0px;
+    padding: 0px;
+    font-family: 'HelveticaNeue-Regular';
+    font-size: 12px;
+    color: #424242;
+}
+
+.box.selected {
+    background: #ffffff;
+    transition: all 0.4s ease 0s;
+    box-shadow: 0px 2px 6px #e2e1e1;
+}
+
+.box:hover {
+    background: #ffffff;
+    transition: all 0.4s ease 0s;
+    box-shadow: 0px 2px 6px #e2e1e1;
+}
+
+.sub_box a:hover {
+    background-color: #006687;
+    text-decoration: none;
+    color: #fff !important;
+    border-radius: 5px;
+}
+
+.sub_box a {
+    display: flex;
+    align-items: center;
+    padding: 10px 7px;
+    border-radius: 5px;
+    width: 100%;
+    color: #389a38;
+    font-size: 14px;
+}
+
+.sub_box a.active {
+    background: #006687;
+    color: #fff !important;
+}
+
+.sub_box i {
+    height: 30px;
+    width: 34px;
+    margin-right: 10px;
+}
+
+.sub_box p {
+    margin-bottom: 0;
+}
+
+.col-3.sub_box:first-child {
+    padding-left: 0;
+}
+
+.serverDetailInfo .row {
+    border-bottom: 1px solid #ececec;
+    width: 100%;
+    font-size: 13px;
+    /* font-family: 'HelveticaNeue-Regular'; */
+    color: #808184;
+    margin: 0;
+    padding: 11px 18px;
+    text-align: left;
+}
+
+.serverDetailInfo .row span {
+    color: #000000;
+}
+
+.serverDetailInfo .row span.label {
+    font-size: 14px;
+    color: #fff;
+    border-radius: 0.25em;
+    font-weight: bolder;
+}
+
+.serverDetailInfo,
+#graphdivmain i,
+#interventions i,
+#manage_ips i,
+#ftp_backup i,
+#impi i,
+#automated_backup i,
+#snapshot i,
+#automated_backup i,
+#power i {
+    font-size: 40px;
+}
+button.btn.btn-success.createbackup i {
+    font-size: 18px!important;
+}
+
+h2.interventionheading {
+    background: #e0e0e0;
+    padding: 10px 0px 10px 25px;
+    font-size: 20px;
+    font-family: 'HelveticaNeue-Regular';
+}
+
+.interventionsubheading {
+    border-bottom: 1px solid #ccc;
+    height: 40px !important;
+    line-height: 40px;
+    width: 100%;
+    text-align: center;
+    font-size: 14px;
+    padding: 0;
+    margin: 0;
+}
+
+.progress {
+    background-color: #d8d8d8;
+    border-radius: 20px;
+    position: relative;
+    margin: 0;
+    height: 30px;
+    /* width: 300px; */
+    padding: 0;
+}
+
+.progress-done {
+    background: linear-gradient(to left, #F2709C, #FF9472);
+    box-shadow: 0 3px 3px -5px #F2709C, 0 2px 5px #F2709C;
+    border-radius: 20px;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    width: 0;
+    opacity: 0;
+    transition: 1s ease 0.3s;
+}
+
+.ftp_backup_bgColor {
+    background-color: #ecf5ec;
+}
+
+.ftpBackupIcon {
+    display: flex;
+    width: 60px;
+    height: 60px;
+    background: red;
+    line-height: 55px;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 25px;
+    justify-content: center;
+    align-items: center;
+}
+
+.ftb-backup-icon-box {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+}
+
+.ftpBackupactionBtn,
+.powerTab {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.mtrGraghOption {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+
+}
+#clientAreaFTPmang tr, table#clientAreaIpmang tr {
+    border-bottom: 1px solid #eee;
+}
+#clientAreaFTPmang tr, table#clientAreaIpmang tr, table#manageSnapshot tr {
+    border-bottom: 1px solid #eee;
+}
+table#clientAreaFTPmang td, table#clientAreaIpmang td, table#manageSnapshot td {
+    padding: 15px;
+    font-size: 14px;
+}
+#clientAreaFTPmang button {
+    background: transparent;
+}
+#manage_ips button i, #snapshot button i {
+    text-align: center;
+    width: auto;
+    font-size: 15px;
+    margin-bottom: 0;
+}
+#manage_ips {
+    padding: 15px !important;
+    background: #fff;
+    margin-top: 20px;
+}
+#manage .module-client-area {
+    padding: 0 7px;
+}
+#powerResponce p.reboot,
+#ipmiResponce p {
+    font-size: 14px;
+    color: #1c1c1c;
+    line-height: 30px;
+    margin: 0px;
+    padding: 20px 25px;
+    text-align: left;
+}
+
+.netBootNet {
+    border: 0px solid #ccc !important;
+    border-top: none !important;
+    box-shadow: 0px 4px 5px #d3d3d3;
+    padding: 10px 20px 20px 20px;
+    max-width: 100%;
+    margin-left: 10%;
+    margin-right: 10%;
+}
+
+.new-client-area-box {
+    text-align: left;
+}
+.mainSec .row {
+    border-bottom: 1px solid #ececec;
+    width: 100%;
+    margin: 0;
+    padding: 11px 18px;
+    text-align: left;
+}
+.client-area-host-name h3 {
+    font-size: 20px;
+    letter-spacing: -0.4px;
+    color: #474F5A;
+    margin-bottom: 0;
+}
+
+.client-area-host-name h3 span {
+    font-weight: 600;
+}
+
+.client-area-host-name {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.client-spec-content h4 {
+    color: #474F5A;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.32px;
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+
+.client-spec-content h3 {
+    color: #1A1D1F;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.44px;
+    margin-bottom: 0;
+}
+
+.client-area-spec-box {
+    display: flex;
+    gap: 5px;
+    border-radius: 10px;
+    background: #f1f1f1;
+    box-shadow: 0px 5px 120.5px 0px rgba(0, 0, 0, 0.05);
+    padding: 10px 8px;
+}
+
+.client-area-spec-wrapper {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+    gap: 7px;
+    margin-top: 20px;
+    margin-bottom: 10px;
+}
+
+.uptime-content-box p {
+    border-radius: 5px;
+    background: rgb(255 231 228 / 70%);
+    color: #FF624B;
+    font-size: 14px;
+    padding: 2px 4px;
+    margin: 0;
+    display: flex;
+    gap: 2px;
+}
+
+.client-spec-icon {
+    background: #B1E5FC;
+    height: 30px;
+    width: 30px;
+    min-width: 30px;
+    display: flex;
+    border-radius: 100px;
+    align-items: center;
+    justify-content: center;
+}
+
+.si-clr2 {
+    background: #CABDFF;
+}
+
+.si-clr3 {
+    background: #B3E1C8;
+}
+
+.si-clr4 {
+    background: #FFBC99;
+}
+
+.si-clr5 {
+    background: #F6CF85;
+}
+
+.client-spec-icon svg {
+    width: 18px;
+}
+
+.ca-content-bx {
+    border-radius: 10.298px;
+    background: #F6F6F6;
+    padding: 30px 22px 23px;
+    height: 100%;
+}
+
+.ca-content-bx h6 {
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 130%;
+    margin-bottom: 5px;
+}
+
+.ca-content-bx p {
+    font-size: 15px;
+    line-height: 130%;
+    /* 19.5px */
+    letter-spacing: -0.3px;
+    display: flex;
+    gap: 5px;
+    margin-bottom: 10px;
+    color: #474F5A;
+}
+
+.ca-content-bx p span {
+    font-weight: 600;
+}
+
+.ca-content-bx h4 {
+    color: #2280FF;
+    font-size: 29px;
+    font-weight: 700;
+    letter-spacing: -0.64px;
+    margin-bottom: 15px;
+}
+
+.ca-content-table-bx {
+    border-radius: 10px;
+    background: #FFF;
+    box-shadow: 0px 13px 42.4px 0px rgba(0, 0, 0, 0.06);
+    padding: 10px 12px;
+}
+
+.ca-content-table-bx table {
+    width: 100%;
+}
+
+.ca-content-bx table p span {
+    text-align: right;
+    width: 100%;
+}
+
+.ca-content-table-bx {
+    display: flex;
+    justify-content: space-between;
+    min-height: 115px;
+    align-items: center;
+}
+
+.connected-box {
+    border-radius: 4px;
+    background: #f6f6f6;
+    font-size: 16px;
+    padding: 5px 14px;
+    display: flex;
+    gap: 6px;
+    color: #4EBC80;
+    font-weight: 600;
+    line-height: 130%;
+    letter-spacing: -0.36px;
+}
+
+.client-btns span {
+    background: #62B3E0;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    border-radius: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.c-on-btn span {
+    background: #FF5655;
+}
+
+div.client-btns.c-rc-btn span {
+    background: #FFB84F;
+}
+
+div.client-btns.c-off-btn span {
+    background: #15934F;
+}
+
+.client-btns span svg {
+    width: 24px;
+}
+
+.client-btns {
+    display: inline-flex;
+    gap: 11px;
+    border-radius: 64px;
+    border: 1px solid #EDEDED;
+    background: #FFF;
+    width: 100%;
+    font-size: 16px;
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: -0.4px;
+    color: #1A1D1F;
+    padding: 17px 20px;
+    align-items: center;
+    cursor: pointer;
+}
+
+.Access-cards img {
+    max-width: 90px;
+}
+
+.client-btns-box {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+}
+
+.form-icon {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    /* color: #C8C9D8; */
+    color: #4d4d4e;
+    cursor: pointer;
+}
+
+.client-progress {
+    background-color: #dcf3ff;
+    border-radius: 20px;
+    position: relative;
+    margin: 15px 0;
+    height: 30px;
+    width: 300px;
+}
+
+.client-progress-done {
+    background: dcf3ff;
+    border-radius: 20px;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    width: 0;
+    opacity: 0;
+    transition: 1s ease 0.3s;
+    width: 60%;
+    opacity: 1;
+}
+
+.ca-content-bx.client-btns-wrap {
+    display: flex;
+    align-items: center;
+}
+
+.Access-cards {
+    border-radius: 10px;
+    border: 1px solid #E8E8E8;
+    background: #FFF;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.cards-dropdown {
+    border-radius: 5px;
+    background: #F6F6F6;
+    box-shadow: 0px 4px 15px 0px rgba(0, 0, 0, 0.03);
+    padding: 10px 12px;
+    width: 100%;
+    border: 0;
+    font-size: 12px;
+    font-weight: 600;
+    padding-right: 24px;
+}
+
+.cards-dropdown:focus-visible {
+    outline: none;
+}
+
+.Access-cards-wrapper .form-field {
+    width: 100%;
+    position: relative;
+}
+
+.Access-cards-wrapper .install-btn {
+    border-radius: 5px;
+    background: #e9f2ff;
+    box-shadow: 0px 4px 15px 0px rgba(0, 0, 0, 0.03);
+    width: 100%;
+    color: #2280FF;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.row.gutter-10 {
+    margin-left: -5px;
+    margin-right: -5px;
+
+    [class*="col-"] {
+        padding-left: 5px;
+        padding-right: 5px;
+        padding-bottom: 10px;
+    }
+}
+
+.ca-content-bx.ca-li-box {
+    background: url(../images/login-bg.png);
+    background-size: cover;
+    background-repeat: no-repeat;
+    color: #fff;
+}
+
+.ca-content-bx.ca-li-box h3 {
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 130%;
+    letter-spacing: -0.6px;
+    margin-bottom: 10px;
+}
+
+.ca-li-box .formfield {
+    position: relative;
+}
+
+.login-info-form label {
+    font-size: 14.417px;
+    font-weight: 400;
+    line-height: 130%;
+    letter-spacing: -0.288px;
+    margin-bottom: 5px;
+}
+
+.login-info-form .form-control {
+    border-radius: 10px;
+    background: #FFF;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: -0.3px;
+}
+
+
+.circle-progress {
+    position: relative;
+    width: fit-content;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 4px;
+    text-align: center;
+    overflow: hidden;
+    transition: 0.5s;
+    border: unset !important;
+}
+
+.circle-progress .cp-percent {
+    position: relative;
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    z-index: 1000;
+}
+
+.circle-progress .cp-number {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    border-radius: 50%;
+}
+
+.circle-progress .percent .cp-number h2 {
+    color: #000;
+    font-weight: 700;
+    font-size: 40px;
+    transition: 0.5s;
+}
+
+.circle-progress .percent .cp-number h2 span {
+    font-size: 24px;
+    color: #000;
+    display: inline-block;
+}
+
+.circle-progress:hover .percent .cp-number h2 span {
+    color: #000;
+    transition: 0.5s;
+    display: inline-block;
+}
+
+.client-process-wrapper {
+    display: flex;
+    gap: 25px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.circle-progress svg {
+    position: relative;
+    width: 150px;
+    height: 150px;
+    z-index: 1000;
+}
+
+.circle-progress svg circle {
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: #D9F3FF;
+    stroke-width: 10;
+    stroke-linecap: round;
+    transform: translate(5px, 5px);
+}
+
+.circle-progress svg circle:nth-child(2) {
+    stroke-dasharray: 440;
+    stroke-dashoffset: 440;
+}
+
+.circle-progress svg circle:nth-child(2) {
+    stroke-dashoffset: calc(440 - (440 * 90) / 100);
+    stroke: #46b3f6;
+}
+
+.circle-progress:nth-child(2) svg circle:nth-child(2) {
+    stroke-dashoffset: calc(440 - (440 * 85) / 100);
+    stroke: #CABDFF;
+}
+
+.circle-progress:nth-child(3) svg circle:nth-child(2) {
+    stroke-dashoffset: calc(440 - (440 * 60) / 100);
+    stroke: #b8e1c7;
+}
+
+.circle-progress:nth-child(4) svg circle:nth-child(2) {
+    stroke-dashoffset: calc(440 - (440 * 60) / 100);
+    stroke: #f9bb96;
+}
+
+.Access-cards-wrapper ul li a {
+    color: #474F5A;
+    font-size: 14px;
+    font-weight: 500;
+    border-bottom: 3px solid transparent;
+    padding: 2px 2px;
+    display: inline-block;
+}
+
+.Access-cards-wrapper ul li.active a {
+    color: #2280FF;
+    border-bottom: 3px solid #2280FF;
+}
+.Access-cards-wrapper .nav {
+    border-bottom: 1px solid rgb(71 79 90 / 10%);
+    gap: 4px;
+}
+
+.Access-cards-wrapper .tab-content {
+    margin-top: 20px;
+}
+
+.cp-number h2 {
+    font-size: 32px;
+    font-weight: 700;
+    margin-bottom: 0;
+}
+
+.cp-number p {
+    font-size: 14px;
+}
+
+.new-client-area-box a:hover {
+    text-decoration: unset;
+}
+
+.ca-content-table-bx table p {
+    margin-bottom: 0;
+}
+
+.ca-content-table-bx td {
+    padding-bottom: 10px;
+}
+
+.ca-content-table-bx td:last-child {
+    padding-bottom: 0;
+}
+
+.tab-inner-bx {
+    border-radius: 10px;
+    border: 1px solid #E8E8E8;
+    padding: 21px 15px 5px;
+}
+
+
+
+#ftp_backup .margin,
+#interventions .row,
+#power .powerTab,
+#powerResponce,
+#detail .tab-content {
+    padding: 10px;
+    background: #fff;
+}
+
+/* #power a.active p,
+#power a:hover {
+    margin-bottom: 0;
+    color: #fff;
+} */
+
+
+ul.accordion-list li {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: auto;
+    background-color: #FFF;
+    /* padding: 20px; */
+    margin: 0 auto 15px auto;
+    /* border: 1px solid #eee; */
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+ul.accordion-list li.active h3:after {
+    transform: rotate(180deg);
+}
+
+ul.accordion-list li h3 {
+    font-weight: 700;
+    /* position: relative; */
+    /* display: block; */
+    /* width: 100%; */
+    /* height: auto; */
+    /* padding: 0 0 0 0; */
+    margin: 0;
+    font-size: 15px;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+}
+
+ul.accordion-list li h3:after {
+    content: "\f107";
+    font-family: 'Font Awesome 5 Pro';
+    position: absolute;
+    right: 0;
+    margin-right: 15px;
+    transition: all 0.3s ease-in-out;
+    font-size: 18px;
+}
+
+ul.accordion-list li div.ipDetails {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    /* cursor: pointer; */
+}
+
+ul.accordion-list li div.ipDetails p {
+    position: relative;
+    display: block;
+    font-weight: 300;
+    padding: 0;
+    cursor: pointer;
+    line-height: 150%;
+    margin: 0 0 15px 0;
+    font-size: 14px;
+}
+
+#manage_ips i,
+#impi i {
+    text-align: center;
+    width: 100%;
+    /* width: auto;
+    display: inline-block; */
+}
+
+table#clientAreaIpmang th,
+table#manageSnapshot th,
+table#clientAreaFTPmang th {
+    background: #f5f5f5;
+    padding: 15px;
+    font-weight: 800;
+}
+
+table#clientAreaIpmang i.fa.fa-angle-down, table#manageSnapshot i.fa.fa-angle-down  {
+    width: auto;
+    font-size: 19px !important;
+}
+
+ul.accordion-list li.active .card-body {
+    display: block;
+    overflow: unset;
+    cursor: auto;
+}
+
+ul.accordion-list .card-body {
+    display: none;
+}
+
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 55px;
+    height: 26px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    -webkit-transition: .4s;
+    transition: .4s;
+}
+#viewIpDetailsForm .modal-body .mainSec i {
+    font-size: xxx-large;
+    padding: 25px;
+}
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 21px;
+    width: 23px;
+    left: 2px;
+    bottom: 3px;
+    background-color: white;
+    -webkit-transition: .4s;
+    transition: .4s;
+}
+
+input:checked+.slider {
+    background-color: #2196F3;
+}
+
+input:focus+.slider {
+    box-shadow: 0 0 1px #2196F3;
+}
+
+input:checked+.slider:before {
+    -webkit-transform: translateX(26px);
+    -ms-transform: translateX(26px);
+    transform: translateX(26px);
+}
+
+/* Rounded sliders */
+.slider.round {
+    border-radius: 34px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}
+
+button.rebootBtn i,
+button.netbootBtn i,
+button.consoleBtn i,
+button.createSnapshot i,
+button.serverOnOff i,
+button#enableFTPBackup i,
+button#deleteBkup i,
+button#changeFtppass i,
+button#ftpbkup i {
+    font-size: 19px !important;
+}
+
+.reInstallOuter {
+    border: 1px solid #dee2e6;
+    padding: 30px 80px 5px 5px;
+
+}
+
+#ftpEnableForm .form-group,
+#impiTestForm .form-group,
+#editFTPForm .form-group {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    background: #f7f7f7;
+
+}
+
+.modal-input,
+.modal-input-upper {
+    padding-left: 20px;
+    width: 70%;
+    text-align: left;
+    font-size: 14px;
+}
+
+#ftpEnableForm label.col-form-label,
+#impiTestForm label.col-form-label,
+#editFTPForm label.col-form-label {
+    width: 30%;
+    text-align: left;
+    font-size: 14px;
+    padding-right: 10px;
+    font-weight: 800;
+}
+
+span.error {
+    color: red;
+}
+
+small.usageText {
+    /* width: 100%!important; */
+    text-align: left;
+    display: block;
+    margin-top: 10px;
+    font-weight: 600;
+}
+
+#ftp_backup ul.accordion-list {
+    width: 100%;
+}
+
+#ftp_backup h3.card-header {
+    text-align: left;
+}
+
+.impi.parrentTab {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px;
+    background: #fff;
+}
+
+#clientAreaFTPmang i {
+    font-size: 20px;
+    cursor: pointer;
+}
+
+#clientAreaFTPmang button {
+    border: none;
+}
+
+#clientAreaFTPmang i.deleteFTP {
+    color: red;
+}
+
+#impi .sub_box.getImpi i,
+.createFirewall i {
+    font-size: 20px;
+    height: auto;
+    width: auto;
+    margin-right: 2px;
+    margin-left: 5px;
+}
+
+.createFirewall {
+    display: flex;
+    align-items: center;
+}
+
+.createFirewall i {
+    font-size: 20px !important;
+    height: auto;
+    width: auto;
+    margin-right: 2px;
+    margin-left: 5px;
+}
+
+.usage-main-sec {
+    display: flex;
+    align-items: center;
+    justify-content: end;
+    padding: 20px 20px;
+    background: #fff;
+    margin-bottom: 0px;
+    border-bottom: 1px solid #ddd;
+}
+div#usage .usageHeader {
+    padding: 20px 20px;
+    background: #fff;
+    margin-bottom: 0px;
+    border-bottom: 3px solid #ddd;
+}
+div#graphdivmain {
+    padding: 20px 0px;
+    background: #fff;
+}
+
+/* ip on client side */
+
+#clientAreaFTPmang button,
+#manageSnapshot button,
+#clientAreaIpmang button {
+    border: none;
+}
+
+#clientAreaIpmang button i.addFirewallRule {
+    color: green;
+}
+
+#clientAreaFTPmang i.deleteFTP,
+#clientAreaIpmang button i.deleteFirewall {
+    color: red;
+}
+
+.new-client-area-box a:hover {
+    text-decoration: none;
+    color: #2280FF;
+    border-bottom: 3px solid #2280FF;
+}
+table#clientAreaFTPmang, table#clientAreaIpmang, #manageSnapshot {
+    border: 1px solid #ddd;
+}
+#clientAreaIpmang .ipActionLists {
+    display: none;
+    background: #ffffff;
+    border-radius: 3px;
+    position: absolute;
+    width: 170px;
+    right: 0;
+    box-shadow: 0px 0px 10px #0000001c;
+    z-index: 2;
+}
+
+#clientAreaIpmang .ipActionLists li:hover {
+    background: #f5f5f5;
+}
+
+#clientAreaIpmang .ipActionLists li {
+    background-color: #FFF;
+    margin: 0;
+    border-bottom: 1px solid #eee;
+    border-radius: 0;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 10px 10px;
+}
+
+#clientAreaIpmang .ipActionLists li:last-child {
+    border-bottom: transparent;
+}
+
+#clientAreaIpmang .ipActionLists ul {
+    padding: 0;
+}
+
+#clientAreaIpmang .ipActionLists ul {
+    padding: 10px;
+}
+
+#clientAreaIpmang .ipActionLists .active {
+    color: #4078db;
+}
+
+#clientAreaIpmang .ipActionLists i {
+    font-size: 18px;
+    color: red;
+}
+
+#ftpEnableForm .form-group, #impiTestForm .form-group, #editFTPForm .form-group, #addReverseIpForm .form-group, #firewaAddllRulesForm .form-group, #addIpDescriptionsForm .form-group,#snapshotCreate .form-group, #snapshotedit .form-group, #serverNameEdit .form-group{
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    background: #f7f7f7;
+}
+#ftpEnableForm label.col-form-label, #impiTestForm label.col-form-label, #addIpDescriptionsForm label.col-form-label, #firewaAddllRulesForm label.col-form-label, #addReverseIpForm label.col-form-label, #editFTPForm label.col-form-label, #snapshotCreate label.col-form-label, #snapshotedit label.col-form-label, #serverNameEdit label.col-form-label {
+    width: 30%;
+    text-align: left;
+    font-size: 14px;
+    padding-right: 10px;
+    font-weight: 800;
+}
+form#getFirewallRulesForm button.btn.btn-primary.showModal {
+    margin: 20px 20px 10px 0px;
+    display: table;
+    margin-left: auto;
+}
+.dataTables_wrapper .dataTables_length {
+    float: left;
+}
+div#firewaAddllRules {
+    padding: 20px;
+    margin: 20px;
+    box-shadow: 0px 3px 10px #00000017;
+}
+form#getFirewallRulesForm .form-group.col-md-6 {
+    text-align: left;
+}
+form#getFirewallRulesForm .form-group.col-md-6 label {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 3px;
+}
+table.dataTable.no-footer {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.3);
+}
+form#getFirewallRulesForm th {
+    font-size: 12px;
+    font-weight: 800 !important;
+    padding: 15px !important;
+    border: transparent !important;
+    text-align: center;
+}
+form#getFirewallRulesForm table.dataTable tbody td {
+    padding: 10px;
+    font-size: 15px;
+}
+#getFirewallRules.modal .modal-dialog {
+    max-width: 1140px;
+}
+#getFirewallRulesTable span.badge.bg-success, #getFirewallRulesTable span.badge.bg-secondary, #getFirewallRulesTable span.badge.bg-danger {
+    color: #fff;
+}
+#getFirewallRulesForm #getFirewallRulesTable .deleteFirewallRule {
+    color: red;
+    cursor: pointer;
+    font-weight: 500;
+}
+.dataTables_wrapper .dataTables_info {
+    clear: both;
+    float: left;
+    padding-top: .755em;
+}
+
+/* power client area */
+div#impi,
+div#snapshot,
+div#automated_backup,
+div#power {
+    padding: 10px 20px;
+    background: #fff;
+}
+
+#impi ul li a,
+#power ul li a {
+    /* color: #474F5A; */
+    font-weight: 500;
+    padding: 5px 5px;
+    display: inline-block;
+    border-radius: 0;
+    font-size: 14px;
+}
+
+#impi .impitest p,
+#monitoring p,
+#power p.powerNotes,
+#power p.hardDiskNotes {
+    font-size: 14px;
+    color: #1c1c1c;
+    line-height: 30px;
+    margin: 0px;
+    padding: 20px 25px;
+    text-align: left;
+}
+
+div#netBoot .hardDiskNotes {
+    text-align: center !important;
+    display: block;
+    background: #f5f5f5;
+    margin-bottom: 20px !important;
+}
+
+.consoleBtn i.fa.fa-spinner.fa-spin {
+    width: auto !important;
+}
+
+
+
+/* #Console {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  } */
+  
+  #Console p {
+    /* text-align: left; */
+    font-size: 14px;
+    color: #1c1c1c;
+    line-height: 30px;
+    margin: 0px;
+    padding: 20px 25px;
+    text-align: left;
+  }
+  /* monitoring */
+
+#monitoring div {
+    background: #fff;
+}
+#monitoring h3 {
+    padding: 25px 25px 0px 25px;
+    font-size: 22px;
+    font-weight: 700;
+}
+.text-left {
+    text-align: left!important;
+}
+#monitoring .subHeading {
+    padding: 0 25px 0px 25px!important;
+    font-size: 17px;
+}
+.monitoring-custom {
+    padding: 25px;
+}
+#monitoring .monitoring-custom-inner {
+    cursor: pointer;
+}
+.monitoring-custom-inner.active span.monitoring-checkbox:after {
+    opacity: 1;
+}
+span.monitoring-checkbox {
+    width: 17px;
+    height: 17px;
+    display: inline-block;
+    border: 1px solid #2280ff;
+    border-radius: 50px;
+    margin-right: 7px;
+    position: relative;
+}
+span.monitoring-checkbox:after {
+    position: absolute;
+    content: "";
+    background: #2280ff;
+    width: 9px;
+    height: 9px;
+    border-radius: 50px;
+    left: 3px;
+    top: 3px;
+    opacity: 0;
+}
+.monitoring-checkbox-content {
+    padding-left: 10px;
+    width: 100%;
+    max-width: 80%;
+}
+#monitoring .monitoring-checkbox-content h5 {
+    font-weight: 700;
+    font-size: 18px;
+}
+#monitoring h5, #monitoring p {
+    margin: 0;
+    padding: 0!important;
+}
+#impi .impitest p, #monitoring p, #power p.powerNotes, #power p.hardDiskNotes, #snapshot p.snapshotCreateMsg, #automated_backup p {
+    font-size: 14px;
+    color: #1c1c1c;
+    line-height: 30px;
+    margin: 0px;
+    padding: 20px 25px;
+    text-align: left;
+}
+.monitoring-custom-inner {
+    display: flex;
+}
+.impitest h5 {
+    text-align: left;
+    padding: 20px 25px 0px;
+    font-weight: 500;
+}
+/* network info */
+.copyIP {
+    display: flex;
+    align-items: center;
+}
+.customtooltip {
+    position: relative;
+    display: inline-block;
+    cursor: pointer;
+}
+.customtooltip i {
+    margin-left: 10px;
+    margin-bottom: 16px;
+    font-size: 17px;
+}.customtooltip .tooltiptext {
+    visibility: hidden;
+    width: 155px;
+    background-color: #555;
+    color: #fff;
+    text-align: center;
+    border-radius: 6px;
+    padding: 5px;
+    position: absolute;
+    z-index: 1;
+    bottom: 150%;
+    left: 50%;
+    margin-left: -75px;
+    /* opacity: 0; */
+    transition: opacity 0.3s;
+}
+.customtooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #555 transparent transparent transparent;
+}
+.customtooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.loader {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: 0;
+    background: #00000059;
+}
+
+.loader i {
+    width: auto !important;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-54%, -50%);
+}
+div#manage_ips {
+    position: relative;
+}
+input.ssh-field {
+    display: block;
+    width: 100%;
+    height: calc(1.5em + .75rem + 2px);
+    padding: .375rem .75rem;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #495057;
+    background-color: #fff;
+    background-clip: padding-box;
+    border: 1px solid #ced4da;
+    border-radius: .25rem;
+    transition: border-color .15s ease-in-out, box-shadow .15s ease-in-out;
+}
+button.btn.btn-success.installBtn i {
+    font-size: 22px!important;
+}
+
+#ipaddress_vps .ip-reverse i.fas.fa-exchange-alt{
+    cursor: pointer !important;
+}
+.editServerName {
+    cursor: pointer;
+}
+.btn.disabled,
+.btn:disabled {
+    cursor: no-drop;
+}
+
+.ontop, #growls-default, #growls-tl, #growls-tr, #growls-bl, #growls-br, #growls-tc, #growls-bc, #growls-cc, #growls-cl, #growls-cr {
+    z-index: 999999 !important;
+    position: fixed;
+}
+.nav-tabs>li.active>a, .nav-tabs>li.active>a:focus, .nav-tabs>li.active>a:hover {
+    color: #2280FF;
+    cursor: default;
+    border-bottom: 3px solid #2280FF !important;
+    background-color: #fff;
+}

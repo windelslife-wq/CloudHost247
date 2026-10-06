@@ -1,0 +1,45 @@
+.billingcycle-box:has(.checked),
+.billingcycle-box.active,
+.billingcycle-box.config-box.serverLocation.active,
+.location-center.addonSection.active,
+.billingcycle-box:hover,
+.location-center.addonSection:hover {
+    background: #fff;
+    border-color: #8a27db;
+}
+
+.billingcycle-box:hover {
+    background: #ffffff;
+    cursor: pointer;
+    border-color: #8a27db;
+}
+
+.billingcycle-box.config-box.serverLocation.active:after,
+.billingcycle-box.operating-box.active:after,
+.billingcycle-box.licenseControl.active:after,
+.location-center.addonSection.active:after,
+.billing-inner.active:after {
+    border-right: 30px solid #8a27db;
+}
+
+#serverLocation img {
+    margin-top: 4px;
+}
+
+.billing-inner:hover, .billing-inner.active {
+    border-color: #8a27db;
+}
+#order-standard_cart .order-summary .loader {
+    color: #8a27db;
+}
+#orderSummary #btnCompleteProductConfig {
+    background: #8a27db;
+}
+#orderSummary #btnCompleteProductConfig:hover {
+    border-color: #673DE6;
+    background-color: #e1f0ff63;
+    color: #673DE6;
+}
+img {
+    display: unset;
+}

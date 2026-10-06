@@ -1,0 +1,35 @@
+{
+  "name": "modulesgarden/productsresellerserver",
+  "description": "",
+  "version": "1.5.0",
+  "type": "project",
+  "license": "EULA",
+  "homepage": "https://www.modulesgarden.com",
+  "support": {
+    "email": "contact@modulesgarden.com",
+    "issues": "https://www.modulesgarden.com/customers/support",
+    "forum": "https://www.forum.modulesgarden.com/"
+  },
+  "authors": [],
+  "require": {
+    "php": ">=7.2",
+    "piwik/ini": "1.0.6",
+    "symfony/cache": "3.4.20",
+    "mso/idna-convert": "1.1.0",
+    "adbario/php-dot-notation": "2.1.0",
+    "symfony/polyfill-apcu": "1.10.0",
+    "rappasoft/laravel-helpers": "^1.0"
+  },
+  "replace": {
+  },
+  "autoload": {
+    "psr-4": {
+      "ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\Packages\\": "./Packages",
+      "ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\App\\": "./App",
+      "ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\Core\\": "./Core"
+    },
+    "files": [
+      "./Core/Helper/Functions.php"
+    ]
+  }
+}

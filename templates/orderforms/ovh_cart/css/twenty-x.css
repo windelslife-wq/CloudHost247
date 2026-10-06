@@ -1,0 +1,6 @@
+.billingcycle-box .op-select, .location-center .op-select {
+    appearance: unset;
+}
+#order-standard_cart .order-summary .loader {
+    top: 26px;
+}

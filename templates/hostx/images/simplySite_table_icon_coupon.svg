@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <style>
+      .cls-1, .cls-2 {
+        fill: none;
+        stroke: #333;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.2px;
+      }
+
+      .cls-2 {
+        stroke-dasharray: 2.87 2.87;
+      }
+    </style>
+  </defs>
+  <title>simplySite_table_icon</title>
+  <polyline class="cls-1" points="4.4 5.91 27.6 5.91 27.6 26.09 4.4 26.09"/>
+  <g>
+    <circle class="cls-1" cx="11.89" cy="11.89" r="2.16"/>
+    <circle class="cls-1" cx="20.11" cy="20.11" r="2.16"/>
+    <line class="cls-1" x1="9.74" y1="22.26" x2="22.26" y2="9.74"/>
+  </g>
+  <g>
+    <line class="cls-1" x1="4.4" y1="1.6" x2="4.4" y2="3.1"/>
+    <line class="cls-2" x1="4.4" y1="5.97" x2="4.4" y2="27.46"/>
+    <line class="cls-1" x1="4.4" y1="28.9" x2="4.4" y2="30.4"/>
+  </g>
+</svg>

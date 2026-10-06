@@ -1,0 +1,911 @@
+@media (max-width: 1440px) {
+  .top_summary .summary_box {
+    padding-top: 25px;
+    min-height: 174px;
+  }
+
+  .top_summary .summary_box .toptext {
+    padding: 0 19px 36px;
+  }
+
+  .top_summary .summary_box h2 {
+    font-size: 40px;
+    line-height: 40px;
+  }
+
+  .top_summary .summary_box .icon_box {
+    position: absolute;
+    right: 19px;
+    top: 25px;
+  }
+
+  .top_summary .summary_box h3 {
+    font-size: 14px;
+    line-height: 16px;
+  }
+
+  .top_summary .summary_box .icon_box .icon {
+    width: 48px;
+    height: 48px;
+    line-height: 48px;
+    font-size: 21px;
+  }
+
+  .summary_box .summart_staus {
+    padding: 19px;
+  }
+
+  .table_portion .custom_table tr th,
+  .table_portion .custom_table tr td {
+    padding: 20px 15px;
+  }
+
+  .search_portion .dropdown.short.filtter {
+    margin-left: 11px;
+  }
+
+  .search_portion .search_input {
+    margin-right: 15px;
+  }
+
+  .viewModal .modal-dialog {
+    max-width: 940px;
+  }
+
+  .viewModal .modal-body {
+    padding: 41px 44px 50px;
+  }
+
+  .viewModal .modal-footer {
+    padding: 24px 46px;
+  }
+
+  .viewModal .modal-footer .get_support {
+    font-size: 18px;
+  }
+
+  .viewModal .modal-body p {
+    font-size: 14px;
+    line-height: 25px;
+    margin-top: 24px;
+  }
+
+  .viewModal .modal-body .helpdesk_text {
+    margin-top: 63px;
+  }
+
+  .viewModal .modal-body .helpdesk_text p {
+    margin-top: 20px;
+  }
+
+  .breadcrm_Menu {
+    padding-bottom: 30px;
+  }
+
+  .main-content {
+    padding: 30px 10px 14px;
+  }
+
+  .service_box .service_list {
+    padding: 26px;
+  }
+
+  /* login page css start */
+  .login_text h2 {
+    font-size: 40px;
+    line-height: 46px;
+  }
+
+  .login_text p {
+    font-size: 20px;
+    line-height: 26px;
+    margin-top: 18px;
+  }
+
+  .login_text .btn_style {
+    margin-top: 34px;
+    min-width: 230px;
+  }
+
+  .form-control {
+    min-height: 50px;
+    line-height: 50px;
+  }
+
+  input.form-control {
+    background-position: 14px 17px;
+  }
+
+  .btn_style.btn_bg {
+    min-height: 50px;
+    line-height: 50px;
+  }
+
+  .btn_style.gray_bg {
+    min-height: 50px;
+    line-height: 50px;
+  }
+
+  .ticket_outer .ticket_box {
+    padding: 50px 28px;
+  }
+
+  .ticket_outer .ticket_box p {
+    font-size: 14px;
+  }
+  .drop-down-menu{
+	width: 575px;
+	left: 0;
+  }
+}
+
+@media(max-width:1200px) {
+  .search_portion .search_input {
+    min-width: auto;
+    max-width: 243px;
+  }
+
+  .table_portion table.custom_table {
+    width: 100% !important;
+    min-width: 1220px !important;
+    max-width: 100% !important;
+  }
+
+  .table_portion {
+    overflow: hidden;
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 1024px) {
+  #wrapper .sidebar {
+    left: -282px;
+  }
+
+  #wrapper .main {
+    width: 100%;
+  }
+
+  #wrapper .navbar {
+    left: 0 !important;
+  }
+
+  #wrapper .btn-toggle-fullwidth {
+    color: #00AAFF;
+  }
+
+  .btn-toggle-minified {
+    display: none;
+  }
+
+  .navbar-default .brand {
+    padding-left: 30px;
+    padding-right: 15px;
+  }
+
+  .table_portion table.custom_table {
+    width: 1220px !important;
+    max-width: 100% !important;
+  }
+
+  .table_portion {
+    overflow: hidden;
+    overflow-x: auto;
+  }
+
+  .ticket_outer .ticket_box {
+    padding: 44px 15px;
+    min-height: 230px;
+  }
+
+  .ticket_outer .ticket_box img {
+    max-width: 50px;
+  }
+
+  .ticket_outer .ticket_box h3 {
+    font-size: 18px;
+    line-height: 26px;
+    margin-top: 18px;
+  }
+
+  .ticket_outer .ticket_box p {
+    font-size: 14px;
+  }
+
+  .search_portion .search_input {
+    max-width: 221px;
+    min-width: auto;
+  }
+
+  .table_portion .custom_table tr th,
+  .table_portion .custom_table tr td {
+    padding: 15px 10px;
+  }
+
+  .table_portion .custom_table tr th .change_data {
+    margin-left: 12px;
+  }
+
+  .table_portion table.custom_table {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 1220px;
+  }
+
+  .table_portion .row,
+  .table_portion .col-md-12 {
+    margin: 0;
+    padding: 0;
+  }
+  .outstanding_balance .mass_payment{
+    margin: 0;
+  }
+
+}
+
+@media(max-width:992px) {
+  .navbar-default .brand {
+    display: none;
+  }
+
+  .navbar-nav.navbar-right {
+    margin-right: 0;
+    margin: 0;
+    width: auto;
+  }
+
+  .navbar-nav.account>li>.dropdown-menu {
+    right: -151%;
+  }
+
+  .navbar-nav.account>li.dropdown.open>.dropdown-menu {
+    right: -15px;
+  }
+
+  .row-26 {
+    margin-right: -10px;
+    margin-left: -10px;
+  }
+
+  .row-26 [class*="col-"] {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .service_box .service_list {
+    padding: 20px;
+  }
+
+  .service_box .service_list h3 {
+    max-width: 68%;
+  }
+
+  .summary_box .summart_staus {
+    padding: 14px 15px;
+  }
+
+  .summary_box .summart_staus .status p {
+    font-size: 10px;
+  }
+
+  .top_summary .summary_box .toptext {
+    padding: 0 15px 46px;
+  }
+
+  .top_summary .summary_box h3 {
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .service_box .service_list h2 {
+    font-size: 17px;
+  }
+
+  .top_summary .summary_box .icon_box .icon {
+    width: 43px;
+    height: 43px;
+    line-height: 48px;
+    font-size: 19px;
+  }
+
+  #wrapper .navbar {
+    width: calc(100vw);
+  }
+
+  .login_text {
+    text-align: center;
+    margin: 0 0 40px 0;
+  }
+
+  .login_text h2 {
+    font-size: 34px;
+    line-height: 32px;
+  }
+
+  .loginWrapper .col-sm-12.col-md-6 {
+    -ms-flex: 0 0 100%;
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+
+  .login_text h2 br {
+    display: none;
+  }
+
+  .login_form .login_box {
+    margin: 0 auto;
+  }
+
+  .profile_outer .nav-tabs li {
+    margin-right: 22px;
+  }
+
+  .profile_outer .nav-tabs li a {
+    font-size: 13px;
+  }
+  .page_title{
+    padding: 18px 30px;
+  }
+  .page_title h2{
+    font-size: 20px;
+  }
+  .outstanding_balance h3{
+    font-size: 17px;
+  }
+  .mass_payment {
+    margin-top: 0;
+}
+.btn_style.btn_bg {
+  min-height: 40px;
+  line-height: 40px;
+}
+.btn_style{
+  min-height: 40px;
+  line-height: 40px;
+}
+.outstanding_balance .mass_payment .btn_style {
+  min-width: 143px;
+}
+.outstanding_balance{
+  padding: 21px 26px;
+}
+
+
+}
+
+@media(max-width:767px) {
+
+  #wrapper #sidebar-nav,
+  #wrapper .main {
+    padding-top: 63px;
+  }
+
+  .main-content {
+    padding: 15px 10px 14px;
+  }
+
+  .breadcrm_Menu {
+    padding-bottom: 19px;
+  }
+
+  .navbar+.main-content {
+    padding-top: 155px;
+  }
+
+  .navbar-default #navbar-menu {
+    float: right;
+  }
+
+  .navbar-btn {
+    padding: 0;
+    margin: 15px 0 0 0;
+  }
+
+  .navbar-nav>li>a.dropdown-toggle {
+    padding: 0;
+  }
+
+  .navbar-form {
+    float: left;
+    width: 70%;
+    margin-left: 5px;
+    margin-right: 5px;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .navbar-form .input-group {
+    width: 70%;
+  }
+
+  .navbar-form input[type="text"] {
+    min-width: 150px;
+  }
+
+  .navbar-form {
+    display: none;
+  }
+
+  .navbar-nav.navbar-right {
+    width: 31px;
+    margin: 20px 0 0 0;
+    display: inline-block;
+    float: right;
+  }
+
+  .navbar-nav>li {
+    display: table-cell;
+    width: 1%;
+    position: inherit;
+    text-align: center;
+  }
+
+  .navbar-nav>li>a {
+    padding: 15px 20px;
+  }
+
+  .navbar-nav>li>a span:not(.badge),
+  .navbar-nav>li>a .icon-submenu {
+    display: none;
+  }
+
+  .navbar-nav .open .dropdown-menu {
+    -moz-box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    -webkit-box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    position: absolute;
+    width: 93%;
+    margin-top: 0;
+    background-color: #fff;
+  }
+
+  .navbar-nav .open .dropdown-menu>li>a {
+    padding: 10px 15px;
+  }
+
+  .navbar-nav .icon-menu {
+    padding-top: 15px;
+    padding-bottom: 15px;
+  }
+
+  .navbar-nav .icon-menu .badge {
+    top: 10px;
+    right: 15px;
+  }
+
+  .logoMain {
+    width: 178px;
+    display: inline-block;
+  }
+
+  .logoMain a img {
+    max-width: 114px;
+  }
+
+  .navbar-btn {
+    margin-right: 0;
+  }
+
+  .top_summary .summary_box {
+    padding-top: 25px;
+    min-height: 174px;
+    margin-bottom: 20px;
+  }
+
+  .service_outer .col-md-6 {
+    -ms-flex: 0 0 100%;
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+
+  .service_box .service_list {
+    padding: 18px;
+  }
+
+  .service_box .service_list .view_all {
+    right: 15px;
+  }
+
+  .service_outer .service_box {
+    margin-top: 0;
+    margin-bottom: 26px;
+  }
+
+  .service_box .service_list h2 {
+    font-size: 16px;
+  }
+
+  .service_box .service_list h3 {
+    max-width: 68%;
+  }
+
+  .view_all a {
+    font-size: 14px;
+  }
+
+  .navbar-nav>li>.dropdown-menu {
+    min-height: calc(100vh - 62px);
+  }
+
+  .login_text p {
+    font-size: 16px;
+    line-height: 26px;
+    margin-top: 9px;
+  }
+
+  .login_text h2 {
+    font-size: 20px;
+    line-height: 22px;
+  }
+
+  .login_text {
+    text-align: center;
+  }
+
+  .login_form .login_box {
+    margin: 30px auto 0;
+  }
+
+  .login_form .login_box.register .logo {
+    min-height: 81px;
+    padding: 11px 0 0 0;
+  }
+
+  .login_form .login_box form {
+    padding: 0 30px;
+  }
+
+  .login_text h2 br {
+    display: none;
+  }
+
+  .ch-checkbox span {
+    font-size: 12px;
+  }
+
+  .forgot_password a {
+    font-size: 12px;
+  }
+
+  /* ticket page css */
+  .ticket_outer h2 {
+    font-size: 20px;
+    margin: 0;
+  }
+
+  .ticket_outer .ticket_box {
+    margin-top: 25px;
+  }
+
+  .ticket_outer .ticket_box h3 {
+    font-size: 20px;
+  }
+
+  .ticket_outer .ticket_box p {
+    margin-top: 6px;
+  }
+
+  .announce_outer .announce_list {
+    padding: 15px;
+  }
+
+  .announce_list a {
+    font-size: 16px;
+  }
+
+  .announce_list h2 {
+    font-size: 16px;
+  }
+
+  .announce_list h4 {
+    margin: 0;
+  }
+
+  .page_title {
+    padding: 16px 20px 16px;
+  }
+
+  .page_title h2 {
+    font-size: 18px;
+  }
+
+  .search_portion .search_input {
+    min-width: 268px;
+    margin-right: 9px;
+  }
+
+  .show_number {
+    padding: 7px 0;
+  }
+
+  .custom_pagination {
+    padding: 17px 0 10px;
+  }
+
+  .search_portion .btn_style.btn_bg {
+    margin-top: 14px;
+  }
+
+  .search_portion .search_input {
+    min-width: 287px;
+  }
+
+  .profile_outer .add_padding {
+    padding: 4px 20px 20px;
+  }
+
+  .personal_info .col-md-6 {
+    -ms-flex: 0 0 100%;
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+
+  .btn_style.gray_bg {
+    min-height: 40px;
+    line-height: 40px;
+  }
+
+  .btn_style.btn_bg {
+    min-height: 40px;
+    line-height: 40px;
+  }
+
+  textarea.form-control {
+    height: 52px;
+  }
+
+  .personal_info {
+    margin-bottom: 5px;
+  }
+
+  .profile_outer .tab-content {
+    margin-top: 25px;
+  }
+
+  .personal_info h3 {
+    font-size: 16px;
+  }
+
+  .form-group.password_strength .strength .bar.strong {
+    min-width: 115px;
+  }
+
+  .form-group.password_strength .strength {
+    min-width: 145px;
+    max-width: 145px;
+  }
+
+  .security_outer p {
+    padding: 17px 20px;
+    font-size: 14px;
+  }
+
+  .security_outer h3 {
+    font-size: 16px;
+  }
+
+  .profile_outer .profile_form.sub_accounts .form-group.password_strength .strength {
+    min-width: 142px;
+    max-width: 142px;
+  }
+
+  .form-group.password_strength .strength .bar.strong {
+    min-width: 83px;
+  }
+
+  .profile_outer .profile_form .btn_width .btn_style.btn_bg {
+    min-width: 60px;
+  }
+
+  .profile_outer .sub_accounts.profile_form .btn_style.gray_bg {
+    min-width: 173px;
+  }
+
+  .profile_outer .dropdown .dropdown-toggle {
+    display: block;
+  }
+
+  .profile_outer .dropdown .dropdown-toggle .fa {
+    margin: 0 7px 0 0;
+  }
+
+  .profile_outer .dropdown .dropdown-menu {
+    position: absolute;
+    display: block;
+    left: 0;
+    background-color: #ffff;
+    max-width: 330px;
+    overflow: hidden;
+    padding: 20px;
+    top: -100%;
+    opacity: 0;
+    visibility: hidden;
+    transition: 0.5s;
+    box-shadow: 0 3px 6px #ddd;
+  }
+
+  .profile_outer .dropdown.open .dropdown-menu {
+    top: 0;
+    top: 24px;
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .profile_outer .dropdown-menu .nav-tabs li {
+    width: 100%;
+    margin: 0 0 6px 0;
+  }
+
+  .profile_outer .profile_form.sub_accounts .personal_info {
+    padding: 12px 20px;
+  }
+
+  .sub_accounts.profile_form .personal_info ul li {
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  .profile_outer .sub_accounts.profile_form .btn_style.gray_bg {
+    min-width: 133px;
+  }
+
+  .sub_accounts.profile_form .ch-checkbox span {
+    vertical-align: super;
+    font-size: 13px;
+  }
+
+  .btn_style {
+    font-size: 14px;
+  }
+
+  .viewModal .modal-dialog {
+    width: 94%;
+  }
+
+  .viewModal .modal-body {
+    padding: 20px 20px 30px;
+  }
+
+  .viewModal .modal-body h2 {
+    font-size: 18px;
+  }
+
+  .viewModal .modal-body p {
+    margin-top: 16px;
+  }
+
+  .viewModal .modal-body .helpdesk_text {
+    margin-top: 25px;
+  }
+
+  .viewModal .modal-body .helpdesk_text p {
+    margin-top: 5px;
+  }
+
+  .viewModal .modal-footer .get_support {
+    font-size: 14px;
+  }
+
+  .viewModal .modal-footer {
+    padding: 16px 20px;
+  }
+
+  .viewModal .modal-footer .btn_style.gray_bg {
+    min-width: 100px;
+    min-height: 34px;
+    line-height: 34px;
+  }
+
+  /* start my invoice page */
+  .outstanding_balance h3 {
+    font-size: 18px;
+  }
+
+  .outstanding_balance h3 .balance {
+    margin-left: 10px;
+  }
+
+  .outstanding_balance {
+    padding: 23px 17px;
+  }
+
+}
+
+@media(max-width:667px) {
+  .login_form .login_box .logo {
+    background-position: 0 2px;
+    padding: 15px 0 0 0;
+    min-height: 90px;
+  }
+
+  .loginWrapper .col-md-8,
+  .loginWrapper .col-md-4,
+  .loginWrapper .col-md-6 {
+    -ms-flex: 0 0 100%;
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+
+  .user_icon img {
+    max-width: 70%;
+  }
+
+  .ticket_outer .ticket_box img {
+    max-width: 70px;
+  }
+
+  .breadcrm_Menu li {
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+
+  .search_portion {
+    max-width: 450px;
+    margin: 0 auto;
+  }
+
+  .search_portion .search_input {
+    width: 100%;
+  }
+
+  .search_portion .dropdown.short {
+    width: 100%;
+  }
+
+  .search_portion .dropdown.short .dropdown-toggle {
+    float: right;
+  }
+
+  .search_portion .dropdown.short.filtter {
+    margin-left: 0;
+  }
+
+  .search_portion .btn_style.btn_bg {
+    min-width: 180px;
+    min-height: 40px;
+    line-height: 40px;
+    margin-top: 18px;
+  }
+
+  .profile_outer .profile_form .btn_style.btn_bg {
+    min-width: 134px;
+  }
+
+  .profile_outer .profile_form .btn_style.gray_bg {
+    min-width: 132px;
+  }
+
+  .search_portion.invoice .search_input {
+    min-width: 100%;
+  }
+
+  .search_portion.invoice .dropdown.short .dropdown-toggle {
+    float: right;
+    min-width: 241px;
+  }
+
+  .mass_payment {
+    margin-top: 16px;
+  }
+
+}
+
+@media(max-width:510px) {
+  .outstanding_balance .view_btn {
+    margin-left: 0;
+    margin-top: 9px;
+  }
+  .custom_pagination{
+    text-align: left;
+  }
+
+  .table_showing .col-md-5,
+  .table_showing .col-md-7 {
+    -ms-flex: 0 0 100%;
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+
+
+
+}

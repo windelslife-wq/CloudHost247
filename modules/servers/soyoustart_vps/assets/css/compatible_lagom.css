@@ -1,0 +1,159 @@
+/* lagom compatibility */
+
+.nav-tabs .nav-item.show .nav-link:after,
+.nav-tabs .nav-link.active:after,
+.nav-tabs a.active:after,
+.nav-tabs li.active a:after,
+.nav-tabs li.show a:after {
+    height: unset;
+}
+
+.nav .nav-link,
+.nav a {
+    min-height: unset;
+}
+
+h3 {
+    line-height: unset;
+}
+
+.client-spec-content h4 {
+    margin-top: 0px;
+}
+
+.table>tbody>tr>td,
+.table>tfoot>tr>td,
+table>tbody>tr>td,
+table>tfoot>tr>td {
+    border-top: unset;
+    height: unset;
+    padding: unset;
+    text-align: unset;
+}
+
+.label-success {
+    background-color: #2d9f46;
+    color: #fff;
+}
+
+.label-danger {
+    background-color: #d92632;
+    color: #fff;
+}
+
+h2.interventionheading,
+h2.ftpBackupheading {
+    padding: unset;
+    color: #212529;
+}
+
+.table-responsive {
+    overflow-x: unset;
+}
+
+.client-area-host-name h3 {
+    color: var(--text-heading-color) !important;
+}
+
+#ftpEnableForm .form-group,
+#impiTestForm .form-group,
+#editFTPForm .form-group,
+#installOsForm .form-group,
+#addReverseIpForm .form-group,
+#firewaAddllRulesForm .form-group,
+#viewIpDetailsForm .form-group,
+#addIpDescriptionsForm .form-group {
+    background: unset;
+}
+
+.modal .modal-header {
+    background-color: unset;
+    align-items: center !important;
+    display: flex;
+}
+
+.ca-content-wrapper h6 {
+    color: #000 !important
+}
+
+table#clientAreaFTPmang td,
+table#clientAreaIpmang td,
+table#clientAreaFTPmang,
+table#clientAreaIpmang,
+table#clientAreaIpmang th,
+table#clientAreaFTPmang th,
+div#ftp_backup,
+div#interventions,
+div#usage,
+#impi h5,
+#monitoring h5,
+ h3{
+    color: #212529 !important;
+}
+
+
+select#inputState, #netBoot select, #netBoot input, #rescue select, #rescue input, #usage select {
+    color: #212529;
+    border-color: #ced4da;
+    background: #fff;
+}
+
+#power label, div#netBoot, #rescue, div#manage_ips {
+    color: #000;
+}
+
+.impitest a {
+    color:#369;
+}
+
+#clientAreaIpmang{
+    text-align: center!important;
+}
+.customtooltip i {
+    color: #2280FF;
+}
+
+#interventions table{
+    color: #212529 !important;
+}
+#interventions table td, #interventions table th{
+    color: #212529 !important;
+}
+
+.bg-success {
+    background-color: var(--brand-success) !important;
+}
+.modal-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    padding: .75rem;
+    border-top: 1px solid #dee2e6;
+    border-bottom-right-radius: calc(.3rem - 1px);
+    border-bottom-left-radius: calc(.3rem - 1px);
+}
+
+.badge {
+    padding: 0.25em 0.4em;
+    font-size:  75% !important;
+    border-radius: 0.25rem;
+}
+#viewIpDetailsForm .modal-body .mainSec i {
+    text-align: center;
+    width: 100%;
+}
+table.dataTable {
+    width: 100% !important;
+
+}
+
+@media (min-width: 480px) {
+    #getFirewallRules .modal-dialog {
+        width: 1140px !important;
+    }
+}
+
+#firewaAddllRules .form-group.col-md-6 {
+    padding: 0px 5px !important;
+}

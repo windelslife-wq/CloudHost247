@@ -1,0 +1,19 @@
+# Never re-introduce distribution archives into the repository
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+
+# WHMCS runtime / generated
+modules/*/*/logs/
+modules/*/*/cache/
+modules/servers/*/storage/logs/*.log
+modules/servers/*/storage/crons/*.log
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~

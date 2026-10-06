@@ -1,0 +1,496 @@
+
+
+/***common cs start***/
+
+body {
+
+  margin: 0;
+
+}
+
+
+
+.container{
+
+	max-width:1170px;
+
+    margin:auto;
+
+}
+
+
+
+.C-panel .dropdown-menu.show{
+
+	width:100%;
+
+	border: 1px solid #ccc;
+
+}
+
+.C-panel .logo-part{
+
+    padding: 0px 20px 0px;
+
+    display: flex;
+
+	padding: 8px;
+
+}
+
+.radioname{
+
+	height:31px;
+
+    font-size: 12px;
+
+    margin-top: 10px;
+
+    margin-left: 2px;
+
+}
+
+.C-panel .logo-part h5{
+
+	font-weight: 600;
+
+}
+
+.C-panel .logo-part-2{
+
+	padding: 0rem 1.25rem 1.25rem 1.25rem;
+
+}
+
+    
+
+.C-panel .logo_section img {
+
+    width: 26px;
+
+    height: 26px;
+
+    float: left;
+
+    margin-right: 12px;
+
+    margin-top: 4px;
+
+}
+
+
+
+.C-panel .order_page_2, .C-panel .order-common-radio__footer {
+
+    background: #c6eff9;
+
+    padding: .625rem;
+
+    text-align: center;
+
+    font-weight: 600;
+
+    font-size: 1.125rem;
+
+    line-height: 1.25rem;
+
+    border-bottom-left-radius: inherit;
+
+    border-bottom-right-radius: inherit;
+
+    margin: 0;
+
+}
+
+.C-panel .logo_section {
+
+    width: 100%;
+
+    border: 2px solid #00a2bf;
+
+    border-radius: 6px;
+
+    background: #e0f6fd;
+
+    cursor: pointer;
+
+}
+
+
+
+/* Dropdown */
+
+
+
+.C-panel .dropdown {
+
+  display: inline-block;
+
+  position: relative;
+
+  width: 100%;
+
+}
+
+
+
+.C-panel .dd-button {
+
+  display: inline-block;
+
+  border: 1px solid gray;
+
+  border-radius: 3px;
+
+  padding: 10px 30px 10px 20px;
+
+  background-color: #ffffff;
+
+  cursor: pointer;
+
+  white-space: nowrap;
+
+  width: 100%;
+
+}
+
+
+
+.C-panel .dd-button:after {
+
+  content: '';
+
+  position: absolute;
+
+  top: 50%;
+
+  right: 15px;
+
+  transform: translateY(-50%);
+
+  width: 0; 
+
+  height: 0; 
+
+  border-left: 5px solid transparent;
+
+  border-right: 5px solid transparent;
+
+  border-top: 5px solid black;
+
+}
+
+
+
+.C-panel .dd-input {
+
+  display: none;
+
+}
+
+
+
+.C-panel .dd-menu {
+
+  width: 100%;
+
+  position: absolute;
+
+  top: 100%;
+
+  border: 1px solid #ccc;
+
+  border-radius: 4px;
+
+  padding: 0;
+
+  margin: 2px 0 0 0;
+
+  box-shadow: 0 0 6px 0 rgba(0,0,0,0.1);
+
+  background-color: #ffffff;
+
+  list-style-type: none;
+
+  z-index: 9;
+
+}
+
+
+
+.C-panel .dd-input + .dd-menu {
+
+  display: none;
+
+} 
+
+
+
+.dd-input:checked + .dd-menu {
+
+  display: block;
+
+} 
+
+.C-panel{
+
+	margin: 14px 0;
+
+}
+
+.dd-menu li {
+
+  padding: 10px 20px;
+
+  cursor: pointer;
+
+  white-space: nowrap;
+
+}
+
+
+
+.dd-menu li:hover {
+
+  background-color: #f6f6f6;
+
+}
+
+.soyoustartHtml{
+
+	display:inline-block;
+
+}
+
+.soyoustartHeading{
+
+	font-size: 20px;
+
+    font-weight: 600;
+
+}
+
+.soyoustartHeading i{
+
+	color: #88c424;
+
+	margin-right: 14px;
+
+}
+
+.C-panel .soyoustartRadio{
+
+	height: 25px;
+
+    margin: 6px 0 0;
+
+	box-shadow: none;
+
+	width: 20%;
+
+}
+
+.pleskimg{
+
+	height:30px !important;
+
+}
+
+
+
+/*
+
+.list-section{
+
+    padding: 0px 20px 0px;
+
+    position: relative;
+
+    width: 1140px;
+
+    margin: auto;
+
+}*/
+
+.Diskconfig {
+
+	background-color: #c6eff9;
+
+	display: flex;
+
+    padding: 10px 15px;
+
+    margin-top: 15px;
+
+}
+
+.Diskconfig p:last-child{
+
+	margin-left: auto;
+
+}
+
+.Diskconfig p{
+
+	    color: #59697d;
+
+   font-weight: 600;
+
+}
+
+/*radio-buttons*/
+
+.list-section .list-radio-btn [type="radio"]:checked,
+
+.list-section .list-radio-btn [type="radio"]:not(:checked) {
+
+    position: absolute;
+
+    left: -9999px;
+
+}
+
+.list-section .list-radio-btn [type="radio"]:checked + label,
+
+.list-section .list-radio-btn [type="radio"]:not(:checked) + label
+
+{	color: #1a4672;
+
+    font-weight: bold;
+
+    position: relative;
+
+    padding-left: 45px;
+
+    cursor: pointer;
+
+    line-height: 20px;
+
+    display: inline-block;
+
+	margin: 0px;
+
+}
+
+.list-section .list-radio-btn [type="radio"]:checked + label:before,
+
+.list-section .list-radio-btn [type="radio"]:not(:checked) + label:before {
+
+    content: '';
+
+    position: absolute;
+
+    left: 16px;
+
+    top: 18px;
+
+    width: 18px;
+
+    height: 18px;
+
+    border: 1px solid #ddd;
+
+    border-radius: 100%;
+
+    background: #fff;
+
+}
+
+.list-section .list-radio-btn [type="radio"]:checked + label:after,
+
+.list-section .list-radio-btn [type="radio"]:not(:checked) + label:after {
+
+    content: '';
+
+    width: 12px;
+
+    height: 12px;
+
+    background: #1a4672;
+
+    position: absolute;
+
+    top: 21px;
+
+    left: 19px;
+
+    border-radius: 100%;
+
+    -webkit-transition: all 0.2s ease;
+
+    transition: all 0.2s ease;
+
+}
+
+.list-section .list-radio-btn [type="radio"]:not(:checked) + label:after {
+
+    opacity: 0;
+
+    -webkit-transform: scale(0);
+
+    transform: scale(0);
+
+}
+
+.list-section .list-radio-btn [type="radio"]:checked + label:after {
+
+    opacity: 1;
+
+    -webkit-transform: scale(1);
+
+    transform: scale(1);
+
+}
+
+.list-section .list-radio-btn p label:nth-child(odd){
+
+	background-color: #ffffff;
+
+}
+
+.list-section .list-radio-btn p label:nth-child(even){
+
+	background-color: #fafafa;
+
+}
+
+.list-section .list-radio-btn p label{
+
+    padding: 16px;
+
+    border-bottom: 1px solid #e9ebe7;
+
+}
+
+.list-section .list-radio-btn p{
+
+	    margin: 0;
+
+}
+
+.list-section .list-radio-btn [type="radio"]:checked + label p{
+
+	background-color: #f5fcfd;
+
+}
+
+.list-section .list-radio-btn p label span{
+
+	float:right;
+
+}
+
+.list-section .list-radio-btn p label{
+
+	    width: 100%;
+
+}
+
+.list-section .list-radio-btn [type="radio"]:checked + label {
+
+   background-color: #f5fcfd;
+
+ }
+
+
+

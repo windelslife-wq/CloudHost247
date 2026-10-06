@@ -1,0 +1,48 @@
+Build a fully working WHMCS addon module similar to tdnschecker.org (DNS propagation checker) that integrates cleanly into my existing WHMCS project.
+
+Project context:
+
+WHMCS version: 8.9.x
+PHP version: 5.6–7.4
+IonCube: 10.x–11.x
+My project structure follows standard WHMCS module architecture
+The module must NOT break WHMCS loading or cause any fatal errors
+
+Requirements:
+
+Create a WHMCS addon module named "DNS Checker"
+Follow WHMCS addon module structure:
+/modules/addons/dnschecker/
+dnschecker.php (main module file)
+templates/ for frontend UI
+hooks.php if needed
+Features:
+Input field for domain name
+Check DNS propagation (A, MX, NS, TXT, CNAME records)
+Display results from multiple global DNS servers
+Show status (propagated / not propagated)
+Clean UI inside WHMCS client area
+Technical requirements:
+Use WHMCS internal routing (no direct access errors)
+Use Capsule or safe PHP functions (compatible with PHP 5.6–7.4)
+No deprecated functions
+No external dependencies that break WHMCS
+Proper error handling (no blank page or fatal error)
+Secure input validation (sanitize domain input)
+Admin area:
+Enable/disable module
+Option to select DNS record types to check
+Client area:
+Simple responsive UI
+AJAX-based checking (no full page reload)
+Loading indicator while checking
+Important:
+Ensure module loads without any WHMCS errors
+Avoid "Cannot redeclare", "headers already sent", or IonCube conflicts
+Follow WHMCS coding standards strictly
+Output:
+Provide full working code for all files
+Include folder structure
+Include installation steps
+
+Make the code simple, clean, and production-ready.

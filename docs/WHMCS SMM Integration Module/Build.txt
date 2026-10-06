@@ -1,0 +1,85 @@
+You are a senior WHMCS and PHP developer.
+
+I am building a marketplace platform and I want to integrate an SMM panel into my WHMCS system using a custom module. My WHMCS version is 8.9.x and the system must support PHP 7.4 and IonCube.
+
+Build a fully functional WHMCS module that connects to an SMM panel via API and works without errors on loading.
+
+Requirements:
+
+1. Module Type:
+
+* Create both a WHMCS "Provisioning Module" and "Addon Module" if needed
+* Must follow WHMCS module standards and folder structure
+
+2. Core Features:
+
+* Connect to SMM panel API (support API URL + API Key)
+* Fetch services dynamically from SMM panel
+* Allow admin to map SMM services to WHMCS products
+* Place orders automatically when a client purchases a product
+* Store Order ID from SMM panel
+* Fetch and update order status (pending, processing, completed, canceled)
+* Display order status inside client area
+
+3. Admin Features:
+
+* API configuration page (API URL, API Key)
+* Service synchronization button
+* Logs for API requests and responses
+* Error handling dashboard
+
+4. Client Area Features:
+
+* Show order details and status
+* Optional: allow refill or cancel (if supported by API)
+
+5. Automation:
+
+* Use WHMCS cron job to:
+
+  * Check order status periodically
+  * Update order status automatically
+
+6. Database:
+
+* Create custom tables for:
+
+  * Services mapping
+  * Orders tracking
+  * Logs
+
+7. Error Handling:
+
+* Prevent WHMCS page crash if API fails
+* Use try/catch and fallback messages
+* Log all errors clearly
+
+8. Performance:
+
+* Module must not slow down WHMCS loading
+* Use caching where necessary
+
+9. Security:
+
+* Sanitize all inputs
+* Protect API keys
+* Prevent unauthorized access
+
+10. Compatibility:
+
+* Must work perfectly with WHMCS 8.9.x
+* Must not conflict with other modules
+* Must not break client area or admin area
+
+11. Deliverables:
+
+* Full module folder structure
+* All PHP files
+* SQL schema
+* Installation guide
+* Example API integration (generic SMM API format)
+
+Goal:
+A stable, production-ready WHMCS SMM integration module that loads without errors and handles orders automatically from my marketplace.
+
+Do not give explanations. Generate complete working code.

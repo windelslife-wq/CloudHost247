@@ -1,0 +1,26 @@
+{
+    "schema": "1.0",
+    "type": "whmcs-gateways",
+    "name": "blockonomics",
+    "license": "MIT",
+    "category": "payments",
+    "description": {
+        "name": "Blockonomics",
+        "tagline": "Accept bitcoins on your WHMCS, payments go directly into your wallet"
+    },
+    "logo": {
+        "filename": "logo.png"
+    },
+    "support": {
+        "homepage": "https:\/\/www.blockonomics.co\/",
+        "email": "webmaster@blockonomics.co",
+        "support_url": "https:\/\/blockonomics.freshdesk.com\/",
+        "docs_url": "https:\/\/github.com/blockonomics/whmcs-bitcoin-plugin\/"
+    },
+    "authors": [
+        {
+            "name": "Blockonomics",
+            "homepage": "https:\/\/www.blockonomics.co\/"
+        }
+    ]
+}

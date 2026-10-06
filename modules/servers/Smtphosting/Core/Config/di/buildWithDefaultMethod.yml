@@ -1,0 +1,5 @@
+class:
+  - { name: "\\ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\Core\\Http\\Request", method: "build",                        args: [ ] }
+  - { name: '\\ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\Core\\Http\\View\\Smarty',  method: "get",                    args: [ NULL,NULL ] }
+  - { name: '\\ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\Core\\HandlerError\\Logger',  method: "get",                  args: [ "default","debug.log","warning.log","error.log" ] }
+  - { name: '\\ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\Core\\RegisterManager\\Register',  method: "getInstace",      args: [ ] }

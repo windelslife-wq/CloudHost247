@@ -1,0 +1,1352 @@
+
+$(document).ready(function () {
+    localStorage.removeItem('ip');
+    $.get("https://ipinfo.io", (response) => {
+        var ip = response.ip;
+        localStorage.setItem('ip', ip);
+    }, "jsonp");
+
+    /* show hide password text */
+    // (() => {
+    //     const togglePassword = document.querySelector('#togglePassword');
+    //     if (togglePassword) {
+    //         const password = document.querySelector('#password');
+    //         togglePassword.addEventListener('click', function (e) {
+    //             const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+    //             password.setAttribute('type', type);
+    //             const icon = togglePassword.getAttribute('class') == 'fas fa-eye' ? 'fas fa-eye-slash' : 'fas fa-eye';
+    //             togglePassword.setAttribute('class', icon);
+    //         });
+    //     }
+    // })();
+
+
+    $(document).on("click", ".editServerName", async function () {
+        $("#serverNameEdit #customServerName").val($(".serverName").text())
+    })
+    $(document).on("click", "#serverNameEdit .updateServerName", async function () {
+        $("#customServerName").css("border", "1px solid #ced4da");
+        let customServerName = $("#customServerName").val();
+        if (customServerName == "") {
+            $("#customServerName").css("border", "1px solid red").focus();
+            return false;
+        }
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to Update the server name!",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                $(this).append(`<i class="fa fa-spinner fa-spin"></i>`);
+                $(this).prop("disabled", true);
+                let result = await secureCall({ updateServerName: true, customServerName }, 'POST');
+                var response = JSON.parse(result)
+                if (response.httpcode != 200) {
+                    jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                } else {
+                    jQuery.growl.notice({ title: "Success", message: "Server name has been updated successfully!", duration: 5000 });
+                    $(this).find("i").remove();
+                    $(this).prop("disabled", false);
+                    $("#editServerName").modal('hide');
+                    $(".serverName").html(`${customServerName}`)
+                    $(".serverDetailInfo .customServerName").html(`${customServerName}`)
+                }
+            }
+        })
+    })
+
+    $(document).on("change", "#additionalIp", function () {
+        let numberOfIp = $(this).val();
+        let perIpPrice = $(this).data("peripprice");
+        let currencycode = $(this).data("currencycode");
+        if (numberOfIp < 1) {
+            $(this).css("border", "1px solid red").focus();
+            $("#additinalIpModalCenter .addAdditionalIp").prop("disabled", true);
+            return false;
+        } else {
+            $(this).css("border", "1px solid #ced4da")
+            $("#additinalIpModalCenter .addAdditionalIp").prop("disabled", false);
+        }
+        $("#ipPrices").html(`${numberOfIp} = ${perIpPrice * numberOfIp}${currencycode}`)
+    });
+    $(document).on("click", "#addIpDescriptionsForm .updateIPDesc", async function (e) {
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to Edit Ip description",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                $(this).append(`<i class="fa fa-spinner fa-spin"></i>`);
+                $(this).prop("disabled", true);
+                let desc = $("#addIpDescriptionsForm #addIpDesc").val();
+                let ipblock = $("#manage_ips .ipActionLists.activeList").data("ipblock");
+                let result = await secureCall({ manage_ips: true, iPaction: "addDesc", desc, ipblock }, 'POST');
+                var response = JSON.parse(result)
+                if (response.httpcode != 200) {
+                    jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                } else {
+                    jQuery.growl.notice({ title: "Success", message: "IP description has been updated successfully!", duration: 5000 });
+                    $(this).find("i").remove();
+                    $(this).prop("disabled", false);
+                    $("#addIpDescriptions").modal('hide');
+                    setTimeout(() => { $(".Access-cards-wrapper .mainTab a.active").trigger("click"); }, 2000)
+                }
+            }
+        })
+    });
+    $(document).on("click", "#additinalIpModalCenter .addAdditionalIp", async function () {
+        let obj = this;
+        let numberOfIp = $("#additionalIp").val();
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to add additional ip.",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                $(obj).append(`<i class="fa fa-spinner fa-spin"></i>`);
+                $(obj).prop("disabled", true);
+                let result = await secureCall({ manage_ips: true, iPaction: "addAdditionalIp", numberOfIp }, 'POST');
+                var response = JSON.parse(result)
+                if (response.httpcode != 200) {
+                    jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                } else {
+                    jQuery.growl.notice({ title: "Success", message: response.result.message, duration: 5000 });
+                    invoicePageurl = "viewinvoice.php?id=" + response.result.invoiceid;
+                    setTimeout(() => location.reload(window.open(invoicePageurl)), 2000)
+                }
+                $(obj).prop("disabled", false);
+                $(obj).find("i").remove();
+            }
+        })
+    })
+    $(document).on("click", ".getIpInfo", async function (event) {
+        try {
+            let ip = $(this).data("ip");
+            if ($(this).hasClass("active")) {
+                $(this).removeClass("active").find(".ipDetails").slideUp();
+            } else {
+                $(".accordion-list li.active .ipDetails").slideUp();
+                $(".accordion-list li.active").removeClass("active");
+                $(this).addClass("active").find(".ipDetails").slideDown();
+                $(this).find('.ipDetails').html(`<i class="fa fa-spinner fa-spin"></i>`);
+                let result = await secureCall({ manage_ips: true, getIpDetails: true, ip }, 'POST');
+                $(this).find('.ipDetails').html(result);
+            }
+            event.stopPropagation();
+        } catch (error) {
+            console.error(error);
+        }
+    });
+
+    $(document).on("click", "#clientAreaIpmang", function (e) {
+        e.stopPropagation();
+    })
+    $(document).on("click", ".getFtpIpDetails .card-body", function (e) {
+        e.stopPropagation();
+    })
+
+    $(document).on("click", "#clientAreaIpmang .viewIpDetails", async function () {
+        let ipblock = $(this).closest("tr").data("ip");
+        $("#viewIpDetailsIpBlock").html(ipblock);
+        $("#viewIpDetailsForm .modal-body .mainSec").find("i").remove();
+        $("#viewIpDetailsForm .modal-body .mainSec").html(`<i class="fa fa-spinner fa-spin"></i>`);
+        let result = await secureCall({ manage_ips: true, iPaction: "viewIpDetails", ipblock }, 'POST');
+        $("#viewIpDetailsForm .modal-body .mainSec").html(result)
+    })
+    /* getting templates */
+    $(document).on("click", "#reinstallBt", async function () {
+        try {
+            $("#reinstall .installBtn").prop("disabled", true);
+            $("#reinstall").find("select").html(`<option value="" class="waitingmsg" disabled selected> loading..</option>`);
+            let result = await secureCall({ reinstall: true, reinstallAction: "gettemplate" }, 'POST');
+            var response = JSON.parse(result)
+            if (response.error == "true") {
+                jQuery.growl.error({ title: "Error", message: response.html, duration: 5000 });
+            } else {
+                $("#reinstall").find("select").html(`${response.html}`);
+                $("#reinstallopt option:first").attr('selected', 'selected');
+                $("#reinstall .installBtn").prop("disabled", false);
+            }
+        } catch (error) {
+            jQuery.growl.error({ title: "Error", message: error, duration: 5000 });
+            console.error(error)
+        }
+    });
+
+    $(document).on("click", ".installBtn", async function () {
+        let obj = this;
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to re-install",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    // $(".progress").css("display", "block")
+                    $(obj).append(`<i class="fa fa-spinner fa-spin"></i>`);
+                    $(obj).prop("disabled", true);
+                    let templateName = $("#installOsForm #reinstallopt").val();
+                    // let progress = document.querySelector('.progress-done');
+                    // progress.style.width = progress.getAttribute('data-done') + '%';
+                    // progress.style.opacity = 1;
+                    // let sshKey = $("#installOsForm .ssh-field").val();
+                    let result = await secureCall({ reinstall: true, reinstallAction: "re-install", templateName }, 'POST');
+                    var response = JSON.parse(result);
+                    if (response.httpcode != 200) {
+                        jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                        $(obj).prop("disabled", false);
+                        $(obj).find("i").remove();
+                    } else {
+                        jQuery.growl.notice({ title: "Success", message: "OS installation has been started successfully! This may take about 5-10 minutes", duration: 5000 });
+                        // getTaskStatus({ power: "power", boot: "re-install os status", taskID: response.result.taskId }, "#reInstall .reInstall", false);
+
+                        getTaskStatus({ snapshot: "snapshot", snapshotAction: "getStatus", taskID: response.result.id}, ".installBtn", false);
+                    }
+
+                } catch (error) {
+                    console.error(error)
+                }
+            }
+        })
+    })
+
+    /*  new design js*/
+
+    $(".Access-cards-wrapper #impi .subTab a").on("click", async function () {
+        $(".Access-cards-wrapper #impi .subTab li").removeClass("active");
+        $(this).parent("li").addClass("active");
+        let tabContentContainer = $(this).closest("div").find(".tab-content");
+        tabContentContainer.children().removeClass("in active show");
+        let selected = $(this).attr("href");
+        tabContentContainer.find(selected).addClass("in active show")
+    })
+
+    $(".Access-cards-wrapper #detail .subTab a").on("click", async function () {
+        $(".Access-cards-wrapper #detail .subTab li").removeClass("active");
+        $(this).parent("li").addClass("active");
+        let tabContentContainer = $(this).closest("div").find(".tab-content");
+        tabContentContainer.children().removeClass("in active show");
+        let selected = $(this).attr("href");
+        tabContentContainer.find(selected).addClass("in active show")
+    })
+    $(".Access-cards-wrapper #power .subTab a").on("click", async function () {
+        $(".Access-cards-wrapper #power .subTab li").removeClass("active");
+        $(this).parent("li").addClass("active");
+        let tabContentContainer = $(this).closest("div").find(".tab-content");
+        tabContentContainer.children().removeClass("in active show");
+        let selected = $(this).attr("href");
+        console.log(selected)
+        console.log(tabContentContainer)
+        tabContentContainer.find(selected).addClass("in active show")
+    })
+
+    $(".Access-cards-wrapper #netBoot .subTab a").on("click", async function () {
+        $(".Access-cards-wrapper #netBoot .subTab li").removeClass("active");
+        $(this).parent("li").addClass("active");
+        let tabContentContainer = $(this).closest("div").find(".tab-content");
+        tabContentContainer.children().removeClass("in active show");
+        let selected = $(this).attr("href");
+        tabContentContainer.find(selected).addClass("in active show")
+    })
+    $(".Access-cards-wrapper #reinstall .subTab a").on("click", async function () {
+        $(".Access-cards-wrapper #reinstall .subTab li").removeClass("active");
+        $(this).parent("li").addClass("active");
+        let tabContentContainer = $(this).closest("div").find(".tab-content");
+        tabContentContainer.children().removeClass("in active show");
+        let selected = $(this).attr("href");
+       
+        tabContentContainer.find(selected).addClass("in active show")
+    })
+
+    $(".Access-cards-wrapper .mainTab a").on("click", async function () {
+        $(".Access-cards-wrapper .mainTab li").removeClass("active");
+        $(this).parent("li").addClass("active");
+        let tab_menu = $(this).data("menuname");
+        $(".Access-cards-wrapper .tab-content:first").children().each(function (index) {
+            $(this).removeClass("in active show");
+        });
+        $(`#${tab_menu}`).addClass("in active show");
+        
+        if (tab_menu == "usage") {
+            try {
+                $('#graphdivmain i').remove();
+                $('#graphdivmain').append(`<i class="fa fa-spinner fa-spin"></i>`);
+                $('#containerGraph').remove();
+                let result = await secureCall({ graph: "mrtggraph" }, 'POST');
+                $('#graphdivmain i').remove();
+                $("#mrtggraphdiv").append(`<div id="containerGraph" style="min-width: 310px; width:100%; height: 400px;"></div>`);
+                let data = JSON.parse(result);
+                mtrGraph(data);
+            } catch (error) {
+                console.error(error)
+            }
+        }
+        else if (tab_menu == "ftp_backup") {
+            $('#ftp_backup i').remove();
+            $('#ftp_backup').html(`<i class="fa fa-spinner fa-spin"></i>`);
+            let result = await secureCall({ ftp_backup: "ftp_backup" }, 'POST');
+            $('#ftp_backup').html(result);
+            let width = $('.progress-done').data('done') + '%';
+            $('.progress-done').css({ "width": width, "opacity": "1" });
+        }
+        else if (tab_menu == "manage_ips") {
+            $('#manage_ips').html(`<i class="fa fa-spinner fa-spin"></i>`);
+            let result = await secureCall({ manage_ips: "manage_ips" }, 'POST');
+            $('#manage_ips').html(result);
+            $('.accordion-list > li > .ipDetails').hide();
+        }
+        else if (tab_menu == "snapshot") {
+            $('#snapshot').html(`<i class="fa fa-spinner fa-spin"></i>`);
+            let result = await secureCall({ snapshot: "snapshot" }, 'POST');
+            $('#snapshot').html(result);
+        }
+        else if (tab_menu == "automated_backup") {
+            $('#automated_backup').html(`<i class="fa fa-spinner fa-spin"></i>`);
+            let result = await secureCall({ backup: "automated_backup" }, 'POST');
+            $('#automated_backup').html(result);
+        }
+
+    })
+    $('.mrtg').on('change', async function () {
+        let mrtg01 = $('#mrtg1').val();
+        let period = $('#mrtg3').val();
+        let type = mrtg01;
+        $('#graphdivmain i').remove();
+        $('#graphdivmain').append(`<i class="fa fa-spinner fa-spin"></i>`);
+        $('#containerGraph').remove();
+        try {
+            let result = await secureCall({ graph: "mrtggraph", period, type }, 'POST');
+            $('#graphdivmain i').remove();
+            $("#mrtggraphdiv").append(`<div id="containerGraph" style="min-width: 310px; width:100%; height: 400px;"></div>`);
+            let data = JSON.parse(result);
+            var datas = (data.data);
+            var graphtype = data.type;
+            (graphtype !== undefined && graphtype !== null && graphtype !== '') ? (mrtg01 == "net:tx") ? mtrGraph(datas, graphtype, "Incoming") : (mrtg01 == "net:rx") ? mtrGraph(datas, graphtype, "Outgoing") : mtrGraph(datas, graphtype) : mtrGraph(data);
+        } catch (error) {
+            console.error(error)
+        }
+    });
+
+    $(document).on("click", ".ipAction", function () {
+        if ($("#clientAreaIpmang").hasClass(".ipActionLists.activeList")) {
+            $("#clientAreaIpmang").find(".ipActionLists").css("display", "none");
+            $("#clientAreaIpmang").find(".ipActionLists").removeClass("activeList");
+            $(this).parent().parent().find(".ipActionLists").addClass("activeList");
+            $(this).parent().parent().find(".ipActionLists.activeList").toggle(1000);
+        } else {
+            $("#clientAreaIpmang").find(".ipActionLists").removeClass("activeList");
+            $(this).parent().parent().find(".ipActionLists").addClass("activeList");
+            $(this).parent().parent().find(".ipActionLists.activeList").toggle(1000);
+        }
+    });
+
+    /* reboot */
+    $(document).on("click", ".rebootBtn", async function () {
+        let obj = this;
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to reboot the server",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    let type = $("#power .parrentTab").find(".active").closest("div").data("type");
+                    $(obj).append(`<i class="fa fa-spinner fa-spin"></i>`);
+                    $(obj).prop("disabled", true);
+                    let result = await secureCall({ power: "power", boot: "hardreboot", type }, 'POST');
+                    var response = JSON.parse(result)
+                    if (response.httpcode != 200) {
+                        jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                        $(obj).prop("disabled", false);
+                        $(obj).find("i").remove();
+                    } else {
+                        jQuery.growl.notice({ title: "Success", message: "Reboot successfully!", duration: 5000 });
+                    }
+                } catch (error) {
+                    console.error(error)
+                } finally {
+                    $(obj).find("i").remove();
+                    $(obj).prop("disabled", false);
+                }
+            }
+        });
+
+    })
+    // /* netboot */
+    /* netboot */
+
+    $(document).on("change", "#netBootType", function () {
+        let val = $("#netBootType").val();
+        if (val == "local") {
+            $("#netBoot .nav.nav-tabs").find('a[href="#local"]').trigger('click')
+        } else {
+            $("#netBoot .nav.nav-tabs").find('a[href="#recuse"]').trigger('click')
+        }
+    })
+    $(document).on("click", ".netbootBtn", async function () {
+        let obj = this;
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to netBoot the server",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    var type = $('#netBootType').val()
+                    $(obj).append(`<i class="fa fa-spinner fa-spin"></i>`);
+                    $(obj).prop("disabled", true);
+                    let result = await secureCall({ power: "power", boot: "netBoot", type: type }, 'POST');
+                    var response = JSON.parse(result)
+                    if (response.httpcode != 200) {
+                        jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                    } else {
+                        jQuery.growl.notice({ title: "Success", message: "Booted successfully!", duration: 5000 });
+                    }
+                } catch (error) {
+                    console.error(error)
+                } finally {
+                    $(obj).find("i").remove();
+                    $(obj).prop("disabled", false);
+                }
+            }
+        });
+    });
+
+    /* server start/stop */
+
+    $(document).on("click", ".serverOnOff", async function () {
+        let action = $(this).data("action");
+        let obj = this;
+        Swal.fire({
+            title: "Are you sure?",
+            text: `You want to ${action} the server`,
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    $(obj).append(`<i class="fa fa-spinner fa-spin"></i>`);
+                    $(obj).prop("disabled", true);
+                    let result = await secureCall({ power: "power", boot: "serverOnOff", type: action }, 'POST');
+                    var response = JSON.parse(result)
+                    if (response.httpcode != 200) {
+                        jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                    } else {
+                        jQuery.growl.notice({ title: "Success", message: `Power ${action} has been initiated`, duration: 5000 });
+                        getTaskStatus({ snapshot: "snapshot", snapshotAction: "getStatus", taskID: response.result.id, reloadTabClass: ".Access-cards-wrapper .mainTab a.active" }, ".serverOnOff", false);
+                    }
+                } catch (error) {
+                    console.error(error)
+                }
+            }
+        });
+    });
+    /* order Backup */
+
+    $(document).on("click", ".createbackup", async function () {
+        let obj = this;
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to cretae order",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    $(obj).append(`<i class="fa fa-spinner fa-spin"></i>`);
+                    $(obj).prop("disabled", true);
+                    let result = await secureCall({ backup: "automated_backup", backupAction: "orderBackup" }, 'POST');
+                    var response = JSON.parse(result)
+                    if (response.httpcode != 200) {
+                        jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                    } else {
+                        jQuery.growl.notice({ title: "Success", message: response.result.message, duration: 5000 });
+                    }
+                } catch (error) {
+                    console.error(error)
+                } finally {
+                    $(obj).prop("disabled", false);
+                }
+            }
+        });
+    });
+
+    /* snapshot */
+    /* ordering snapshot */
+    $(document).on("click", ".createSnapshot", async function () {
+        let obj = this;
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to cretae order",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    $(obj).append(`<i class="fa fa-spinner fa-spin"></i>`);
+                    $(obj).prop("disabled", true);
+                    let result = await secureCall({ snapshot: "snapshot", snapshotAction: "orderSnapshot" }, 'POST');
+                    var response = JSON.parse(result)
+                    if (response.httpcode != 200) {
+                        jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                    } else {
+                        jQuery.growl.notice({ title: "Success", message: response.result.message, duration: 5000 });
+                    }
+                } catch (error) {
+                    console.error(error)
+                } finally {
+                    $(obj).find("i").remove();
+                    $(obj).prop("disabled", false);
+                }
+            }
+        });
+    });
+
+    /* creating snapshot */
+    $(document).on("click", ".snapshotCreate", async function () {
+        let obj = this;
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to create snapshot",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    let desc = $("#snapshotDesc").val();
+                    $(obj).append(`<i class="fa fa-spinner fa-spin"></i>`);
+                    $(obj).prop("disabled", true);
+                    let result = await secureCall({ snapshot: "snapshot", snapshotAction: "createSnapshot", desc }, 'POST');
+                    var response = JSON.parse(result)
+                    if (response.httpcode != 200) {
+                        jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                    } else {
+                        jQuery.growl.notice({ title: "Success", message: "Snapshot creation has been initiated", duration: 5000 });
+                        getTaskStatus({ snapshot: "snapshot", snapshotAction: "getStatus", taskID: response.result.id, reloadTabClass: ".Access-cards-wrapper .mainTab a.active" }, ".snapshotCreate", false);
+                    }
+                } catch (error) {
+                    console.error(error)
+                }
+            }
+        });
+    })
+
+    $(document).on("click", ".editSnapshot", function () {
+        let desc = $(this).data("desc");
+        $("#snapshotedit #snapshoteditDesc").val(desc)
+    })
+
+    $(document).on("click", ".snapshoteditDesc", function () {
+        let obj = this;
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to edit snapshot",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    let desc = $("#snapshoteditDesc").val();
+                    $(obj).append(`<i class="fa fa-spinner fa-spin"></i>`);
+                    $(obj).prop("disabled", true);
+                    let result = await secureCall({ snapshot: "snapshot", snapshotAction: "snapshoteditDesc", desc }, 'POST');
+                    var response = JSON.parse(result)
+                    if (response.httpcode != 200) {
+                        jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                    } else {
+                        $("#editSnapshot").modal('hide');
+                        jQuery.growl.notice({ title: "Success", message: "Description has been updated successfully", duration: 5000 });
+                        setTimeout(() => { $(".Access-cards-wrapper .mainTab a.active").trigger("click"); }, 3000)
+                    }
+                } catch (error) {
+                    console.error(error)
+                } finally {
+                    $(obj).find("i").remove();
+                    $(obj).prop("disabled", false);
+                }
+            }
+        });
+    })
+
+    $(document).on("click", ".deleteSnapshot", function () {
+        let obj = this;
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to delete snapshot.",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    $(obj).html(`<i class="fa fa-spinner fa-spin"></i>`);
+                    $(obj).prop("disabled", true);
+                    let result = await secureCall({ snapshot: "snapshot", snapshotAction: "deleteSnapshot" }, 'POST');
+                    var response = JSON.parse(result)
+                    if (response.httpcode != 200) {
+                        jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                    } else {
+                        jQuery.growl.notice({ title: "Success", message: "Snapshot deleteion has been initiated", duration: 5000 });
+                        getTaskStatus({ snapshot: "snapshot", snapshotAction: "getStatus", taskID: response.result.id, reloadTabClass: ".Access-cards-wrapper .mainTab a.active" }, ".deleteSnapshot", false);
+                    }
+                } catch (error) {
+                    console.error(error)
+                }
+            }
+        });
+    })
+    $(document).on("click", ".revertSnapshot", function () {
+        let obj = this;
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to revert snapshot",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    $(obj).html(`<i class="fa fa-spinner fa-spin"></i>`);
+                    $(obj).prop("disabled", true);
+                    let result = await secureCall({ snapshot: "snapshot", snapshotAction: "revertSnapshot" }, 'POST');
+                    var response = JSON.parse(result)
+                    if (response.httpcode != 200) {
+                        jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                    } else {
+                        jQuery.growl.notice({ title: "Success", message: "Snapshot revert has been initiated", duration: 5000 });
+                        getTaskStatus({ snapshot: "snapshot", snapshotAction: "getStatus", taskID: response.result.id, reloadTabClass: ".Access-cards-wrapper .mainTab a.active" }, ".revertSnapshot", false);
+                    }
+                } catch (error) {
+                    console.error(error)
+                }
+            }
+        });
+    })
+
+
+    /* snapshot end */
+    $(document).on("click", ".consoleBtn", async function () {
+        $(this).append(`<i class="fa fa-spinner fa-spin"></i>`);
+        $(this).prop("disabled", true);
+        let result = await secureCall({ console: "console" }, 'POST');
+        var response = JSON.parse(result)
+        if (response.httpcode != 200) {
+            jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+        } else {
+            window.open(response.result);
+        }
+        $(this).find("i").remove();
+        $(this).prop("disabled", false);
+    });
+
+    // /* manage IPs tab */
+
+    $(document).on("click", ".createFirewall", function () {
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to create firewall!",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                let ip = $(this).closest('tr').data('ip');
+                $(".createFirewall").append(`<i class="fa fa-spinner fa-spin"></i>`);
+                $(".createFirewall").prop("disabled", true);
+                let result = await secureCall({ manage_ips: true, iPaction: "cretaeFirewall", ip }, 'POST');
+                var response = JSON.parse(result)
+                if (response.httpcode != 200) {
+                    jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                } else {
+                    jQuery.growl.notice({ title: "Success", message: "Firewall created successfully Status (" + response.result.state + ")", duration: 5000 });
+                    setTimeout(() => { $(".Access-cards-wrapper .mainTab a.active").trigger("click"); }, 2000)
+                }
+                $(".createFirewall").find("i").remove();
+                $(".createFirewall").prop("disabled", false);
+            }
+        });
+    });
+    $(document).on("change", "#firewallEnableDisable", function (e) {
+        e.stopPropagation();
+        if ($(this).is(':checked')) {
+            var checked = true;
+            var actionType = "enable";
+            var action = "Are you sure you want to enable firewall ?";
+        } else {
+            var checked = false;
+            var actionType = "disable";
+            var action = "Are you sure you want to disable firewall ?";
+        }
+        Swal.fire({
+            title: "Are you sure?",
+            text: action,
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+            allowOutsideClick: function (element, allowed) {
+                if (checked) {
+                    $('#firewallEnableDisable').prop('checked', false);
+                } else {
+                    $('#firewallEnableDisable').prop('checked', true);
+                }
+                return true;
+            }
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    let ip = $(this).closest('tr').data('ip');
+                    $(".switch").after(`<div class="loader"><i class="fa fa-spinner fa-spin"></i></div>`);
+                    $("#firewallEnableDisable").prop("disabled", true);
+                    let result = await secureCall({ manage_ips: true, iPaction: "enableDisableFirewall", ip, actionType }, 'POST');
+                    let response = JSON.parse(result)
+                    if (response.httpcode != 200) {
+                        jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                        if (checked) {
+                            $('#firewallEnableDisable').prop('checked', false);
+                        } else {
+                            $('#firewallEnableDisable').prop('checked', true);
+                        }
+                    } else {
+                        jQuery.growl.notice({ title: "Success", message: `Firewall ${actionType} successfully!`, duration: 5000 });
+                        setTimeout(() => { $(".Access-cards-wrapper .mainTab a.active").trigger("click"); }, 2000)
+                    }
+                } catch (error) {
+                    console.error(error)
+                } finally {
+                    $("#manage_ips").find(".loader").remove();
+                    $("#firewallEnableDisable").prop("disabled", false);
+                }
+
+            } else {
+                if (checked) {
+                    $('#firewallEnableDisable').prop('checked', false);
+                } else {
+                    $('#firewallEnableDisable').prop('checked', true);
+                }
+
+            }
+        });
+    });
+
+    $(document).on("click", "#addReverseIp .updateIPReverse", async function () {
+        let ipblock = $("#manage_ips .ipActionLists.activeList").data("ipblock");
+        let reverseIp = $("#addReverseIp #addIpReverse").val();
+        if (reverseIp == "") {
+            $("#addReverseIp #addIpReverse").css("border", "1px solid red").focus();
+            return false;
+        }
+        try {
+            $(this).append(`<i class="fa fa-spinner fa-spin"></i>`);
+            $(this).prop("disabled", true);
+            let result = await secureCall({ manage_ips: true, iPaction: "addReverseIp", ipblock, reverseIp }, 'POST');
+            var response = JSON.parse(result);
+            if (response.httpcode != 200) {
+                jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+            } else {
+                jQuery.growl.notice({ title: "Success", message: "Reverse Ip has been added successfully!", duration: 5000 });
+            }
+        } catch (error) {
+            console.error(error)
+        } finally {
+            $(this).find("i").remove();
+            $(this).prop("disabled", false);
+            $("#addReverseIp").modal('hide');
+        }
+    })
+
+    $(document).on("click", "#clientAreaIpmang .ipActionLists li", async function (e) {
+        $("#clientAreaIpmang .ipActionLists").find(".active").removeClass("active");
+        $(this).addClass("active");
+        let obj = this;
+        let ipblock = $("#manage_ips .ipActionLists.activeList").data("ipblock");
+        var ipblockarr = ipblock.split("/");
+        if ($(this).data("target") == "#addReverseIp") {
+            $("#addReverseIp #addIpReverseIPAddress").val(ipblockarr["0"])
+        }
+        else if($(this).data("target") == "#addReverseIp6"){
+            $("#addReverseIp6 #addIpReverseIP6Address").val(ipblock);
+
+        }
+        else if ($(this).data("target") == "#getFirewallRules") {
+            $("#getFirewallRules .firewallName").text(ipblockarr["0"])
+            $("#getFirewallRulesTable").dataTable().fnDestroy();
+            dataTableObj = $("#getFirewallRulesTable").DataTable({
+                "ajax": {
+                    "url": "",
+                    "data": { manage_ips: true, iPaction: "getFirewallRules", ipblock },
+                    "dataSrc": "data"
+                },
+                columns: [
+                    { "data": 'sequence' },
+                    { "data": 'action' },
+                    { "data": 'protocol' },
+                    { "data": 'destination' },
+                    { "data": 'sourcePort' },
+                    { "data": 'destinationPort' },
+                    { "data": 'tcpOption' },
+                    { "data": 'state' },
+                    { "data": 'delete' }
+                ]
+            });
+        }
+        else if ($(this).data("mitigration")) {
+            let mitigrationIp = $(this).data("mitigrationip");
+            let message = '';
+            let title = '';
+            if (mitigrationIp != "") {
+                title = `Switch Network Scrubbing Centre to permanent mitigation`
+                message = `Are you sure you want to enable permanent Scrubbing Centre mitigation on the ${mitigrationIp} IP? Please use this option with caution (in most cases, using automatic mitigation is recommended)`;
+            } else {
+                title = `Switch Network Scrubbing Centre to automatic mode`
+                message = `This way, you can enable the default protection settings on the ${mitigrationIp} IP.`;
+            }
+            Swal.fire({
+                title: title,
+                text: message,
+                icon: "info",
+                showCancelButton: true,
+                confirmButtonColor: "#3085d6",
+                cancelButtonColor: "#d33",
+                confirmButtonText: "Yes",
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    $(obj).append(`<i class="fa fa-spinner fa-spin"></i>`);
+                    $(obj).prop("disabled", true);
+                    $(obj).css({ "cursor": "no-drop", "color": "#808080" });
+                    try {
+                        let result = await secureCall({ manage_ips: true, iPaction: "mitigration", ipblock, mitigrationIp }, 'POST');
+                        let response = JSON.parse(result)
+                        if (response.httpcode != 200) {
+                            jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                        } else {
+                            jQuery.growl.notice({ title: "Success", message: "Updated successfully!", duration: 5000 });
+                            setTimeout(() => { $(".Access-cards-wrapper .mainTab a.active").trigger("click"); }, 3000)
+                        }
+                    } catch (error) {
+                        console.error(error);
+                    } finally {
+                        $(obj).prop("disabled", false);
+                        $(obj).find("i").remove();
+                        $(obj).css({ "cursor": "pointer", "color": "#212529" });
+                    }
+                }
+            })
+        } else {
+            let desc = $(this).data("desc");
+            $("#addIpDescriptionsForm #addIpDesc").val(desc)
+        }
+    });
+
+    
+    $(document).on("click", "#addReverseIp6 .updateIP6Reverse", async function(){
+        
+        try {
+            let ip = $("#addReverseIp6 #ipAddress6").val();
+            let ipblock = $("#manage_ips .ipActionLists.activeList").data("ipblock");
+            let reverseDNS = $("#addReverseIp6 #addIp6Reverse").val();
+            if(ip == ''){
+                $("#addReverseIp6 #ipAddress6").css("border", "1px solid red");;
+                $("#addReverseIp6 #ipAddress6").focus();
+                return false;
+            }else{
+                $("#addReverseIp6 #ipAddress6").css("border", "1px solid #ced4da")
+            }
+            if (reverseDNS == "") {
+                $("#addReverseIp6 #addIp6Reverse").css("border", "1px solid red");;
+                $("#addReverseIp6 #addIp6Reverse").focus();
+                return false;
+            }else{
+                $("#addReverseIp6 #addIp6Reverse").css("border", "1px solid #ced4da")
+            }
+            $(this).append(`<i class="fa fa-spinner fa-spin"></i>`);
+            $(this).prop("disabled", true);
+
+            let result = await secureCall({ manage_ips: true, iPaction: "updateIP6Reverse", ip, ipblock, reverseDNS }, 'POST');
+            var response = JSON.parse(result)
+            if (response.httpcode != 200) {
+                jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                $(this).find("i").remove();
+                $(this).prop("disabled", false);
+            } else {
+                jQuery.growl.notice({ title: "Success", message: "Reverse DNS has been updated successfully!", duration: 5000 });
+            }
+        } catch (error) {
+            console.error(error)
+            jQuery.growl.error({ title: "Error", message: error, duration: 5000 });
+        }
+
+    })
+
+
+
+    $(document).on("click", "#getFirewallRules button.showModal", function () {
+        $("#firewaAddllRules").toggle(1000)
+    })
+    $(document).on("click", "#firewaAddllRules .addDirewallRule", async function () {
+        let obj = this;
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to add rule",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                $(obj).append(`<i class="fa fa-spinner fa-spin"></i>`);
+                $(obj).prop("disabled", true);
+                let ipblock = $("#manage_ips .ipActionLists.activeList").data("ipblock");
+                let data = $("#getFirewallRulesForm").serialize();
+                let result = await secureCall({ manage_ips: true, iPaction: "addFirewallRule", data, ipblock }, 'POST');
+                var response = JSON.parse(result)
+                if (response.httpcode != 200) {
+                    jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                    $(obj).find("i").remove();
+                    $(obj).prop("disabled", false);
+                } else {
+                    jQuery.growl.notice({ title: "Success", message: "Firewall rules has been added successfully!", duration: 5000 });
+                    $(obj).find("i").remove();
+                    $(obj).prop("disabled", false);
+                    dataTableObj.ajax.reload(null, true);
+                }
+            }
+        })
+    })
+
+    $(document).on("click", "#getFirewallRulesForm #getFirewallRulesTable .deleteFirewallRule", async function () {
+        let obj = this;
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to delete rule",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                $(obj).removeClass(`fas fa-trash-alt deleteFirewallRule`);
+                $(obj).addClass(`fa fa-spinner fa-spin`);
+                $(obj).prop("disabled", true);
+                let sequese = $(obj).parent().parent().find(".sorting_1").text();
+                let ipblock = $("#manage_ips .ipActionLists.activeList").data("ipblock");
+                let result = await secureCall({ manage_ips: true, iPaction: "deleteFirewallRule", sequese, ipblock }, 'POST');
+                var response = JSON.parse(result)
+                if (response.httpcode != 200) {
+                    jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                    $(obj).removeClass(`fa fa-spinner fa-spin`);
+                    $(obj).addClass(`fas fa-trash-alt deleteFirewallRule`);
+                    $(obj).prop("disabled", false);
+                } else {
+                    jQuery.growl.notice({ title: "Success", message: "Firewall rules has been deleted successfully!", duration: 5000 });
+                    $(obj).find("i").remove();
+                    $(obj).prop("disabled", false);
+                    dataTableObj.ajax.reload(null, true);
+                }
+            }
+        })
+    })
+
+    $(document).on("change", "#getFirewallRules #firewallProtocol", function () {
+        let protocol = $(this).val();
+        if (protocol == "tcp") {
+            $("#getFirewallRules").find(".onlyWithTCP").css("display", "flex");
+        } else {
+            $("#getFirewallRules").find(".onlyWithTCP").css("display", "none");
+        }
+    })
+
+    $(document).on("click", ".deleteFirewall", function () {
+        let obj = this;
+        Swal.fire({
+            title: "Are you sure?",
+            text: "You want to delete firewall!",
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Yes",
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                let ipblock = $("#manage_ips .ipActionLists.activeList").data("ipblock");
+                $(obj).append(`<i class="fa fa-spinner fa-spin"></i>`);
+                $(obj).prop("disabled", true);
+                $(obj).css({ "cursor": "no-drop", "color": "#808080" });
+                try {
+                    let result = await secureCall({ manage_ips: true, iPaction: "deleteFirewall", ipblock }, 'POST');
+                    var response = JSON.parse(result)
+                    if (response.httpcode != 200) {
+                        jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+                    } else {
+                        jQuery.growl.notice({ title: "Success", message: "Firewall deleted successfully", duration: 5000 });
+                        setTimeout(() => { $(".Access-cards-wrapper .mainTab a.active").trigger("click"); }, 2000)
+                    }
+                } catch (error) {
+                    console.error(error)
+                } finally {
+                    $(obj).find("i").remove();
+                    $(obj).prop("disabled", false);
+                    $(obj).css({ "cursor": "pointer", "color": "#212529" });
+                }
+            }
+        });
+    });
+
+    /* details tab */
+
+    if ($(document).find("#serverDetailInfo .dataCenter").length > 0) {
+        $.ajax({
+            type: 'POST',
+            url: '',
+            data: { getDatacenter: true },
+            beforeSend: function () {
+                $("#serverDetailInfo .dataCenter").append(`<i class="fa fa-spinner fa-spin"></i>`);
+            },
+            success: function (result) {
+                $("#serverDetailInfo .dataCenter").find("i").remove();
+                $("#serverDetailInfo .dataCenter").html(`${result}`);
+            }
+        });
+    }
+
+    if ($(document).find("#serverDetailInfo .opetaingSystem").length > 0) {
+        $.ajax({
+            type: 'POST',
+            url: '',
+            data: { getOpetaingSystem: true },
+            beforeSend: function () {
+                $("#serverDetailInfo .opetaingSystem").append(`<i class="fa fa-spinner fa-spin"></i>`);
+                $(".topOs").append(`<i class="fa fa-spinner fa-spin"></i>`);
+            },
+            success: function (result) {
+                $("#serverDetailInfo .opetaingSystem").find("i").remove();
+                $(".topOs").find("i").remove();
+                $("#serverDetailInfo .opetaingSystem").html(`${result}`);
+                $(".topOs").html(`${result}`);
+            }
+        });
+    }
+
+    if ($(document).find("#serverDetailInfo .getIps").length > 0) {
+        $.ajax({
+            type: 'POST',
+            url: '',
+            data: { getIps: true },
+            beforeSend: function () {
+                $("#serverDetailInfo .getIps").append(`<i class="fa fa-spinner fa-spin"></i>`);
+                $(".ipv4Copy").append(`<i class="fa fa-spinner fa-spin"></i>`);
+            },
+            success: function (result) {
+                let response = JSON.parse(result);
+                $("#serverDetailInfo .getIps").find("i").remove();
+                $(".ipv4Copy").find("i").remove();
+                $("#serverDetailInfo .getIps.ip4").html(response.ipv4);
+                $("#serverDetailInfo .getIps.ip6").html(response.ipv6);
+                $("#myInput").val(response.ipv4);
+                $(".ipv4Copy").html(response.ipv4);
+            }
+        });
+    }
+
+    $(document).on("click", "#monitoring .monitoring-custom-inner", function () {
+        $(this).parent().find('.active').removeClass('active')
+        $(this).addClass('active')
+    })
+});
+
+const getTaskStatus = async (data = {}, selector, reload = true) => {
+    try {
+        let result = await secureCall(data, 'POST');
+        let taskStatus = JSON.parse(result)
+        let action = '';
+        if (taskStatus.result.type == "createSnapshot") {
+            action = `Snapshot creation is in progress.`
+        } else if (taskStatus.result.type == "deleteSnapshot") {
+            action = `Snapshot deletion is in progress.`
+        } else if (taskStatus.result.type == "revertSnapshot") {
+            action = `Snapshot revertion is in progress.`
+        } else if (taskStatus.result.type == "stopVm") {
+            action = `Power stop is in progress.`
+        } else if (taskStatus.result.type == "startVm") {
+            action = `Power start is in progress.`
+        } else {
+            action = `Re-installation is in progress.`
+            $('.progress-done').css('width', `${taskStatus.resultprogress}%`);
+            $('.progress-done').html(`${taskStatus.resultprogress}%`);
+        }
+        if (taskStatus.httpcode != 200) {
+            jQuery.growl.error({ title: "Error", message: taskStatus.result.message, duration: 5000 });
+        }
+        else {
+            if (taskStatus.result.state != "done") {
+                jQuery.growl.notice({ title: "Success", message: `${action}`, duration: 5000 });
+                window.setTimeout(async () => getTaskStatus(data, selector), 10000);
+            } else {
+
+                console.log(data);
+                jQuery.growl.notice({ title: "Success", message: `Operation has been completed.`, duration: 5000 });
+                $(selector).prop("disabled", false);
+                $(selector).find("i").remove();
+                $("#snapshotCreateBtn").modal('hide');
+                $("#editSnapshot").modal('hide');
+                $('#installOsForm .progress').css("display", "none");
+                /* reloading a specific tab */
+                if (data.hasOwnProperty("reloadTabClass")) {
+                    $("#enableACLFtp").modal('hide');
+                    $(data.reloadTabClass).trigger("click");
+                    return false;
+                }
+                setTimeout(() => location.reload(), 3000);
+            }
+        }
+    } catch (error) {
+        console.log(error);
+    }
+}
+
+const mtrGraph = (data, type = "%", name = ' ') => {
+    $('#containerGraph').highcharts({
+        chart: {
+            zoomType: 'x'
+        },
+        title: {
+            text: ''
+        },
+        subtitle: {
+            text: ''
+        },
+        xAxis: {
+            type: 'datetime',
+            tickPixelInterval: 250,
+            labels: {
+                format: '{value:%e %b %Y %H:%M:%S}',
+                rotation: -65,
+                align: 'right'
+            },
+            tickInterval: 20 * 60 * 100
+        },
+        yAxis: {
+            title: {
+                text: type
+            },
+            min: 0,
+            tickInterval: 1
+        },
+        legend: {
+            enabled: false
+        },
+        plotOptions: {
+            area: {
+                fillColor: {
+                    linearGradient: {
+                        x1: 0,
+                        y1: 0,
+                        x2: 0,
+                        y2: 1
+                    },
+                    stops: [
+                        [0, Highcharts.getOptions().colors[0]],
+                        [1, Highcharts.getOptions().colors[0]]
+                    ]
+                },
+                marker: {
+                    radius: 2
+                },
+                lineWidth: 1,
+                states: {
+                    hover: {
+                        lineWidth: 1
+                    }
+                },
+                threshold: null
+            }
+        },
+        series: [{
+            type: 'area',
+            name: name,
+            data: data
+        }]
+    });
+}
+const secureCall = (data = {}, method = "GET") => {
+
+    return new Promise(function (resolve, reject) {
+        $.ajax({
+            url: '',
+            method: method,
+            data: data,
+            success: function (response) {
+                resolve(response);
+            },
+            error: function (error) {
+                reject(error);
+            }
+        });
+    });
+}
+
+const enableDisablMonitoring = async () => {
+    let event = '';
+    let message = '';
+    let action = $("#monitoring .monitoring-custom-inner.active").data("action");
+    if (action == "disable") {
+        event = "You want to disable monitoring";
+        message = "Monitoring disable successfully!";
+    }
+    else if (action == "Enable") {
+        event = "You want to enable monitoring ";
+        message = "Monitoring enable successfully!"
+    }
+    Swal.fire({
+        title: "Are you sure?",
+        text: event,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonColor: "#3085d6",
+        cancelButtonColor: "#d33",
+        confirmButtonText: "Yes",
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            $("#monitoring").find("button").append(`<i class="fa fa-spinner fa-spin"></i>`);
+            $("#monitoring").find("button").prop("disabled", true);
+            let result = await secureCall({ monitoring: "slaMonitoring", ftpAction: action }, 'POST');
+            var response = JSON.parse(result)
+            if (response.httpcode != 200) {
+                jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+            } else {
+                jQuery.growl.notice({ title: "Success", message: message, duration: 5000 });
+                setTimeout(() => location.reload(), 2000)
+            }
+            $("#monitoring").find("i").remove();
+            $("#monitoring").find("button").prop("disabled", false);
+        }
+    })
+}
+
+/* //copy to clipboard with tooltip */
+function copyText() {
+    var copyText = document.getElementById("myInput");
+    copyText.type = 'text';
+    copyText.select();
+    copyText.setSelectionRange(0, 99999);
+    document.execCommand("copy");
+    var tooltip = document.getElementById("myTooltip");
+    tooltip.innerHTML = "Copied: " + copyText.value;
+    copyText.type = 'hidden';
+}
+
+function updateText() {
+    var tooltip = document.getElementById("myTooltip");
+    tooltip.innerHTML = "Copy to clipboard";
+}
+
+const powerOnOffVps = async (action) => {
+    let event = '';
+    let message = '';
+    if (action == "poweroff") {
+        event = "You want to power off";
+        message = "Power Off successfully!";
+    } else {
+        event = "You want to power on";
+        message = "power on successfully!"
+    }
+    Swal.fire({
+        title: "Are you sure?",
+        text: event,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonColor: "#3085d6",
+        cancelButtonColor: "#d33",
+        confirmButtonText: "Yes",
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            let selector = "." + action;
+            $(selector).find(".monitorinLoader").remove();
+            $(selector).append(`<div class="monitorinLoader"><i class="fa fa-spinner fa-spin"></i></div>`);
+            $(selector).css({ 'pointer-events': 'none' });
+            let result = await secureCall({ power: "changepower", ftpAction: action }, 'POST');
+            var response = JSON.parse(result)
+            if (response.httpcode != 200) {
+                jQuery.growl.error({ title: "Error", message: response.result.message, duration: 5000 });
+            } else {
+                jQuery.growl.notice({ title: "Success", message: message, duration: 5000 });
+                setTimeout(() => location.reload(), 2000)
+            }
+            $(selector).css({ 'pointer-events': 'auto' });
+            $(selector).find(".monitorinLoader").remove();
+        }
+    })
+}
+const getPowerDetails = (obj) => {
+    let type = $(obj).data("type");
+    let selector = "#" + type;
+    if (!$(obj).hasClass("loaded")) {
+        $(selector).find("button").prop("disabled", true);
+        $(selector).find("select").html(`<option value="" disabled selected> loading...</option>`);
+        try {
+            $.ajax({
+                url: "",
+                type: "POST",
+                data: { power: true, type },
+                success: function (results) {
+                    let result = JSON.parse(results);
+                    $(selector).find("select").html(`${result.html}`);
+                    $(selector).find("button").prop("disabled", false);
+                    $(obj).addClass("loaded");
+                }
+            });
+        } catch (error) {
+            console.error(error)
+        }
+    }
+}
+
+

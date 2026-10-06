@@ -1,0 +1,77 @@
+/* #orderSummary #btnCompleteProductConfig {
+    background: #f51322;
+}
+#orderSummary #btnCompleteProductConfig:hover {
+    border-color: #ce2934;
+    background-color: #f51322;
+    color: #fff;
+} */
+
+
+/* 
+.billingcycle-box:has(.checked),
+.billingcycle-box.active,
+.billingcycle-box.config-box.serverLocation.active,
+.location-center.addonSection.active,
+.billingcycle-box:hover,
+.location-center.addonSection:hover {
+    background: #fff;
+    border-color: #ce2934;
+}
+
+.billingcycle-box:hover {
+    background: #ffffff;
+    cursor: pointer;
+    border-color: #ce2934;
+}
+
+.billingcycle-box.config-box.serverLocation.active:after,
+.billingcycle-box.operating-box.active:after,
+.billingcycle-box.licenseControl.active:after,
+.location-center.addonSection.active:after,
+.billing-inner.active:after {
+    border-right: 30px solid #ce2934;
+    } 
+    .billing-inner:hover, .billing-inner.active {
+        border-color: #ce2934;
+    }
+    
+*/
+#serverLocation img {
+    margin-top: 4px;
+}
+
+#order-standard_cart .order-summary .loader {
+    /* color: #ce2934; */
+    margin-right: 25px;
+}
+
+body section#main-body.wgs-in-cart {
+    background-color: #f1f1f1;
+}
+
+body #order-standard_cart .summary-container {
+    padding: 2px 12px;
+}
+
+#order-standard_cart .summary-container .clearfix {
+    font-size: 11px!important;
+    margin-bottom: 12px!important;
+}
+body #order-standard_cart .summary-container .clearfix span {
+    font-size: unset;
+    line-height: unset;
+}
+div#productConfigurableOptions .row .location-center .row {
+    margin: 0 0px;
+}
+body #billingcycleheader{
+    font-size: 18px;
+    margin-bottom: 20px;
+}
+body #order-standard_cart .sub-heading span {
+    background: #f1f1f1 !important;
+}
+body #btnCompleteProductConfig {
+    border: 1px solid #2152da;
+}

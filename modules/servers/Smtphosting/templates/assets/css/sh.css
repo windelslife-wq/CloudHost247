@@ -1,0 +1,698 @@
+/* Card */
+.smtp-card {
+  background: white;
+  border-radius: var(--border-radiusSH);
+  box-shadow: var(--box-shadowSH);
+  margin-bottom: 24px;
+  overflow: hidden;
+  border: 1px solid #e9ecef;
+}
+
+.smtp-card-header {
+  background: var(--primarySH);
+  color: white;
+  padding: 16px 20px;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.smtp-card-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--lightSH) !important;
+}
+
+.smtp-card-body {
+  padding: 20px;
+}
+
+/* Input Group Styling */
+.input-group-clean {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+  background: var(--lightSH);
+  border-radius: var(--border-radiusSH);
+  border: 1px solid #dee2e6;
+}
+
+.input-group-clean .input-label {
+  flex: 0 0 140px;
+  background: var(--secondarySH);
+  color: white;
+  padding: 12px 16px;
+  border-radius: var(--border-radiusSH) 0 0 var(--border-radiusSH);
+  font-weight: 500;
+  text-align: center;
+  font-size: 14px;
+}
+
+.input-group-clean .input-field {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--darkSH);
+  outline: none;
+  font-family: 'Courier New', monospace;
+}
+
+.input-group-clean .input-field:focus {
+  background: white;
+}
+
+.input-group-clean .password-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.input-group-clean .password-wrapper .input-field {
+  flex: 1;
+  border-radius: 0;
+}
+
+.input-group-clean .password-toggle {
+  background: white;
+  border: none;
+  padding: 12px 16px;
+  cursor: pointer;
+  color: var(--secondarySH);
+  transition: var(--transitionSH);
+  border-left: 1px solid #dee2e6;
+}
+
+.input-group-clean .password-toggle:hover {
+  color: var(--primarySH);
+  background: var(--primarySH-light);
+}
+
+/* DNS Configuration */
+.dns-section {
+  margin-bottom: 24px;
+  overflow: auto;
+}
+
+.dns-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: var(--border-radiusSH);
+  overflow: auto;
+  box-shadow: var(--box-shadowSH);
+}
+
+.dns-table th {
+  background: var(--primarySH-light);
+  color: var(--primarySH-dark);
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid var(--primarySH);
+}
+
+.dns-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #dee2e6;
+  vertical-align: top;
+}
+
+.dns-table tr:hover {
+  background: var(--primarySH-light);
+}
+
+.dns-record-name {
+  font-weight: 600;
+  color: var(--darkSH);
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+}
+
+.dns-record-value {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  color: var(--darkSH);
+}
+
+/* Integration Cards */
+.integration-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.integration-card {
+  background: white;
+  border: 2px solid #e9ecef;
+  border-radius: var(--border-radiusSH);
+  padding: 20px;
+  transition: var(--transitionSH);
+}
+
+.integration-card.tls:hover {
+  border-color: var(--infoSH);
+  box-shadow: var(--box-shadowSH);
+}
+
+.integration-card.ssl:hover {
+  border-color: var(--successSH);
+  box-shadow: var(--box-shadowSH);
+}
+
+.integration-card.none:hover {
+  border-color: var(--dangerSH);
+  box-shadow: var(--box-shadowSH);
+}
+
+.integration-card.ssl {
+  border-top: 4px solid var(--successSH);
+}
+
+.integration-card.tls {
+  border-top: 4px solid var(--infoSH);
+}
+
+.integration-card.none {
+  border-top: 4px solid var(--dangerSH);
+}
+
+.protocol-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: var(--darkSH);
+  display: flex;
+  justify-content: between;
+  align-items: center;
+}
+
+.protocol-title .port {
+  background: var(--primarySH);
+  color: white;
+  padding: 2px 10px;
+  border-radius: 15px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-left: 10px;
+}
+
+/* Usage Analytics */
+.usage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.usage-item {
+  background: white;
+  padding: 16px;
+  border-radius: var(--border-radiusSH);
+  border: 1px solid #e9ecef;
+  text-align: center;
+}
+
+.usage-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--primarySH);
+  margin-bottom: 4px;
+}
+
+.usage-label {
+  font-size: 12px;
+  color: var(--secondarySH);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.progress-clean {
+  height: 20px;
+  background: #e9ecef;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-bar-clean {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  transition: width 0.6s ease;
+  min-width: 20%;
+}
+
+.progress-hourly {
+  background: var(--infoSH);
+}
+
+.progress-monthly {
+  background: var(--successSH);
+}
+
+/* Mail Logs Table */
+.table-container {
+  overflow-x: auto;
+  border: 1px solid #dee2e6;
+  border-radius: var(--border-radiusSH);
+  min-width: 10%;
+}
+
+.table-clean {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 800px;
+}
+
+.table-clean th {
+  background: var(--primarySH-light);
+  color: var(--primarySH-dark);
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid var(--primarySH);
+}
+
+.table-clean td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.table-clean tr:hover {
+  background: var(--primarySH-light);
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-success {
+  background: rgba(40, 167, 69, 0.1);
+  color: var(--successSH);
+  border: 1px solid var(--successSH);
+}
+
+.badge-danger {
+  background: rgba(220, 53, 69, 0.1);
+  color: var(--dangerSH);
+  border: 1px solid var(--dangerSH);
+}
+
+/* Button Styling */
+.btn-clean {
+  background: var(--primarySH);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: var(--border-radiusSH);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transitionSH);
+}
+
+.btn-clean:hover {
+  background: var(--primarySH-dark);
+  color: white;
+}
+
+/* Tooltip */
+.mail-tooltip-container {
+  position: relative;
+  display: inline-block;
+}
+
+.mail-tooltip-content {
+  display: none;
+  position: fixed;
+  z-index: 10000;
+  background: white;
+  border: 1px solid #dee2e6;
+  padding: 20px;
+  max-width: 600px;
+  width: 90%;
+  font-size: 13px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  white-space: pre-wrap;
+  font-family: 'Courier New', monospace;
+  border-radius: var(--border-radiusSH);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.mail-tooltip-container.show .mail-tooltip-content {
+  display: block;
+}
+
+.mail-tooltip-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  z-index: 9999;
+}
+
+.mail-tooltip-container.show ~ .mail-tooltip-overlay {
+  display: block;
+}
+
+/* Pagination */
+.pagination-clean {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 20px;
+  gap: 8px;
+}
+
+.pagination-clean button {
+  padding: 8px 16px;
+  border: 1px solid #dee2e6;
+  background: white;
+  color: var(--primarySH);
+  border-radius: var(--border-radiusSH);
+  cursor: pointer;
+  transition: var(--transitionSH);
+}
+
+.pagination-clean button:hover:not(:disabled) {
+  background: var(--primarySH);
+  color: white;
+}
+
+.pagination-clean button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-clean .page-info {
+  padding: 8px 16px;
+  color: var(--secondarySH);
+  font-weight: 500;
+}
+
+/* Mobile Optimization */
+@media (max-width: 768px) {
+  .smtp-card-body {
+    padding: 16px;
+  }
+  
+  .input-group-clean {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .input-group-clean .input-label {
+    flex: none;
+    border-radius: var(--border-radiusSH) var(--border-radiusSH) 0 0;
+  }
+  
+  .input-group-clean .input-field {
+    border-radius: 0 0 var(--border-radiusSH) var(--border-radiusSH);
+  }
+  
+  .integration-cards {
+    grid-template-columns: 1fr;
+  }
+  
+  .usage-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  
+  .dns-table {
+    font-size: 12px;
+  }
+  
+  .dns-table th,
+  .dns-table td {
+    padding: 8px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .usage-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .smtp-card-header h3 {
+    font-size: 16px;
+  }
+  
+  .input-group-clean .input-label {
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+  
+  .input-group-clean .input-field {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+}
+
+/* Spinner */
+.spinner-clean {
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(0, 119, 182, 0.2);
+  border-radius: 50%;
+  border-top-color: var(--primarySH);
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.usage-progress-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 768px) {
+  .usage-progress-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.si-sh-service-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 24px;
+}
+
+.si-sh-service-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  border: 1px solid #eaeaea;
+  overflow: hidden;
+}
+
+.si-sh-card-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-bottom: 1px solid #eaeaea;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.si-sh-card-header-inner i {
+  color: var(--primarySH);
+  font-size: 16px;
+}
+
+.si-sh-status-badge {
+  margin-left: auto;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.si-sh-status-active { background: #d4edda; color: #155724; }
+.si-sh-status-suspended { background: #fff3cd; color: #856404; }
+.si-sh-status-inactive { background: #f8d7da; color: #721c24; }
+
+.si-sh-card-content {
+  padding: 20px 24px;
+}
+
+.si-sh-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #f8f9fa;
+}
+
+.si-sh-info-row:last-child {
+  border-bottom: none;
+}
+
+.si-sh-info-row.si-sh-highlight {
+  background: #f8f9fa;
+  margin: 0 -24px;
+  padding: 16px 24px;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.si-sh-info-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #6c757d;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.si-sh-info-label i {
+  width: 16px;
+  text-align: center;
+  color: var(--primarySH);
+}
+
+.si-sh-info-value {
+  font-weight: 600;
+  color: #2c3e50;
+  text-align: right;
+}
+
+.si-sh-funds-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 4px 8px;
+  background: var(--successSH);
+  color: var(--lightSH) !important;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.si-sh-funds-link:hover {
+  background: #218838;
+  transform: translateY(-1px);
+  text-decoration: none;
+  color: white;
+}
+
+.si-sh-action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.si-sh-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: white;
+  border: 1px solid #eaeaea;
+  border-radius: 10px;
+  text-decoration: none;
+  color: #2c3e50 !important;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.si-sh-action-btn:hover {
+  border-color: var(--primarySH);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  text-decoration: none;
+}
+
+.si-sh-action-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #f8f9fa;
+  color: var(--primarySH);
+  font-size: 16px;
+  transition: all 0.3s ease;
+}
+
+.si-sh-action-btn:hover .si-sh-action-icon {
+  background: var(--primarySH);
+  color: white;
+}
+
+.si-sh-action-text {
+  flex: 1;
+  text-align: left;
+}
+
+.si-sh-action-text span {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.si-sh-action-text small {
+  color: #6c757d;
+  font-size: 12px;
+}
+
+.si-sh-action-arrow {
+  color: #6c757d;
+  transition: all 0.3s ease;
+}
+
+.si-sh-action-btn:hover .si-sh-action-arrow {
+  color: var(--primarySH);
+  transform: translateX(3px);
+}
+
+.si-sh-action-btn.si-sh-password:hover { border-left: 4px solid var(--primarySH); }
+.si-sh-action-btn.si-sh-upgrade:hover { border-left: 4px solid var(--infoSH); }
+.si-sh-action-btn.si-sh-renew:hover { border-left: 4px solid var(--successSH); }
+.si-sh-action-btn.si-sh-cancel:hover { border-left: 4px solid var(--dangerSH); }
+
+@media (max-width: 768px) {
+  .si-sh-service-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .si-sh-card-content {
+    padding: 16px;
+  }
+  
+  .si-sh-action-btn {
+    padding: 14px 16px;
+  }
+}

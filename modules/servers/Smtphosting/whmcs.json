@@ -1,0 +1,13 @@
+{
+  "schema": "1.0",
+  "type": "whmcs-extension",
+  "name": "Smtphosting",
+  "license": "proprietary",
+  "category": "provisioning",
+  "description": {
+    "name": "Smtphosting",
+    "tagline": "",
+    "short": "",
+    "long": "Reliable SMTP Service Reseller from smtphosting.com"
+  }
+}

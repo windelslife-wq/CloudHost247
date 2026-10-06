@@ -1,0 +1,9 @@
+class:
+  - { old: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\Core\\Configuration\\Addon\\Config\\After',     new: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\App\\Configuration\\Addon\\Config\\After' }
+  - { old: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\Core\\Configuration\\Addon\\Activate\\After',   new: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\App\\Configuration\\Addon\\Activate\\After' }
+  - { old: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\Core\\Configuration\\Addon\\Deactivate\\After', new: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\App\\Configuration\\Addon\\Deactivate\\After' }
+  - { old: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\Core\\Configuration\\Addon\\Update\\After',     new: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\App\\Configuration\\Addon\\Update\\After' }
+  - { old: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\Core\\Configuration\\Addon\\Config\\Before',    new: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\App\\Configuration\\Addon\\Config\\Before' }
+  - { old: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\Core\\Configuration\\Addon\\Activate\\Before',  new: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\App\\Configuration\\Addon\\Activate\\Before' }
+  - { old: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\Core\\Configuration\\Addon\\Deactivate\\Before',new: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\App\\Configuration\\Addon\\Deactivate\\Before' }
+  - { old: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\Core\\Configuration\\Addon\\Update\\Before',    new: 'ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\App\\Configuration\\Addon\\Update\\Before' }

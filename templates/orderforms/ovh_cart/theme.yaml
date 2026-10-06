@@ -1,0 +1,9 @@
+dependencies:
+  bootstrap: 3||4
+  jquery: 1.12
+  fontawesome: 5
+name: "OVH Cart"
+description: "OVH Cart Orderform"
+author: "Whmcs Global Services"
+config:
+  parent: standard_cart

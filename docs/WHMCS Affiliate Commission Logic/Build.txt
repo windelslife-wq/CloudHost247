@@ -1,0 +1,59 @@
+Build a custom WHMCS affiliate module (or hook-based solution) that modifies the default affiliate commission system with the following rules:
+
+1. COMMISSION STRUCTURE:
+
+- When an affiliate refers a NEW customer who purchases a web hosting product, the affiliate earns 50% commission on the FIRST successful payment only.
+- For all RECURRING payments (renewals) from that same client and same hosting service, the commission should be reduced to 20%.
+
+2. PRODUCT SCOPE:
+
+- The commission logic must ONLY apply to products in the "Web Hosting" product group (use WHMCS product group ID or configurable setting).
+- All other products/services (domains, RDP, email hosting, SSL, etc.) must be completely excluded from affiliate tracking and commission payouts.
+
+3. TRACKING LOGIC:
+
+- Detect if the order is from a NEW client referred by an affiliate (use WHMCS affiliate tracking cookie/session).
+- Identify FIRST PAYMENT vs RECURRING PAYMENT using invoice/order/service relationship.
+- Store a flag in a custom table or service custom field to mark if first commission has been paid.
+
+4. HOOK IMPLEMENTATION:
+
+- Use WHMCS hooks such as:
+  - InvoicePaid
+  - AffiliateCommission
+- Override default commission behavior by:
+  - Cancelling default commission calculation if product is not web hosting.
+  - Applying custom percentage (50% or 20%) dynamically.
+
+5. DATA STORAGE:
+
+- Create a custom table:
+  - service_id
+  - affiliate_id
+  - first_commission_paid (boolean)
+- Ensure logic checks this before assigning commission.
+
+6. EDGE CASES:
+
+- If a client upgrades/downgrades hosting, maintain correct commission logic.
+- Refunds should reverse affiliate commission accordingly.
+- Commission should only trigger after invoice is PAID.
+
+7. ADMIN SETTINGS:
+
+- Add settings in WHMCS admin:
+  - Select "Web Hosting" product group
+  - Set first commission % (default 50)
+  - Set recurring commission % (default 20)
+
+8. SECURITY & PERFORMANCE:
+
+- Prevent duplicate commission payouts.
+- Ensure compatibility with WHMCS cron jobs.
+- Follow WHMCS coding standards.
+
+OUTPUT:
+
+- Provide full module code or hook file (PHP)
+- Include SQL schema for custom table
+- Include installation instructions

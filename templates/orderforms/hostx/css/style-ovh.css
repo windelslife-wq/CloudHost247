@@ -1,0 +1,409 @@
+
+
+
+html {
+  position: relative;
+  min-height: 100%;
+}
+
+/*body {
+  font-family: 'Open Sans', sans-serif;
+  padding: 0;
+  margin: 0;
+  line-height: 11px;
+  background: #fff;
+  font-weight: 400;
+}*/
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin: 0;
+}
+
+a:hover,
+a:focus {
+  text-decoration: none;
+}
+
+ul,
+li {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.installText{
+     padding-left: 10px;
+     font-size: 11px;
+}
+   
+
+
+
+/*css start herre*/
+
+.bil-title {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    margin-bottom: 10px;
+}
+.bil-title h3 {
+    font-size: 18px;
+    color: #000000;
+    font-weight:800;
+    text-transform: uppercase;
+    font-family: 'Raleway', sans-serif;
+}
+
+.billingcycle-sec {
+    margin: 20px 0 30px;
+    width: 100%;
+    clear: both;
+    display: inherit;
+}
+.billingcycle-box{
+    background: #def8ff;
+    border: 2px solid #0050d7;
+    border-radius: 8px;
+  padding: 10px 0px 25px;
+  margin-bottom: 20px;
+}
+.billingcycle-box p {
+    display: block;
+    color: #686e81;
+    font-size: 12px;
+    line-height: normal;
+    margin: 0px;
+    padding-top: 5px;
+    text-align: center;
+    font-weight: 500;
+    font-family: 'Raleway', sans-serif;
+    line-height: 18px;
+
+}
+
+.list-section{
+    border: 2px solid #c6eff9;
+}
+.billingcycle-box p strong {
+    display: block;
+    width: 100%;
+    color: #333640;
+    font-size: 18px;
+    margin: 0px;
+    padding: 15px 0px;
+    font-family: 'Open Sans', sans-serif;
+    letter-spacing: -0.3px;
+}
+.billingcycle-box:hover{
+  background: #f1f4f8;
+  border-color: #8cbbfd;
+}
+.billingcycle-box:hover p strong{
+  color: #2d84fb;
+}
+.custom-radios {
+    text-align: right;
+    margin: 4px 12px 0;
+    padding: 0;
+}
+.custom-radios .checkbox-custom, .custom-radios .radio-custom {
+    opacity: 0;
+    position: absolute !important;   
+}
+
+.custom-radios .checkbox-custom, .custom-radios .checkbox-custom-label, .custom-radios .radio-custom, .custom-radios .radio-custom-label {
+    display: inline-block;
+    vertical-align: middle;
+    margin: 5px 0;
+    cursor: pointer;
+}
+
+.custom-radios .checkbox-custom-label, .custom-radios .radio-custom-label {
+    position: relative;
+    outline: none !important;
+    color: #000;
+}
+.soyoustartHeading{
+    margin: 10px 0;
+}
+.custom-radios .checkbox-custom + .checkbox-custom-label:before, .custom-radios .radio-custom + .radio-custom-label:before {
+    content: '';
+    background: #f9f9f9;
+    border: 1px solid #c2c5ca;
+    display: inline-block;
+    vertical-align: middle;
+    width: 16px;
+    height:16px;
+    padding: 2px;
+    margin-right: 0px;
+    text-align: center;
+}
+
+.custom-radios .checkbox-custom:checked + .checkbox-custom-label:before {
+    content: "\f00c";
+    font-family: 'FontAwesome';
+    background: rebeccapurple;
+    color: #fff;
+    line-height: normal;
+    font-size: 12px;
+    font-weight: normal;
+}
+
+.custom-radios .radio-custom + .radio-custom-label:before {
+    border-radius: 2px;
+}
+
+.custom-radios .radio-custom:checked + .radio-custom-label:before {
+    content: "\f00c";
+    font-family: 'FontAwesome';
+    color: #fff;
+    background: #2d84fb;
+    border-color: #2d84fb;
+    font-size: 10px;
+}
+
+.custom-radios .checkbox-custom:focus + .checkbox-custom-label, .custom-radios .radio-custom:focus + .radio-custom-label {
+  outline: 1px solid #ddd; /* focus style */
+}
+
+.bil-title h4 {
+    margin: 17px 0 0px;
+    padding: 0px;
+    color: #333640;
+    font-size: 18px;
+    font-weight: 700;
+    font-family: 'Raleway', sans-serif;
+}
+.bil-title h4 img {
+    margin-right: 6px;
+    vertical-align: sub;
+}
+
+.bil-title p {
+margin: 15px 0 0px;
+    padding: 0px;
+    font-size: 12px;
+    color: #4d5592;
+    font-weight: 600;
+    font-family: 'Raleway', sans-serif;
+    line-height: 16px;
+    min-height: 33px;
+}
+.config-box p strong{
+  font-size: 16px;
+  color: #333640;
+}
+.lg-icons{text-align: center;}
+.os-icons img {
+    width: 26px;
+    height: 26px;
+    /* float: left; */
+    margin-right: 12px;
+    margin-top: 4px;
+}
+/*.operating-box {
+    padding: 5px 0 0;
+}*/
+.opreatingHTML .col-md-4{
+    display: inline-block !important;
+}
+.operating-box h4 {
+    width: 100%;
+    color: #333640;
+    font-size: 16px;
+    margin: 0px;
+    padding: 9px 0px;
+    font-family: 'Open Sans', sans-serif;
+    text-align: center;
+    font-weight: 700;
+}
+.operating-box:hover{background: inherit;}
+.op-select {
+    border: none;
+    width: 100%;
+    padding: 8px 30px 10px 8px !important;
+    appearance: none;
+    -webkit-appearance: none;
+    color: #474c5a;
+    font-size: 11px;
+    outline: none;
+    /*background: #f1f4f8 url(../images/d-arow.png);*/
+    background-repeat: no-repeat;
+    background-position: 93% center;
+    line-height: 18px;
+    border: 1px solid #bef1ff;
+    border-radius: 2px 2px 8px 8px;;
+}
+
+#orderfrm .col-md-8 h3 {
+    font-size: 18px;
+    color: #000000;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: 'Raleway', sans-serif;
+}
+#order-modern .col-md-8 .configoptions {
+    border: none;
+}
+.soyoustartHtml .col-sm-12.col-md-12.col-lg-12 {
+    padding-left: 0;
+    padding-right: 0;
+}
+.opreatingHTML {
+    clear: both;
+    display: inline-block;
+    width: 100%;
+    margin-top: 15px;
+}
+#order-modern select.op-select {
+    border:none;
+    border-top: 1px solid #ccc;
+}
+.Diskconfig {
+    background-color: #c6eff9;
+        margin-top: 0px;
+}
+.list-section .list-radio-btn p{
+    border-bottom: 1px solid #c6eff9;
+}
+.Diskconfig p {
+    font-size: 15px;
+    color: #222222;
+    font-weight: 600;
+}
+#orderfrm .list-section .list-radio-btn [type="radio"]:checked + label {
+    background-color: #ffffff;
+}
+#orderfrm .list-section .list-radio-btn p label:nth-child(even) {
+    background-color: #ffffff;
+}
+#orderfrm .list-section .list-radio-btn p label {
+    border-bottom: none;
+}
+
+.C-panel .logo_section{
+    background-color: #f5f7fa;
+    border: 2px solid #c6eff9;
+    border-radius: 0;
+    height: 60px;
+    position: relative;
+}
+.form-control:focus{
+    box-shadow: none;
+    outline: none;
+}
+.C-panel .soyoustartRadio{
+    margin-top: 0;
+    position: relative;
+    /*z-index: 1;*/
+}
+.C-panel .logo_section:hover, .billingcycle-box:hover{
+    /*position: absolute;*/
+    /*content:"";*/
+    /*top:0;*/
+    /*left:0;*/
+    /*width: 100%;*/
+    /*height: 100%;*/
+    border: 1px solid rgba(45,132,251,0.55);
+}
+.opreatingHTML{
+    margin-top: 0;
+}
+/*.custom-radios .radio-custom{
+    z-index: 1;
+}*/
+.billingcycle-box{
+    position: relative;
+    height: 135px;
+}
+.radioname {
+    height: auto; 
+    font-size: 12px;
+    margin: 0;
+    font-size: 15px;
+    line-height: 17px;
+    padding-left: 10px;
+}
+.C-panel .logo-part {
+    align-items: center;
+    height: 100%;
+}
+.C-panel .logo_section img {
+    margin-left: -5px;
+}
+
+.operating-box h4{
+    font-size: 12px;
+    font-family: 'Raleway', sans-serif;
+    line-height: 16px;
+}
+.singleSelected {
+    height: 158px;
+}
+.doubleSelected {
+    height: 186px;
+}
+.VPSOpreatingapp p {
+    margin:0px;
+}
+.dedicatedOpreating{
+    height:160px;    
+}
+.opreatingHTML .row{
+  /*  display:flow-root !important; */
+}
+.tabcontent .col-md-3 {
+    float: left;
+}
+.tabcontent .col-md-3 .custom-radios input {
+    height: auto;
+    display: none !important;
+}
+.opreatingHTML .tab .col-lg-6 {
+    float: left;
+}
+.datacenter-sec .row {
+width: 100%;
+}
+/*===============29-sept-2020==========*/
+.billingcycle-box.config-box .custom-radios .radio-custom + .radio-custom-label:before, .billingcycle-sec .custom-radios .radio-custom:checked + .radio-custom-label:before{
+    line-height: 10px;
+}
+.panel-check>.check h6.check-title {
+    line-height: 20px;
+}
+#main-menu .navbar-nav .btn {
+    height: auto;
+    color: #fff;
+}
+/*===============29-sept-2020-end==========*/
+.custom-radios .form-control{
+right: 15px;
+top: 17px;
+width: 30px;
+height: 16px;
+}
+.billingcycle-box.tabbox {
+    height: 90px;
+    padding: 10px;
+}
+.billingcycle-box.tabbox label {
+    padding-left: 10px;
+}
+.htmlOS{
+    box-shadow: 0 0 0.2em rgb(0 14 156 / 40%);
+    border-radius: 8px;
+    padding: 10px;
+}
+.tabbox select {
+    width: 80%;
+    border: 1px solid #0050d7;
+    border-radius: 4px;
+    height: 35px;
+}

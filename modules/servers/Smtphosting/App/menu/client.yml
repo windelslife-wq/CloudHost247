@@ -1,0 +1,16 @@
+mg-provisioning-module:
+    icon: 'fa-cog'
+    order: 25
+    children:
+        history:
+            order: 1
+            validate: 'clientAreaHistory'
+        metric:
+            order: 1
+            validate: 'clientAreaMetric'
+        firewall:
+            order: 2
+            validate: 'clientAreafirewall'
+        ssoLogin:
+            order: 3
+            validate: 'ssoLogin'

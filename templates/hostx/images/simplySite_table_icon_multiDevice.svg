@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: none;
+        stroke: #333;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.2px;
+      }
+    </style>
+  </defs>
+  <title>simplySite_table_icon</title>
+  <path class="cls-1" d="M3.25,13V8.57a2,2,0,0,1,2-2H26.75a2,2,0,0,1,2,2v9.06"/>
+  <line class="cls-1" x1="25.16" y1="23.1" x2="12.64" y2="23.1"/>
+  <line class="cls-1" x1="16" y1="27.1" x2="16" y2="23.1"/>
+  <line class="cls-1" x1="12.64" y1="27.1" x2="19.53" y2="27.1"/>
+  <rect class="cls-1" x="25.16" y="17.64" width="5.24" height="9.47" rx="0.86" ry="0.86"/>
+  <rect class="cls-1" x="1.41" y="13.28" width="10.7" height="13.82" rx="1.48" ry="1.48"/>
+</svg>

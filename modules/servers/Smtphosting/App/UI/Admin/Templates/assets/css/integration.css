@@ -1,0 +1,35 @@
+#contentarea > div > h1 {
+    display: block !important;
+}
+
+#contentarea {
+    margin: 10px;
+    padding: 15px;
+    min-height: 600px;
+    background-color: #fff;
+    border: 4px solid #e2e7e9;
+    -moz-border-radius: 10px;
+    -webkit-border-radius: 10px;
+    -o-border-radius: 10px;
+    border-radius: 10px;
+    overflow: auto;
+}
+
+.mg-integration-container .lu-app {
+    height: 0px;
+    visibility: hidden;
+}
+
+#layers .lu-app {
+    background-color: #efefef;
+}
+
+/* AA service tab integration */
+
+#servicecontent #layers .lu-app-main__body {
+    padding: 0px;
+    margin-left: -15px;
+    margin-right: -15px;
+}
+
+/* end of AA service tab integration */

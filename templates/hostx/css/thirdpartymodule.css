@@ -1,0 +1,165 @@
+/******* Module Garden DNS Manager CSS *****/
+#mg-wrapper .module-content {
+    background-color: #f0f4f6!important;
+}
+#mg-wrapper .module-header {
+    margin-bottom: 15px;
+}
+#mg-wrapper .panel-heading > .header-actions > .badge {
+    position: absolute;
+    right: 132px;
+}
+.modal-dialog .modal-header, #mg-wrapper .modal-footer {
+    width: 100%;
+}
+#mg-wrapper .modal .modal-header {
+    background: #2073b5;
+    color: #fff;
+    border-color: #2073b5;
+}
+#mg-wrapper .modal-header .close{
+	    opacity: .5;
+	color:#fff;
+}
+#mg-wrapper .modal-footer .btn-default {
+    background: #2073b5;
+    border-color: #2073b5;
+    color: #fff;
+}
+#mg-wrapper .searchTable {
+    box-shadow: none;
+    border-radius: 3px;
+}
+#mg-wrapper .modal-footer .btn-success {
+    background: #f15b26;
+    border-color: #f15b26;
+    color: #fff;
+}
+#mg-wrapper .panel-heading a {
+    color: #383940;
+    font-weight: 600;
+    font-size: 15px;
+}
+#mg-wrapper h4.header-title i {
+    color: #014a88;
+    font-size: 18px;
+    margin-right: 5px;
+}
+#mg-wrapper #mg-container .module-main-header {
+    border-bottom: none!important;
+}
+.module-main-header .btn-icon i.fa.fa-arrow-left {
+    font-size: 14PX;
+    color: #2073b5;
+}
+#mg-wrapper #mg-container .module-main-header h2 {
+    font-size: 17px!important;
+    color: #2073b5;
+	font-weight:normal!important;
+}
+#mg-wrapper .table {
+    background: #fff;
+}
+#mg-wrapper .section .dataTable .form-control {
+    margin: 0;
+    box-shadow: none;
+    border-radius: 0;
+    border-color: #e7e7e7;
+    font-size: 13px;
+    color: #636770;
+    background: #f3f6f9;
+    border: none;
+}
+#mg-wrapper .table > thead > tr > th, #mg-wrapper .table > tbody > tr > td, #mg-wrapper .table > tfoot > tr > td {
+    padding: 15px 10px;
+}
+#mg-wrapper .searchTable {
+    border-radius: 0;
+    box-shadow: none;
+}
+#mg-wrapper .header-search .btn-primary {
+    background-color: #2073b5;
+    border-color: #2073b5;
+    border-radius: 0!important;
+}
+#mg-wrapper .header-search a.btn.btn-danger {
+    background-color: #f15b26;
+    border-color: #f15b26;
+    border-radius: 0!important;
+}
+#mg-wrapper .badge-success {
+    background-color: #f15b26 !important;
+}
+#mg-wrapper + .tooltip .tooltip-inner{
+	margin: auto;
+} 
+#mg-wrapper .btn.btn-icon{
+	position: relative;
+}
+#mg-wrapper .modal {
+	max-width: 100%;
+}
+@media (min-width: 768px){
+	#mg-wrapper .modal-dialog {
+		width: 600px;
+		margin: 30px auto;
+		left: 0;
+		right: 0;
+		top: 30%;
+		bottom: 0;
+	}
+}
+/********* Module Garden Cpanel Extended CSS ********/
+#layers .dataTables_wrapper {
+    overflow: inherit !important;
+}
+#layers .input-group{
+    flex-wrap: inherit;
+}
+#layers .table th span{
+    font-size: 11px;
+}
+#layers .table td {
+    font-size: 11px;
+    font-weight: normal;
+}
+#layers .modal__body {
+    display: initial;
+}
+/******* Module Garden Domain Reseller CSS *****/
+#layers{
+    clear: both;
+}
+.mg-wrapper.body {
+    padding-top: 14px;
+    clear: both;
+}
+/******* Module Reseller Center CSS *****/
+.mg-wrapper.body .full-screen-module-container ul.nav.navbar-nav {
+    flex-direction: row;
+}
+#RCPricingProductsEdit .modal-dialog, #RCPricingAddonsEdit .modal-dialog, #RCPricingDomainsEdit .modal-dialog { 
+	margin: 0 auto;
+    left: 0;
+    right: 0;
+    max-width: 50%;
+    top: 20%;
+}
+/******* Module Wgs Cloudflare *****/
+.clientareaproductdetails button.btn.btn-default.ad-btn::after {
+    font-size: 11px;
+    padding-left: 5px;
+}
+.cf-reseller-module .pending {
+    padding-top: 12px;
+}
+.cf-reseller-module .cfhead {
+    padding-top: 14px;
+    clear: both;
+}
+.cf-reseller-module .cfhead a {
+    padding-left: 10px;
+}
+.clientareaproductdetails .tab-content .product-details .active-domain {
+    display: flex!important;
+}
