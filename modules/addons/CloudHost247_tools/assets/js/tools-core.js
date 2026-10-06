@@ -68,6 +68,25 @@
         return (i === 0 ? n : n.toFixed(2)) + ' ' + units[i];
     }
 
+    /** Lazily load a script once; returns a promise. */
+    var scriptCache = {};
+    function loadScript(src) {
+        if (scriptCache[src]) { return scriptCache[src]; }
+        scriptCache[src] = new Promise(function (resolve, reject) {
+            var s = document.createElement('script');
+            s.src = src;
+            s.async = true;
+            s.onload = function () { resolve(); };
+            s.onerror = function () {
+                delete scriptCache[src];
+                reject(new Error('Failed to load ' + src));
+            };
+            document.head.appendChild(s);
+        });
+        return scriptCache[src];
+    }
+    CH247.loadScript = loadScript;
+
     CH247.esc = esc;
     CH247.el = el;
     CH247.humanBytes = humanBytes;
@@ -311,7 +330,7 @@
             columns.forEach(function (c) {
                 var value = typeof c.value === 'function' ? c.value(row) : row[c.key];
                 var td = el('td', { 'data-label': c.label });
-                if (value instanceof window.Node) { td.appendChild(value); }
+                if (window.Node && value instanceof window.Node) { td.appendChild(value); }
                 else if (c.key === 'status' || c.status) { td.appendChild(statusChip(value)); }
                 else { td.textContent = value === null || value === undefined ? '\u2014' : String(value); }
                 tr.appendChild(td);
@@ -400,6 +419,12 @@
 
         this.renderHistory();
         this.prefillFromQuery();
+
+        // Tools with bespoke UI behaviour (file pickers, autosave) hook here.
+        if (typeof this.cfg.mount === 'function') {
+            try { this.cfg.mount(this); }
+            catch (e) { this.showError('This tool could not initialise: ' + (e.message || e)); }
+        }
 
         if (this.cfg.autoRun) { this.submit(); }
     };
