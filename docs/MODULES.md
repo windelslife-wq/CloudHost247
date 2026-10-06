@@ -2,7 +2,8 @@
 
 All **20** modules below were delivered as ZIP archives in the repository root.
 The archives have been extracted into their proper WHMCS locations and the
-archives themselves removed.
+archives themselves removed. One further addon, `domainbroker`, was written
+for this repository rather than imported — see `docs/DOMAIN_BROKER.md`.
 
 ## Addon modules — `modules/addons/`
 
@@ -17,6 +18,7 @@ archives themselves removed.
 | `phoneservices` | `WHMCS Phone Number Platform.zip` | Virtual numbers, VoIP, SMS, eSIM, usage analytics. Optional Composer deps — see below. |
 | `smmaddon` | `smm_whmcs_module.zip` | SMM panel admin area (orders, services, logs, settings). Import `schema.sql`. |
 | `xtreme_currency_rates` | `xtreme_currency_rates_6.0.zip` | Automatic currency exchange rates. ionCube-encoded; requires the ionCube Loader. |
+| `domainbroker` | *written in-repo* | **Domain Broker Service** — brokered domain acquisition: negotiation, escrowed payment, transfer tracking, verification, disputes, fees, reporting, REST API. Customer portal, broker desk and admin console. Activate to run its migrations. Full write-up in `docs/DOMAIN_BROKER.md`. |
 | `soyoustart` | `WGS-OVH-v8.0.8-Sourcecode.zip` | WGS OVH / SoYouStart **admin** addon: API consumer setup, product & price settings, order management, existing-server import, server status, email templates. |
 
 ## Provisioning (server) modules — `modules/servers/`
