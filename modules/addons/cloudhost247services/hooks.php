@@ -129,6 +129,29 @@ add_hook('ClientAreaPrimaryNavbar', 1, function ($navbar) {
     }
 });
 
+/* ------------------------------------------------- HostX mega-menu link -- */
+
+/**
+ * HostX renders its mega menu (and the mobile drawer) from $topMenusData,
+ * produced by the theme's own encrypted addon. We cannot write to that
+ * pipeline; instead we extend the rendered array after the theme has built
+ * it — once, idempotently, and only on layouts where the variable exists.
+ */
+add_hook('ClientAreaPage', 90, function ($vars) {
+    if (!\Chs\Core\Settings::bool('service_enabled', true)) {
+        return $vars;
+    }
+    if (!isset($vars['topMenusData']) || !is_array($vars['topMenusData']) || $vars['topMenusData'] === []) {
+        return $vars;
+    }
+    try {
+        $vars['topMenusData'] = \Chs\Http\HostxMenu::merge($vars['topMenusData']);
+    } catch (\Throwable $e) {
+        \Chs\Core\Logger::warning('HostX menu merge skipped', ['message' => $e->getMessage()]);
+    }
+    return $vars;
+});
+
 /* -------------------------------------------------------- club pricing --- */
 
 /**

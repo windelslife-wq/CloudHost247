@@ -28,18 +28,18 @@
                <div class="footer_col">
                   <h4>Domains</h4>
                   <ul class="footer_links">
-                     <li><a href="#">Register New Domain</a></li>
-                     <li><a href="#">Transfer Domain</a></li>
-                     <li><a href="#">Domain Extensions</a></li>
+                     <li><a href="{$WEB_ROOT}/domain-search.php">Register New Domain</a></li>
+                     <li><a href="{$WEB_ROOT}/domain-transfer.php">Transfer Domain</a></li>
+                     <li><a href="{$WEB_ROOT}/tld-directory.php">Domain Extensions</a></li>
                      <li><a href="{$WEB_ROOT}/domain-broker.php">Domain Broker Service</a></li>
-                     <li><a href="#">SSL Security</a></li>
+                     <li><a href="{$WEB_ROOT}/ssl-certificate.php">SSL Security</a></li>
                   </ul>
                   <h4>Hosting</h4>
                   <ul class="footer_links">
-                     <li><a href="#">Wordpress Hosting</a></li>
-                     <li><a href="#">Window Hosting</a></li>
-                     <li><a href="#">Plesk Hosting</a></li>
-                     <li><a href="#">cPanel Hosting</a></li>
+                     <li><a href="{$WEB_ROOT}/wordpress-hosting.php">Wordpress Hosting</a></li>
+                     <li><a href="{$WEB_ROOT}/windows-hosting.php">Window Hosting</a></li>
+                     <li><a href="{$WEB_ROOT}/plesk-hosting.php">Plesk Hosting</a></li>
+                     <li><a href="{$WEB_ROOT}/cpanel-hosting.php">cPanel Hosting</a></li>
                   </ul>
                </div>
             </div>
@@ -47,51 +47,51 @@
                <div class="footer_col">
                   <h4>Websites</h4>
                   <ul class="footer_links">
-                     <li><a href="#">Website Builder</a></li>
-                     <li><a href="#">Website Design</a></li>
-                     <li><a href="#">Future Element</a></li>
-                     <li><a href="#">Web Hosting</a></li>
+                     <li><a href="{$WEB_ROOT}/website-builder.php">Website Builder</a></li>
+                     <li><a href="{$WEB_ROOT}/website-design.php">Website Design</a></li>
+                     <li><a href="{$WEB_ROOT}/future-element.php">Future Element</a></li>
+                     <li><a href="{$WEB_ROOT}/web-hosting.php">Web Hosting</a></li>
                   </ul>
                   <h4>Servers</h4>
                   <ul class="footer_links">
-                     <li><a href="#">VPS Hosting</a></li>
-                     <li><a href="#">Public Cloud</a></li>
-                     <li><a href="#">Private Cloud</a></li>
-                     <li><a href="#">Enterprise Server</a></li>
+                     <li><a href="{$WEB_ROOT}/vps-hosting.php">VPS Hosting</a></li>
+                     <li><a href="{$WEB_ROOT}/vps-publiccloud.php">Public Cloud</a></li>
+                     <li><a href="{$WEB_ROOT}/vps-privatecloud.php">Private Cloud</a></li>
+                     <li><a href="{$WEB_ROOT}/enterprise-servers.php">Enterprise Server</a></li>
                   </ul>
                </div>
             </div>
             <div class="col-md-3 col-sm-6 col-xs-6 ">
                <div class="footer_col">
-                  <h4>Business Services</h4>
+                  <h4>Domain Services</h4>
                   <ul class="footer_links">
-                     <li><a href="#">Business Email</a></li>
-                     <li><a href="#">VPN Appliance</a></li>
-                     <li><a href="#">SEO Tools</a></li>
-                     <li><a href="#">Build Website</a></li>
+                     <li><a href="{$WEB_ROOT}/domain-valuation.php">Domain Valuation</a></li>
+                     <li><a href="{$WEB_ROOT}/domain-auctions.php">Domain Auctions</a></li>
+                     <li><a href="{$WEB_ROOT}/discount-domain-club.php">Discount Domain Club</a></li>
+                     <li><a href="{$WEB_ROOT}/whois-lookup.php">WHOIS Lookup</a></li>
                   </ul>
-                  <h4>Security</h4>
+                  <h4>Security &amp; Trust</h4>
                   <ul class="footer_links">
-                     <li><a href="#">SSL Certificates</a></li>
-                     <li><a href="#">Website Backup</a></li>
-                     <li><a href="#">Website Security</a></li>
+                     <li><a href="{$WEB_ROOT}/ssl-certificate.php">SSL Certificates</a></li>
+                     <li><a href="{$WEB_ROOT}/backup-policy.php">Website Backup</a></li>
+                     <li><a href="{$WEB_ROOT}/data-protection-standards.php">Website Security</a></li>
                   </ul>
                </div>
             </div>
             <div class="col-md-3 col-sm-6 col-xs-6 ">
                <div class="footer_col">
-                  <h4>Hostx</h4>
+                  <h4>CloudHost247</h4>
                   <ul class="footer_links">
-                     <li><a href="#">Why Hostx</a></li>
-                     <li><a href="#">Frequent Questions</a></li>
-                     <li><a href="#">Affiliates Program</a></li>
-                     <li><a href="#">Terms of services</a></li>
+                     <li><a href="{$WEB_ROOT}/aboutus.php">Why CloudHost247</a></li>
+                     <li><a href="{$WEB_ROOT}/faqs.php">Frequent Questions</a></li>
+                     <li><a href="{$WEB_ROOT}/affiliates.php">Affiliates Program</a></li>
+                     <li><a href="{$WEB_ROOT}/terms-of-service.php">Terms of services</a></li>
                   </ul>
                   <h4>Support</h4>
                   <ul class="footer_links">
-                     <li><a href="#">Open Ticket</a></li>
-                     <li><a href="#">Knowledgebase</a></li>
-                     <li><a href="#">News</a></li>
+                     <li><a href="{$WEB_ROOT}/submitticket.php">Open Ticket</a></li>
+                     <li><a href="{$WEB_ROOT}/knowledgebase.php">Knowledgebase</a></li>
+                     <li><a href="{$WEB_ROOT}/announcements.php">News</a></li>
                   </ul>
                   <div class="clearfix"></div>
                   <ul class="socil_icon">
@@ -100,7 +100,7 @@
                      <li><a target="_blank" href="{$hostx_theme_settings.facebook_handle_code}" rel="noopener"><i class="fab fa-facebook"></i></a></li>
                      <li><a target="_blank" href="{$hostx_theme_settings.instagram_handle_code}" rel="noopener"><i class="fab fa-instagram"></i></a></li>
                      <li><a target="_blank" href="{$hostx_theme_settings.pinrest_handle_code}" rel="noopener"><i class="fab fa-pinterest"></i></a></li>
-                     <li><a target="_blank" href="#" rel="noopener"><i class="fab fa-skype"></i></a></li>
+                     
                   </ul>
                </div>
             </div>

@@ -55,6 +55,11 @@ $task('club_expiry', function () {
     return (new ClubService())->expireDue();
 });
 
+$task('sitemap', function () {
+    // Regenerate the site sitemap.xml from the canonical public page list.
+    return (new \Chs\Services\SitemapService())->regenerate();
+});
+
 Logger::info('CHS cron run complete', ['results' => $results, 'started' => $started]);
 
 if (php_sapi_name() === 'cli') {

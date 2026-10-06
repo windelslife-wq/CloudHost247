@@ -51,6 +51,8 @@ for (const file of files) {
     /* already present */
   }
   await php.mount('/app', createNodeFsMountHandler(moduleRoot));
+  try { php.mkdir('/repo'); } catch (e) { /* already present */ }
+  await php.mount('/repo', createNodeFsMountHandler(path.resolve(moduleRoot, '..', '..', '..')));
 
   let res;
   try {
