@@ -447,6 +447,17 @@
 .db-dl-compact dt { width: 110px; padding: 5px 0; }
 .db-dl-compact dd { margin-left: 120px; padding: 5px 0; }
 
+/*
+ * Between 992px and 1199px the summary list sits in a sidebar column that is
+ * only ~260px wide once the client area's own sidebars are drawn, which
+ * leaves too little room beside a fixed label column for a formatted money
+ * value. Stack the pairs instead of wrapping the amount.
+ */
+@media (min-width: 992px) and (max-width: 1199px) {
+    .db-dl-compact dt { float: none; width: auto; padding-bottom: 0; }
+    .db-dl-compact dd { margin-left: 0; padding-top: 2px; }
+}
+
 .db-messages {
     list-style: none;
     margin: 0 0 18px;

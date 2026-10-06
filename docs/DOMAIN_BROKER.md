@@ -30,6 +30,11 @@ node modules/addons/domainbroker/tests/lint.mjs
   FILES=85  BAD=0
 ```
 
+```
+# whole-overlay parse check (every PHP file in the repository)
+CHECKED=1238  IONCUBE_SKIPPED=82  BAD=0
+```
+
 **Build gate.** This repository is a WHMCS *overlay*: there is no application
 root, no `composer.json`, no `package.json` and no bundler, so there is no
 framework build to run. The equivalent gate is `tests/lint.mjs`, which loads
@@ -43,6 +48,28 @@ new root-level files, `domain-broker.php` and the amended
 The sandbox has no native `php`, no Composer and no PHPUnit, so the suite runs
 on `@php-wasm/node` (PHP 8.3.33, `pdo_sqlite` + `openssl`). Source targets PHP
 7.4 for WHMCS 8.x compatibility.
+
+**Regression check.** Every one of the 1,238 parseable PHP files in the whole
+overlay — not just the new module — was re-parsed after these changes, with no
+errors. The 82 skipped files are the ionCube-encoded `hostx` and
+`xtreme_currency_rates` payloads, which have no readable source by design and
+were not touched.
+
+**Route and asset audit.** Every `action=` referenced from a template, a
+controller or a hook resolves to a handled client-area page or write action;
+every admin `action=`/`do=` pair resolves to a rendered page or a write
+handler; every template named by a controller exists in `templates/client/`
+(10 referenced, 10 present, none orphaned); every asset path referenced from
+PHP or hooks exists on disk.
+
+**Responsive audit.** Layout is flexbox with `flex-wrap` and fluid
+`flex: 1 1 <basis>` bases throughout, so the tablet range reflows without
+needing its own rules. Explicit breakpoints: `max-width: 767px` (phone
+stacking, scrollable nav, full-width buttons) and
+`min-width: 992px and max-width: 1199px` (the detail sidebar's summary list
+stacks rather than squeezing a money value beside a fixed label column); the
+admin stylesheet adds `max-width: 991px`. All seven data tables across the
+client and admin surfaces are wrapped in `.table-responsive`.
 
 ---
 
