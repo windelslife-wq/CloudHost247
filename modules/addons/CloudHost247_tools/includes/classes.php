@@ -3,7 +3,7 @@
  * CloudHost247 Tools - Core Classes
  */
 
-if (!defined("WHMCS")) {
+if (!defined("WHMCS") && !defined("CLOUDHOST247_TOOLS")) {
     die("This file cannot be accessed directly");
 }
 

@@ -3,7 +3,7 @@
  * CloudHost247 Tools - Developer Tools Implementation
  */
 
-if (!defined("WHMCS")) {
+if (!defined("WHMCS") && !defined("CLOUDHOST247_TOOLS")) {
     die("This file cannot be accessed directly");
 }
 
@@ -358,4 +358,289 @@ function CloudHost247_tool_json_formatter($post)
     }
 
     return ['formatted' => json_encode($decoded, JSON_PRETTY_PRINT), 'valid' => true];
+}
+
+// ---------------------------------------------------------------------
+//  Text / binary conversion
+// ---------------------------------------------------------------------
+
+/**
+ * Text to Binary (and back) - UTF-8 safe, with several bases.
+ */
+function CloudHost247_tool_text_to_binary($post)
+{
+    $mode      = strtolower(trim((string) ($post['mode'] ?? 'encode')));
+    $base      = strtolower(trim((string) ($post['base'] ?? 'binary')));
+    $separator = (string) ($post['separator'] ?? ' ');
+    $text      = (string) ($post['text'] ?? '');
+
+    if ($text === '') {
+        return ['error' => 'Please enter some text to convert.'];
+    }
+    if (strlen($text) > 100000) {
+        return ['error' => 'Input is too long (limit 100,000 characters).'];
+    }
+
+    $bases = [
+        'binary'      => ['base' => 2,  'pad' => 8],
+        'octal'       => ['base' => 8,  'pad' => 3],
+        'decimal'     => ['base' => 10, 'pad' => 0],
+        'hexadecimal' => ['base' => 16, 'pad' => 2],
+    ];
+    if (!isset($bases[$base])) {
+        return ['error' => 'Unsupported base. Choose binary, octal, decimal or hexadecimal.'];
+    }
+    $cfg = $bases[$base];
+
+    if ($mode === 'decode') {
+        $tokens = preg_split('/[\s,]+/', trim($text), -1, PREG_SPLIT_NO_EMPTY);
+        if (!$tokens) {
+            return ['error' => 'No values found to decode.'];
+        }
+        $bytes = '';
+        foreach ($tokens as $i => $token) {
+            $token = ltrim($token, '0x0b0o');
+            if ($token === '') {
+                $token = '0';
+            }
+            $valid = [
+                2  => '/^[01]+$/', 8 => '/^[0-7]+$/',
+                10 => '/^[0-9]+$/', 16 => '/^[0-9a-fA-F]+$/',
+            ][$cfg['base']];
+            if (!preg_match($valid, $token)) {
+                return ['error' => 'Value "' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8')
+                    . '" at position ' . ($i + 1) . ' is not valid ' . $base . '.'];
+            }
+            $value = intval($token, $cfg['base']);
+            if ($value < 0 || $value > 255) {
+                return ['error' => 'Value "' . $token . '" is outside the byte range 0-255.'];
+            }
+            $bytes .= chr($value);
+        }
+        $decoded = $bytes;
+        $isUtf8  = mb_check_encoding($decoded, 'UTF-8');
+
+        return [
+            'mode'      => 'decode',
+            'base'      => $base,
+            'result'    => $isUtf8 ? $decoded : bin2hex($decoded),
+            'valid_utf8'=> $isUtf8,
+            'bytes'     => strlen($decoded),
+            'note'      => $isUtf8
+                ? 'Decoded ' . strlen($decoded) . ' bytes of valid UTF-8 text.'
+                : 'The decoded bytes are not valid UTF-8, so the raw hex is shown instead.',
+        ];
+    }
+
+    // Encode
+    $out   = [];
+    $bytes = str_split($text);
+    foreach ($bytes as $byte) {
+        $value = ord($byte);
+        switch ($cfg['base']) {
+            case 2:  $token = str_pad(decbin($value), 8, '0', STR_PAD_LEFT); break;
+            case 8:  $token = str_pad(decoct($value), 3, '0', STR_PAD_LEFT); break;
+            case 16: $token = strtoupper(str_pad(dechex($value), 2, '0', STR_PAD_LEFT)); break;
+            default: $token = (string) $value;
+        }
+        $out[] = $token;
+    }
+
+    // Per-character breakdown (multibyte aware) for the results table.
+    $breakdown = [];
+    $chars = preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    foreach (array_slice($chars, 0, 200) as $char) {
+        $cb = [];
+        foreach (str_split($char) as $b) {
+            $cb[] = str_pad(decbin(ord($b)), 8, '0', STR_PAD_LEFT);
+        }
+        $breakdown[] = [
+            'char'      => $char,
+            'codepoint' => 'U+' . strtoupper(str_pad(dechex(mb_ord($char, 'UTF-8')), 4, '0', STR_PAD_LEFT)),
+            'bytes'     => strlen($char),
+            'binary'    => implode(' ', $cb),
+        ];
+    }
+
+    return [
+        'mode'       => 'encode',
+        'base'       => $base,
+        'result'     => implode($separator === '' ? '' : $separator, $out),
+        'characters' => count($chars),
+        'bytes'      => strlen($text),
+        'breakdown'  => $breakdown,
+        'truncated'  => count($chars) > 200,
+        'note'       => 'Text is encoded as UTF-8 first, so characters outside ASCII correctly produce multiple bytes.',
+    ];
+}
+
+// ---------------------------------------------------------------------
+//  Email verification
+// ---------------------------------------------------------------------
+
+/**
+ * Email Verifier - syntax, domain, MX and deliverability signals.
+ *
+ * CloudHost247 deliberately does NOT perform an SMTP RCPT TO probe: most
+ * providers answer with a catch-all accept, so the result would be
+ * misleading, and the practice gets mail servers blacklisted. Every signal
+ * reported here is actually measured.
+ */
+function CloudHost247_tool_email_verifier($post)
+{
+    $email = trim((string) ($post['email'] ?? ''));
+    if ($email === '') {
+        return ['error' => 'Please enter an email address.'];
+    }
+    if (strlen($email) > 254) {
+        return ['error' => 'Email addresses cannot exceed 254 characters (RFC 5321).'];
+    }
+
+    $checks = [];
+    $add = function ($name, $status, $detail) use (&$checks) {
+        $checks[] = ['name' => $name, 'status' => $status, 'detail' => $detail];
+    };
+
+    // 1. Syntax
+    $syntaxOk = (bool) filter_var($email, FILTER_VALIDATE_EMAIL);
+    $add('Syntax (RFC 5322)', $syntaxOk ? 'pass' : 'fail',
+        $syntaxOk ? 'The address is syntactically valid.' : 'The address is not syntactically valid.');
+    if (!$syntaxOk) {
+        return [
+            'email'   => $email,
+            'verdict' => 'Invalid',
+            'score'   => 0,
+            'checks'  => $checks,
+            'note'    => 'No further checks were run because the syntax is invalid.',
+        ];
+    }
+
+    $atPos  = strrpos($email, '@');
+    $local  = substr($email, 0, $atPos);
+    $domain = strtolower(substr($email, $atPos + 1));
+
+    // 2. Local part length
+    $localOk = strlen($local) <= 64 && $local !== '';
+    $add('Local part length', $localOk ? 'pass' : 'fail',
+        'Local part is ' . strlen($local) . ' characters (limit 64).');
+
+    // 3. Domain resolves
+    $a    = @dns_get_record($domain, DNS_A) ?: [];
+    $aaaa = @dns_get_record($domain, DNS_AAAA) ?: [];
+    $domainOk = (bool) ($a || $aaaa);
+    $add('Domain resolves', $domainOk ? 'pass' : 'fail',
+        $domainOk ? 'The domain has address records.' : 'The domain does not resolve to any IP address.');
+
+    // 4. MX records
+    $mx = @dns_get_record($domain, DNS_MX) ?: [];
+    usort($mx, function ($x, $y) {
+        return ($x['pri'] ?? 0) <=> ($y['pri'] ?? 0);
+    });
+    $mxHosts = [];
+    foreach ($mx as $record) {
+        if (!empty($record['target'])) {
+            $mxHosts[] = ['host' => $record['target'], 'priority' => (int) ($record['pri'] ?? 0)];
+        }
+    }
+    $add('MX records', $mxHosts ? 'pass' : ($domainOk ? 'warn' : 'fail'),
+        $mxHosts
+            ? 'Found ' . count($mxHosts) . ' mail exchanger(s); highest priority is ' . $mxHosts[0]['host'] . '.'
+            : ($domainOk
+                ? 'No MX record. Mail may still be delivered to the A record, but most senders treat this as undeliverable.'
+                : 'No MX record and the domain does not resolve.'));
+
+    // 5. Role-based address
+    $roles = ['admin', 'administrator', 'postmaster', 'hostmaster', 'webmaster', 'abuse',
+        'info', 'support', 'sales', 'contact', 'help', 'noreply', 'no-reply', 'donotreply',
+        'billing', 'marketing', 'office', 'team', 'hello', 'enquiries', 'inquiries', 'security'];
+    $isRole = in_array(strtolower($local), $roles, true);
+    $add('Role-based address', $isRole ? 'warn' : 'pass',
+        $isRole
+            ? 'This is a shared role address, not an individual mailbox. Marketing lists usually exclude these.'
+            : 'This looks like an individual mailbox rather than a shared role address.');
+
+    // 6. Disposable provider
+    $disposable = ['mailinator.com', 'guerrillamail.com', '10minutemail.com', 'tempmail.com',
+        'temp-mail.org', 'throwawaymail.com', 'yopmail.com', 'trashmail.com', 'getnada.com',
+        'sharklasers.com', 'dispostable.com', 'maildrop.cc', 'fakeinbox.com', 'mintemail.com',
+        'mailnesia.com', 'tempinbox.com', 'spamgourmet.com', 'tempr.email', 'emailondeck.com',
+        'moakt.com', 'mohmal.com', 'burnermail.io', 'anonaddy.me', 'tuta.io'];
+    $isDisposable = in_array($domain, $disposable, true);
+    $add('Disposable provider', $isDisposable ? 'fail' : 'pass',
+        $isDisposable
+            ? 'This domain is a known disposable/temporary mail provider.'
+            : 'The domain is not on the known disposable-provider list. The list cannot be exhaustive.');
+
+    // 7. Free provider
+    $free = ['gmail.com', 'googlemail.com', 'yahoo.com', 'ymail.com', 'hotmail.com', 'outlook.com',
+        'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com', 'mail.com', 'gmx.com', 'gmx.net',
+        'yandex.com', 'yandex.ru', 'zoho.com', 'protonmail.com', 'proton.me', 'tutanota.com'];
+    $isFree = in_array($domain, $free, true);
+    $add('Provider type', 'info',
+        $isFree ? 'Free consumer mailbox provider.' : 'Custom or business domain.');
+
+    // 8. SPF
+    $txt = @dns_get_record($domain, DNS_TXT) ?: [];
+    $spf = null;
+    foreach ($txt as $record) {
+        $value = $record['txt'] ?? (isset($record['entries']) ? implode('', $record['entries']) : '');
+        if (stripos($value, 'v=spf1') === 0) {
+            $spf = $value;
+            break;
+        }
+    }
+    $add('SPF record', $spf ? 'pass' : 'warn',
+        $spf ? 'SPF policy published: ' . $spf : 'No SPF record found on the domain.');
+
+    // 9. DMARC
+    $dmarcRecords = @dns_get_record('_dmarc.' . $domain, DNS_TXT) ?: [];
+    $dmarc = null;
+    foreach ($dmarcRecords as $record) {
+        $value = $record['txt'] ?? (isset($record['entries']) ? implode('', $record['entries']) : '');
+        if (stripos($value, 'v=DMARC1') === 0) {
+            $dmarc = $value;
+            break;
+        }
+    }
+    $add('DMARC record', $dmarc ? 'pass' : 'warn',
+        $dmarc ? 'DMARC policy published: ' . $dmarc : 'No DMARC record found on the domain.');
+
+    // 10. Gmail dot/plus normalisation - useful for dedupe.
+    $normalised = $email;
+    if (in_array($domain, ['gmail.com', 'googlemail.com'], true)) {
+        $base = explode('+', $local)[0];
+        $normalised = str_replace('.', '', $base) . '@gmail.com';
+    } elseif (strpos($local, '+') !== false) {
+        $normalised = explode('+', $local)[0] . '@' . $domain;
+    }
+
+    $passCount = count(array_filter($checks, function ($c) { return $c['status'] === 'pass'; }));
+    $failCount = count(array_filter($checks, function ($c) { return $c['status'] === 'fail'; }));
+    $scored    = count(array_filter($checks, function ($c) { return $c['status'] !== 'info'; }));
+    $score     = $scored ? (int) round(($passCount / $scored) * 100) : 0;
+
+    if ($failCount > 0) {
+        $verdict = $isDisposable ? 'Disposable - do not use' : 'Undeliverable';
+    } elseif (!$mxHosts) {
+        $verdict = 'Risky';
+    } elseif ($isRole) {
+        $verdict = 'Valid (role address)';
+    } else {
+        $verdict = 'Valid';
+    }
+
+    return [
+        'email'       => $email,
+        'local_part'  => $local,
+        'domain'      => $domain,
+        'normalised'  => $normalised,
+        'verdict'     => $verdict,
+        'score'       => $score,
+        'mx'          => $mxHosts,
+        'is_role'     => $isRole,
+        'is_free'     => $isFree,
+        'is_disposable' => $isDisposable,
+        'checks'      => $checks,
+        'note'        => 'CloudHost247 does not perform an SMTP mailbox probe. Most mail servers accept any recipient at the RCPT stage (catch-all), so a probe would produce a false "valid" result, and repeated probing gets the probing server blacklisted. These checks confirm the address is well-formed and the domain is genuinely able to receive mail.',
+    ];
 }

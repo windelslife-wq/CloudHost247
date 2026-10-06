@@ -3,7 +3,7 @@
  * CloudHost247 Tools - Gaming Tools Implementation
  */
 
-if (!defined("WHMCS")) {
+if (!defined("WHMCS") && !defined("CLOUDHOST247_TOOLS")) {
     die("This file cannot be accessed directly");
 }
 

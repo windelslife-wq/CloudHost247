@@ -3,7 +3,7 @@
  * CloudHost247 Tools - DNS Tools Implementation
  */
 
-if (!defined("WHMCS")) {
+if (!defined("WHMCS") && !defined("CLOUDHOST247_TOOLS")) {
     die("This file cannot be accessed directly");
 }
 
@@ -476,4 +476,188 @@ function CloudHost247_tool_dkim_checker($post)
         'record' => $recordData,
         'issues' => $issues,
     ];
+}
+
+// ---------------------------------------------------------------------
+//  Domain WHOIS / RDAP  (CloudHost247-native tool)
+// ---------------------------------------------------------------------
+
+/**
+ * Domain WHOIS - registration details via RDAP with a WHOIS fallback.
+ *
+ * RDAP is preferred because it returns structured, parseable JSON over
+ * HTTPS. Port 43 WHOIS is used only when the registry has no RDAP service.
+ */
+function CloudHost247_tool_domain_whois($post)
+{
+    $domain = trim((string) ($post['domain'] ?? ''));
+    if ($domain === '') {
+        return ['error' => 'Please enter a domain name.'];
+    }
+
+    try {
+        $domain = CloudHost247ToolsSecurity::validateDomain($domain);
+    } catch (CloudHost247ToolsSecurityException $e) {
+        return ['error' => $e->getMessage()];
+    }
+
+    $cacheKey = 'whois:' . $domain;
+    $cached   = function_exists('CloudHost247_tools_cache_get') ? CloudHost247_tools_cache_get($cacheKey) : null;
+    if (is_array($cached)) {
+        $cached['cached'] = true;
+
+        return $cached;
+    }
+
+    $result = [
+        'domain'      => $domain,
+        'source'      => null,
+        'registered'  => null,
+        'registrar'   => null,
+        'statuses'    => [],
+        'nameservers' => [],
+        'dates'       => [],
+        'contacts'    => [],
+        'dnssec'      => null,
+        'raw'         => '',
+        'cached'      => false,
+    ];
+
+    // --- RDAP (preferred) ---
+    try {
+        $res = CloudHost247ToolsSecurity::fetch('https://rdap.org/domain/' . rawurlencode($domain), [
+            'timeout' => 12,
+            'headers' => ['Accept: application/rdap+json'],
+        ]);
+
+        if ($res['status'] === 404) {
+            $result['source']     = 'RDAP';
+            $result['registered'] = false;
+            $result['message']    = 'No registration record found. This domain appears to be available.';
+            $result['raw']        = '';
+            if (function_exists('CloudHost247_tools_cache_set')) {
+                CloudHost247_tools_cache_set($cacheKey, $result, 30);
+            }
+
+            return $result;
+        }
+
+        if ($res['status'] >= 200 && $res['status'] < 300) {
+            $data = json_decode($res['body'], true);
+            if (is_array($data)) {
+                $result['source']     = 'RDAP';
+                $result['registered'] = true;
+                $result['statuses']   = array_values((array) ($data['status'] ?? []));
+                $result['handle']     = $data['handle'] ?? null;
+
+                foreach ((array) ($data['events'] ?? []) as $event) {
+                    if (!empty($event['eventAction']) && !empty($event['eventDate'])) {
+                        $result['dates'][$event['eventAction']] = $event['eventDate'];
+                    }
+                }
+
+                foreach ((array) ($data['nameservers'] ?? []) as $ns) {
+                    if (!empty($ns['ldhName'])) {
+                        $result['nameservers'][] = strtolower($ns['ldhName']);
+                    }
+                }
+
+                foreach ((array) ($data['entities'] ?? []) as $entity) {
+                    $roles = array_map('strtolower', (array) ($entity['roles'] ?? []));
+                    $name  = null;
+                    foreach ((array) ($entity['vcardArray'][1] ?? []) as $field) {
+                        if (($field[0] ?? '') === 'fn') {
+                            $name = $field[3] ?? null;
+                            break;
+                        }
+                    }
+                    if (in_array('registrar', $roles, true)) {
+                        $result['registrar'] = $name ?: ($entity['handle'] ?? null);
+                        foreach ((array) ($entity['publicIds'] ?? []) as $pid) {
+                            if (stripos($pid['type'] ?? '', 'IANA') !== false) {
+                                $result['registrar_iana_id'] = $pid['identifier'] ?? null;
+                            }
+                        }
+                    } elseif ($roles) {
+                        $result['contacts'][] = [
+                            'role' => implode(', ', $roles),
+                            // Registrant details are usually redacted under GDPR.
+                            'name' => $name ?: '(redacted by the registry)',
+                        ];
+                    }
+                }
+
+                $result['dnssec'] = isset($data['secureDNS']['delegationSigned'])
+                    ? (bool) $data['secureDNS']['delegationSigned']
+                    : null;
+
+                $result['raw'] = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            }
+        }
+    } catch (\Exception $e) {
+        $result['rdap_error'] = $e->getMessage();
+    }
+
+    // --- WHOIS port 43 fallback ---
+    if ($result['source'] === null) {
+        if (function_exists('CloudHost247_tools_whois')) {
+            $raw = CloudHost247_tools_whois($domain);
+            $raw = is_array($raw) ? ($raw['raw'] ?? ($raw['data'] ?? '')) : (string) $raw;
+        } else {
+            $raw = '';
+        }
+
+        if (trim((string) $raw) === '') {
+            return ['error' => 'No WHOIS or RDAP data could be retrieved for ' . $domain
+                . '. The registry may be rate limiting this server, or the TLD may not publish public registration data.'];
+        }
+
+        $result['source'] = 'WHOIS (port 43)';
+        $result['raw']    = $raw;
+
+        $patterns = [
+            'registrar'  => '/^\s*Registrar:\s*(.+)$/mi',
+            'created'    => '/^\s*(?:Creation Date|Created On|created):\s*(.+)$/mi',
+            'updated'    => '/^\s*(?:Updated Date|Last Updated On|changed):\s*(.+)$/mi',
+            'expires'    => '/^\s*(?:Registry Expiry Date|Expiration Date|Expiry Date|paid-till):\s*(.+)$/mi',
+        ];
+        foreach ($patterns as $key => $pattern) {
+            if (preg_match($pattern, $raw, $m)) {
+                $value = trim($m[1]);
+                if ($key === 'registrar') {
+                    $result['registrar'] = $value;
+                } else {
+                    $result['dates'][$key] = $value;
+                }
+            }
+        }
+        if (preg_match_all('/^\s*Name Server:\s*(.+)$/mi', $raw, $m)) {
+            $result['nameservers'] = array_values(array_unique(array_map(function ($v) {
+                return strtolower(trim($v));
+            }, $m[1])));
+        }
+        if (preg_match_all('/^\s*Domain Status:\s*(.+)$/mi', $raw, $m)) {
+            $result['statuses'] = array_map('trim', $m[1]);
+        }
+        $result['registered'] = !preg_match('/(No match|NOT FOUND|No Data Found|Status:\s*free)/i', $raw);
+    }
+
+    // Days until expiry, when we have a parseable date.
+    foreach (['expiration', 'expires', 'registry expiration'] as $key) {
+        if (!empty($result['dates'][$key])) {
+            $ts = strtotime($result['dates'][$key]);
+            if ($ts) {
+                $result['days_until_expiry'] = (int) floor(($ts - time()) / 86400);
+            }
+            break;
+        }
+    }
+
+    $result['note'] = 'Registrant contact details are redacted by most registries under GDPR and ICANN policy; CloudHost247 shows exactly what the registry publishes and does not fill gaps with guesses.';
+
+    if (function_exists('CloudHost247_tools_cache_set')) {
+        CloudHost247_tools_cache_set($cacheKey, $result, 60);
+    }
+
+    return $result;
 }

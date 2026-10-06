@@ -3,7 +3,7 @@
  * CloudHost247 Tools - Productivity Tools Implementation
  */
 
-if (!defined("WHMCS")) {
+if (!defined("WHMCS") && !defined("CLOUDHOST247_TOOLS")) {
     die("This file cannot be accessed directly");
 }
 
@@ -458,4 +458,479 @@ function CloudHost247_tool_image_to_text($post)
         'status' => 'placeholder',
         'instructions' => 'Upload an image to extract text using OCR technology.',
     ];
+}
+
+// ---------------------------------------------------------------------
+//  Runic translator
+// ---------------------------------------------------------------------
+
+/**
+ * Transliteration maps for the supported runic alphabets.
+ */
+function CloudHost247_tools_runic_alphabets()
+{
+    return [
+        'elder_futhark' => [
+            'name' => 'Elder Futhark',
+            'era'  => 'c. 150-800 CE',
+            'map'  => [
+                'th' => 'ᚦ', 'ng' => 'ᛜ', 'ei' => 'ᛇ',
+                'f' => 'ᚠ', 'u' => 'ᚢ', 'a' => 'ᚨ', 'r' => 'ᚱ', 'k' => 'ᚲ',
+                'g' => 'ᚷ', 'w' => 'ᚹ', 'h' => 'ᚺ', 'n' => 'ᚾ', 'i' => 'ᛁ',
+                'j' => 'ᛃ', 'p' => 'ᛈ', 'z' => 'ᛉ', 's' => 'ᛊ', 't' => 'ᛏ',
+                'b' => 'ᛒ', 'e' => 'ᛖ', 'm' => 'ᛗ', 'l' => 'ᛚ', 'd' => 'ᛞ',
+                'o' => 'ᛟ',
+                'c' => 'ᚲ', 'q' => 'ᚲ', 'v' => 'ᚹ', 'x' => 'ᚲᛊ', 'y' => 'ᛁ',
+            ],
+        ],
+        'younger_futhark' => [
+            'name' => 'Younger Futhark (long-branch)',
+            'era'  => 'c. 800-1100 CE',
+            'map'  => [
+                'th' => 'ᚦ',
+                'f' => 'ᚠ', 'u' => 'ᚢ', 'a' => 'ᚬ', 'r' => 'ᚱ', 'k' => 'ᚴ',
+                'h' => 'ᚼ', 'n' => 'ᚾ', 'i' => 'ᛁ', 's' => 'ᛋ', 't' => 'ᛏ',
+                'b' => 'ᛒ', 'm' => 'ᛘ', 'l' => 'ᛚ', 'y' => 'ᛦ',
+                'c' => 'ᚴ', 'g' => 'ᚴ', 'q' => 'ᚴ', 'd' => 'ᛏ', 'e' => 'ᛁ',
+                'o' => 'ᚢ', 'p' => 'ᛒ', 'v' => 'ᚠ', 'w' => 'ᚢ', 'x' => 'ᚴᛋ',
+                'z' => 'ᛋ', 'j' => 'ᛁ',
+            ],
+        ],
+        'anglo_saxon' => [
+            'name' => 'Anglo-Saxon Futhorc',
+            'era'  => 'c. 400-1100 CE',
+            'map'  => [
+                'th' => 'ᚦ', 'ng' => 'ᛝ', 'ae' => 'ᚫ', 'ea' => 'ᛠ', 'oe' => 'ᛟ',
+                'st' => 'ᛥ', 'io' => 'ᛡ',
+                'f' => 'ᚠ', 'u' => 'ᚢ', 'o' => 'ᚩ', 'r' => 'ᚱ', 'c' => 'ᚳ',
+                'g' => 'ᚷ', 'w' => 'ᚹ', 'h' => 'ᚻ', 'n' => 'ᚾ', 'i' => 'ᛁ',
+                'j' => 'ᛄ', 'p' => 'ᛈ', 'x' => 'ᛉ', 's' => 'ᛋ', 't' => 'ᛏ',
+                'b' => 'ᛒ', 'e' => 'ᛖ', 'm' => 'ᛗ', 'l' => 'ᛚ', 'd' => 'ᛞ',
+                'a' => 'ᚪ', 'y' => 'ᚣ', 'k' => 'ᚳ', 'q' => 'ᚳᚹ', 'v' => 'ᚠ',
+                'z' => 'ᛋ',
+            ],
+        ],
+    ];
+}
+
+/**
+ * Runic Translator - transliterate Latin text to runes and back.
+ */
+function CloudHost247_tool_runic_translator($post)
+{
+    $text     = (string) ($post['text'] ?? '');
+    $alphabet = (string) ($post['alphabet'] ?? 'elder_futhark');
+    $mode     = strtolower((string) ($post['mode'] ?? 'encode'));
+
+    if (trim($text) === '') {
+        return ['error' => 'Please enter some text to transliterate.'];
+    }
+    if (mb_strlen($text) > 10000) {
+        return ['error' => 'Input is too long (limit 10,000 characters).'];
+    }
+
+    $alphabets = CloudHost247_tools_runic_alphabets();
+    if (!isset($alphabets[$alphabet])) {
+        return ['error' => 'Unknown runic alphabet. Choose Elder Futhark, Younger Futhark or Anglo-Saxon Futhorc.'];
+    }
+    $set = $alphabets[$alphabet];
+
+    if ($mode === 'decode') {
+        // Build a reverse map, preferring the longest rune sequences first.
+        $reverse = [];
+        foreach ($set['map'] as $latin => $rune) {
+            if (!isset($reverse[$rune])) {
+                $reverse[$rune] = $latin;
+            }
+        }
+        uksort($reverse, function ($a, $b) {
+            return mb_strlen($b) <=> mb_strlen($a);
+        });
+
+        $out = $text;
+        foreach ($reverse as $rune => $latin) {
+            $out = str_replace($rune, $latin, $out);
+        }
+        // Runic word separators.
+        $out = str_replace(['᛫', '᛬', '᛭'], [' ', ' ', ' '], $out);
+
+        return [
+            'mode'     => 'decode',
+            'alphabet' => $set['name'],
+            'input'    => $text,
+            'result'   => $out,
+            'note'     => 'Runic alphabets have fewer letters than the Latin alphabet, so several Latin letters share one rune. Decoding is therefore approximate and cannot always recover the original spelling.',
+        ];
+    }
+
+    $lower = mb_strtolower($text, 'UTF-8');
+    $map   = $set['map'];
+
+    // Longest-first so digraphs such as "th" win over "t" + "h".
+    $keys = array_keys($map);
+    usort($keys, function ($a, $b) {
+        return strlen($b) <=> strlen($a);
+    });
+
+    $result = '';
+    $used   = [];
+    $i      = 0;
+    $len    = mb_strlen($lower, 'UTF-8');
+
+    while ($i < $len) {
+        $matched = false;
+        foreach ($keys as $key) {
+            $klen = mb_strlen($key, 'UTF-8');
+            if ($klen > 0 && mb_substr($lower, $i, $klen, 'UTF-8') === $key) {
+                $result .= $map[$key];
+                $used[$key] = $map[$key];
+                $i += $klen;
+                $matched = true;
+                break;
+            }
+        }
+        if (!$matched) {
+            $char = mb_substr($lower, $i, 1, 'UTF-8');
+            // Runes have no digits or punctuation; preserve them as-is.
+            $result .= ($char === ' ') ? '᛫' : $char;
+            $i++;
+        }
+    }
+
+    return [
+        'mode'      => 'encode',
+        'alphabet'  => $set['name'],
+        'era'       => $set['era'],
+        'input'     => $text,
+        'result'    => $result,
+        'plain'     => str_replace('᛫', ' ', $result),
+        'runes_used'=> $used,
+        'note'      => 'This is a transliteration, not a translation: the sounds of your text are written with runic letters, the language stays the same. Historical runic writing used ᛫ as a word divider rather than a space, and had no distinct upper and lower case.',
+    ];
+}
+
+// ---------------------------------------------------------------------
+//  Invisible characters
+// ---------------------------------------------------------------------
+
+/**
+ * Invisible Character generator / detector.
+ */
+function CloudHost247_tool_invisible_character($post)
+{
+    $catalogue = [
+        ['name' => 'Zero Width Space',            'code' => 'U+200B', 'char' => "\u{200B}", 'use' => 'Allows a line break without a visible gap.'],
+        ['name' => 'Zero Width Non-Joiner',       'code' => 'U+200C', 'char' => "\u{200C}", 'use' => 'Prevents two characters forming a ligature.'],
+        ['name' => 'Zero Width Joiner',           'code' => 'U+200D', 'char' => "\u{200D}", 'use' => 'Joins characters - used to build emoji sequences.'],
+        ['name' => 'Word Joiner',                 'code' => 'U+2060', 'char' => "\u{2060}", 'use' => 'Prevents a line break, with zero width.'],
+        ['name' => 'Hangul Filler',               'code' => 'U+3164', 'char' => "\u{3164}", 'use' => 'Renders blank in most fonts; often used as an "empty" name.'],
+        ['name' => 'Braille Pattern Blank',       'code' => 'U+2800', 'char' => "\u{2800}", 'use' => 'A Braille cell with no raised dots; appears blank.'],
+        ['name' => 'Non-Breaking Space',          'code' => 'U+00A0', 'char' => "\u{00A0}", 'use' => 'A space that never breaks across lines.'],
+        ['name' => 'Narrow No-Break Space',       'code' => 'U+202F', 'char' => "\u{202F}", 'use' => 'A narrow space that never breaks.'],
+        ['name' => 'En Quad',                     'code' => 'U+2000', 'char' => "\u{2000}", 'use' => 'Fixed-width space equal to 1 en.'],
+        ['name' => 'Em Quad',                     'code' => 'U+2001', 'char' => "\u{2001}", 'use' => 'Fixed-width space equal to 1 em.'],
+        ['name' => 'Three-Per-Em Space',          'code' => 'U+2004', 'char' => "\u{2004}", 'use' => 'One third of an em.'],
+        ['name' => 'Figure Space',                'code' => 'U+2007', 'char' => "\u{2007}", 'use' => 'As wide as a digit; aligns numbers in tables.'],
+        ['name' => 'Invisible Separator',         'code' => 'U+2063', 'char' => "\u{2063}", 'use' => 'Mathematical invisible comma.'],
+        ['name' => 'Invisible Times',             'code' => 'U+2062', 'char' => "\u{2062}", 'use' => 'Mathematical invisible multiplication sign.'],
+        ['name' => 'Left-to-Right Mark',          'code' => 'U+200E', 'char' => "\u{200E}", 'use' => 'Forces left-to-right text direction.'],
+        ['name' => 'Right-to-Left Mark',          'code' => 'U+200F', 'char' => "\u{200F}", 'use' => 'Forces right-to-left text direction.'],
+        ['name' => 'Soft Hyphen',                 'code' => 'U+00AD', 'char' => "\u{00AD}", 'use' => 'Hyphen shown only if the word wraps there.'],
+        ['name' => 'Mongolian Vowel Separator',   'code' => 'U+180E', 'char' => "\u{180E}", 'use' => 'Zero-width in modern Unicode.'],
+    ];
+
+    $mode = strtolower((string) ($post['mode'] ?? 'generate'));
+
+    if ($mode === 'detect') {
+        $text = (string) ($post['text'] ?? '');
+        if ($text === '') {
+            return ['error' => 'Please paste some text to scan for invisible characters.'];
+        }
+        if (strlen($text) > 200000) {
+            return ['error' => 'Input is too long (limit 200,000 characters).'];
+        }
+
+        $byCode = [];
+        foreach ($catalogue as $entry) {
+            $byCode[$entry['char']] = $entry;
+        }
+
+        $found = [];
+        $chars = preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        foreach ($chars as $index => $char) {
+            if (!isset($byCode[$char])) {
+                continue;
+            }
+            $code = $byCode[$char]['code'];
+            if (!isset($found[$code])) {
+                $found[$code] = [
+                    'name'      => $byCode[$char]['name'],
+                    'code'      => $code,
+                    'count'     => 0,
+                    'positions' => [],
+                ];
+            }
+            $found[$code]['count']++;
+            if (count($found[$code]['positions']) < 50) {
+                $found[$code]['positions'][] = $index;
+            }
+        }
+
+        $cleaned = str_replace(array_keys($byCode), '', $text);
+
+        return [
+            'mode'        => 'detect',
+            'total_chars' => count($chars),
+            'found'       => array_values($found),
+            'hidden_count'=> array_sum(array_column($found, 'count')),
+            'cleaned'     => $cleaned,
+            'is_clean'    => empty($found),
+            'note'        => empty($found)
+                ? 'No invisible characters were found in this text.'
+                : 'Invisible characters are often introduced by copying from web pages or word processors, and can break string comparisons, usernames and CSV imports. A cleaned copy is provided above.',
+        ];
+    }
+
+    // Generate
+    $code  = strtoupper(trim((string) ($post['character'] ?? 'U+200B')));
+    $count = (int) ($post['count'] ?? 1);
+    if ($count < 1 || $count > 1000) {
+        return ['error' => 'Choose between 1 and 1000 characters.'];
+    }
+
+    $selected = null;
+    foreach ($catalogue as $entry) {
+        if ($entry['code'] === $code) {
+            $selected = $entry;
+            break;
+        }
+    }
+    if (!$selected) {
+        return ['error' => 'Unknown character code. Pick one from the list.'];
+    }
+
+    return [
+        'mode'      => 'generate',
+        'character' => $selected['name'],
+        'code'      => $selected['code'],
+        'count'     => $count,
+        'result'    => str_repeat($selected['char'], $count),
+        'html'      => str_repeat('&#x' . substr($selected['code'], 2) . ';', $count),
+        'bytes'     => strlen(str_repeat($selected['char'], $count)),
+        'catalogue' => $catalogue,
+        'use'       => $selected['use'],
+        'note'      => 'Copy the result with the copy button - selecting it by hand will not work, because there is nothing visible to select. Many platforms strip or reject invisible characters, and using them to evade moderation usually violates the platform terms of service.',
+    ];
+}
+
+// ---------------------------------------------------------------------
+//  Wi-Fi QR
+// ---------------------------------------------------------------------
+
+/**
+ * Wi-Fi QR Scanner / Builder - parse and build WIFI: URIs.
+ *
+ * Decoding of the image itself happens in the browser; this handler parses
+ * and builds the WIFI: payload. Wi-Fi passwords are never logged.
+ */
+function CloudHost247_tool_wifi_qr_scanner($post)
+{
+    $mode = strtolower((string) ($post['mode'] ?? 'parse'));
+
+    $escape = function ($value) {
+        return str_replace(['\\', ';', ',', ':', '"'], ['\\\\', '\\;', '\\,', '\\:', '\\"'], (string) $value);
+    };
+
+    if ($mode === 'build') {
+        $ssid = (string) ($post['ssid'] ?? '');
+        if (trim($ssid) === '') {
+            return ['error' => 'Please enter the network name (SSID).'];
+        }
+        if (strlen($ssid) > 32) {
+            return ['error' => 'An SSID cannot be longer than 32 bytes.'];
+        }
+
+        $auth = strtoupper((string) ($post['auth'] ?? 'WPA'));
+        if (!in_array($auth, ['WPA', 'WEP', 'NOPASS', 'WPA2-EAP'], true)) {
+            return ['error' => 'Security type must be WPA, WEP, WPA2-EAP or NOPASS.'];
+        }
+
+        $password = (string) ($post['password'] ?? '');
+        if ($auth !== 'NOPASS' && $password === '') {
+            return ['error' => 'Please enter the network password, or choose "Open network".'];
+        }
+        if ($auth === 'WPA' && $password !== '' && (strlen($password) < 8 || strlen($password) > 63)) {
+            return ['error' => 'A WPA/WPA2 passphrase must be between 8 and 63 characters.'];
+        }
+
+        $hidden = !empty($post['hidden']);
+
+        $uri = 'WIFI:T:' . $auth . ';S:' . $escape($ssid) . ';';
+        if ($auth !== 'NOPASS') {
+            $uri .= 'P:' . $escape($password) . ';';
+        }
+        if ($hidden) {
+            $uri .= 'H:true;';
+        }
+        $uri .= ';';
+
+        return [
+            'mode'     => 'build',
+            'ssid'     => $ssid,
+            'auth'     => $auth,
+            'hidden'   => $hidden,
+            'uri'      => $uri,
+            'note'     => 'Render this payload as a QR code and guests can join by pointing a camera at it. CloudHost247 does not store or log the password — the QR image is drawn in your browser.',
+            'security' => 'Anyone who can photograph the code gets your Wi-Fi password. For public spaces, use a guest network with a separate passphrase.',
+        ];
+    }
+
+    // Parse
+    $uri = trim((string) ($post['uri'] ?? $post['text'] ?? ''));
+    if ($uri === '') {
+        return ['error' => 'Scan a QR code or paste its WIFI: payload.'];
+    }
+    if (stripos($uri, 'WIFI:') !== 0) {
+        return ['error' => 'That is not a Wi-Fi QR payload. Wi-Fi codes start with "WIFI:".'];
+    }
+    if (strlen($uri) > 1024) {
+        return ['error' => 'That payload is too long to be a valid Wi-Fi QR code.'];
+    }
+
+    $body   = substr($uri, 5);
+    $fields = [];
+    $buffer = '';
+    $len    = strlen($body);
+    for ($i = 0; $i < $len; $i++) {
+        $char = $body[$i];
+        if ($char === '\\' && $i + 1 < $len) {
+            $buffer .= $body[$i + 1];
+            $i++;
+            continue;
+        }
+        if ($char === ';') {
+            if ($buffer !== '') {
+                $fields[] = $buffer;
+            }
+            $buffer = '';
+            continue;
+        }
+        $buffer .= $char;
+    }
+    if ($buffer !== '') {
+        $fields[] = $buffer;
+    }
+
+    $parsed = [];
+    foreach ($fields as $field) {
+        $pos = strpos($field, ':');
+        if ($pos === false) {
+            continue;
+        }
+        $parsed[strtoupper(substr($field, 0, $pos))] = substr($field, $pos + 1);
+    }
+
+    if (empty($parsed['S'])) {
+        return ['error' => 'The payload does not contain a network name (SSID).'];
+    }
+
+    $auth = strtoupper($parsed['T'] ?? 'NOPASS');
+    $labels = [
+        'WPA'      => 'WPA/WPA2 Personal',
+        'WPA2-EAP' => 'WPA2 Enterprise (EAP)',
+        'WEP'      => 'WEP (insecure - deprecated)',
+        'NOPASS'   => 'Open network (no encryption)',
+    ];
+
+    $warnings = [];
+    if ($auth === 'WEP') {
+        $warnings[] = 'WEP can be broken in minutes with freely available tools. Move this network to WPA2 or WPA3.';
+    }
+    if ($auth === 'NOPASS') {
+        $warnings[] = 'This network is unencrypted. Traffic on it can be read by anyone nearby.';
+    }
+    if (!empty($parsed['P']) && strlen($parsed['P']) < 12 && $auth === 'WPA') {
+        $warnings[] = 'The passphrase is short. A 12+ character passphrase resists offline cracking far better.';
+    }
+
+    return [
+        'mode'      => 'parse',
+        'ssid'      => $parsed['S'],
+        'auth'      => $auth,
+        'auth_label'=> $labels[$auth] ?? $auth,
+        'password'  => $parsed['P'] ?? '',
+        'hidden'    => isset($parsed['H']) && strtolower($parsed['H']) === 'true',
+        'warnings'  => $warnings,
+        'note'      => 'Decoded entirely from the payload you supplied. CloudHost247 never stores or logs Wi-Fi credentials.',
+    ];
+}
+
+// ---------------------------------------------------------------------
+//  Connection speed test
+// ---------------------------------------------------------------------
+
+/**
+ * Speed Test - server side of the browser-driven measurement.
+ *
+ * The browser performs the actual timing against these endpoints. No
+ * numbers are invented: if a measurement cannot be taken, it is reported
+ * as unavailable.
+ *
+ *   action=config    -> parameters for the browser to run the test
+ *   action=download  -> emits N bytes of incompressible random data
+ *   action=upload    -> accepts a payload and reports what was received
+ *   action=ping      -> minimal response for latency/jitter sampling
+ */
+function CloudHost247_tool_speed_test($post)
+{
+    $action = strtolower((string) ($post['action'] ?? 'config'));
+
+    switch ($action) {
+        case 'ping':
+            return [
+                'action'      => 'ping',
+                'server_time' => round(microtime(true) * 1000, 3),
+                'sequence'    => (int) ($post['sequence'] ?? 0),
+            ];
+
+        case 'download':
+            $size = (int) ($post['size'] ?? 1048576);
+            $size = max(65536, min(26214400, $size)); // 64 KB - 25 MB
+
+            return [
+                'action'      => 'download',
+                'size'        => $size,
+                'stream'      => true,
+                'server_time' => round(microtime(true) * 1000, 3),
+                'note'        => 'The browser requests this payload and times the transfer. The data is random and incompressible so compression cannot distort the result.',
+            ];
+
+        case 'upload':
+            $received = isset($post['payload']) ? strlen((string) $post['payload']) : 0;
+            if ($received === 0 && isset($_SERVER['CONTENT_LENGTH'])) {
+                $received = (int) $_SERVER['CONTENT_LENGTH'];
+            }
+
+            return [
+                'action'        => 'upload',
+                'bytes_received'=> $received,
+                'server_time'   => round(microtime(true) * 1000, 3),
+            ];
+
+        case 'config':
+        default:
+            return [
+                'action'       => 'config',
+                'client_ip'    => CloudHost247ToolsSecurity::clientIp(),
+                'server_time'  => round(microtime(true) * 1000, 3),
+                'phases'       => [
+                    'latency'  => ['samples' => 10, 'endpoint' => '/tools/api/speed-test?action=ping'],
+                    'download' => ['sizes' => [262144, 1048576, 5242880], 'endpoint' => '/tools/api/speed-test?action=download'],
+                    'upload'   => ['sizes' => [262144, 1048576], 'endpoint' => '/tools/api/speed-test?action=upload'],
+                ],
+                'max_duration' => 20,
+                'note'         => 'This measures the connection between your browser and this CloudHost247 server only. It is a single-server diagnostic, not a substitute for a multi-server speed test, and your result depends on distance to this server, current server load and the route between you.',
+                'disclaimer'   => 'Results are indicative. CloudHost247 reports exactly what was measured and never substitutes estimated or cached figures.',
+            ];
+    }
 }

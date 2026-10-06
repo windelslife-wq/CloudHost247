@@ -877,7 +877,7 @@ return [
         ],
         'open-graph-checker' => [
             'id'              => 46,
-            'handler'         => 'open_graph_checker',
+            'handler'         => 'open_graph',
             'slug'            => 'open-graph-checker',
             'name'            => 'Open Graph Checker',
             'category'        => 'developer',

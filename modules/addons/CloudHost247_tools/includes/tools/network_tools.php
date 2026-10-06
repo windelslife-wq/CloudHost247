@@ -3,7 +3,7 @@
  * CloudHost247 Tools - Network Tools Implementation
  */
 
-if (!defined("WHMCS")) {
+if (!defined("WHMCS") && !defined("CLOUDHOST247_TOOLS")) {
     die("This file cannot be accessed directly");
 }
 
@@ -460,4 +460,139 @@ function CloudHost247_tool_asn_lookup($post)
     }
 
     return ['asn' => $asn, 'error' => 'Could not retrieve ASN data'];
+}
+
+// ---------------------------------------------------------------------
+//  Website status  (CloudHost247-native tool)
+// ---------------------------------------------------------------------
+
+/**
+ * Website Status Checker - is a site up, and how healthy is the response?
+ *
+ * Every figure reported here is measured on this request. Nothing is
+ * cached, estimated or invented.
+ */
+function CloudHost247_tool_website_status($post)
+{
+    $input = trim((string) ($post['url'] ?? $post['domain'] ?? ''));
+    if ($input === '') {
+        return ['error' => 'Please enter a website URL or domain name.'];
+    }
+
+    try {
+        $target = CloudHost247ToolsSecurity::assertPublicUrl($input);
+        $res    = CloudHost247ToolsSecurity::fetch($target['url'], ['timeout' => 15]);
+    } catch (CloudHost247ToolsSecurityException $e) {
+        return [
+            'url'     => $input,
+            'up'      => false,
+            'status'  => 0,
+            'error'   => null,
+            'verdict' => 'Unreachable',
+            'reason'  => $e->getMessage(),
+            'checks'  => [[
+                'name'   => 'HTTP reachability',
+                'status' => 'fail',
+                'detail' => $e->getMessage(),
+            ]],
+            'note'    => 'CloudHost247 could not complete a request to this address from this server.',
+        ];
+    }
+
+    $status  = $res['status'];
+    $headers = $res['headers'];
+    $up      = $status > 0 && $status < 500;
+
+    $header = function ($name) use ($headers) {
+        $value = $headers[strtolower($name)] ?? null;
+
+        return is_array($value) ? implode(', ', $value) : $value;
+    };
+
+    $checks = [];
+    $add = function ($name, $status, $detail) use (&$checks) {
+        $checks[] = ['name' => $name, 'status' => $status, 'detail' => $detail];
+    };
+
+    $add('HTTP reachability',
+        $status >= 200 && $status < 400 ? 'pass' : ($status >= 400 && $status < 500 ? 'warn' : 'fail'),
+        'Server responded with HTTP ' . $status . ' in ' . $res['time'] . ' ms.');
+
+    $add('HTTPS',
+        $target['scheme'] === 'https' ? 'pass' : 'fail',
+        $target['scheme'] === 'https'
+            ? 'The site was reached over HTTPS.'
+            : 'The site was reached over plain HTTP. Traffic is not encrypted.');
+
+    $hsts = $header('strict-transport-security');
+    $add('HSTS', $hsts ? 'pass' : 'warn',
+        $hsts ? 'Strict-Transport-Security: ' . $hsts : 'No Strict-Transport-Security header.');
+
+    foreach ([
+        'x-content-type-options'    => 'MIME sniffing protection',
+        'x-frame-options'           => 'Clickjacking protection',
+        'content-security-policy'   => 'Content Security Policy',
+        'referrer-policy'           => 'Referrer policy',
+    ] as $key => $label) {
+        $value = $header($key);
+        $add($label, $value ? 'pass' : 'warn',
+            $value ? $key . ': ' . (strlen($value) > 120 ? substr($value, 0, 120) . '...' : $value)
+                   : 'No ' . $key . ' header.');
+    }
+
+    $add('Response time',
+        $res['time'] < 800 ? 'pass' : ($res['time'] < 2500 ? 'warn' : 'fail'),
+        'Time to full response: ' . $res['time'] . ' ms (measured from this server).');
+
+    if ($res['redirects']) {
+        $add('Redirects', count($res['redirects']) > 2 ? 'warn' : 'info',
+            count($res['redirects']) . ' redirect(s) followed before the final response.');
+    }
+
+    $compression = $header('content-encoding');
+    $add('Compression', $compression ? 'pass' : 'warn',
+        $compression ? 'Content-Encoding: ' . $compression : 'No compression negotiated on this response.');
+
+    $size  = strlen($res['body']);
+    $title = null;
+    if (preg_match('/<title[^>]*>(.*?)<\/title>/is', $res['body'], $m)) {
+        $title = trim(html_entity_decode(strip_tags($m[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    }
+
+    $passes = count(array_filter($checks, function ($c) { return $c['status'] === 'pass'; }));
+    $scored = count(array_filter($checks, function ($c) { return $c['status'] !== 'info'; }));
+    $score  = $scored ? (int) round(($passes / $scored) * 100) : 0;
+
+    if (!$up) {
+        $verdict = 'Down';
+    } elseif ($status >= 400) {
+        $verdict = 'Up, but returning an error';
+    } elseif ($score >= 80) {
+        $verdict = 'Up and healthy';
+    } else {
+        $verdict = 'Up, with issues';
+    }
+
+    return [
+        'url'           => $res['url'],
+        'final_url'     => $res['url'],
+        'host'          => $res['host'],
+        'resolved_ips'  => $target['ips'],
+        'up'            => $up,
+        'status'        => $status,
+        'status_text'   => $headers['_status_line'] ?? '',
+        'response_time' => $res['time'],
+        'verdict'       => $verdict,
+        'score'         => $score,
+        'title'         => $title,
+        'server'        => $header('server'),
+        'powered_by'    => $header('x-powered-by'),
+        'content_type'  => $header('content-type'),
+        'size_bytes'    => $size,
+        'redirects'     => $res['redirects'],
+        'checks'        => $checks,
+        'headers'       => array_diff_key($headers, ['_status_line' => 1]),
+        'note'          => 'Measured live from the CloudHost247 server at ' . gmdate('Y-m-d H:i:s') . ' UTC. '
+            . 'A site can be reachable here but unreachable from your own network because of routing, DNS or firewall differences.',
+    ];
 }
