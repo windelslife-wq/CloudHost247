@@ -7,9 +7,12 @@ use stdClass;
 use WHMCS\Database\Capsule;
 use DateTime;
 use DateInterval;
+use CloudHost247\Blockonomics\Bridge;
+use CloudHost247\Blockonomics\Policy;
 
 require_once __DIR__ . '/../../../includes/gatewayfunctions.php';
 require_once __DIR__ . '/../../../includes/invoicefunctions.php';
+require_once __DIR__ . '/cloudhost247/autoload.php';
 
 class Blockonomics
 {
@@ -91,7 +94,19 @@ class Blockonomics
     public function getApiKey()
     {
         $gatewayParams = getGatewayVariables('blockonomics');
-        return $gatewayParams['ApiKey'];
+        $legacy = isset($gatewayParams['ApiKey']) ? $gatewayParams['ApiKey'] : '';
+        // Vault-first resolution; the legacy gateway param remains the
+        // backward-compatible fallback for existing installations.
+        try {
+            $resolved = Bridge::resolveApiKey($legacy);
+            if ($resolved !== '') {
+                return $resolved;
+            }
+        } catch (\Throwable $vaultError) {
+            error_log('cloudhost247 blockonomics api-key resolution failed: '
+                . $vaultError->getMessage());
+        }
+        return $legacy;
     }
 
     /*
@@ -121,6 +136,26 @@ class Blockonomics
         ];
     }
 
+    /**
+     * Governed network accessor: the governance store wins over the legacy
+     * gateway param once seeded, so the admin console is the single source
+     * of truth (spec §9/§11).
+     */
+    public function getTokenNetwork()
+    {
+        try {
+            $state = Bridge::state(getGatewayVariables('blockonomics'));
+            if ($state['usdt_network'] !== '') {
+                return $state['usdt_network'];
+            }
+        } catch (\Throwable $governanceError) {
+            error_log('cloudhost247 blockonomics network resolution failed: '
+                . $governanceError->getMessage());
+        }
+        $gatewayParams = getGatewayVariables('blockonomics');
+        return isset($gatewayParams['NetworkType']) ? $gatewayParams['NetworkType'] : 'ethereum';
+    }
+
     public function getTokenNetworkDetails($selectedNetwork)
     {
         $tokenNetworks = array(
@@ -148,12 +183,29 @@ class Blockonomics
     {
         $active_currencies = [];
         $blockonomics_currencies = $this->getSupportedCurrencies();
+
+        // CloudHost247 governance is authoritative for btc/usdt; bch is
+        // still governed solely by the stock checkbox (untouched by design).
+        try {
+            $governed = Bridge::availableCurrencies(getGatewayVariables('blockonomics'));
+        } catch (\Throwable $governanceError) {
+            error_log('cloudhost247 blockonomics active-currency resolution failed: '
+                . $governanceError->getMessage());
+            $governed = ['btc' => false, 'usdt' => false]; // fail closed
+        }
+
         foreach ($blockonomics_currencies as $code => $currency) {
             $gatewayParams = getGatewayVariables('blockonomics');
             $enabled = $gatewayParams[$code . 'Enabled'];
-            if ($enabled) {
-                $active_currencies[$code] = $currency;
+            if (!$enabled) {
+                continue;
             }
+            if ($code === 'btc' || $code === 'usdt') {
+                if (empty($governed[$code])) {
+                    continue;
+                }
+            }
+            $active_currencies[$code] = $currency;
         }
         return $active_currencies;
     }
@@ -240,16 +292,6 @@ class Blockonomics
     {
         $gatewayParams = getGatewayVariables('blockonomics');
         return $gatewayParams['EtherScanAPIKey'];
-    }
-    
-     /*
-     * Get network type  from the setting page 
-     */
-
-    public function getTokenNetwork()
-    {
-        $gatewayParams = getGatewayVariables('blockonomics');
-        return $gatewayParams['NetworkType'];
     }
     /*
      * See if given txid is applied to any invoice
@@ -579,6 +621,18 @@ class Blockonomics
      */
     public function createNewCryptoOrder($order, $blockonomics_currency)
     {
+        // Server-side currency enforcement (spec §16): a disabled BTC/USDT
+        // must never reach address generation, regardless of what the
+        // browser requested.
+        if ($blockonomics_currency === 'btc' || $blockonomics_currency === 'usdt') {
+            try {
+                Bridge::assertCurrencyAllowed($blockonomics_currency, getGatewayVariables('blockonomics'));
+            } catch (\Throwable $blocked) {
+                http_response_code(403);
+                exit('This payment method is currently unavailable.');
+            }
+        }
+
         if ($blockonomics_currency === 'usdt') {
             $usdt_recieving_address = $this->getUSDTAddress();
             $order->addr = $usdt_recieving_address . '-' . $order->id_order;
@@ -646,6 +700,12 @@ class Blockonomics
                 ->first();
         } catch (Exception $e) {
             exit("Unable to select order from blockonomics_orders: {$e->getMessage()}");
+        }
+
+        // Hardening: unknown addresses return null — callers 404 safely
+        // instead of fataling on ->id_order.
+        if (!$existing_order) {
+            return null;
         }
 
         return [
@@ -1045,6 +1105,12 @@ class Blockonomics
             $context["chain_id"] = $selectedTokenNetworks["chainId"];
             $context["contract_address"] = $selectedTokenNetworks["tokens"][$crypto['code']];
             $context["usdt_address"] = $this->getUSDTAddress();
+            // Network is ALWAYS displayed next to the receiving address
+            // (spec §9) and the wrong-network warning is mandatory (§10).
+            // Values come from configuration only — never from the request.
+            $context["network_key"] = $selectedNetwork;
+            $context["network_display"] = Policy::networkDisplay($selectedNetwork);
+            $context["network_is_test"] = Policy::networkIsTest($selectedNetwork);
             $this->load_blockonomics_template($ca, 'web3_checkout', $context);
         } else {
             $time_period_from_db = $this->getTimePeriod();

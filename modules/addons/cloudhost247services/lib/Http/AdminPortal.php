@@ -231,6 +231,36 @@ class AdminPortal
                 }
                 break;
 
+            case 'payments':
+                if (!\Chs\Admin\BlockonomicsFactory::available()) {
+                    throw new ChsException('Blockonomics governance layer missing.');
+                }
+                $bn = \Chs\Admin\BlockonomicsFactory::admin();
+                $ipHash = \CloudHost247\Blockonomics\Bridge::ipHash();
+                if ($do === 'save_settings') {
+                    return $bn->saveSettings([
+                        'gateway_enabled' => !empty($_POST['gateway_enabled']),
+                        'btc_enabled'     => !empty($_POST['btc_enabled']),
+                        'usdt_enabled'    => !empty($_POST['usdt_enabled']),
+                        'confirmations'   => isset($_POST['confirmations']) ? (int) $_POST['confirmations'] : 2,
+                        'usdt_network'    => isset($_POST['usdt_network']) ? (string) $_POST['usdt_network'] : '',
+                    ], $staff, $ipHash);
+                }
+                if ($do === 'replace_api_key') {
+                    return $bn->replaceApiKey(isset($_POST['api_key']) ? (string) $_POST['api_key'] : '', $staff, $ipHash);
+                }
+                if ($do === 'replace_etherscan_key') {
+                    return $bn->replaceEtherscanKey(isset($_POST['etherscan_key']) ? (string) $_POST['etherscan_key'] : '', $staff, $ipHash);
+                }
+                if ($do === 'update_usdt_address') {
+                    return $bn->updateUsdtAddress(isset($_POST['usdt_address']) ? (string) $_POST['usdt_address'] : '', $staff, $ipHash);
+                }
+                if ($do === 'test_connection') {
+                    $r = $bn->testConnection($staff, $ipHash);
+                    return 'Connection test: ' . $r['label'] . ' [' . $r['category'] . ']';
+                }
+                throw new ChsException('Unknown payments action.');
+
             case 'settings':
                 if ($do === 'save') {
                     $this->saveSettings($staff);
@@ -298,6 +328,7 @@ class AdminPortal
         // Fallback for environments without WHMCS token plumbing (tests).
         \Chs\Core\Csrf::verifyRequest();
     }
+
 
     /* ------------------------------------------------------------ sections -- */
 
@@ -383,6 +414,43 @@ class AdminPortal
                     'statuses' => ['Open', 'Answered', 'Customer-Reply', 'In Progress', 'On Hold', 'Closed'],
                     'baseLink' => $this->baseLink,
                 ]);
+            case 'payments':
+                if (!\Chs\Admin\BlockonomicsFactory::available()) {
+                    return '<div class="alert alert-warning">Blockonomics governance layer not found. '
+                        . 'Deploy modules/gateways/blockonomics/cloudhost247/ first.</div>';
+                }
+                $bn = \Chs\Admin\BlockonomicsFactory::admin();
+                return $this->view('blockonomics', ['state' => $bn->panelState()]);
+            case 'crypto_tx':
+                if (!\Chs\Admin\BlockonomicsFactory::available()) {
+                    return '<div class="alert alert-warning">Blockonomics governance layer not found.</div>';
+                }
+                $legacyLoader = function () {
+                    if (!function_exists('getGatewayVariables')) {
+                        require_once dirname(__DIR__, 4) . '/includes/gatewayfunctions.php';
+                    }
+                    $params = getGatewayVariables('blockonomics');
+                    return is_array($params) ? $params : [];
+                };
+                $policy = \Chs\Admin\BlockonomicsFactory::displayPolicy($legacyLoader);
+                $filters = [
+                    'search'       => isset($_GET['search']) ? (string) $_GET['search'] : '',
+                    'currency'     => isset($_GET['currency']) ? (string) $_GET['currency'] : '',
+                    'network'      => isset($_GET['network']) ? (string) $_GET['network'] : '',
+                    'status'       => isset($_GET['status']) ? (string) $_GET['status'] : '',
+                    'from'         => isset($_GET['from']) ? (string) $_GET['from'] : '',
+                    'to'           => isset($_GET['to']) ? (string) $_GET['to'] : '',
+                    'page'         => isset($_GET['page']) ? (int) $_GET['page'] : 1,
+                    'confirmations'  => $policy['confirmations'],
+                    'time_period_min' => $policy['time_period_min'],
+                ];
+                $result = \Chs\Admin\BlockonomicsFactory::transactions()->query($filters);
+                return $this->view('crypto_tx', [
+                    'rows' => $result['rows'], 'total' => $result['total'],
+                    'page' => $result['page'], 'pages' => $result['pages'],
+                    'filters' => $filters,
+                    'statuses' => ['Pending', 'Confirming', 'Paid', 'Failed', 'Expired', 'Cancelled', 'Refunded'],
+                ]);
             case 'audit':
                 return $this->view('audit', [
                     'rows' => Audit::recent(200),
@@ -453,6 +521,8 @@ class AdminPortal
             'logos'      => 'Logo Projects',
             'ai'         => 'AI Builder',
             'inbox'      => 'Unified Inbox',
+            'payments'   => 'Payments · Blockonomics',
+            'crypto_tx'  => 'Crypto Transactions',
             'audit'      => 'Audit Log',
             'settings'   => 'Settings',
         ];

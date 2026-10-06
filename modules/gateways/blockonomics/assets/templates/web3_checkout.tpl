@@ -32,6 +32,26 @@
                 </tr>
             </table>
 
+            <div class="bnomics-network-banner" style="margin:14px 0;padding:12px 14px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                <div>
+                    <span style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">Network</span><br>
+                    <strong style="font-size:16px;">{$network_display}</strong>
+                    {if $network_is_test}
+                        <span class="badge" style="background:#b45309;color:#fff;margin-left:8px;">TEST NETWORK</span>
+                    {/if}
+                </div>
+                <div style="text-align:right;min-width:220px;">
+                    <span style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">Receiving address</span><br>
+                    <code style="font-size:12px;word-break:break-all;">{$usdt_address}</code>
+                </div>
+            </div>
+
+            <div class="alert alert-danger" style="border-left:4px solid #dc2626;">
+                <strong>Important:</strong><br>
+                Only send USDT using the <strong>{$network_display}</strong> network shown above.<br>
+                Sending USDT through a different network may result in permanent loss of funds.
+            </div>
+
             <table id="wallet-setup-table">
                 <tr>
                     <td>
