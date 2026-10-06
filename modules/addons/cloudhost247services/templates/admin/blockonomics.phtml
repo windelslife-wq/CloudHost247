@@ -1,0 +1,159 @@
+<?php
+/** @var array $state BlockonomicsAdmin::panelState() output */
+$st = $state;
+$on = function ($key) use ($st) { return !empty($st[$key]) ? ' checked' : ''; };
+$toggle = function ($name, $label, $desc, $current) {
+    return '<tr>'
+        . '<td style="width:34%">' . $label . '</td>'
+        . '<td><label class="chs-switch">'
+        . '<input type="checkbox" name="' . $name . '"' . ($current ? ' checked' : '') . '> '
+        . '<strong>' . ($current ? 'ON' : 'OFF') . '</strong></label>'
+        . ($desc !== '' ? '<div class="chs-muted small">' . $desc . '</div>' : '')
+        . '</td></tr>';
+};
+$swiftChineseNo = '';
+?>
+<div class="chs-panel">
+  <h3 style="margin-top:0;">BLOCKONOMICS — Cryptocurrency Payment Gateway</h3>
+  <p class="chs-muted">
+    Master + per-currency control enforced server-side in the gateway itself
+    (payment creation, checkout, callback already trust this store). Changes here
+    are audited, mirrored to the stock WHMCS gateway settings page, and never
+    overwrite historical payment records.
+  </p>
+
+  <form method="post" action="<?= chs_h($baseLink . '&action=payments') ?>">
+    <?= $tokenField ?><input type="hidden" name="do" value="save_settings">
+    <table class="table table-striped">
+      <tbody>
+      <?= $toggle('gateway_enabled', 'Blockonomics Gateway', 'Master switch — takes precedence over every currency below.', $st['gateway_enabled']) ?>
+      <?= $toggle('btc_enabled', 'Bitcoin (BTC)', 'BTC payment creation against the live Blockonomics integration.', $st['btc_enabled']) ?>
+      <?= $toggle('usdt_enabled', 'Tether (USDT)', 'USDT (web3 checkout) against the configured receiving address.', $st['usdt_enabled']) ?>
+      <tr>
+        <td>USDT Network</td>
+        <td>
+          <select name="usdt_network" class="form-control" style="max-width:320px;">
+            <option value=""<?= $st['usdt_network'] === '' ? ' selected' : '' ?>>— Not configured —</option>
+            <option value="ethereum"<?= $st['usdt_network'] === 'ethereum' ? ' selected' : '' ?>>Ethereum (mainnet)</option>
+            <option value="sepolia"<?= $st['usdt_network'] === 'sepolia' ? ' selected' : '' ?>>Sepolia (TEST network)</option>
+          </select>
+          <?php if (!empty($st['network_display'])): ?>
+            <div class="chs-muted small" style="margin-top:4px;">
+              Customers see:&nbsp;<strong><?= chs_h($st['network_display']) ?></strong>
+              <?php if (!empty($st['network_is_test'])): ?><span class="label label-warning">TEST</span><?php endif; ?>
+            </div>
+          <?php endif; ?>
+        </td>
+      </tr>
+      <tr>
+        <td>Required Confirmations</td>
+        <td>
+          <select name="confirmations" class="form-control" style="max-width:120px;">
+            <?php foreach ([2 => '2 (recommended)', 1 => '1', 0 => '0'] as $v => $label): ?>
+              <option value="<?= (int) $v ?>"<?= (int) $st['confirmations'] === (int) $v ? ' selected' : '' ?>><?= $label ?></option>
+            <?php endforeach; ?>
+          </select>
+          <div class="chs-muted small">Payments stay Confirming until the chain depth reaches this value.</div>
+        </td>
+      </tr>
+      </tbody>
+    </table>
+    <button class="btn btn-primary" type="submit">Save Settings</button>
+  </form>
+</div>
+
+<div class="chs-panel">
+  <h3>Connection &amp; Credentials</h3>
+  <table class="table table-striped">
+    <tbody>
+    <tr>
+      <td style="width:34%">Blockonomics API Key</td>
+      <td>
+        <?php if ($st['api_key_set']): ?>
+          <code><?= chs_h($st['api_key_mask']) ?></code>
+          <span class="label label-success">Configured ✓</span>
+          <div class="chs-muted small">Source: <?= chs_h($st['api_key_source']) ?> — never rendered in full, never exposed to customers.</div>
+        <?php else: ?>
+          <span class="label label-default">Not configured</span>
+        <?php endif; ?>
+        <form method="post" action="<?= chs_h($baseLink . '&action=payments') ?>" style="margin-top:8px;">
+          <?= $tokenField ?><input type="hidden" name="do" value="replace_api_key">
+          <div class="input-group" style="max-width:420px;">
+            <input type="password" name="api_key" class="form-control" autocomplete="new-password"
+                   placeholder="New Blockonomics API key (write-only)" required>
+            <span class="input-group-btn"><button class="btn btn-default" type="submit">Replace API Key</button></span>
+          </div>
+        </form>
+      </td>
+    </tr>
+    <tr>
+      <td>Connection Test</td>
+      <td>
+        <form method="post" action="<?= chs_h($baseLink . '&action=payments') ?>" style="margin:0;">
+          <?= $tokenField ?><input type="hidden" name="do" value="test_connection">
+          <button class="btn btn-default" type="submit">Test Connection</button>
+          <span class="chs-muted small">Server-side call to Blockonomics — result is sanitized and audited.</span>
+        </form>
+      </td>
+    </tr>
+    <tr>
+      <td>Etherscan API Key<br><span class="chs-muted small">(USDT verification)</span></td>
+      <td>
+        <?php if ($st['etherscan_set']): ?>
+          <code><?= chs_h($st['etherscan_mask']) ?></code> <span class="label label-success">Configured ✓</span>
+        <?php else: ?>
+          <span class="label label-warning">Not configured — USDT cannot be enabled without it</span>
+        <?php endif; ?>
+        <form method="post" action="<?= chs_h($baseLink . '&action=payments') ?>" style="margin-top:8px;">
+          <?= $tokenField ?><input type="hidden" name="do" value="replace_etherscan_key">
+          <div class="input-group" style="max-width:420px;">
+            <input type="password" name="etherscan_key" class="form-control" autocomplete="new-password"
+                   placeholder="New Etherscan API key (write-only)" required>
+            <span class="input-group-btn"><button class="btn btn-default" type="submit">Replace Etherscan Key</button></span>
+          </div>
+        </form>
+      </td>
+    </tr>
+    <tr>
+      <td>USDT Receiving Address</td>
+      <td>
+        <form method="post" action="<?= chs_h($baseLink . '&action=payments') ?>" style="margin:0;">
+          <?= $tokenField ?><input type="hidden" name="do" value="update_usdt_address">
+          <div class="input-group" style="max-width:520px;">
+            <input type="text" name="usdt_address" class="form-control" value="<?= chs_h($st['usdt_address']) ?>"
+                   placeholder="0x… (40 hex chars)" pattern="^0x[a-fA-F0-9]{40}$">
+            <span class="input-group-btn"><button class="btn btn-default" type="submit">Update Address</button></span>
+          </div>
+          <div class="chs-muted small">Customers see this address paired with the network above.</div>
+        </form>
+      </td>
+    </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="chs-panel">
+  <h3>Governance Audit <span class="chs-muted small">(25 most recent)</span></h3>
+  <?php if (empty($st['audit'])): ?>
+    <p class="chs-muted">No audited changes yet.</p>
+  <?php else: ?>
+  <table class="table table-striped table-condensed">
+    <thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Setting</th><th>Old → New</th></tr></thead>
+    <tbody>
+    <?php foreach ($st['audit'] as $row): ?>
+      <tr>
+        <td><?= chs_h(date('Y-m-d H:i:s', (int) $row['created_at'])) ?></td>
+        <td>#<?= (int) $row['actor_id'] ?></td>
+        <td><?= chs_h($row['action']) ?></td>
+        <td><?= chs_h($row['setting']) ?></td>
+        <td><code><?= chs_h((string) $row['old_value']) ?></code> → <code><?= chs_h((string) $row['new_value']) ?></code></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  <?php endif; ?>
+  <p class="chs-muted small">
+    Seeded from legacy settings: <strong><?= !empty($st['seeded']) ? 'yes' : 'not yet' ?></strong>.
+    Full audit also available under <a href="<?= chs_h($baseLink . '&action=audit') ?>">Audit Log</a>.
+  </p>
+</div>

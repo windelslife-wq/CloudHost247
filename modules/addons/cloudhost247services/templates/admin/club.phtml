@@ -1,0 +1,86 @@
+<?php /** @var array $plans @var array $memberships @var array $tld_choices */ ?>
+<div class="chs-grid-2">
+  <div class="chs-panel">
+    <h3>Plans</h3>
+    <?php foreach ($plans as $plan): ?>
+      <div class="well well-sm">
+        <form method="post" action="<?= chs_h($baseLink . '&action=club') ?>">
+          <?= $tokenField ?><input type="hidden" name="do" value="save_plan"><input type="hidden" name="plan_id" value="<?= (int) $plan['id'] ?>">
+          <div class="form-group"><input class="form-control" name="name" value="<?= chs_h($plan['name']) ?>"></div>
+          <div class="form-group"><textarea class="form-control" name="description" rows="2"><?= chs_h($plan['description']) ?></textarea></div>
+          <div class="row">
+            <div class="col-xs-3"><input class="form-control" name="price" value="<?= chs_h(\Chs\Core\Money::toDecimal((int) $plan['price_minor'], $plan['currency'])) ?>" title="Price"></div>
+            <div class="col-xs-3"><input class="form-control" name="currency" value="<?= chs_h($plan['currency']) ?>" maxlength="3"></div>
+            <div class="col-xs-3">
+              <select class="form-control" name="period_months">
+                <?php foreach ([1,3,6,12,24] as $mo): ?><option value="<?= $mo ?>" <?= (int) $plan['period_months'] === $mo ? 'selected' : '' ?>><?= $mo ?> mo</option><?php endforeach; ?>
+              </select>
+            </div>
+            <div class="col-xs-3"><input class="form-control" name="discount_percent" value="<?= chs_h(rtrim(rtrim(number_format((float) $plan['discount_percent'], 2), '0'), '.')) ?>" title="Discount %"></div>
+          </div>
+          <div class="chs-inline-checks">
+            <label><input type="checkbox" name="applies_register" <?= $plan['applies_register'] ? 'checked' : '' ?>> Registrations</label>
+            <label><input type="checkbox" name="applies_renew" <?= $plan['applies_renew'] ? 'checked' : '' ?>> Renewals</label>
+            <label><input type="checkbox" name="applies_transfer" <?= $plan['applies_transfer'] ? 'checked' : '' ?>> Transfers</label>
+            <label>Status <select name="status" class="form-control input-sm" style="width:auto;display:inline-block">
+              <option value="active" <?= $plan['status']==='active'?'selected':'' ?>>Active</option>
+              <option value="retired" <?= $plan['status']==='retired'?'selected':'' ?>>Retired</option>
+            </select></label>
+            <label>Sort <input type="number" class="form-control input-sm" name="sort_order" value="<?= (int) $plan['sort_order'] ?>" style="width:70px;display:inline-block"></label>
+          </div>
+          <div class="form-group">
+            <label>Eligible TLDs</label>
+            <div class="chs-tld-picker">
+              <?php
+              $selected = \Chs\Core\Db::all('club_plan_tlds', ['plan_id' => (int) $plan['id']]);
+              $seen = [];
+              foreach ($selected as $s) { $seen[$s['tld']] = true; }
+              ?>
+              <?php foreach (array_slice($tld_choices, 0, 120) as $tld): ?>
+                <label class="chs-tld-chip"><input type="checkbox" name="tlds[<?= chs_h($tld) ?>]" <?= isset($seen[$tld]) ? 'checked' : '' ?>> .<?= chs_h($tld) ?></label>
+              <?php endforeach; ?>
+            </div>
+            <p class="chs-muted small">Showing the first 120 catalogue extensions; unticked TLDs are not discounted.</p>
+          </div>
+          <button class="btn btn-primary btn-sm">Save plan</button>
+        </form>
+      </div>
+    <?php endforeach; ?>
+
+    <div class="well">
+      <h4>New plan</h4>
+      <form method="post" action="<?= chs_h($baseLink . '&action=club') ?>" class="form-inline">
+        <?= $tokenField ?><input type="hidden" name="do" value="save_plan">
+        <input class="form-control" name="name" placeholder="Plan name" required>
+        <input class="form-control" name="price" placeholder="Price" required style="width:90px">
+        <input class="form-control" name="currency" value="USD" maxlength="3" style="width:60px">
+        <select class="form-control" name="period_months"><option value="12">12 mo</option><option value="1">1 mo</option><option value="6">6 mo</option></select>
+        <input class="form-control" name="discount_percent" placeholder="10" style="width:80px">
+        <label><input type="checkbox" name="applies_register" checked> Reg</label>
+        <label><input type="checkbox" name="applies_renew" checked> Ren</label>
+        <button class="btn btn-primary">Create</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="chs-panel">
+    <h3>Memberships</h3>
+    <div class="table-responsive">
+    <table class="table table-condensed table-striped">
+      <thead><tr><th>Client</th><th>Plan</th><th>Status</th><th>Starts</th><th>Expires</th><th>Invoice</th></tr></thead>
+      <tbody>
+      <?php foreach ($memberships as $m): ?>
+        <tr>
+          <td>#<?= (int) $m['client_id'] ?></td>
+          <td><?php $p = \Chs\Core\Db::first('club_plans', ['id' => (int) $m['plan_id']]); echo $p ? chs_h($p['name']) : '—'; ?></td>
+          <td><?= chs_status_pill($m['status']) ?><?= $m['cancelled_at'] ? ' <span class="label label-default">cancels at term end</span>' : '' ?></td>
+          <td><?= chs_dt($m['starts_at']) ?></td>
+          <td><?= chs_dt($m['expires_at']) ?></td>
+          <td><?= $m['invoice_id'] ? '<a href="invoices.php?action=edit&id=' . (int) $m['invoice_id'] . '">#' . (int) $m['invoice_id'] . '</a>' : '—' ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>

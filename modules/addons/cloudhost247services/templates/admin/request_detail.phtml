@@ -1,0 +1,72 @@
+<?php /** @var array $request @var array $statuses @var array $admins */ ?>
+<div class="chs-grid-2">
+  <div class="chs-panel">
+    <h3>#<?= (int) $request['id'] ?> — <?= chs_h($request['title']) ?> <?= chs_status_pill($request['status']) ?></h3>
+    <p class="chs-muted">
+      <?= chs_h($request['type_label']) ?> · client
+      <a href="clientssummary.php?userid=<?= (int) $request['client_id'] ?>"><?= chs_h(isset($request['client']['name']) && $request['client']['name'] !== '' ? $request['client']['name'] : '#' . (int) $request['client_id']) ?></a>
+      · opened <?= chs_dt($request['created_at']) ?>
+      <?php if ($request['budget_range'] !== ''): ?> · budget <?= chs_h(str_replace('_', '–', ltrim($request['budget_range'], '_') === '' ? 'unspecified' : str_replace('_', '–', $request['budget_range']))) ?><?php endif; ?>
+      <?php if ($request['target_domain'] !== ''): ?> · <?= chs_h($request['target_domain']) ?><?php endif; ?>
+    </p>
+
+    <h4>Brief</h4>
+    <div class="chs-brief"><?= nl2br(chs_h($request['brief'])) ?></div>
+
+    <h4>Timeline</h4>
+    <?php foreach ($request['updates'] as $u): ?>
+      <div class="chs-update <?= $u['author_type'] === 'admin' ? ($u['is_internal'] ? 'chs-internal' : 'chs-staff') : 'chs-client' ?>">
+        <div class="chs-update-meta">
+          <?= $u['author_type'] === 'admin' ? 'Staff' . ($u['is_internal'] ? ' (internal note)' : '') : 'Customer' ?>
+          · <?= chs_dt($u['created_at']) ?>
+          <?= $u['status_to'] !== '' ? ' → <strong>' . chs_h(str_replace('_', ' ', $u['status_to'])) . '</strong>' : '' ?>
+        </div>
+        <?php if ($u['body'] !== ''): ?><div><?= nl2br(chs_h($u['body'])) ?></div><?php endif; ?>
+      </div>
+    <?php endforeach; ?>
+
+    <form method="post" action="<?= chs_h($baseLink . '&action=request') ?>">
+      <?= $tokenField ?><input type="hidden" name="id" value="<?= (int) $request['id'] ?>">
+      <input type="hidden" name="do" value="reply">
+      <div class="form-group"><textarea class="form-control" name="body" rows="4" placeholder="Reply to the customer…"></textarea></div>
+      <div class="form-inline">
+        <select class="form-control" name="status_to">
+          <option value="">Keep status</option>
+          <?php foreach ($statuses as $s): ?><option value="<?= chs_h($s) ?>" <?= $s === $request['status'] ? 'selected' : '' ?>><?= chs_h(ucwords(str_replace('_',' ',$s))) ?></option><?php endforeach; ?>
+        </select>
+        <button class="btn btn-primary">Send</button>
+      </div>
+    </form>
+    <form method="post" action="<?= chs_h($baseLink . '&action=request') ?>" class="chs-inline-form">
+      <?= $tokenField ?><input type="hidden" name="id" value="<?= (int) $request['id'] ?>"><input type="hidden" name="do" value="note">
+      <div class="form-group"><textarea class="form-control" name="body" rows="2" placeholder="Internal note (staff only)…"></textarea></div>
+      <button class="btn btn-default btn-sm">Add internal note</button>
+    </form>
+  </div>
+
+  <div class="chs-panel">
+    <h3>Quote</h3>
+    <?php if ($request['quote_minor'] !== null): ?>
+      <p>Current quote: <strong><?= chs_money((int) $request['quote_minor'], $request['currency']) ?></strong>
+        <?= $request['invoice_id'] ? ' · invoice <a href="invoices.php?action=edit&id=' . (int) $request['invoice_id'] . '>#' . (int) $request['invoice_id'] . '</a>' : '' ?></p>
+    <?php endif; ?>
+    <form method="post" action="<?= chs_h($baseLink . '&action=request') ?>" class="form-inline">
+      <?= $tokenField ?><input type="hidden" name="id" value="<?= (int) $request['id'] ?>"><input type="hidden" name="do" value="quote">
+      <input class="form-control" name="quote" type="number" step="0.01" min="0" placeholder="Amount" required>
+      <input class="form-control" name="body" placeholder="Note to customer (optional)">
+      <button class="btn btn-primary">Publish quote</button>
+    </form>
+
+    <h3 style="margin-top:24px">Assignment</h3>
+    <form method="post" action="<?= chs_h($baseLink . '&action=request') ?>" class="form-inline">
+      <?= $tokenField ?><input type="hidden" name="id" value="<?= (int) $request['id'] ?>"><input type="hidden" name="do" value="assign">
+      <select class="form-control" name="assignee">
+        <option value="0">Unassigned</option>
+        <?php foreach ($admins as $id => $name): ?>
+          <option value="<?= (int) $id ?>" <?= (int) $request['assignee_admin_id'] === (int) $id ? 'selected' : '' ?>><?= chs_h($name) ?></option>
+        <?php endforeach; ?>
+      </select>
+      <button class="btn btn-default">Assign</button>
+    </form>
+  </div>
+</div>

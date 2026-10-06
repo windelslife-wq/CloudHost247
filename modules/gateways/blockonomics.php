@@ -1,8 +1,10 @@
 <?php
 
 require_once dirname(__FILE__) . '/blockonomics/blockonomics.php';
+require_once dirname(__FILE__) . '/blockonomics/cloudhost247/autoload.php';
 
 use Blockonomics\Blockonomics;
+use CloudHost247\Blockonomics\Bridge;
 
 function blockonomics_config()
 {
@@ -424,8 +426,24 @@ function blockonomics_link($params)
     }
 
     $blockonomics = new Blockonomics();
+
+    // CloudHost247 governance: master switch + per-currency enforcement.
+    // Any failure resolving governance must fail closed (no payment).
+    try {
+        $legacy = getGatewayVariables('blockonomics');
+        Bridge::ensureSeeded($legacy);
+        if (!Bridge::isGatewayEnabled()) {
+            return '<div class="alert alert-warning" style="margin:0;">'
+                . 'Cryptocurrency payments are currently unavailable.</div>';
+        }
+    } catch (\Throwable $governanceError) {
+        error_log('cloudhost247 blockonomics governance error: ' . $governanceError->getMessage());
+        return '<div class="alert alert-warning" style="margin:0;">'
+            . 'Cryptocurrency payments are currently unavailable.</div>';
+    }
+
     $order_params = $blockonomics->get_order_checkout_params($params);
-    
+
     $form_url = \App::getSystemURL() . 'modules/gateways/blockonomics/payment.php';
 
     //pass only the uuid to the payment page

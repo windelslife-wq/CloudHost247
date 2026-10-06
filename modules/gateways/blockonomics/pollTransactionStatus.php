@@ -5,6 +5,8 @@ require_once __DIR__ . '/../../../includes/invoicefunctions.php';
 require_once __DIR__ . '/blockonomics.php';
 
 use Blockonomics\Blockonomics;
+use CloudHost247\Blockonomics\Bridge;
+use CloudHost247\Blockonomics\Policy;
 
 // Initialization of the Blockonomics class
 $blockonomics = new Blockonomics();
@@ -12,6 +14,26 @@ $blockonomics = new Blockonomics();
 // Fetch module and API configuration
 $gatewayModuleName = 'blockonomics';
 $gatewayParams = getGatewayVariables($gatewayModuleName);
+
+// CloudHost247 governance: when USDT is administratively disabled we keep
+// verifying in-flight orders (a disable only forbids NEW payments), but if
+// the gateway was never enabled there is nothing to do.
+try {
+    Bridge::ensureSeeded($gatewayParams);
+} catch (\Throwable $governanceError) {
+    error_log('cloudhost247 blockonomics poller governance error: ' . $governanceError->getMessage());
+}
+
+$chsRequiredConfirmations = Policy::normalizeConfirmations(
+    isset($gatewayParams['Confirmations']) && $gatewayParams['Confirmations'] !== ''
+        ? (int) $gatewayParams['Confirmations'] : 2
+);
+// Governance confirmations win when configured (mirror keeps them aligned).
+try {
+    $chsState = Bridge::state($gatewayParams);
+    $chsRequiredConfirmations = (int) $chsState['confirmations'];
+} catch (\Throwable $ignored) {
+}
 $apiKey = $blockonomics->getEtherscanApiKey();
 $networkType =  $blockonomics->getTokenNetwork();
 $subDomain = ($networkType === 'sepolia') ? 'api-sepolia' : 'api';
@@ -35,22 +57,33 @@ function performCurlRequest($url) {
 
 // Main function to poll transaction status
 function pollTransactionStatus($order) {
+    global $chsRequiredConfirmations;
     $txHash = $order->txid;
     $result = fetchTransactionData($txHash);
 
     if ( $result['blockHash'] == null ||  $result['blockNumber'] == null) {
         logMessage("Polling","Requested Transaction is still pending /failed and  $txHash failed.",$result['transactionIndex']);
         return;
-    } else {
-        process($order, $result);
-        logMessage("Polling", " Requested Transaction $txHash to check whether it is completed successfully or not.", "Completed");
+    }
+
+    // Confirmations gate (spec §39): never credit before the configured
+    // requirement. Fail closed when the count cannot be obtained.
+    $confirmations = fetchConfirmations($result['blockNumber']);
+    if ($confirmations < $chsRequiredConfirmations) {
+        logMessage("Confirmations",
+            "Waiting for confirmations on $txHash",
+            "$confirmations/$chsRequiredConfirmations");
         return;
     }
+
+    process($order, $result, $confirmations);
+    logMessage("Polling", " Requested Transaction $txHash to check whether it is completed successfully or not.", "Completed");
+    return;
 
     logMessage("Polling","Request checks whether transaction ended: $txHash","Ended");
 }
 
-function process($order, $result) {
+function process($order, $result, $confirmations = 2) {
     global $blockonomics;
     global $gatewayParams;
     global $gatewayModuleName;
@@ -82,7 +115,7 @@ function process($order, $result) {
     $tokenAmount = hexdec($tokenAmountHex);
 
     $blockonomics->updateInvoiceNote($order->id_order, null);
-    $blockonomics->updateOrderInDb($order->addr, $txHash, 2, $tokenAmount);
+    $blockonomics->updateOrderInDb($order->addr, $txHash, (int) $confirmations, $tokenAmount);
     
     $blockonomics_currency_code = 'usdt';
     $txid = $txHash . " - " . $order->addr;
@@ -127,16 +160,40 @@ function isValidTransaction($inputData) {
 function getPaymentAmount($bits, $tokenAmount, $order) {
     global $blockonomics;
 
-    $underpayment_slack = $blockonomics->getUnderpaymentSlack() / 100 * $bits;
-    if ($tokenAmount < $bits - $underpayment_slack || $tokenAmount > $bits) {
-        $satoshiAmount = $tokenAmount;
-    } else {
-        $satoshiAmount = $bits;
-    }
-    $percentPaid = $satoshiAmount / $bits * 100;
-    $paymentAmount = $blockonomics->convertPercentPaidToInvoiceCurrency((array)$order, $percentPaid);
+    // Amount math through the audited policy classifier (spec §23).
+    $amount = Policy::classifyAmount((int) $bits, $tokenAmount, (float) $blockonomics->getUnderpaymentSlack());
+    $paymentAmount = $blockonomics->convertPercentPaidToInvoiceCurrency((array)$order, $amount['percent_paid']);
 
     return $paymentAmount;
+}
+
+/**
+ * Chain confirmations for a mined transaction block. Fail-closed: 0 when
+ * the count cannot be established (credit waits for a later poll).
+ */
+function fetchConfirmations($blockNumberHex) {
+    global $apiKey, $domain;
+    static $cachedTip = null;
+
+    $txBlock = hexdec($blockNumberHex);
+    if ($txBlock <= 0) {
+        return 0;
+    }
+    try {
+        $url = "$domain/api?module=proxy&action=eth_blockNumber&apikey=$apiKey";
+        $response = performCurlRequest($url);
+        $data = json_decode($response, true);
+        if (!isset($data['result'])) {
+            return 0;
+        }
+        $tip = hexdec($data['result']);
+    } catch (Exception $e) {
+        return 0;
+    }
+    if ($tip < $txBlock) {
+        return 0;
+    }
+    return $tip - $txBlock + 1;
 }
 
 

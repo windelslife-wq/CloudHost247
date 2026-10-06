@@ -1,0 +1,20 @@
+<?php /** @var array $rows */ ?>
+<div class="chs-panel">
+  <p class="chs-muted">Append-only record of every sensitive action. IP addresses are stored only as salted hashes.</p>
+  <div class="table-responsive">
+  <table class="table table-striped table-condensed">
+    <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Context</th><th>IP</th></tr></thead>
+    <tbody>
+    <?php foreach ($rows as $r): ?>
+      <tr>
+        <td><?= chs_dt($r['created_at']) ?></td>
+        <td><?= chs_h($r['actor_type']) ?><?= $r['actor_id'] ? ' #' . (int) $r['actor_id'] : '' ?></td>
+        <td><code><?= chs_h($r['action']) ?></code></td>
+        <td><code class="chs-break"><?= chs_h($r['context']) ?></code></td>
+        <td><code><?= chs_h($r['ip_hash'] !== '' ? $r['ip_hash'] : '—') ?></code></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  </div>
+</div>
