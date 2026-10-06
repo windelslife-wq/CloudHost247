@@ -19,6 +19,7 @@ for this repository rather than imported — see `docs/DOMAIN_BROKER.md`.
 | `smmaddon` | `smm_whmcs_module.zip` | SMM panel admin area (orders, services, logs, settings). Import `schema.sql`. |
 | `xtreme_currency_rates` | `xtreme_currency_rates_6.0.zip` | Automatic currency exchange rates. ionCube-encoded; requires the ionCube Loader. |
 | `domainbroker` | *written in-repo* | **Domain Broker Service** — brokered domain acquisition: negotiation, escrowed payment, transfer tracking, verification, disputes, fees, reporting, REST API. Customer portal, broker desk and admin console. Activate to run its migrations. Full write-up in `docs/DOMAIN_BROKER.md`. |
+| `cloudhost247ai` | *written in-repo* | **CloudHost247 AI control plane** — one shared AI operating layer: 9 Tier-A agents, read-only grounded tools over live WHMCS data + the real platform diagnostics, dual-RBAC permissions, approval engine (dormant in Phase 1), hash-chained audit, INSERT-only event capture with cron drain, RAG knowledge base, deterministic daily briefings, fail-closed model router (self-hosted vLLM/Ollama supported). Runbook: `docs/AI_CONTROL_PLANE.md`; architecture: `docs/AI_PLATFORM_PLAN.md`. |
 | `soyoustart` | `WGS-OVH-v8.0.8-Sourcecode.zip` | WGS OVH / SoYouStart **admin** addon: API consumer setup, product & price settings, order management, existing-server import, server status, email templates. |
 
 ## Provisioning (server) modules — `modules/servers/`

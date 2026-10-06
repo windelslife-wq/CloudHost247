@@ -157,7 +157,44 @@ All three must be green before any commit. The lint runners must exit
 cleanly (the `process.exit(0)` at the end is load-bearing — the php-wasm
 runtime keeps the Node event loop alive otherwise).
 
+From `modules/addons/digitalproducts/`:
+
+```bash
+node tests/run.mjs        # 10 assertions currently pass
+node tests/lint.mjs       # module PHP parse gate: BAD=0 LINT_OK
+```
+
+From `modules/addons/cloudhost247ai/`:
+
+```bash
+node tests/run.mjs        # 370 assertions / 10 suites (incl. adversarial fabrication suite)
+node tests/lint.mjs       # 45 module PHP files load clean: BAD=0 LINT_OK
+```
+
 `node_modules/` is local-only and git-ignored on purpose.
+
+## 7a. CloudHost247 AI control plane
+
+Activate `modules/addons/cloudhost247ai/` from WHMCS Addon Modules (additive
+migrations only — deactivation drops nothing). It is fully functional as a
+read-only layer without any model provider; every AI surface then fails closed
+with `CONFIGURATION_REQUIRED` instead of guessing. Configure the model
+endpoint on its Settings page (self-hosted vLLM/Ollama keeps customer data
+on-premise) and set `CH247AI_API_KEY` in the environment if the endpoint
+requires a key — keys are never stored in the database.
+
+Run the drain cron every five minutes:
+
+```text
+*/5 * * * * /usr/bin/php -q /path/to/whmcs/modules/addons/cloudhost247ai/cron/cloudhost247ai.php
+```
+
+The cron drains captured events, runs the scheduled agents at the configured
+briefing hour, composes the daily briefing, expires stale approvals and prunes
+per the retention settings. Web hooks never call a model. If AI behaviour is
+ever suspect, engage the kill switch on the module's Settings page — it stops
+every model call and tool execution immediately without deactivating the
+module. Full runbook: [`AI_CONTROL_PLANE.md`](AI_CONTROL_PLANE.md).
 
 ## 7. Credentials matrix (what needs what)
 
@@ -173,6 +210,7 @@ runtime keeps the Node event loop alive otherwise).
 | AI website builder | Structure + draft UI | AI provider key (`ai_api_key` setting) — until set, the feature shows the integration contract, never fake output |
 | Unified inbox | Yes (reads WHMCS tickets) | — |
 | Digital marketing / Hire-an-expert | Brief → invoice flow | Consultant fulfilment (business process) |
+| AI control plane (`cloudhost247ai`) | Yes — installs, audits, briefings metrics-only, shows clear config state | Model endpoint (+ `CH247AI_API_KEY` env if the endpoint needs one) for model-narrated answers; the CloudHost247_tools addon for live diagnostics |
 
 Anything in the right-hand column is labelled in-product with exactly what
 to configure; nothing shows fabricated availability or results.
