@@ -659,3 +659,25 @@ $_LANG['result_found'] = "找到的结果";
 $_LANG['dedicated_cpu'] = "中央处理器";
 $_LANG['dedicated_ram'] = "内存";
 $_LANG['dedicated_disk'] = "磁盘";
+
+/* CloudHost247 Services overlay labels; consumed through WHMCS $_LANG. */
+$_LANG['ch247_sign_in_required'] = '需要登录';
+$_LANG['ch247_my_digital_services'] = '我的数字服务';
+$_LANG['ch247_domain_valuation'] = '域名估值';
+$_LANG['ch247_domain_auctions'] = '域名拍卖';
+$_LANG['ch247_my_watchlist'] = '我的关注列表';
+$_LANG['ch247_sell_a_domain'] = '出售域名';
+$_LANG['ch247_discount_domain_club'] = '域名优惠俱乐部';
+$_LANG['ch247_my_service_requests'] = '我的服务请求';
+$_LANG['ch247_new_service_request'] = '新服务请求';
+$_LANG['ch247_my_logo_projects'] = '我的标志项目';
+$_LANG['ch247_logo_studio'] = '标志工作室';
+$_LANG['ch247_ai_website_builder'] = 'AI 网站构建器';
+$_LANG['ch247_unified_inbox'] = '统一收件箱';
+$_LANG['ch247_conversation'] = '对话';
+$_LANG['ch247_notifications'] = '通知';
+$_LANG['ch247_dashboard'] = '控制面板';
+$_LANG['ch247_domain_auctions_nav'] = '域名拍卖';
+$_LANG['ch247_auction_watchlist'] = '拍卖关注列表';
+$_LANG['ch247_service_requests'] = '服务请求';
+$_LANG['ch247_logo_projects'] = '标志项目';

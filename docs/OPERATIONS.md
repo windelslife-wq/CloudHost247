@@ -9,7 +9,7 @@ no aspirational features.
 1. Upload the repository over the WHMCS web root (files under `templates/`,
    `modules/`, root landing pages, `sitemap.xml`, `sitemap.html`).
 2. WHMCS admin → **Apps & Integrations** → enable **CloudHost247 Services**.
-   The module migrator (0001–0010) creates all module tables and seeds club
+   The module migrator (0001–0011) creates all module tables and seeds club
    plans, TLD metadata, and inbox labels.
 3. Module settings (admin → addon modules → CloudHost247 Services):
    - `service_enabled` = on
@@ -27,6 +27,34 @@ no aspirational features.
    regeneration. Auctions depend on this cadence; do not run it less often.
 5. Confirm `sitemap.xml` is web-writable by the cron user if you want
    regenerated versions to land (the suite logs and skips on failure).
+
+### Web-server performance and security baseline
+
+The overlay does not modify WHMCS or the web server. Apply these settings in
+staging and verify them with the deployment owner:
+
+- enable Brotli (preferred) or gzip for HTML, CSS, JavaScript, JSON, SVG and
+  XML; never compress already-compressed private downloads;
+- serve immutable, versioned static assets with a long `Cache-Control` lifetime,
+  while keeping HTML and account pages private/non-cacheable;
+- use HTTPS, HSTS only after all subdomains are HTTPS, and a restrictive
+  `Content-Security-Policy` reviewed against the configured payment, chat,
+  analytics and CAPTCHA providers;
+- route clean public URLs to the existing root landing files only when the
+  rewrite preserves the canonical URL and does not expose module internals;
+- disable directory indexes and deny access to module `install/`, `tests/`,
+  runtime storage, logs and environment files;
+- confirm the HostX cookie banner is enabled and configured as an opt-in
+  banner before enabling analytics or marketing identifiers.
+
+The HostX shell now loads the consent control on every page, stores a local
+policy/version decision for the browser and injects optional trackers only
+after an explicit allow action. When the Services addon is active, the endpoint records a
+pseudonymous decision history in `consent_records`; it is still not a legal compliance
+assessment or a replacement for an
+operator-controlled retention and audit process. Configure **Consent history retention**
+in the module Settings page; the daily hook prunes records older than that value, while `0`
+keeps them indefinitely.
 
 ## 2. Top mega menu — how it's wired, and the manual fallback
 
@@ -120,7 +148,7 @@ From `modules/addons/cloudhost247services/`:
 
 ```bash
 npm install               # test harness deps (php-wasm)
-node tests/run.mjs        # 527 assertions must pass
+node tests/run.mjs        # 704 assertions currently pass
 node tests/lint.mjs       # module PHP parse gate: BAD=0 LINT_OK
 node tests/lint-root.mjs  # root landing pages parse gate: ROOT_LINT_OK
 ```

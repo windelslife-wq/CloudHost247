@@ -16,6 +16,7 @@
 
 namespace Chs\Http;
 
+use Chs\Core\I18n;
 use Chs\Core\Settings;
 
 class Landing
@@ -36,6 +37,16 @@ class Landing
      */
     public static function start($templateFile, $title, $scriptName)
     {
+        $titleKeys = [
+            'chs-ai-builder' => 'ai_website_builder',
+            'chs-discount-club' => 'discount_domain_club',
+            'chs-auctions' => 'domain_auctions',
+            'chs-valuation' => 'domain_valuation',
+            'chs-unified-inbox' => 'unified_inbox',
+        ];
+        if (isset($titleKeys[$templateFile])) {
+            $title = I18n::text($titleKeys[$templateFile], $title);
+        }
         $ca = new \WHMCS\ClientArea();
         $ca->setPageTitle($title);
         $ca->addToBreadCrumb('index.php', \WHMCS\Language\Lang::trans('globalsystemname'));

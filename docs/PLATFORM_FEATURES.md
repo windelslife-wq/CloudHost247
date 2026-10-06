@@ -38,8 +38,10 @@ Russian, Spanish, Swedish, Turkish, Ukrainian and more. Product and page content
 through the HostX page system honours WHMCS's translation setting, so catalogue names follow
 the visitor's language.
 
-> *Current limit — see Part 3: the CloudHost247-authored landing pages and service modules
-> render in English only. Localising them is tracked work, not a shipped capability.*
+> *Current limit — see Part 3: the CloudHost247-authored templates still contain some
+> English explanatory copy. The services module now translates page titles, sidebar labels,
+> selected mega-menu labels and several public titles through the existing WHMCS language
+> selection; a complete content-key pass remains tracked work.*
 
 ### Fully Responsive
 
@@ -70,13 +72,13 @@ and OVH cart templates both ship).
 ### SEO & Performance Optimized
 
 Per-page title, meta description, keywords, robots directives and Open Graph tags are
-configurable per page and rendered by the theme. Analytics and tracker injection is
-centralised in one template. `sitemap.xml` is regenerated on a schedule from the canonical
-list of public pages and **only lists pages that actually exist on disk**, so the sitemap can
-never advertise a dead link; a human-readable `sitemap.html` ships alongside it. Stylesheets
-ship minified, and the service modules are built to keep WHMCS page loads cheap — indexed
-queries, pagination, cached settings, and background cron work instead of synchronous
-statistics.
+configurable per page and rendered by the theme. Analytics and tracker injection is centralised in one template and optional providers are
+injected only after the HostX consent decision. `sitemap.xml` is regenerated on a schedule
+from the canonical list of public pages and **only lists pages that actually exist on disk**,
+so the sitemap can never advertise a dead link; a human-readable `sitemap.html` ships
+alongside it. Stylesheets ship minified, and the service modules are built to keep WHMCS page
+loads cheap — indexed queries, pagination, cached settings, and background cron work instead
+of synchronous statistics.
 
 > *Caching, compression and clean-URL rewrites are web-server and WHMCS configuration, covered
 > in the deployment runbook rather than shipped in the overlay.*
@@ -97,12 +99,17 @@ The platform ships the legal surface a hosting business needs as first-class pag
 policy, cookie policy, data-deletion request, data-privacy notice and consent form,
 data-protection standards, terms of service, acceptable-use, fair-usage, backup, refund and
 cancellation, cybercrime, trademark, domain registration and renewal policies, and a legal
-notice. A configurable cookie-consent banner is included, with geo-aware EU cookie-law
-detection, configurable position, palette, message, policy link and dismiss behaviour.
+notice. A configurable cookie-consent banner is included globally in the HostX shell, with
+geo-aware EU cookie-law detection, opt-in behavior, configurable position, palette, message,
+policy link, revoke control and a browser-local policy/version decision record. When the
+CloudHost247 Services addon is active, the same-origin consent endpoint also stores a
+pseudonymous, timestamped decision history using its additive consent-record migration.
+Analytics, marketing pixels and tag-manager scripts are injected only after an allow decision.
 
-> *Current limit — see Part 3: the banner is wired to the homepage only, consent is
-> dismissal-based, and no consent records or per-category tracker gating exist yet. Treat
-> "compliance ready" as "the building blocks are here", not "configured for your jurisdiction".*
+> *Current limit — optional providers currently share one allow category, and the server
+> history is a pseudonymous technical record rather than a legal compliance determination.
+> Treat "compliance ready" as "configurable privacy building blocks", not "configured for
+your jurisdiction".*
 
 ### RTL Support
 
@@ -110,8 +117,9 @@ The HostX theme ships a dedicated right-to-left stylesheet and RTL asset variant
 RTL languages themselves — Arabic, Farsi, Hebrew — are among the 27 shipped language files, so
 the core customer portal, forms, invoices and account pages can be served right-to-left.
 
-> *Current limit — see Part 3: CloudHost247-authored pages and module interfaces have no RTL
-> rules yet and will render left-to-right.*
+> *Current limit — see Part 3: RTL rules now cover the CloudHost247 Services, Domain Broker
+> and Digital Products interfaces, while other custom page content still needs a page-by-page
+> RTL review.*
 
 ---
 
@@ -120,14 +128,14 @@ the core customer portal, forms, invoices and account pages can be served right-
 | Feature | Evidence in this repository | Verdict |
 |---|---|---|
 | WHMCS Integrated | 7 provisioning modules (`modules/servers/`), 12 addons (`modules/addons/`), Blockonomics gateway (`modules/gateways/`), hooks on `OrderPaid`/`InvoicePaid`/`ClientAreaPage`/`DailyCronJob`, `localAPI()` + Capsule use throughout; `docs/MODULES.md` inventory | **Supported** |
-| Multi-Language | `lang/overrides/` — 27 tracked files (`arabic.php` … `ukranian.php`), 45–83 KB each; landing pages check `EnableTranslations` and feed `$_LANG` into product rendering (`web-hosting.php:24`) | **Partial** — core yes, CloudHost247 surfaces no |
+| Multi-Language | `lang/overrides/` — 27 tracked files (`arabic.php` … `ukranian.php`), 45–83 KB each; landing pages check `EnableTranslations` and feed `$_LANG` into product rendering (`web-hosting.php:24`) | **Partial** — core plus module titles/navigation; template copy still needs a full key pass |
 | Fully Responsive | 47 `@media` blocks in `templates/hostx/css/styles.css`, 123 in `all.css`; `hostx_includes/mobile-menu.tpl`; Bootstrap grid in all `chs-*.tpl` | **Supported** |
 | Standards-Compliant | Smarty templates, override files (`css/overrides/override.css`), PHP 7.4-compatible module code, `tests/lint.php` + `tests/*Test.php` in three modules, parameterised queries / Capsule | **Supported, with caveats** — no automated HTML or a11y validation |
 | Highly Customizable | `$hostx_theme_settings` across `hostx_includes/*.tpl`, `mod_hostx_pages` page system, `tbladdonmodules` settings per module, `Chs\Core\Settings` with `CHS_*` env overrides + `SECRET_KEYS`, `templates/orderforms/{hostx,ovh_cart}` | **Supported** |
-| SEO & Performance | `hostx_includes/seo-meta-tags.tpl` (title, description, keywords, robots, OG), `seo-trackers.tpl`, root `sitemap.xml` + `sitemap.html`, `Chs\Services\SitemapService::regenerate()` (skips pages missing on disk), `all.min.css` | **Partial** — metadata and sitemap yes; caching/compression/clean URLs are host config |
+| SEO & Performance | `hostx_includes/seo-meta-tags.tpl` (title, description, keywords, robots, OG), consent-gated `seo-trackers.tpl`, root `sitemap.xml` + `sitemap.html`, `Chs\Services\SitemapService::regenerate()` (skips pages missing on disk), `all.min.css` | **Partial** — metadata, consent gating and sitemap yes; caching/compression/clean URLs are host config |
 | Mega Menu | `top-mega-menu-default.tpl`, `top-mega-menu-latest.tpl`, `top-menu-dropdown.tpl`, `mobile-menu.tpl`, `mega-menu-hover-setting.tpl`; `Chs\Http\HostxMenu` merges 4 categories / 33 destinations into `$topMenusData` via `ClientAreaPage` priority 90; covered by `tests/10_MenuTest.php` | **Supported** |
-| Privacy & Compliance | 16 legal pages at the repo root; `js/cookies_library_hostx_file.js` (cookieconsent with EU-law + geolocation awareness); `hostx_includes/cookie-offers.tpl` wires it up | **Partial** — banner is homepage-only and consent-record-free |
-| RTL Support | `templates/hostx/css/style-rtl.css` (1,178 lines), `images/*_rtl.png`; `lang/overrides/{arabic,farsi,hebrew}.php` | **Partial** — theme yes, CloudHost247 modules/pages no |
+| Privacy & Compliance | 16 legal pages at the repo root; `js/cookies_library_hostx_file.js` (cookieconsent with EU-law + geolocation awareness); global `hostx_includes/cookie-offers.tpl`; `ConsentService` + migration `0011_consent_records.php`; consent-gated `seo-trackers.tpl` | **Partial** — pseudonymous server history when the addon is active, but no independent per-category controls |
+| RTL Support | `templates/hostx/css/style-rtl.css` (1,178 lines), `images/*_rtl.png`; `lang/overrides/{arabic,farsi,hebrew}.php`; scoped RTL sheets in `cloudhost247services`, `domainbroker` and `digitalproducts` | **Partial** — theme and three custom module interfaces covered; remaining custom pages need review |
 
 ---
 
@@ -135,38 +143,41 @@ the core customer portal, forms, invoices and account pages can be served right-
 
 Ordered by how far the current claim is from the current code.
 
-### P1 — Cookie consent only loads on the homepage
+### P1 — Consent persistence and category controls remain limited
 
-`templates/hostx/hostx_includes/cookie-offers.tpl:1-3` gates the banner on
-`enable_browser_cookies_hostx == 'on'` **and** `$templatefile == 'homepage'`. A visitor landing
-on `/web-hosting.php`, the cart, or any client-area page is never asked for consent, and a
-visitor who enters via a deep link is tracked without ever seeing the banner.
+The global HostX footer include now initializes the cookie banner on every rendered page when
+`enable_browser_cookies_hostx` is enabled. It uses the existing cookieconsent library in
+explicit opt-in mode, exposes its revoke control, records the policy version and timestamp
+in browser local storage, and emits a consent event. `seo-trackers.tpl` no longer executes
+Google Analytics, Facebook Pixel or Google Tag Manager at parse time; it injects them only
+after an `allow` decision.
 
-**Work:** move the include out of the homepage branch into the global head partial; keep the
-theme-setting switch. Then: record consent (timestamp, version of the policy, scope) rather
-than relying on a dismissal cookie; split trackers in `seo-trackers.tpl` into necessary /
-analytics / marketing categories and fire each only on its matching consent; add a persistent
-"revoke consent" control; add a retention policy setting per data class.
+**Remaining work:** split optional providers into independently configurable
+analytics/marketing categories. The browser record and the pseudonymous module history are
+technical controls, not a legal compliance record.
 
-### P2 — CloudHost247-authored surfaces are English-only
+### P2 — CloudHost247-authored templates still have English copy
 
-Zero `$_LANG` usage in `modules/addons/cloudhost247services/{lib,templates}`, the `domainbroker`
-module, or `digitalproducts`. `templates/hostx/chs-valuation.tpl:15` pulls
-`{$LANG.globalsystemname}` for the breadcrumb root and then hard-codes `Domain Valuation`
-beside it — a half-translated page is more visibly broken than an untranslated one.
+`cloudhost247services/lib/Core/I18n.php` now reads the existing WHMCS language/session
+selection and supplies overlay-owned translations for German, French, Spanish, Portuguese,
+Chinese, Arabic, Farsi and Hebrew, with English fallback. The services module applies these
+to client page titles, sidebar labels, selected HostX mega-menu labels and selected public
+landing titles. This improves navigation and orientation without introducing a second
+language system.
 
-**Work:** route every user-visible string in the in-repo modules and `chs-*.tpl` templates
-through WHMCS language keys; add module language files; add a lint check that fails on bare
-display strings in templates. Do the same pass over the root landing pages.
+**Remaining work:** route every explanatory string in the in-repo module templates, the
+`domainbroker` templates and root landing templates through language keys. Keep this a
+content/localisation pass over existing views, not a replacement translation framework.
 
-### P2 — RTL stops at the theme boundary
+### P2 — RTL still needs coverage outside the reviewed custom modules
 
-`cloudhost247services/assets/css/client.css` and both `domainbroker` stylesheets contain **no**
-`rtl` or `[dir]` selectors, and the `chs-*` templates use directional utility classes.
+The services, Domain Broker and Digital Products hooks now load scoped RTL stylesheets. They
+use logical text alignment and explicit direction-aware overrides for cards, timelines, forms, navigation,
+input groups, tables and badge positioning. HostX continues to provide the core RTL theme
+and assets.
 
-**Work:** adopt logical properties (`margin-inline-start`, `padding-inline`, `text-align: start`)
-in module CSS, or add `[dir="rtl"]` overrides; audit the custom pages with Arabic or Hebrew
-active; include RTL screenshots in the review checklist for new pages.
+**Remaining work:** review any remaining custom module or page-system content with Arabic or
+Hebrew active, and add scoped rules only where actual layout defects are found.
 
 ### P3 — Accessibility is asserted, not verified
 
@@ -190,13 +201,13 @@ is specced in `docs/DIGITAL_PRODUCTS_REBUILD.md`.
 
 ### P3 — Data-retention story is ad-hoc
 
-The only retention logic in the tree is `digitalproducts`' daily cron deleting download history
-older than 90 days — unconditional, unconfigurable, and flagged as destructive in the rebuild
-brief. There is no platform-wide retention policy, no export-before-prune, no per-data-class
-setting.
+Retention is now configurable for the pseudonymous consent history (`consent_retention_days`,
+with `0` meaning keep forever) and the existing lookup/WHOIS caches. The digitalproducts
+module still has its own download-history policy, and audit/inbox retention is not yet
+platform-wide or export-before-prune.
 
-**Work:** define retention per data class (download logs, audit events, WHOIS cache, inbox,
-consent records), make each configurable, and always export or archive before pruning.
+**Work:** define retention per remaining data class (download logs, audit events, inbox),
+make each configurable, and add an operator-approved export/archive path before pruning.
 
 ---
 
@@ -205,8 +216,8 @@ consent records), make each configurable, and always export or archive before pr
 | Don't say | Why | Say instead |
 |---|---|---|
 | "GDPR compliant" / "fully compliant" | Compliance is a legal determination about an operator's configuration and processes, not a software property — and the consent banner currently misses most pages | "Configurable privacy and consent controls" |
-| "Multi-language across every interface" | The CloudHost247 pages and modules are English-only | "27 shipped languages across the WHMCS customer portal and billing" |
-| "RTL support across all dashboards and admin interfaces" | Module CSS has no RTL rules | "RTL theme support for the customer portal" |
+| "Multi-language across every interface" | Some CloudHost247 template copy still uses English fallbacks | "27 shipped languages across the WHMCS customer portal and billing, with translated overlay navigation" |
+| "RTL support across all dashboards and admin interfaces" | RTL review is complete for the core theme and three custom modules, not every custom view | "RTL theme support plus scoped RTL rules for the reviewed custom modules" |
 | "WCAG / accessibility compliant" | Nothing verifies it | "Semantic, standards-based markup" |
 | "Caching and compression built in" | Not in the overlay | "Performance-focused frontend; caching and compression configured at deployment" |
 | "CloudHost247 provides billing, invoicing and ticketing" | WHMCS provides them | "Integrated with WHMCS billing, invoicing and ticketing" |

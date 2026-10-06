@@ -26,6 +26,13 @@ add_hook('ServiceUnsuspend', 1, function ($vars) { try { digitalproducts_entitle
 add_hook('ServiceDelete', 1, function ($vars) { digitalproducts_revokeService($vars, 'service_deleted'); });
 add_hook('AfterModuleTerminate', 1, function ($vars) { digitalproducts_revokeService($vars, 'service_terminated'); });
 
+add_hook('ClientAreaHeadOutput', 1, function ($vars) {
+    if (($_GET['m'] ?? '') !== 'digitalproducts') return '';
+    $base = rtrim((string) ($vars['WEB_ROOT'] ?? ''), '/');
+    $root = $base . '/modules/addons/digitalproducts/assets/css/';
+    return '<link rel="stylesheet" href="' . htmlspecialchars($root . 'client-rtl.css', ENT_QUOTES, 'UTF-8') . '">';
+});
+
 add_hook('ClientAreaPrimaryNavbar', 1, function ($primaryNavbar) {
     if (!(int) ($_SESSION['uid'] ?? 0) || !is_object($primaryNavbar)) return;
     try {

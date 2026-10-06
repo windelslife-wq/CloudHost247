@@ -1,0 +1,14 @@
+/* Digital Products client-area RTL adjustments. Loaded by the addon only on
+   its own pages; Bootstrap remains the base responsive system. */
+[dir="rtl"] .ch247-digital-products { direction: rtl; text-align: start; }
+[dir="rtl"] .ch247-digital-products .mr-1,
+[dir="rtl"] .ch247-digital-products .mr-2 { margin-right: 0 !important; margin-left: .35rem !important; }
+[dir="rtl"] .ch247-digital-products .ml-2 { margin-left: 0 !important; margin-right: .5rem !important; }
+[dir="rtl"] .ch247-digital-products .text-right { text-align: left !important; }
+[dir="rtl"] .ch247-digital-products .float-right { float: left !important; }
+[dir="rtl"] .ch247-digital-products .text-left { text-align: right !important; }
+[dir="rtl"] .ch247-digital-products code,
+[dir="rtl"] .ch247-digital-products input[name="license_key"] { direction: ltr; unicode-bidi: plaintext; }
+@media (max-width: 767px) {
+    [dir="rtl"] .ch247-digital-products .float-right { float: none !important; display: block; margin-top: .5rem; }
+}

@@ -19,6 +19,8 @@
 
 namespace Chs\Http;
 
+use Chs\Core\I18n;
+
 class HostxMenu
 {
     /**
@@ -96,13 +98,13 @@ class HostxMenu
     private static function top($name, $description, $captionUrl, $captionLabel, array $groups)
     {
         return [
-            'name'                => $name,
+            'name'                => self::translate($name),
             'url'                 => '#',
             'menutype'            => 3,
             'menuthirdparty'      => 0,
             'menunewtab'          => 0,
             'description'         => $description,
-            'caption_button_name' => $captionLabel,
+            'caption_button_name' => self::translate($captionLabel),
             'menu_caption_url'    => $captionUrl,
             'submenu'             => $groups,
         ];
@@ -112,7 +114,7 @@ class HostxMenu
     private static function group($name, array $children)
     {
         return [
-            'name'           => $name,
+            'name'           => self::translate($name),
             'url'            => '#',
             'icon'           => '',
             'menuthirdparty' => 0,
@@ -124,7 +126,7 @@ class HostxMenu
     /** Link row; $badge renders 'NEW'/'POPULAR' pill after the label. */
     private static function item($label, $url, $icon, $badge = '')
     {
-        $name = $label;
+        $name = self::translate($label);
         if ($badge === 'NEW') {
             $name .= ' <span class="badge badge-danger chs-nav-badge">NEW</span>';
         } elseif ($badge === 'POPULAR') {
@@ -137,6 +139,22 @@ class HostxMenu
             'menuthirdparty' => 0,
             'menunewtab'     => 0,
         ];
+    }
+
+    /** Translate the labels owned by this module while leaving theme labels alone. */
+    private static function translate($label)
+    {
+        $keys = [
+            'Domain Valuation' => 'domain_valuation',
+            'Domain Auctions' => 'domain_auctions',
+            'Discount Domain Club' => 'discount_domain_club',
+            'AI Website Builder' => 'ai_website_builder',
+            'Unified Inbox' => 'unified_inbox',
+            'Auction watchlist' => 'auction_watchlist',
+            'Service requests' => 'service_requests',
+            'Logo projects' => 'logo_projects',
+        ];
+        return isset($keys[$label]) ? I18n::text($keys[$label], $label) : $label;
     }
 
     /**
