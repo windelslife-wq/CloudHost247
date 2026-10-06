@@ -1,0 +1,83 @@
+<?php /** @var array $rows @var array $labels @var array $admins @var array $statuses @var string $search @var int $label_filter */ ?>
+<div class="chs-grid-2">
+  <div class="chs-panel">
+    <div class="chs-toolbar">
+      <form class="form-inline" method="get">
+        <input type="hidden" name="module" value="cloudhost247services"><input type="hidden" name="action" value="inbox">
+        <input class="form-control" name="search" value="<?= chs_h($search) ?>" placeholder="Search subject or email">
+        <select class="form-control" name="label">
+          <option value="0">All labels</option>
+          <?php foreach ($labels as $l): ?><option value="<?= (int) $l['id'] ?>" <?= $label_filter === (int) $l['id'] ? 'selected' : '' ?>><?= chs_h($l['name']) ?></option><?php endforeach; ?>
+        </select>
+        <label><input type="checkbox" name="unassigned" value="1" <?= !empty($_GET['unassigned']) ? 'checked' : '' ?>> Unassigned</label>
+        <button class="btn btn-default">Filter</button>
+      </form>
+    </div>
+    <div class="table-responsive">
+    <table class="table table-striped table-condensed">
+      <thead><tr><th>Subject</th><th>From</th><th>Status</th><th>Labels</th><th>Assigned</th><th>Updated</th><th></th></tr></thead>
+      <tbody>
+      <?php foreach ($rows as $r): ?>
+        <tr>
+          <td><a href="supporttickets.php?action=view&id=<?= (int) $r['id'] ?>"><?= chs_h($r['subject']) ?></a>
+            <div class="chs-muted small"><?= (int) $r['replies'] ?> repl<?= (int) $r['replies'] === 1 ? 'y' : 'ies' ?></div></td>
+          <td><?= chs_h($r['contact']) ?><div class="chs-muted small"><?= chs_h($r['email']) ?></div></td>
+          <td>
+            <form method="post" action="<?= chs_h($baseLink . '&action=inbox') ?>" class="chs-inline-form">
+              <?= $tokenField ?><input type="hidden" name="do" value="status"><input type="hidden" name="ticket_id" value="<?= (int) $r['id'] ?>">
+              <select class="form-control input-sm" name="status" onchange="this.form.submit()">
+                <?php foreach ($statuses as $s): ?><option <?= $s === $r['status'] ? 'selected' : '' ?>><?= chs_h($s) ?></option><?php endforeach; ?>
+              </select>
+            </form>
+          </td>
+          <td>
+            <?php foreach ($r['labels'] as $l): ?>
+              <span class="chs-label" style="background:<?= chs_h($l['colour']) ?>"><?= chs_h($l['name']) ?></span>
+            <?php endforeach; ?>
+            <form method="post" action="<?= chs_h($baseLink . '&action=inbox') ?>" class="chs-inline-form">
+              <?= $tokenField ?><input type="hidden" name="do" value="attach_label"><input type="hidden" name="ticket_id" value="<?= (int) $r['id'] ?>">
+              <select class="form-control input-sm" name="label_id" onchange="this.form.submit()">
+                <option value="">+ label</option>
+                <?php foreach ($labels as $l): ?><option value="<?= (int) $l['id'] ?>"><?= chs_h($l['name']) ?></option><?php endforeach; ?>
+              </select>
+            </form>
+          </td>
+          <td>
+            <form method="post" action="<?= chs_h($baseLink . '&action=inbox') ?>" class="chs-inline-form">
+              <?= $tokenField ?><input type="hidden" name="do" value="assign"><input type="hidden" name="ticket_id" value="<?= (int) $r['id'] ?>">
+              <select class="form-control input-sm" name="assignee" onchange="this.form.submit()">
+                <option value="0">—</option>
+                <?php foreach ($admins as $id => $name): ?><option value="<?= (int) $id ?>" <?= (int) $r['assigned'] === (int) $id ? 'selected' : '' ?>><?= chs_h($name) ?></option><?php endforeach; ?>
+              </select>
+            </form>
+          </td>
+          <td><?= chs_dt($r['last_reply']) ?></td>
+          <td><a class="btn btn-xs btn-default" href="supporttickets.php?action=view&id=<?= (int) $r['id'] ?>">Open</a></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="chs-panel">
+    <h3>Labels</h3>
+    <?php foreach ($labels as $l): ?>
+      <div class="chs-inline-form">
+        <span class="chs-label" style="background:<?= chs_h($l['colour']) ?>"><?= chs_h($l['name']) ?></span>
+        <form method="post" action="<?= chs_h($baseLink . '&action=inbox') ?>" style="display:inline" onsubmit="return confirm('Delete this label?')">
+          <?= $tokenField ?><input type="hidden" name="do" value="delete_label"><input type="hidden" name="label_id" value="<?= (int) $l['id'] ?>">
+          <button class="btn btn-xs btn-link">delete</button>
+        </form>
+      </div>
+    <?php endforeach; ?>
+    <form method="post" action="<?= chs_h($baseLink . '&action=inbox') ?>" class="form-inline" style="margin-top:12px">
+      <?= $tokenField ?><input type="hidden" name="do" value="save_label">
+      <input class="form-control" name="name" placeholder="New label" required>
+      <input class="form-control" name="colour" value="#3b82f6" pattern="#[0-9a-fA-F]{6}" style="width:90px">
+      <button class="btn btn-primary">Add</button>
+    </form>
+    <p class="chs-muted" style="margin-top:12px">Channel coverage: the tickets channel is live. Additional channels
+      (chat, marketplace, social) register through <code>InboxService::channels()</code> without schema changes.</p>
+  </div>
+</div>

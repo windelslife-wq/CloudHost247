@@ -1,0 +1,36 @@
+<?php /** @var array $counts @var array $ai_status @var array $engine */ ?>
+<div class="chs-grid-3">
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['active_auctions'] ?></div><div class="chs-kpi-label">Live auctions</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['open_requests'] ?></div><div class="chs-kpi-label">Open service requests</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['active_memberships'] ?></div><div class="chs-kpi-label">Active club memberships</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['valuations_today'] ?></div><div class="chs-kpi-label">Valuations (24h)</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['tlds_merchandised'] ?></div><div class="chs-kpi-label">TLDs merchandised</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['ai_generations'] ?></div><div class="chs-kpi-label">AI outlines generated</div></div>
+</div>
+
+<div class="chs-grid-2">
+  <div class="chs-panel">
+    <h3>Provider readiness</h3>
+    <table class="table table-striped">
+      <tr><td>Valuation engine</td><td><code><?= chs_h($engine['id']) ?> v<?= chs_h($engine['version']) ?></code>
+        <?= $engine['is_fallback'] ? '<span class="label label-warning">Fell back to rules — HTTP engine not configured</span>' : '' ?></td></tr>
+      <tr><td>AI builder provider</td><td>
+        <?php if ($ai_status['configured']): ?>
+          <span class="label label-success">Configured (<?= chs_h($ai_status['provider']) ?>)</span>
+        <?php else: ?>
+          <span class="label label-default">Not configured</span>
+          <div class="chs-muted small">Missing: <?= chs_h(implode(', ', $ai_status['missing'])) ?></div>
+        <?php endif; ?>
+      </td></tr>
+      <tr><td>Cron</td><td>Schedule <code>modules/addons/cloudhost247services/cron/cloudhost247services.php</code> every 5 minutes, or auction closing waits for a visitor to hit any page (lazy heartbeat).</td></tr>
+    </table>
+  </div>
+  <div class="chs-panel">
+    <h3>Quick actions</h3>
+    <p><a class="btn btn-primary" href="<?= chs_h($baseLink . '&action=auctions&new=1') ?>">List an auction</a>
+       <a class="btn btn-default" href="<?= chs_h($baseLink . '&action=tlds') ?>">Merchandise TLDs</a>
+       <a class="btn btn-default" href="<?= chs_h($baseLink . '&action=club') ?>">Manage club plans</a></p>
+    <p class="chs-muted">Valuation, WHOIS and availability all use the platform's configured providers — no
+      module-specific credentials are required until you install an external valuation or AI engine.</p>
+  </div>
+</div>

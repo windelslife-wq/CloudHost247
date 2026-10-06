@@ -1,0 +1,105 @@
+<?php
+/** @var array $values @var array $secretKeys */
+$bool = function ($key) use ($values) {
+    return !empty($values[$key]) && in_array(strtolower($values[$key]), ['1','on','yes','true'], true);
+};
+$row = function ($label, $control, $hint = '') {
+    return '<tr><td style="width:32%">' . $label . '</td><td>' . $control
+        . ($hint !== '' ? '<div class="chs-muted small">' . $hint . '</div>' : '') . '</td></tr>';
+};
+$check = function ($key, $label) use ($bool) {
+    return '<label><input type="checkbox" name="' . $key . '" ' . ($bool($key) ? 'checked' : '') . '> ' . $label . '</label>';
+};
+$text = function ($key, $values, $attrs = '') {
+    return '<input class="form-control" name="' . $key . '" value="' . chs_h(isset($values[$key]) ? $values[$key] : '') . '" ' . $attrs . '>';
+};
+?>
+<form method="post" action="<?= chs_h($baseLink . '&action=settings') ?>">
+  <?= $tokenField ?><input type="hidden" name="do" value="save">
+
+  <div class="chs-panel">
+    <h3>Domains</h3>
+    <table class="table">
+      <?= $row('Suite enabled', $check('service_enabled', 'Master switch for all module features')) ?>
+      <?= $row('Public pages', $check('public_pages_enabled', 'Serve public landing pages to signed-out visitors')) ?>
+      <?= $row('Valuation', $check('valuation_enabled', 'Enabled')
+        . ' &nbsp; Engine ' . '<select name="valuation_engine" class="form-control input-sm" style="width:auto;display:inline-block">'
+        . '<option value="rules"' . ($values['valuation_engine'] !== 'http' ? ' selected' : '') . '>Built-in rules engine</option>'
+        . '<option value="http"' . ($values['valuation_engine'] === 'http' ? ' selected' : '') . '>External HTTP engine</option>'
+        . '</select>',
+        'External engine additionally needs its endpoint and the CHS_VALUATION_API_KEY env var; until both exist the rules engine answers.') ?>
+      <?= $row('Valuation endpoint', $text('valuation_api_url', $values, 'placeholder="https://…"')) ?>
+      <?= $row('Valuation limits', 'Guests/day ' . $text('valuation_guest_daily_limit', $values, 'type="number" min="1" style="width:90px;display:inline-block"')
+        . ' Clients/day ' . $text('valuation_client_daily_limit', $values, 'type="number" min="1" style="width:90px;display:inline-block"')) ?>
+      <?= $row('WHOIS', $check('whois_enabled', 'Enabled')
+        . ' &nbsp; timeout ' . $text('whois_timeout_seconds', $values, 'type="number" min="3" style="width:80px;display:inline-block"')
+        . 's &nbsp; cache ' . $text('whois_cache_minutes', $values, 'type="number" min="5" style="width:80px;display:inline-block"')
+        . 'min &nbsp; daily/IP ' . $text('whois_daily_limit_per_ip', $values, 'type="number" min="1" style="width:80px;display:inline-block"')) ?>
+      <?= $row('Lookup cache (availability)', $text('lookup_cache_minutes', $values, 'type="number" min="1" style="width:90px"'), 'Minutes a live availability answer is reused.') ?>
+    </table>
+  </div>
+
+  <div class="chs-panel">
+    <h3>Auctions</h3>
+    <table class="table">
+      <?= $row('Enabled', $check('auction_enabled', 'Master switch') . ' &nbsp; '
+        . $check('auction_public_browse', 'Public browse') . ' &nbsp; '
+        . $check('auction_client_listing', 'Clients may list domains they hold')) ?>
+      <?= $row('Anti-sniping', 'Extend by ' . $text('anti_snipe_extend_seconds', $values, 'type="number" min="60" style="width:90px;display:inline-block"')
+        . 's when a bid lands in the final ' . $text('anti_snipe_window_seconds', $values, 'type="number" min="60" style="width:90px;display:inline-block"')
+        . 's, max ' . $text('anti_snipe_max_extensions', $values, 'type="number" min="0" style="width:70px;display:inline-block"') . ' extensions') ?>
+      <?= $row('Bid limit', $text('auction_bid_daily_limit', $values, 'type="number" min="1" style="width:90px"'), 'Per client per day across all auctions.') ?>
+      <?= $row('Settlement invoice', 'Due after ' . $text('auction_invoice_due_days', $values, 'type="number" min="1" style="width:80px;display:inline-block"')
+        . ' days &nbsp; ' . $check('auction_cancel_unpaid_invoices', 'Cancel automatically when lapsed')) ?>
+    </table>
+  </div>
+
+  <div class="chs-panel">
+    <h3>Discount Domain Club</h3>
+    <table class="table">
+      <?= $row('Enabled', $check('club_enabled', 'Sell memberships')) ?>
+      <?= $row('Discount applies to', $check('club_allow_registrations', 'Registrations') . ' &nbsp; '
+        . $check('club_allow_renewals', 'Renewals') . ' &nbsp; '
+        . $check('club_allow_transfers', 'Transfers'), 'Applied live in the real order form via OrderDomainPricingOverride.') ?>
+      <?= $row('Joining invoice due', $text('club_invoice_due_days', $values, 'type="number" min="1" style="width:80px"') . ' days') ?>
+    </table>
+  </div>
+
+  <div class="chs-panel">
+    <h3>Expert services, Logo Studio &amp; Inbox</h3>
+    <table class="table">
+      <?= $row('Service requests', $check('requests_enabled', 'Accept new requests') . ' &nbsp; limit '
+        . $text('requests_daily_limit', $values, 'type="number" min="1" style="width:80px;display:inline-block"') . '/client/day') ?>
+      <?= $row('Logo Studio', $check('logo_enabled', 'Enabled') . ' &nbsp; project cap '
+        . $text('logo_projects_limit', $values, 'type="number" min="1" style="width:80px;display:inline-block"')) ?>
+      <?= $row('Unified inbox', $check('inbox_enabled', 'Enabled')) ?>
+    </table>
+  </div>
+
+  <div class="chs-panel">
+    <h3>AI Website Builder</h3>
+    <table class="table">
+      <?= $row('Enabled', $check('ai_enabled', 'Serve generation requests'),
+        'All four of: enabled, endpoint, model, CHS_AI_API_KEY must be present before the service answers.') ?>
+      <?= $row('Endpoint', $text('ai_endpoint', $values, 'placeholder="https://api.openai.com/v1"'),
+        'Any OpenAI-compatible base URL. The module POSTs to <endpoint>/chat/completions.') ?>
+      <?= $row('Model', $text('ai_model', $values, 'placeholder="gpt-4o"')) ?>
+      <?= $row('Limits', 'Timeout ' . $text('ai_timeout_seconds', $values, 'type="number" min="10" style="width:80px;display:inline-block"')
+        . 's &nbsp; ' . $text('ai_daily_limit_per_client', $values, 'type="number" min="1" style="width:80px;display:inline-block"') . ' generations/client/day') ?>
+      <?= $row('API key', '<code>CHS_AI_API_KEY</code> environment variable',
+        'Never stored in the database — set it in your web server or PHP-FPM environment.') ?>
+    </table>
+  </div>
+
+  <div class="chs-panel">
+    <h3>Notifications &amp; housekeeping</h3>
+    <table class="table">
+      <?= $row('Channels', $check('notifications_email', 'Email') . ' &nbsp; ' . $check('notifications_inapp', 'In-app feed')) ?>
+      <?= $row('Caches', 'Purge lookup/whois entries older than ' . $text('cache_retention_days', $values, 'type="number" min="1" style="width:80px;display:inline-block"') . ' days (plus automatic expiry)') ?>
+      <?= $row('Audit retention', $text('audit_retention_days', $values, 'type="number" min="0" style="width:80px"'), '0 = keep forever.') ?>
+      <?= $row('Debug logging', $check('debug_logging', 'Verbose entries to the activity log — production should leave this off.')) ?>
+    </table>
+  </div>
+
+  <button class="btn btn-primary btn-lg">Save settings</button>
+</form>

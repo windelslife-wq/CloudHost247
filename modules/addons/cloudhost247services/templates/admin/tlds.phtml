@@ -1,0 +1,44 @@
+<?php /** @var array $rows */ ?>
+<div class="chs-panel">
+  <p class="chs-muted">Pricing, registration periods and availability come live from <code>tbldomainpricing</code> /
+    <code>tblpricing</code> (Domain Pricing in WHMCS Setup). This screen manages the merchandising layer only:
+    categories, regions, badges and copy shown on the public directory.</p>
+  <div class="table-responsive">
+  <table class="table table-striped table-condensed">
+    <thead><tr>
+      <th>TLD</th><th>Register</th><th>Renew</th><th>Transfer</th>
+      <th>Category</th><th>Region</th><th>Flags</th><th>Badge</th><th>Tagline</th><th>Sort</th><th>Visible</th><th></th>
+    </tr></thead>
+    <tbody>
+    <?php foreach ($rows as $r): ?>
+      <tr>
+        <form method="post" action="<?= chs_h($baseLink . '&action=tlds') ?>">
+          <?= $tokenField ?>
+          <input type="hidden" name="do" value="save_meta">
+          <input type="hidden" name="tld" value="<?= chs_h($r['tld']) ?>">
+          <td><strong>.<?= chs_h($r['tld']) ?></strong></td>
+          <td><?= $r['price_available'] ? chs_money($r['register_minor']) : '<span class="chs-muted">—</span>' ?></td>
+          <td><?= $r['renew_minor'] !== null ? chs_money($r['renew_minor']) : '<span class="chs-muted">—</span>' ?></td>
+          <td><?= $r['transfer_minor'] !== null ? chs_money($r['transfer_minor']) : '<span class="chs-muted">—</span>' ?></td>
+          <td><input class="form-control input-sm" name="category" value="<?= chs_h($r['category']) ?>" style="width:90px"></td>
+          <td><input class="form-control input-sm" name="region" value="<?= chs_h($r['region']) ?>" style="width:110px"></td>
+          <td style="white-space:nowrap">
+            <label title="Featured"><input type="checkbox" name="is_featured" <?= $r['is_featured'] ? 'checked' : '' ?>> F</label>
+            <label title="Popular"><input type="checkbox" name="is_popular" <?= $r['is_popular'] ? 'checked' : '' ?>> P</label>
+            <label title="New"><input type="checkbox" name="is_new" <?= $r['is_new'] ? 'checked' : '' ?>> N</label>
+            <label title="Trending"><input type="checkbox" name="is_trending" <?= $r['is_trending'] ? 'checked' : '' ?>> T</label>
+          </td>
+          <td><input class="form-control input-sm" name="badge" value="<?= chs_h($r['badge']) ?>" style="width:80px" placeholder="SALE"></td>
+          <td><input class="form-control input-sm" name="tagline" value="<?= chs_h($r['tagline']) ?>" style="width:220px"></td>
+          <td><input class="form-control input-sm" name="sort_order" type="number" value="<?= (int) $r['sort_order'] ?>" style="width:70px"></td>
+          <td><input type="checkbox" name="visible" <?= $r['listed'] ? 'checked' : '' ?>></td>
+          <td><button class="btn btn-xs btn-primary">Save</button></td>
+        </form>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  </div>
+  <p class="chs-muted">Extensions without a merchandising row still appear on the public directory with their live
+    pricing; tick flags to feature or categorise them.</p>
+</div>

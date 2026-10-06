@@ -1,0 +1,35 @@
+<?php /** @var array $status @var array $rows */ ?>
+<div class="chs-panel">
+  <h3>Provider status</h3>
+  <?php if ($status['configured']): ?>
+    <div class="alert alert-success">The AI builder is configured (provider <code><?= chs_h($status['provider']) ?></code>).</div>
+  <?php else: ?>
+    <div class="alert alert-warning">
+      The AI builder is <strong>not configured</strong>. Customers see an honest configuration notice — nothing is
+      faked. Missing:
+      <ul><?php foreach ($status['missing'] as $m): ?><li><code><?= chs_h($m) ?></code></li><?php endforeach; ?></ul>
+      Configure under <a href="<?= chs_h($baseLink . '&action=settings') ?>">Settings</a> (endpoint + model + enable
+      switch) and set the <code>CHS_AI_API_KEY</code> environment variable on the server. Any OpenAI-compatible
+      chat-completions endpoint works (OpenAI, Azure, Anthropic-compatible gateways, self-hosted vLLM/Ollama).
+    </div>
+  <?php endif; ?>
+</div>
+<div class="chs-panel">
+  <h3>Generations</h3>
+  <table class="table table-condensed table-striped">
+    <thead><tr><th>#</th><th>Client</th><th>Brief</th><th>Provider</th><th>Model</th><th>Duration</th><th>When</th></tr></thead>
+    <tbody>
+    <?php foreach ($rows as $r): ?>
+      <tr>
+        <td><?= (int) $r['id'] ?></td>
+        <td><a href="clientssummary.php?userid=<?= (int) $r['client_id'] ?>">#<?= (int) $r['client_id'] ?></a></td>
+        <td class="chs-break"><?= chs_h(\Chs\Core\Str::truncate($r['prompt'], 120)) ?></td>
+        <td><?= chs_h($r['provider']) ?></td>
+        <td><?= chs_h($r['model']) ?></td>
+        <td><?= (int) $r['duration_ms'] ?> ms</td>
+        <td><?= chs_dt($r['created_at']) ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+</div>

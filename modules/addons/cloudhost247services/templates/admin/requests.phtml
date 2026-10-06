@@ -1,0 +1,33 @@
+<?php /** @var array $rows @var array $types @var string $status */ ?>
+<div class="chs-panel">
+  <div class="chs-toolbar">
+    <form class="form-inline" method="get">
+      <input type="hidden" name="module" value="cloudhost247services"><input type="hidden" name="action" value="requests">
+      <select class="form-control" name="status" onchange="this.form.submit()">
+        <option value="">All statuses</option>
+        <?php foreach (\Chs\Workflow\RequestStatus::all() as $s): ?>
+          <option value="<?= chs_h($s) ?>" <?= $status === $s ? 'selected' : '' ?>><?= chs_h(ucwords(str_replace('_',' ',$s))) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </form>
+  </div>
+  <div class="table-responsive">
+  <table class="table table-striped table-condensed">
+    <thead><tr><th>#</th><th>Type</th><th>Title</th><th>Client</th><th>Status</th><th>Quote</th><th>Opened</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($rows as $r): ?>
+      <tr>
+        <td><?= (int) $r['id'] ?></td>
+        <td><?= chs_h(isset($types[$r['type']]) ? $types[$r['type']]['label'] : $r['type']) ?></td>
+        <td><?= chs_h($r['title']) ?></td>
+        <td><a href="clientssummary.php?userid=<?= (int) $r['client_id'] ?>">#<?= (int) $r['client_id'] ?></a></td>
+        <td><?= chs_status_pill($r['status']) ?></td>
+        <td><?= $r['quote_minor'] !== null ? chs_money((int) $r['quote_minor'], $r['currency']) : '—' ?></td>
+        <td><?= chs_dt($r['created_at']) ?></td>
+        <td><a class="btn btn-xs btn-default" href="<?= chs_h($baseLink . '&action=request&id=' . (int) $r['id']) ?>">Open</a></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  </div>
+</div>

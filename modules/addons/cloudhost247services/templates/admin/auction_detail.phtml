@@ -1,0 +1,69 @@
+<?php /** @var array $auction @var array $journal @var array $bids @var array|null $invoice */ ?>
+<div class="chs-grid-2">
+  <div class="chs-panel">
+    <h3><?= chs_h($auction['domain']) ?> <?= chs_status_pill($auction['status']) ?></h3>
+    <table class="table">
+      <tr><td>Starts</td><td><?= chs_dt($auction['starts_at']) ?></td></tr>
+      <tr><td>Ends</td><td><?= chs_dt($auction['ends_at']) ?> <?= $auction['extensions_used'] ? '<span class="label label-info">+' . (int) $auction['extensions_used'] . ' anti-snipe extension(s)</span>' : '' ?></td></tr>
+      <tr><td>Start price</td><td><?= chs_money((int) $auction['start_price_minor'], $auction['currency']) ?></td></tr>
+      <tr><td>Reserve</td><td><?= $auction['reserve_minor'] !== null ? chs_money((int) $auction['reserve_minor'], $auction['currency']) : '—' ?></td></tr>
+      <tr><td>Buy-It-Now</td><td><?= $auction['bin_price_minor'] !== null ? chs_money((int) $auction['bin_price_minor'], $auction['currency']) : '—' ?></td></tr>
+      <tr><td>High bid</td><td><?= $auction['highest_bid_minor'] !== null ? chs_money((int) $auction['highest_bid_minor'], $auction['currency']) . ' (client #' . (int) $auction['highest_bidder_id'] . ')' : '—' ?></td></tr>
+      <tr><td>Seller</td><td><?= $auction['seller_client_id'] !== null ? 'Client #' . (int) $auction['seller_client_id'] : 'Marketplace inventory' ?></td></tr>
+      <tr><td>Settlement</td><td>
+        <?php if ($invoice): ?>
+          Invoice #<?= (int) $invoice['invoice_id'] ?> — <?= chs_money((int) $invoice['amount_minor'], $invoice['currency']) ?> (<?= chs_h($invoice['status']) ?>)
+        <?php else: ?>—<?php endif; ?>
+      </td></tr>
+    </table>
+
+    <?php if (in_array($auction['status'], ['draft','scheduled','active'], true)): ?>
+    <form method="post" action="<?= chs_h($baseLink . '&action=auctions') ?>" class="form-inline" onsubmit="return confirm('Cancel this auction? Bidders and seller will be notified.')">
+      <?= $tokenField ?><input type="hidden" name="do" value="cancel"><input type="hidden" name="id" value="<?= (int) $auction['id'] ?>">
+      <input class="form-control" name="reason" placeholder="Reason (optional)">
+      <button class="btn btn-danger">Cancel auction</button>
+    </form>
+    <?php elseif ($auction['status'] === 'paid'): ?>
+    <form method="post" action="<?= chs_h($baseLink . '&action=auctions') ?>" class="form-inline" onsubmit="return confirm('Mark the domain as transferred into the buyer account?')">
+      <?= $tokenField ?><input type="hidden" name="do" value="transferred"><input type="hidden" name="id" value="<?= (int) $auction['id'] ?>">
+      <input class="form-control" name="note" placeholder="Transfer note (auth id etc.)">
+      <button class="btn btn-success">Mark transferred</button>
+    </form>
+    <?php endif; ?>
+  </div>
+
+  <div class="chs-panel">
+    <h3>Bid history</h3>
+    <table class="table table-condensed table-striped">
+      <thead><tr><th>Bidder</th><th>Amount</th><th>Source</th><th>Status</th><th>When</th></tr></thead>
+      <tbody>
+      <?php foreach ($bids as $b): ?>
+        <tr>
+          <td>Client #<?= (int) $b['bidder_client_id'] ?></td>
+          <td><?= chs_money((int) $b['amount_minor'], $auction['currency']) ?></td>
+          <td><?= chs_h($b['source']) ?></td>
+          <td><?= chs_status_pill($b['status']) ?></td>
+          <td><?= chs_dt($b['created_at']) ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="chs-panel">
+  <h3>Event journal</h3>
+  <table class="table table-condensed table-striped">
+    <thead><tr><th>When</th><th>Type</th><th>Actor</th><th>Payload</th></tr></thead>
+    <tbody>
+    <?php foreach ($journal as $e): ?>
+      <tr>
+        <td><?= chs_dt($e['created_at']) ?></td>
+        <td><code><?= chs_h($e['type']) ?></code></td>
+        <td><?= chs_h($e['actor_type']) ?> #<?= (int) $e['actor_id'] ?></td>
+        <td><code class="chs-break"><?= chs_h($e['payload']) ?></code></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+</div>

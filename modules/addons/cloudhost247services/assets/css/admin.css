@@ -1,0 +1,32 @@
+/* CloudHost247 Services Suite — admin console */
+.chs-admin { max-width: 1280px; }
+.chs-admin-nav { margin-bottom: 18px; }
+.chs-panel { background:#fff; border:1px solid #dbe2ea; border-radius:8px; padding:18px; margin-bottom:18px;
+  box-shadow:0 1px 2px rgba(16,24,40,.04); }
+.chs-panel h3 { margin-top:0; }
+.chs-grid-2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(440px,1fr)); gap:18px; }
+.chs-grid-3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; margin-bottom:18px; }
+.chs-card { background:#fff; border:1px solid #dbe2ea; border-radius:8px; padding:16px; text-align:center; }
+.chs-kpi { font-size:32px; font-weight:700; color:#1d4ed8; }
+.chs-kpi-label { color:#475569; font-size:12px; text-transform:uppercase; letter-spacing:.06em; }
+.chs-muted { color:#64748b; }
+.chs-break { word-break:break-all; white-space:pre-wrap; display:inline-block; max-width:420px; }
+.chs-toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px; }
+.chs-inline-form { display:inline-block; margin-top:8px; }
+.chs-inline-checks label { margin-right:14px; font-weight:400; }
+.chs-tld-picker { display:flex; flex-wrap:wrap; gap:6px 12px; max-height:200px; overflow:auto;
+  border:1px solid #e2e8f0; border-radius:6px; padding:10px; background:#f8fafc; }
+.chs-tld-chip { white-space:nowrap; font-weight:400; font-size:12px; }
+.chs-label { display:inline-block; color:#fff; border-radius:10px; padding:1px 9px; font-size:11px; margin:1px 2px; }
+.chs-brief { background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px; margin-bottom:16px; }
+.chs-update { border-left:3px solid #cbd5e1; padding:8px 12px; margin-bottom:10px; background:#f8fafc; border-radius:0 6px 6px 0; }
+.chs-update.chs-staff { border-left-color:#2563eb; background:#eff6ff; }
+.chs-update.chs-client { border-left-color:#16a34a; background:#f0fdf4; }
+.chs-update.chs-internal { border-left-color:#d97706; background:#fffbeb; }
+.chs-update-meta { font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
+.chs-pill { display:inline-block; border-radius:999px; padding:2px 10px; font-size:12px; font-weight:600; }
+.chs-pill-ok { background:#dcfce7; color:#166534; }
+.chs-pill-warn { background:#fef9c3; color:#854d0e; }
+.chs-pill-bad { background:#fee2e2; color:#991b1b; }
+.chs-pill-muted { background:#e2e8f0; color:#475569; }
+@media (max-width: 991px) { .chs-grid-2 { grid-template-columns:1fr; } }
