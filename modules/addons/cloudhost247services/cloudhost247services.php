@@ -21,6 +21,7 @@ require_once __DIR__ . '/autoload.php';
 
 use Chs\Core\Db;
 use Chs\Core\Logger;
+use Chs\Core\I18n;
 use Chs\Core\Migrator;
 use Chs\Http\AdminPortal;
 use Chs\Http\CustomerPortal;
@@ -132,25 +133,26 @@ function cloudhost247services_clientarea($vars)
 function cloudhost247services_sidebar($vars)
 {
     $items = [
-        ''              => 'Dashboard',
-        'valuation'     => 'Domain valuation',
-        'auctions'      => 'Domain auctions',
-        'watchlist'     => 'Auction watchlist',
-        'sell'          => 'Sell a domain',
-        'club'          => 'Discount Domain Club',
-        'requests'      => 'Service requests',
-        'logos'         => 'Logo projects',
-        'ai'            => 'AI Website Builder',
-        'inbox'         => 'Unified inbox',
-        'notifications' => 'Notifications',
+        ''              => ['dashboard', 'Dashboard'],
+        'valuation'     => ['domain_valuation', 'Domain valuation'],
+        'auctions'      => ['domain_auctions_nav', 'Domain auctions'],
+        'watchlist'     => ['auction_watchlist', 'Auction watchlist'],
+        'sell'          => ['sell_a_domain', 'Sell a domain'],
+        'club'          => ['discount_domain_club', 'Discount Domain Club'],
+        'requests'      => ['service_requests', 'Service requests'],
+        'logos'         => ['logo_projects', 'Logo projects'],
+        'ai'            => ['ai_website_builder', 'AI Website Builder'],
+        'inbox'         => ['unified_inbox', 'Unified inbox'],
+        'notifications' => ['notifications', 'Notifications'],
     ];
     $current = isset($_GET['action']) ? (string) $_GET['action'] : '';
     $html = '<div class="list-group chs-module-nav">';
     foreach ($items as $action => $label) {
         $href = 'index.php?m=cloudhost247services' . ($action !== '' ? '&action=' . $action : '');
         $active = ($action === $current || ($action === '' && $current === '')) ? ' active' : '';
+        $text = I18n::text($label[0], $label[1]);
         $html .= '<a class="list-group-item' . $active . '" href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">'
-            . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</a>';
+            . htmlspecialchars($text, ENT_QUOTES, 'UTF-8') . '</a>';
     }
     $html .= '</div>';
     return $html;

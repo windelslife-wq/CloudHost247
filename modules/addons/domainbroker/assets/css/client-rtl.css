@@ -1,0 +1,21 @@
+/* Domain Broker RTL support. The base sheet remains locale-neutral; these
+   rules only change directional relationships when HostX sets dir=rtl. */
+[dir="rtl"] .domainbroker-portal { text-align: start; }
+[dir="rtl"] .db-portal-header,
+[dir="rtl"] .db-portal-header-actions { direction: rtl; }
+[dir="rtl"] .db-nav > li > a .fa { margin-right: 0; margin-left: 6px; }
+[dir="rtl"] .domainbroker-portal .text-left { text-align: right; }
+[dir="rtl"] .domainbroker-portal .text-right { text-align: left; }
+[dir="rtl"] .domainbroker-portal .db-alert,
+[dir="rtl"] .domainbroker-portal .db-card,
+[dir="rtl"] .domainbroker-portal .db-panel { text-align: start; }
+[dir="rtl"] .domainbroker-portal .db-card-accent,
+[dir="rtl"] .domainbroker-portal .db-callout { border-left: 1px solid var(--db-line); border-right: 4px solid var(--db-accent); }
+[dir="rtl"] .domainbroker-portal .db-input-group .input-group-addon:first-child { border-radius: 0 4px 4px 0; }
+[dir="rtl"] .domainbroker-portal .db-input-group .form-control:last-child { border-radius: 4px 0 0 4px; }
+[dir="rtl"] .domainbroker-portal table { direction: rtl; }
+[dir="rtl"] .domainbroker-portal .pagination { padding-right: 0; }
+@media (max-width: 767px) {
+    [dir="rtl"] .db-portal-header { align-items: flex-start; }
+    [dir="rtl"] .domainbroker-portal .db-actions { flex-direction: column; align-items: stretch; }
+}

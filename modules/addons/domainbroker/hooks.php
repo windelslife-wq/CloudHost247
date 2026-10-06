@@ -47,6 +47,7 @@ add_hook('ClientAreaHeadOutput', 1, function ($vars) {
     $assets = $base . '/modules/addons/domainbroker/assets';
 
     return '<link rel="stylesheet" href="' . htmlspecialchars($assets . '/css/client.css', ENT_QUOTES, 'UTF-8') . '">'
+        . '<link rel="stylesheet" href="' . htmlspecialchars($assets . '/css/client-rtl.css', ENT_QUOTES, 'UTF-8') . '">'
         . '<script src="' . htmlspecialchars($assets . '/js/domainbroker.js', ENT_QUOTES, 'UTF-8') . '" defer></script>';
 });
 

@@ -47,7 +47,8 @@ add_hook('ClientAreaHeadOutput', 1, function ($vars) {
     $seoOut = \Chs\Http\Landing::headMarkup($vars, '');
 
     $base = rtrim(isset($vars['WEB_ROOT']) ? $vars['WEB_ROOT'] : '', '/');
-    $out = '<link rel="stylesheet" href="' . $base . '/modules/addons/cloudhost247services/assets/css/client.css">';
+    $out = '<link rel="stylesheet" href="' . $base . '/modules/addons/cloudhost247services/assets/css/client.css">'
+        . '<link rel="stylesheet" href="' . $base . '/modules/addons/cloudhost247services/assets/css/client-rtl.css">';
     if ($module === 'cloudhost247services' || in_array($template, $suiteTemplates, true)) {
         $out .= '<script src="' . $base . '/modules/addons/cloudhost247services/assets/js/suite.js" defer></script>';
     }
@@ -214,6 +215,13 @@ add_hook('DailyCronJob', 1, function () {
             \Chs\Core\Db::exec(
                 'DELETE FROM ' . \Chs\Core\Db::t('whois_cache') . ' WHERE expires_at < ?',
                 [\Chs\Core\Clock::now()]
+            );
+        }
+        $consentRetention = \Chs\Core\Settings::int('consent_retention_days', 730);
+        if ($consentRetention > 0 && \Chs\Core\Db::tableExists('consent_records')) {
+            \Chs\Core\Db::exec(
+                'DELETE FROM ' . \Chs\Core\Db::t('consent_records') . ' WHERE recorded_at < ?',
+                [\Chs\Core\Clock::ago($consentRetention * 86400)]
             );
         }
         \Chs\Core\RateLimiter::purge();

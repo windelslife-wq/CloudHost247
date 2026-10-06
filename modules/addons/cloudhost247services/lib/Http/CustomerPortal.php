@@ -24,6 +24,7 @@ use Chs\Services\AiBuilderService;
 use Chs\Services\AuctionService;
 use Chs\Services\AvailabilityService;
 use Chs\Services\ClubService;
+use Chs\Services\ConsentService;
 use Chs\Services\InboxService;
 use Chs\Services\LogoService;
 use Chs\Services\NotificationService;
@@ -38,6 +39,11 @@ class CustomerPortal extends Controller
      */
     public function dispatch($vars)
     {
+        $action = Http::get('action', 'dashboard');
+        if ($action === 'consent') {
+            return $this->recordConsent();
+        }
+
         $clientId = Identity::clientId();
         if (!$clientId) {
             return $this->page('Sign in required', 'login_required', [
@@ -45,7 +51,6 @@ class CustomerPortal extends Controller
             ]);
         }
 
-        $action = Http::get('action', 'dashboard');
         if (!preg_match('/^[a-z_]+$/', $action)) {
             $action = 'dashboard';
         }
@@ -78,6 +83,31 @@ class CustomerPortal extends Controller
         return $this->guard(function () use ($portal, $method, $vars, $clientId) {
             return $portal->$method($vars, $clientId);
         });
+    }
+
+    /**
+     * Public, deliberately narrow consent endpoint. It never returns account
+     * data and uses the same-origin browser request only for the decision
+     * record; no query-string credentials or wildcard CORS are involved.
+     */
+    protected function recordConsent()
+    {
+        if (!Http::isPost()) {
+            Http::json(['ok' => false, 'error' => 'POST required'], 405);
+        }
+        try {
+            $saved = (new ConsentService())->record(
+                Http::post('status'),
+                Http::post('consent_id'),
+                Http::post('categories'),
+                Http::post('policy_version', 'cookie-policy-v1'),
+                Http::post('language')
+            );
+        } catch (\Throwable $e) {
+            \Chs\Core\Logger::warning('Consent record was not persisted', ['message' => $e->getMessage()]);
+            $saved = false;
+        }
+        Http::json(['ok' => $saved]);
     }
 
     /* --------------------------------------------------------- dashboard -- */

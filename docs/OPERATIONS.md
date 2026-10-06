@@ -9,7 +9,7 @@ no aspirational features.
 1. Upload the repository over the WHMCS web root (files under `templates/`,
    `modules/`, root landing pages, `sitemap.xml`, `sitemap.html`).
 2. WHMCS admin → **Apps & Integrations** → enable **CloudHost247 Services**.
-   The module migrator (0001–0010) creates all module tables and seeds club
+   The module migrator (0001–0011) creates all module tables and seeds club
    plans, TLD metadata, and inbox labels.
 3. Module settings (admin → addon modules → CloudHost247 Services):
    - `service_enabled` = on
@@ -27,6 +27,34 @@ no aspirational features.
    regeneration. Auctions depend on this cadence; do not run it less often.
 5. Confirm `sitemap.xml` is web-writable by the cron user if you want
    regenerated versions to land (the suite logs and skips on failure).
+
+### Web-server performance and security baseline
+
+The overlay does not modify WHMCS or the web server. Apply these settings in
+staging and verify them with the deployment owner:
+
+- enable Brotli (preferred) or gzip for HTML, CSS, JavaScript, JSON, SVG and
+  XML; never compress already-compressed private downloads;
+- serve immutable, versioned static assets with a long `Cache-Control` lifetime,
+  while keeping HTML and account pages private/non-cacheable;
+- use HTTPS, HSTS only after all subdomains are HTTPS, and a restrictive
+  `Content-Security-Policy` reviewed against the configured payment, chat,
+  analytics and CAPTCHA providers;
+- route clean public URLs to the existing root landing files only when the
+  rewrite preserves the canonical URL and does not expose module internals;
+- disable directory indexes and deny access to module `install/`, `tests/`,
+  runtime storage, logs and environment files;
+- confirm the HostX cookie banner is enabled and configured as an opt-in
+  banner before enabling analytics or marketing identifiers.
+
+The HostX shell now loads the consent control on every page, stores a local
+policy/version decision for the browser and injects optional trackers only
+after an explicit allow action. When the Services addon is active, the endpoint records a
+pseudonymous decision history in `consent_records`; it is still not a legal compliance
+assessment or a replacement for an
+operator-controlled retention and audit process. Configure **Consent history retention**
+in the module Settings page; the daily hook prunes records older than that value, while `0`
+keeps them indefinitely.
 
 ## 2. Top mega menu — how it's wired, and the manual fallback
 
@@ -95,13 +123,32 @@ valuations retroactively.
 - `sitemap.html` is the human-readable mirror; update it when adding new
   public landing pages.
 
-## 6. Testing & lint gates
+## 6. Digital Products Marketplace
+
+The addon is upgraded in place at `modules/addons/digitalproducts/`; do not install a
+second digital-products module. Configure `DIGITALPRODUCTS_STORAGE` to a writable path
+outside the WHMCS document root and set `DIGITALPRODUCTS_ENCRYPTION_KEY` before creating
+licenses. Activate it from WHMCS Addon Modules so its additive migrations can preserve
+legacy products and files.
+
+Run maintenance every five minutes:
+
+```text
+*/5 * * * * /usr/bin/php -q /path/to/whmcs/modules/addons/digitalproducts/cron/digitalproducts.php
+```
+
+The cron expires download tokens and rate-limit windows; it never silently deletes
+download history. Verify a real paid staging order, a duplicate payment hook, a
+cancellation, and a wrong-customer token before production release. See
+[`DIGITAL_PRODUCTS.md`](DIGITAL_PRODUCTS.md) for storage, schema and incident response.
+
+## 7. Testing & lint gates
 
 From `modules/addons/cloudhost247services/`:
 
 ```bash
 npm install               # test harness deps (php-wasm)
-node tests/run.mjs        # 527 assertions must pass
+node tests/run.mjs        # 704 assertions currently pass
 node tests/lint.mjs       # module PHP parse gate: BAD=0 LINT_OK
 node tests/lint-root.mjs  # root landing pages parse gate: ROOT_LINT_OK
 ```
@@ -110,7 +157,44 @@ All three must be green before any commit. The lint runners must exit
 cleanly (the `process.exit(0)` at the end is load-bearing — the php-wasm
 runtime keeps the Node event loop alive otherwise).
 
+From `modules/addons/digitalproducts/`:
+
+```bash
+node tests/run.mjs        # 10 assertions currently pass
+node tests/lint.mjs       # module PHP parse gate: BAD=0 LINT_OK
+```
+
+From `modules/addons/cloudhost247ai/`:
+
+```bash
+node tests/run.mjs        # 370 assertions / 10 suites (incl. adversarial fabrication suite)
+node tests/lint.mjs       # 45 module PHP files load clean: BAD=0 LINT_OK
+```
+
 `node_modules/` is local-only and git-ignored on purpose.
+
+## 7a. CloudHost247 AI control plane
+
+Activate `modules/addons/cloudhost247ai/` from WHMCS Addon Modules (additive
+migrations only — deactivation drops nothing). It is fully functional as a
+read-only layer without any model provider; every AI surface then fails closed
+with `CONFIGURATION_REQUIRED` instead of guessing. Configure the model
+endpoint on its Settings page (self-hosted vLLM/Ollama keeps customer data
+on-premise) and set `CH247AI_API_KEY` in the environment if the endpoint
+requires a key — keys are never stored in the database.
+
+Run the drain cron every five minutes:
+
+```text
+*/5 * * * * /usr/bin/php -q /path/to/whmcs/modules/addons/cloudhost247ai/cron/cloudhost247ai.php
+```
+
+The cron drains captured events, runs the scheduled agents at the configured
+briefing hour, composes the daily briefing, expires stale approvals and prunes
+per the retention settings. Web hooks never call a model. If AI behaviour is
+ever suspect, engage the kill switch on the module's Settings page — it stops
+every model call and tool execution immediately without deactivating the
+module. Full runbook: [`AI_CONTROL_PLANE.md`](AI_CONTROL_PLANE.md).
 
 ## 7. Credentials matrix (what needs what)
 
@@ -126,6 +210,7 @@ runtime keeps the Node event loop alive otherwise).
 | AI website builder | Structure + draft UI | AI provider key (`ai_api_key` setting) — until set, the feature shows the integration contract, never fake output |
 | Unified inbox | Yes (reads WHMCS tickets) | — |
 | Digital marketing / Hire-an-expert | Brief → invoice flow | Consultant fulfilment (business process) |
+| AI control plane (`cloudhost247ai`) | Yes — installs, audits, briefings metrics-only, shows clear config state | Model endpoint (+ `CH247AI_API_KEY` env if the endpoint needs one) for model-narrated answers; the CloudHost247_tools addon for live diagnostics |
 
 Anything in the right-hand column is labelled in-product with exactly what
 to configure; nothing shows fabricated availability or results.

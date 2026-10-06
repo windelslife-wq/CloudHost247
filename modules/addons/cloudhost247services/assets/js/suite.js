@@ -5,6 +5,31 @@
 (function () {
     'use strict';
 
+    function typeCardFor(input) {
+        var node = input && input.parentNode;
+        while (node && node !== document) {
+            if ((' ' + node.className + ' ').indexOf(' chs-type-card ') !== -1) return node;
+            node = node.parentNode;
+        }
+        return null;
+    }
+
+    function syncTypeCards() {
+        var inputs = document.querySelectorAll('.chs-type-card input');
+        for (var i = 0; i < inputs.length; i++) {
+            var card = typeCardFor(inputs[i]);
+            if (!card) continue;
+            if (inputs[i].checked) card.classList.add('chs-checked');
+            else card.classList.remove('chs-checked');
+            inputs[i].addEventListener('change', function () {
+                var changedCard = typeCardFor(this);
+                if (!changedCard) return;
+                if (this.checked) changedCard.classList.add('chs-checked');
+                else changedCard.classList.remove('chs-checked');
+            });
+        }
+    }
+
     function tick() {
         var nodes = document.querySelectorAll('.chs-countdown[data-ends]');
         for (var i = 0; i < nodes.length; i++) {
@@ -30,8 +55,9 @@
     }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () { tick(); setInterval(tick, 1000); });
+        document.addEventListener('DOMContentLoaded', function () { syncTypeCards(); tick(); setInterval(tick, 1000); });
     } else {
+        syncTypeCards();
         tick();
         setInterval(tick, 1000);
     }

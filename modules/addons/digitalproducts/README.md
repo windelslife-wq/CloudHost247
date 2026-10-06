@@ -1,305 +1,168 @@
-# WHMCS Digital Products Marketplace Module
+# CloudHost247 Digital Products
 
-A complete solution for selling downloadable digital products, modules, plugins and scripts through WHMCS. Features secure file delivery, version management, license key generation and comprehensive download tracking.
+The existing `modules/addons/digitalproducts/` addon is the single digital-product
+implementation for this repository. It links WHMCS products to private releases,
+grants customer entitlements after payment, streams expiring token downloads, and
+optionally issues licenses. It does not replace WHMCS checkout, invoices, users,
+products or payment gateways.
 
-## Features
+## Deployment and activation
 
-- **File Upload & Management** - Upload ZIP, PHP, JS and other files via admin panel
-- **Product Linking** - Link digital downloads to existing WHMCS products
-- **Version Control** - Manage multiple versions per product with changelog support
-- **Secure Downloads** - Token-based, time-limited download links (48h default)
-- **Download Limits** - Per-product download count restrictions
-- **License Keys** - Automatic license key generation per purchase (format: `DP-XXXX-XXXX-XXXX-XXXX`)
-- **Download Logs** - Track who downloaded what, when and from which IP
-- **Auto-Activation** - Hooks into WHMCS order events to automatically grant access
-- **Email Notifications** - Automated email with download link after purchase
-- **API Ready** - REST-style API for mobile app integration
-- **Client Area** - "My Downloads" section integrated into client area
+This repository is a WHMCS overlay. Copy the repository over the WHMCS document
+root, then:
 
-## Requirements
+1. Create the WHMCS email template **Digital Product Download Info**. The template
+   can use `{$product_name}`, `{$product_version}`, `{$purchase_date}`,
+   `{$download_link}`, `{$client_area_link}` and `{$license_key}`. The link is an
+   expiring token, never a permanent file URL.
+2. Configure the addon under **Configuration → System Settings → Addon Modules**.
+3. Set `DIGITALPRODUCTS_STORAGE` (recommended) to a writable directory outside
+   the web root, or set the equivalent `storage_path` addon setting. The addon
+   refuses a path inside `ROOTDIR`.
+4. Activate the addon. Activation and upgrades run the numbered, additive
+   migrations. Deactivation preserves all tables and files.
+5. Give the WHMCS admin role access to the addon. The module also checks admin
+   authentication and CSRF on every state-changing admin request.
 
-- WHMCS 8.x
-- PHP 7.4 or higher
-- MySQL 5.7+ / MariaDB 10.2+
-- IonCube Loader (standard WHMCS requirement)
+Example private storage and cron:
 
-## Installation
-
-### Step 1: Upload Files
-
-1. Upload the `modules/addons/digitalproducts/` folder to your WHMCS installation:
-   ```
-   /WHMCS_ROOT/modules/addons/digitalproducts/
-   ```
-
-### Step 2: Activate Module
-
-1. Login to your WHMCS Admin Panel
-2. Navigate to **System Settings > Addon Modules**
-3. Find **"Digital Products Marketplace"** in the list
-4. Click **Activate**
-
-### Step 3: Configure Permissions
-
-1. After activation, click **Configure**
-2. Set your preferred defaults:
-   - **Default Download Limit**: Max downloads per purchase (0 = unlimited)
-   - **Download Link Expiry**: Hours until link expires (default: 48)
-   - **Enable License Keys**: Toggle license key generation
-   - **File Storage Path**: Custom path or leave empty for default
-   - **Email Delivery**: Send download info after purchase
-3. Set **Access Control** - check which admin roles can access
-
-### Step 4: Create Email Template (Optional)
-
-Run this SQL in your WHMCS database to create the email template:
-
-```sql
-INSERT INTO tblemailtemplates (type, name, subject, message, plaintext, disabled, custom, language, copyto, blind_copy_to) 
-VALUES (
-  'product',
-  'Digital Product Download Info',
-  'Your Digital Product Download is Ready - {$product_name}',
-  '<p>Dear {$client_name},</p><p>Thank you for your purchase. Your digital product <strong>{$product_name}</strong> is ready.</p><p><strong>Version:</strong> {$product_version}<br><strong>Download:</strong> <a href="{$download_link}">Click here to download</a><br><strong>License Key:</strong> {$license_key}</p><p>This link expires in 48 hours. Access anytime from your client area "My Downloads" section.</p>',
-  0, 0, 1, '', '', ''
-);
+```bash
+export DIGITALPRODUCTS_STORAGE=/home/cloudhost247/private-storage/digital-products
+*/5 * * * * /usr/bin/php -q /path/to/whmcs/modules/addons/digitalproducts/cron/digitalproducts.php
 ```
 
-## Setup Guide
+Set `DIGITALPRODUCTS_ENCRYPTION_KEY` to a long, deployment-specific secret before
+creating licenses. It is used only to encrypt license keys that must be shown to
+customers; it is never stored in the database.
 
-### Creating Your First Digital Product
+## Product setup
 
-1. **Go to Addon Module**
-   - Navigate to **Addons > Digital Products Marketplace**
+1. Create the product and price in WHMCS as usual.
+2. In the addon, link that WHMCS product. This stores the WHMCS product id; it
+   does not duplicate product pricing.
+3. Edit the digital product, choose its type, status, download policy, access
+   mode and license policy.
+4. Upload a release. The addon validates the extension, MIME, size and archive
+   paths, calculates SHA-256, stores a random private object key, verifies the
+   stored bytes, and only then creates the version record.
+5. Publish the release and set it current. Existing entitlements use the current
+   release by default; `purchase_version` locks them to the release bought.
 
-2. **Link a WHMCS Product**
-   - On the Products page, select a WHMCS product from the dropdown
-   - Click **Link Product**
+Supported types include module, plugin, theme, script, software, template, API,
+document, media and other. The default extension allowlist is configurable and
+includes `zip`, `tar.gz`, `pdf`, `js`, `css`, `php`, `json`, `xml`, `txt` and `md`.
+Uploaded PHP is data for download; it is never included from the private store.
 
-3. **Upload a File**
-   - Click **Upload File** (or go to the product edit page)
-   - Select the product, enter version (e.g. `1.0.0`)
-   - Add changelog notes
-   - Drag & drop or select your file (ZIP recommended)
-   - Click **Upload File**
+## Payment lifecycle
 
-4. **Set as Current Version**
-   - Edit the product and select the uploaded file as "Current File"
-   - Or go to **Version Management** and click "Set Active"
+`OrderPaid`, `InvoicePaid`, `AfterModuleCreate` and `AcceptOrder` use the same
+idempotent grant path. A unique `(client_id, service_id, product_id)` key prevents
+duplicate entitlements, and `(service_id, product_id)` prevents duplicate licenses.
+Cancellation, refund, fraud, suspension and termination revoke or suspend access.
+The final download check still validates the current WHMCS service state, so an old
+entitlement cannot bypass a cancellation. Email failure is logged and does not
+roll back a paid order or entitlement.
 
-5. **Test Purchase**
-   - Place a test order for the product
-   - After payment, the download will be available in "My Downloads"
+## Client area and downloads
 
-### Managing Versions
+Customers use **My Downloads** in the HostX/WHMCS client area. A click submits a
+CSRF-protected request that derives the customer and entitlement server-side, then
+redirects to:
 
-- Upload new versions with incremented version numbers
-- Switch active version at any time (old customers get access to new version)
-- View all versions in **Version Management** section
-- Delete old versions to free storage space
-
-### License Key System
-
-License keys are automatically generated when:
-- Order is paid (via OrderPaid hook)
-- Service is created (via AfterModuleCreate hook)
-
-License format: `DP-XXXX-XXXX-XXXX-XXXX` (16 chars after prefix)
-
-Clients can view their license keys in the "My Downloads" section.
-
-## API Documentation
-
-### Authentication
-
-API requests require authentication via Bearer token in the Authorization header:
-
-```
-Authorization: Bearer YOUR_API_TOKEN
+```text
+/modules/addons/digitalproducts/download.php?token=<64-byte-random-token>
 ```
 
-Or via query parameter (development only):
+`download.php` accepts only the token. It hashes it for lookup, validates expiry,
+single-use state, customer/session binding, entitlement, WHMCS service ownership,
+product/version state and an atomic download limit claim, then streams from private
+storage. It records successes and denials without storing raw tokens, license keys
+or API secrets. Failures are controlled HTML responses, never a white screen.
+
+## API
+
+The JSON front controller is `/modules/addons/digitalproducts/api.php`. Use a
+Bearer token stored as a SHA-256 hash in `mod_digitalproducts_api_tokens`.
+Query-string credentials are rejected. Same-origin client-area requests may use
+the WHMCS session and CSRF token; wildcard CORS is not enabled.
+
+| Method | `endpoint` | Auth | Purpose |
+|---|---|---|---|
+| GET | `products` | public | Catalogue metadata only |
+| GET | `product/{slug}` | public | Product metadata |
+| GET | `versions/{productId}` | Bearer/client | Entitled release metadata |
+| GET | `my-downloads` or `my/downloads` | Bearer/client | Own entitlements |
+| GET | `my-licenses` or `my/licenses` | Bearer/client | Own license metadata |
+| POST | `download-token` | Bearer/client | Issue an expiring download URL |
+| POST | `validate-license` | rate limited | Generic license result |
+| POST | `activate-license` | rate limited | Add a normalised domain activation |
+
+All API responses use `{ "status": "success|error", "data": ... }`. License
+validation never discloses another customer's identity or distinguishes unknown
+keys beyond a generic invalid result. Do not put bearer tokens in URLs.
+
+## Schema and upgrades
+
+The final model is:
+
+- `mod_digitalproducts_products` — linked WHMCS product and policy.
+- `mod_digitalproducts_versions` — releases, checksums and compatibility.
+- `mod_digitalproducts_entitlements` — paid customer/service access and counters.
+- `mod_digitalproducts_licenses` — hashed/encrypted licenses.
+- `mod_digitalproducts_download_tokens` — hashed, expiring token records.
+- `mod_digitalproducts_downloads` — success and denial audit trail.
+- `mod_digitalproducts_api_tokens` — hashed API credentials.
+- `mod_digitalproducts_audit` and `mod_digitalproducts_rate_limits` — module support tables.
+
+Existing `mod_digitalproducts_files` data is copied into `versions`; the legacy
+table is not dropped so an operator can verify the migration. Existing `DP-...`
+licenses remain valid and are hashed during migration. Every migration is additive,
+re-runnable and tracked in `mod_digitalproducts_migrations`. Never delete the
+legacy table or customer history manually.
+
+## Security model
+
+- WHMCS/Capsule parameterised queries; output escaping in admin and client views.
+- Admin role gate, server-side capability checks and CSRF on every POST.
+- Private storage outside `ROOTDIR`; opaque random storage keys and download
+  streaming through PHP.
+- Secure random tokens, SHA-256 at rest, expiry and atomic single-use claims.
+- Cross-product checks bind service → WHMCS product → digital product → version.
+- Archive traversal, absolute paths, symlinks, entry-count and compression-ratio
+  checks where the relevant PHP archive extension is available.
+- Rate limiting and generic responses for license abuse.
+- Append-only module audit events with redacted context.
+
+## Additional documentation
+
+- [`INSTALL.md`](INSTALL.md) — deployment and activation checklist.
+- [`UPGRADE.md`](UPGRADE.md) — migrations and rollback safety.
+- [`SECURITY.md`](SECURITY.md) — threat model and controls.
+- [`API.md`](API.md) — endpoint reference.
+- [`DATABASE.md`](DATABASE.md) — schema and compatibility model.
+
+## Tests
+
+The module includes a PHP 8.3 php-wasm syntax/load gate that does not require a
+native PHP binary:
+
+```bash
+node modules/addons/digitalproducts/tests/lint.mjs
 ```
-?api_token=YOUR_API_TOKEN
-```
 
-### Endpoints
+Run it after changes. End-to-end purchase and web-server checks still require a
+staging WHMCS installation because this repository intentionally does not contain
+`init.php`, WHMCS vendor code, or the live database.
 
-#### List Products (Public)
-```
-GET /modules/addons/digitalproducts/api.php?endpoint=products
-```
+## Troubleshooting and recovery
 
-#### My Downloads (Auth Required)
-```
-GET /modules/addons/digitalproducts/api.php?endpoint=my-downloads
-Authorization: Bearer {token}
-```
-
-#### Generate Download Link (Auth Required)
-```
-POST /modules/addons/digitalproducts/api.php?endpoint=download-link
-Authorization: Bearer {token}
-Content-Type: application/x-www-form-urlencoded
-
-service_id=123&file_id=456
-```
-
-#### Validate License (Public)
-```
-POST /modules/addons/digitalproducts/api.php?endpoint=validate-license
-Content-Type: application/x-www-form-urlencoded
-
-license_key=DP-XXXX-XXXX-XXXX-XXXX&domain=example.com
-```
-
-#### Activate License (Public)
-```
-POST /modules/addons/digitalproducts/api.php?endpoint=activate-license
-Content-Type: application/x-www-form-urlencoded
-
-license_key=DP-XXXX-XXXX-XXXX-XXXX&domain=example.com
-```
-
-#### My Licenses (Auth Required)
-```
-GET /modules/addons/digitalproducts/api.php?endpoint=my-licenses
-Authorization: Bearer {token}
-```
-
-## File Structure
-
-```
-modules/addons/digitalproducts/
-├── digitalproducts.php              # Main module config & activation
-├── digitalproducts_clientarea.php   # Client area entry point
-├── hooks.php                        # WHMCS hooks integration
-├── download.php                     # Secure download handler
-├── api.php                          # REST API endpoint
-├── lib/
-│   ├── Core.php                     # Core functionality & database helpers
-│   ├── Admin.php                    # Admin panel rendering
-│   ├── Client.php                   # Client area rendering
-│   └── License.php                  # License key management
-├── templates/
-│   └── client/
-│       └── downloads.tpl            # Client area Smarty template
-└── README.md                        # This file
-```
-
-## Database Schema
-
-The module creates the following tables on activation:
-
-### mod_digitalproducts_products
-| Column | Type | Description |
-|--------|------|-------------|
-| id | INT PK | Product ID |
-| product_id | INT | Linked WHMCS product ID |
-| product_name | VARCHAR | Display name |
-| description | TEXT | Product description |
-| status | ENUM | active/inactive/retired |
-| current_file_id | INT | Currently active file |
-| download_limit | INT | Max downloads per purchase |
-| link_expiry_hours | INT | Download link validity |
-| license_enabled | TINYINT | Enable license generation |
-
-### mod_digitalproducts_files
-| Column | Type | Description |
-|--------|------|-------------|
-| id | INT PK | File ID |
-| product_id | INT | Parent product |
-| version | VARCHAR | Version string |
-| filename | VARCHAR | Stored filename |
-| original_name | VARCHAR | Original upload name |
-| file_path | VARCHAR | Full path on disk |
-| file_hash | CHAR(64) | SHA-256 hash |
-| file_size | BIGINT | File size in bytes |
-| changelog | TEXT | Version notes |
-| download_count | INT | Total downloads |
-| status | ENUM | active/inactive |
-
-### mod_digitalproducts_licenses
-| Column | Type | Description |
-|--------|------|-------------|
-| id | INT PK | License ID |
-| product_id | INT | Product reference |
-| service_id | INT | WHMCS service ID |
-| client_id | INT | Client ID |
-| license_key | VARCHAR(64) | Unique license key |
-| status | ENUM | active/suspended/expired/cancelled |
-| domains | TEXT | JSON array of activated domains |
-| activations_limit | INT | Max activations (0=unlimited) |
-| activations_count | INT | Current activation count |
-| expires_at | DATETIME | Expiration date |
-
-### mod_digitalproducts_downloads
-| Column | Type | Description |
-|--------|------|-------------|
-| id | INT PK | Log ID |
-| file_id | INT | Downloaded file |
-| product_id | INT | Product reference |
-| service_id | INT | Client's service |
-| client_id | INT | Client ID |
-| license_key | VARCHAR | License used |
-| download_token | VARCHAR | Access token |
-| ip_address | VARCHAR | Client IP |
-| user_agent | TEXT | Browser info |
-| status | ENUM | success/failed/expired/limit |
-
-## Security Features
-
-- Files stored outside web root (`/storage/digitalproducts/`)
-- `.htaccess` protection on storage directory
-- SHA-256 file hashing for integrity verification
-- Token-based download links with configurable expiry
-- Per-client download count enforcement
-- Service ownership validation before every download
-- Comprehensive IP and user agent logging
-- No direct file URLs exposed to clients
-
-## Hooks Used
-
-| Hook | Purpose |
-|------|---------|
-| `OrderPaid` | Activate download access on payment |
-| `AfterModuleCreate` | Generate license on service creation |
-| `ClientAreaPrimarySidebar` | Add "My Downloads" navigation link |
-| `DailyCronJob` | Clean old download logs |
-| `AdminAreaHeadOutput` | Inject module CSS/JS |
-
-## Troubleshooting
-
-### Files not showing after upload
-- Check storage directory permissions (should be writable by web server)
-- Check WHMCS error logs
-- Verify the product has a "current file" selected
-
-### Downloads not working
-- Ensure client service is "Active" in WHMCS
-- Check if download limit has been reached
-- Verify token hasn't expired (default 48h)
-- Check PHP `memory_limit` for large files (chunked delivery handles most)
-
-### License keys not generating
-- Verify "Enable License Keys" is on in settings
-- Check that the product has `license_enabled = true`
-- Review OrderPaid hook is firing (check WHMCS Activity Log)
-
-### Module causing slow admin
-- The module only loads its assets on its own pages (via AdminAreaHeadOutput check)
-- Download logs older than 90 days are auto-cleaned by cron
-
-## Version History
-
-| Version | Date | Changes |
-|---------|------|---------|
-| 1.0.0 | 2024 | Initial release |
-
-## Support
-
-For support, please contact your module provider or create an issue in the repository.
-
-## License
-
-This module is provided as-is for use with your WHMCS installation. Modify as needed for your marketplace requirements.
+- **Storage warning:** configure an absolute writable path outside the document
+  root and restart the upload request. Do not make `public_html/storage` writable.
+- **No access after payment:** confirm the WHMCS service is Active/Completed, the
+  linked WHMCS product id matches, and the payment hook ran. Run the normal WHMCS
+  invoice/order state rather than inserting an entitlement by hand.
+- **Missing file:** replace the release with a new version; retire the broken one.
+  Physical deletion is intentionally not part of normal product management.
+- **Restore:** restore the database and the private storage directory together,
+  preserving the configured encryption key. A database-only restore cannot stream
+  files; a storage-only restore cannot reconstruct entitlement history.

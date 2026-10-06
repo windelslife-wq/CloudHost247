@@ -289,7 +289,7 @@ class AdminPortal
             'auction_bid_daily_limit', 'auction_invoice_due_days',
             'club_invoice_due_days', 'requests_daily_limit', 'logo_projects_limit',
             'ai_timeout_seconds', 'ai_daily_limit_per_client',
-            'lookup_cache_minutes', 'cache_retention_days', 'audit_retention_days',
+            'lookup_cache_minutes', 'cache_retention_days', 'consent_retention_days', 'audit_retention_days',
         ];
         $strings = ['valuation_engine', 'valuation_api_url', 'ai_provider', 'ai_endpoint', 'ai_model', 'default_currency'];
 

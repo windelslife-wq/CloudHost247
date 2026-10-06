@@ -1,42 +1,19 @@
 <?php
-/**
- * WHMCS Digital Products Module - Client Area
- *
- * Client area entry point for the Digital Products module.
- *
- * @package    DigitalProducts
- * @version    1.0.0
- */
+/** WHMCS client-area entry point for My Downloads. */
+if (!defined('WHMCS')) die('This file cannot be accessed directly');
+require_once __DIR__ . '/autoload.php';
 
-use WHMCS\Module\Addon\DigitalProducts\Client as DigitalProductsClient;
-
-if (!defined("WHMCS")) {
-    die("This file cannot be accessed directly");
-}
-
-require_once __DIR__ . '/lib/Client.php';
-
-/**
- * Client Area Output
- */
 function digitalproducts_clientarea($vars)
 {
-    $action = $_GET['action'] ?? 'downloads';
     $client = new DigitalProducts\Client($vars);
-
-    $content = $client->render($action);
-
-    return [
-        'pagetitle' => 'My Downloads',
-        'breadcrumb' => [
-            'index.php?m=digitalproducts' => 'My Downloads',
-        ],
-        'templatefile' => 'client/downloads',
-        'requirelogin' => true,
-        'forcessl' => true,
-        'vars' => [
-            'content' => $content,
-            'modulelink' => $vars['modulelink'],
-        ],
-    ];
+    $error = null;
+    try { $client->handleRequest(); } catch (\Throwable $e) { $error = 'This download request could not be completed. Please try again.'; }
+    $data = $client->viewData();
+    $data['error'] = $error;
+    if (($_GET['action'] ?? '') === 'product') {
+        $detail = $client->productData((int) ($_GET['entitlement_id'] ?? 0));
+        if (!$detail) return ['pagetitle' => 'My Downloads', 'breadcrumb' => ['index.php?m=digitalproducts' => 'My Downloads'], 'templatefile' => 'client/downloads', 'requirelogin' => true, 'forcessl' => true, 'vars' => $data];
+        return ['pagetitle' => $detail['product']['name'], 'breadcrumb' => ['index.php?m=digitalproducts' => 'My Downloads', 'index.php?m=digitalproducts&action=product&entitlement_id=' . (int) $_GET['entitlement_id'] => $detail['product']['name']], 'templatefile' => 'client/product', 'requirelogin' => true, 'forcessl' => true, 'vars' => array_merge($data, $detail)];
+    }
+    return ['pagetitle' => 'My Downloads', 'breadcrumb' => ['index.php?m=digitalproducts' => 'My Downloads'], 'templatefile' => 'client/downloads', 'requirelogin' => true, 'forcessl' => true, 'vars' => $data];
 }

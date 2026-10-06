@@ -1,10 +1,32 @@
 {if $hostx_theme_settings.enable_browser_cookies_hostx == 'on'}
-	{if $templatefile == 'homepage'}
 		<link rel="stylesheet" type="text/css" href="{$WEB_ROOT}/templates/{$template}/css/cookies_library_style_hostx.css" />
 		<script src="{$WEB_ROOT}/templates/{$template}/js/cookies_library_hostx_file.js"></script>
 		<script>
 		window.addEventListener("load", function(){ldelim}
+		function ch247SyncConsent(status) {ldelim}
+			var consentId = '';
+			try {ldelim}
+				consentId = window.localStorage.getItem('cloudhost247_consent_id') || '';
+				if (!consentId) {ldelim}
+					consentId = String(Date.now()) + '-' + String(Math.random()).slice(2);
+					window.localStorage.setItem('cloudhost247_consent_id', consentId);
+				{rdelim}
+			{rdelim} catch (ignore) {ldelim} return; {rdelim}
+			if (!window.fetch || !consentId) return;
+			var categories = status === 'allow' ? 'necessary,analytics,marketing' : 'necessary';
+			var body = 'status=' + encodeURIComponent(status)
+				+ '&consent_id=' + encodeURIComponent(consentId)
+				+ '&categories=' + encodeURIComponent(categories)
+				+ '&policy_version=cookie-policy-v1'
+				+ '&language=' + encodeURIComponent('{$LANG.locale|default:"en"|escape:"javascript"}');
+			window.fetch('{$WEB_ROOT|escape:'javascript'}/index.php?m=cloudhost247services&action=consent', {ldelim}
+				method: 'POST', credentials: 'same-origin',
+				headers: {ldelim}'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'{rdelim},
+				body: body
+			{rdelim}).catch(function () {ldelim}{rdelim});
+		{rdelim}
 		window.cookieconsent.initialise({ldelim}
+		  "type": "opt-in",
 		  "palette": {ldelim}
 			"popup": {ldelim}
 			  "background": "{if $hostx_theme_settings.banner_background_color != ''}{$hostx_theme_settings.banner_background_color}{else}#000{/if}"
@@ -31,7 +53,7 @@
 				"message": "{$hostx_theme_settings.cookies_message_text}",
 			{/if}
 			{if $hostx_theme_settings.dismiss_button_text != ''}
-				"dismiss": "{$hostx_theme_settings.dismiss_button_text}",
+				"deny": "{$hostx_theme_settings.dismiss_button_text}",
 			{/if}
 			{if $hostx_theme_settings.policy_link_text != ''}
 				"link": "{$hostx_theme_settings.policy_link_text}",
@@ -41,9 +63,23 @@
 			{/if}
 			{rdelim}
 		  {/if}
+		  ,"revokable": true
+		  ,"onStatusChange": function(status) {ldelim}
+			try {ldelim}
+				window.localStorage.setItem('cloudhost247_consent_record', JSON.stringify({ldelim}
+					status: status, policy: 'cookie-policy-v1', recordedAt: new Date().toISOString()
+				{rdelim}));
+			{rdelim} catch (ignore) {ldelim}{rdelim}
+			ch247SyncConsent(status);
+			window.dispatchEvent(new CustomEvent('cloudhost247:consent', {ldelim}detail: {ldelim}status: status{rdelim}{rdelim}));
+		  {rdelim},
+		  "onRevokeChoice": function() {ldelim}
+			ch247SyncConsent('revoke');
+			try {ldelim} window.localStorage.removeItem('cloudhost247_consent_record'); {rdelim} catch (ignore) {ldelim}{rdelim}
+			window.dispatchEvent(new CustomEvent('cloudhost247:consent', {ldelim}detail: {ldelim}status: 'revoke'{rdelim}{rdelim}));
+		  {rdelim}
 		{rdelim}){rdelim});
 		</script>
-	{/if}
 {/if}
 
 {if $hostx_theme_settings.enable_offer_setting_hostx eq 'on'}

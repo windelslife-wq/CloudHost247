@@ -96,6 +96,7 @@ $text = function ($key, $values, $attrs = '') {
     <table class="table">
       <?= $row('Channels', $check('notifications_email', 'Email') . ' &nbsp; ' . $check('notifications_inapp', 'In-app feed')) ?>
       <?= $row('Caches', 'Purge lookup/whois entries older than ' . $text('cache_retention_days', $values, 'type="number" min="1" style="width:80px;display:inline-block"') . ' days (plus automatic expiry)') ?>
+      <?= $row('Consent history retention', $text('consent_retention_days', $values, 'type="number" min="0" style="width:80px"'), 'Days to retain pseudonymous consent decisions; 0 = keep forever.') ?>
       <?= $row('Audit retention', $text('audit_retention_days', $values, 'type="number" min="0" style="width:80px"'), '0 = keep forever.') ?>
       <?= $row('Debug logging', $check('debug_logging', 'Verbose entries to the activity log — production should leave this off.')) ?>
     </table>

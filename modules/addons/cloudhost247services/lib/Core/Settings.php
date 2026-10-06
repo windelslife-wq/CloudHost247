@@ -40,6 +40,7 @@ class Settings
         'whois_max_response_bytes'      => '131072',
         'lookup_cache_minutes'          => '10',
         'cache_retention_days'          => '7',
+        'consent_retention_days'        => '730',
 
         'auction_enabled'               => '1',
         'auction_public_browse'         => '1',

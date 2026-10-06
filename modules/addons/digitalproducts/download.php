@@ -1,213 +1,69 @@
 <?php
-/**
- * DigitalProducts Secure Download Handler
- *
- * Handles all file downloads with validation, token checks,
- * download limits and logging.
- *
- * @package    DigitalProducts
- * @version    1.0.0
- */
-
-// Bootstrap WHMCS
+/** Token-only private download endpoint. */
 require_once __DIR__ . '/../../../init.php';
-require_once __DIR__ . '/lib/Core.php';
-require_once __DIR__ . '/lib/License.php';
+require_once __DIR__ . '/autoload.php';
 
-use DigitalProducts\Core;
-use DigitalProducts\License;
+use DigitalProducts\Core\Http;
+use DigitalProducts\Core\Settings;
+use DigitalProducts\Security\DownloadAuthorizer;
+use DigitalProducts\Security\TokenService;
+use DigitalProducts\Storage\StorageFactory;
 use WHMCS\Database\Capsule;
-use WHMCS\Authentication\CurrentUser;
 
-// Prevent any output before file download
-ob_start();
+while (ob_get_level() > 0) ob_end_clean();
 
-$core = new Core();
-$licenseManager = new License();
-
-// Get parameters
-$token = $_GET['token'] ?? '';
-$serviceId = (int)($_POST['service_id'] ?? 0);
-$fileId = (int)($_POST['file_id'] ?? 0);
-
-$authenticated = false;
-$clientId = 0;
-
-// Check authentication
-if (class_exists('WHMCS\Authentication\CurrentUser')) {
-    $currentUser = new CurrentUser();
-    if ($currentUser->isAuthenticatedUser()) {
-        $authenticated = true;
-        $clientId = $currentUser->user()->id;
-    }
-}
-
-// Fallback to session check
-if (!$authenticated && isset($_SESSION['uid'])) {
-    $clientId = (int)$_SESSION['uid'];
-    $authenticated = $clientId > 0;
-}
-
-// If not authenticated and no token, redirect to login
-if (!$authenticated && empty($token)) {
-    ob_end_clean();
-    header('Location: ' . $WHMCS_CONFIG['SystemURL'] . '/clientarea.php');
+function digitalproducts_download_error($status, $message, $reason = null, $context = [])
+{
+    http_response_code((int) $status);
+    try { (new \DigitalProducts\Core())->logDownload(array_merge($context, ['status' => $reason ?: 'denied', 'failure_reason' => $reason ?: 'denied', 'client_id' => (int) ($_SESSION['uid'] ?? 0)])); } catch (\Throwable $e) {}
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: private, no-store');
+    echo '<!doctype html><html><head><meta charset="utf-8"><title>Download unavailable</title></head><body><h1>Download unavailable</h1><p>' . htmlspecialchars($message, ENT_QUOTES, 'UTF-8') . '</p><p><a href="index.php?m=digitalproducts">Return to My Downloads</a></p></body></html>';
     exit;
 }
 
-// Determine download parameters
-$downloadServiceId = 0;
-$downloadFileId = 0;
-$downloadClientId = $clientId;
+$rawToken = isset($_GET['token']) ? (string) $_GET['token'] : '';
+if (!preg_match('/^[a-f0-9]{64}$/i', $rawToken)) digitalproducts_download_error(403, 'This download link is invalid or has expired.', 'invalid_token');
 
-if (!empty($token)) {
-    // Validate token
-    $tokenData = $core->validateToken($token);
-    if (!$tokenData) {
-        ob_end_clean();
-        header('HTTP/1.1 403 Forbidden');
-        echo '<h1>Download Link Expired</h1><p>This download link has expired or is invalid. Please access your downloads from the client area.</p>';
-        exit;
-    }
-    $downloadServiceId = $tokenData['service_id'];
-    $downloadFileId = $tokenData['file_id'];
-    $downloadClientId = $tokenData['client_id'];
-} else {
-    $downloadServiceId = $serviceId;
-    $downloadFileId = $fileId;
+$tokens = new TokenService();
+try { $token = $tokens->find($rawToken); } catch (\Throwable $e) { digitalproducts_download_error(503, 'This download is currently unavailable. Please contact support.', 'invalid_token'); }
+if (!$token) digitalproducts_download_error(403, 'This download link is invalid or has expired.', 'expired');
+
+$sessionClient = (int) ($_SESSION['uid'] ?? 0);
+if ($sessionClient && $sessionClient !== (int) $token->client_id) digitalproducts_download_error(403, 'You do not have permission to download this file.', 'not_entitled', ['token_id' => $token->id]);
+
+$auth = (new DownloadAuthorizer())->resolve($token->id, $sessionClient);
+if (empty($auth['ok'])) {
+    digitalproducts_download_error(403, 'This download is currently unavailable. Please return to My Downloads or contact support.', $auth['reason'] ?? 'not_entitled', ['token_id' => $token->id, 'entitlement_id' => $auth['record']->entitlement_id ?? null, 'service_id' => $auth['record']->service_id ?? null, 'product_id' => $auth['record']->product_id ?? null, 'version_id' => $auth['record']->version_id ?? null]);
 }
 
-// Validate parameters
-if (!$downloadServiceId || !$downloadFileId) {
-    ob_end_clean();
-    header('HTTP/1.1 400 Bad Request');
-    echo '<h1>Invalid Request</h1><p>Missing required parameters.</p>';
-    exit;
-}
+$record = $auth['record'];
+try { $storage = StorageFactory::make(); }
+catch (\Throwable $e) { digitalproducts_download_error(503, 'This download is currently unavailable. Please contact support.', 'file_missing', ['token_id' => $token->id, 'entitlement_id' => $record->entitlement_id, 'product_id' => $record->product_id, 'version_id' => $record->version_id]); }
+if (!$record->storage_key || !$storage->exists($record->storage_key)) digitalproducts_download_error(404, 'This download is currently unavailable. Please contact support.', 'file_missing', ['token_id' => $token->id, 'entitlement_id' => $record->entitlement_id, 'product_id' => $record->product_id, 'version_id' => $record->version_id]);
 
-// Validate service ownership
-if ($authenticated && $clientId) {
-    $downloadClientId = $clientId;
-}
+// A one-time token is consumed atomically before the limit claim. A caller
+// cannot replay it, while the limit itself is an atomic conditional update.
+if (!$tokens->consume($token->id)) digitalproducts_download_error(403, 'This download link has already been used.', 'invalid_token', ['token_id' => $token->id, 'entitlement_id' => $record->entitlement_id]);
+$authorizer = new DownloadAuthorizer();
+if (!$authorizer->claim($record)) digitalproducts_download_error(403, 'Your download limit has been reached. Please contact support if you need assistance.', 'limit_exceeded', ['token_id' => $token->id, 'entitlement_id' => $record->entitlement_id, 'product_id' => $record->product_id, 'version_id' => $record->version_id]);
 
-if (!$core->validateServiceOwnership($downloadServiceId, $downloadClientId)) {
-    // Log failed attempt
-    $core->logDownload([
-        'file_id' => $downloadFileId,
-        'product_id' => 0,
-        'service_id' => $downloadServiceId,
-        'client_id' => $downloadClientId,
-        'status' => 'failed',
-        'download_token' => $token,
-    ]);
-    ob_end_clean();
-    header('HTTP/1.1 403 Forbidden');
-    echo '<h1>Access Denied</h1><p>You do not have permission to download this file.</p>';
-    exit;
-}
+$download = new \DigitalProducts\Core();
+$download->logDownload(['status' => 'success', 'token_id' => $token->id, 'entitlement_id' => $record->entitlement_id, 'product_id' => $record->product_id, 'version_id' => $record->version_id, 'file_id' => $record->version_id, 'service_id' => $record->service_id, 'order_id' => $record->order_id, 'client_id' => $record->client_id]);
+$download->incrementFileDownloadCount($record->version_id);
 
-// Get file info
-$file = $core->getFileById($downloadFileId);
-if (!$file || !file_exists($file->file_path)) {
-    ob_end_clean();
-    header('HTTP/1.1 404 Not Found');
-    echo '<h1>File Not Found</h1><p>The requested file could not be found.</p>';
-    exit;
-}
-
-// Get product info for download limits
-$service = Capsule::table('tblhosting')
-    ->join('mod_digitalproducts_products', 'mod_digitalproducts_products.product_id', '=', 'tblhosting.packageid')
-    ->where('tblhosting.id', $downloadServiceId)
-    ->select('mod_digitalproducts_products.*')
-    ->first();
-
-// Check download limits
-if ($service) {
-    $downloadLimit = (int)($service->download_limit ?? 0);
-    if ($downloadLimit > 0) {
-        $currentCount = $core->getDownloadCount($downloadClientId, $downloadServiceId, $downloadFileId);
-        if ($currentCount >= $downloadLimit) {
-            $core->logDownload([
-                'file_id' => $downloadFileId,
-                'product_id' => $service->id,
-                'service_id' => $downloadServiceId,
-                'client_id' => $downloadClientId,
-                'status' => 'limit',
-                'download_token' => $token,
-            ]);
-            ob_end_clean();
-            header('HTTP/1.1 403 Forbidden');
-            echo '<h1>Download Limit Reached</h1><p>You have reached the maximum number of downloads for this product. Please contact support.</p>';
-            exit;
-        }
-    }
-}
-
-// Log successful download
-$core->logDownload([
-    'file_id' => $downloadFileId,
-    'product_id' => $service->id ?? 0,
-    'service_id' => $downloadServiceId,
-    'client_id' => $downloadClientId,
-    'status' => 'success',
-    'download_token' => $token,
-]);
-
-// Increment file download count
-$core->incrementFileDownloadCount($downloadFileId);
-
-// Clear output buffer and serve file
-ob_end_clean();
-
-// Set headers for download
-$filename = $file->original_name;
-$fileSize = $file->file_size;
-$contentType = 'application/octet-stream';
-
-// Detect content type by extension
-$ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
-$contentTypes = [
-    'zip' => 'application/zip',
-    'tar' => 'application/x-tar',
-    'gz' => 'application/gzip',
-    'bz2' => 'application/x-bzip2',
-    '7z' => 'application/x-7z-compressed',
-    'rar' => 'application/x-rar-compressed',
-    'php' => 'application/x-php',
-    'js' => 'application/javascript',
-    'json' => 'application/json',
-    'xml' => 'application/xml',
-    'txt' => 'text/plain',
-    'md' => 'text/markdown',
-    'pdf' => 'application/pdf',
-    'doc' => 'application/msword',
-    'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-];
-
-if (isset($contentTypes[$ext])) {
-    $contentType = $contentTypes[$ext];
-}
-
-// Disable caching
-header('Cache-Control: no-cache, must-revalidate');
-header('Expires: Mon, 26 Jul 1997 05:00:00 GMT');
-header('Content-Type: ' . $contentType);
-header('Content-Disposition: attachment; filename="' . $filename . '"');
-header('Content-Length: ' . $fileSize);
-header('Content-Transfer-Encoding: binary');
-
-// For large files, read and output in chunks
-$chunkSize = 1024 * 1024; // 1MB chunks
-$handle = fopen($file->file_path, 'rb');
-if ($handle) {
-    while (!feof($handle)) {
-        echo fread($handle, $chunkSize);
-        flush();
-    }
-    fclose($handle);
-} else {
-    readfile($file->file_path);
-}
-
+$filename = basename(str_replace(["\r", "\n", '"'], '', (string) $record->original_filename));
+if ($filename === '' || $filename === '.' || $filename === '..') $filename = 'download';
+$extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+$types = ['zip' => 'application/zip', 'gz' => 'application/gzip', 'pdf' => 'application/pdf', 'js' => 'application/javascript', 'css' => 'text/css', 'json' => 'application/json', 'xml' => 'application/xml', 'txt' => 'text/plain', 'md' => 'text/markdown', 'php' => 'application/octet-stream'];
+$size = $storage->size($record->storage_key);
+header('Content-Type: ' . ($types[$extension] ?? 'application/octet-stream'));
+header('Content-Length: ' . (string) $size);
+header('Content-Disposition: attachment; filename="' . addcslashes($filename, '\\"') . '"; filename*=UTF-8\'\'' . rawurlencode($filename));
+header('Cache-Control: private, no-store, max-age=0');
+header('Pragma: no-cache');
+header('X-Content-Type-Options: nosniff');
+$handle = $storage->stream($record->storage_key);
+while (!feof($handle)) { echo fread($handle, 1024 * 1024); if (function_exists('flush')) flush(); }
+fclose($handle);
 exit;

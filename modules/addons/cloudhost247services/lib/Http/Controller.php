@@ -8,6 +8,7 @@
 namespace Chs\Http;
 
 use Chs\Core\ChsException;
+use Chs\Core\I18n;
 use Chs\Core\Csrf;
 use Chs\Core\DuplicateOperationException;
 use Chs\Core\ForbiddenException;
@@ -22,6 +23,25 @@ use Chs\Core\ValidationException;
 
 class Controller
 {
+    /** @var array<string,string> translated titles for module-owned screens */
+    protected static $titleKeys = [
+        'login_required' => 'sign_in_required',
+        'dashboard' => 'my_digital_services',
+        'valuation' => 'domain_valuation',
+        'auctions' => 'domain_auctions',
+        'watchlist' => 'my_watchlist',
+        'sell' => 'sell_a_domain',
+        'club' => 'discount_domain_club',
+        'requests' => 'my_service_requests',
+        'request_new' => 'new_service_request',
+        'logos' => 'my_logo_projects',
+        'logo_studio' => 'logo_studio',
+        'ai_builder' => 'ai_website_builder',
+        'inbox' => 'unified_inbox',
+        'thread' => 'conversation',
+        'notifications' => 'notifications',
+    ];
+
     /**
      * Standard page envelope for a module clientarea response.
      */
@@ -30,9 +50,12 @@ class Controller
         $vars['modulelink'] = 'index.php?m=cloudhost247services';
         $vars['csrf_field'] = Csrf::field();
         $vars['csrf_token'] = Csrf::token();
+        $vars['chs_language'] = I18n::language();
+        $titleKey = isset(self::$titleKeys[$template]) ? self::$titleKeys[$template] : '';
+        $translatedTitle = $titleKey !== '' ? I18n::text($titleKey, $pagetitle) : $pagetitle;
 
         return [
-            'pagetitle'    => $pagetitle,
+            'pagetitle'    => $translatedTitle,
             'breadcrumb'   => ['index.php?m=cloudhost247services' => 'CloudHost247 Services'],
             'templatefile' => 'templates/client/' . $template,
             'templatevariables' => $vars,
