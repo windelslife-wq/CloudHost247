@@ -1,0 +1,10 @@
+#!/bin/sh
+# tools:verify-catalog - CloudHost247 Tools catalog verification gate.
+#
+# Exits non-zero when fewer than the required number of tools are
+# implemented, or when any route is missing or broken.
+#
+#   ./tools-verify-catalog                     # human readable
+#   ./tools-verify-catalog --format=markdown   # verification matrix
+#   ./tools-verify-catalog --format=json       # machine readable
+exec php "$(dirname "$0")/verify-catalog.php" "$@"

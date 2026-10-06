@@ -296,6 +296,69 @@ class CloudHost247ToolsCatalog
     }
 
     /**
+     * Suggestions for a term that matched nothing - used by the 404 page.
+     *
+     * Falls back to edit distance so near-misses and typos such as
+     * "dns-lookupp" or "whios" still point somewhere useful.
+     */
+    public static function suggest($query, $limit = 5)
+    {
+        $exact = self::search($query, $limit);
+        if (!empty($exact)) {
+            return $exact;
+        }
+
+        $query = trim(mb_strtolower((string) $query));
+        if ($query === '') {
+            return [];
+        }
+        $normalised = str_replace('-', ' ', $query);
+
+        $scored = [];
+        foreach (self::tools() as $tool) {
+            $candidates = [
+                mb_strtolower($tool['slug']),
+                str_replace('-', ' ', mb_strtolower($tool['slug'])),
+                mb_strtolower($tool['name']),
+            ];
+            $best = PHP_INT_MAX;
+            foreach ($candidates as $candidate) {
+                foreach ([$query, $normalised] as $needle) {
+                    $distance = levenshtein($needle, $candidate);
+                    if ($distance < $best) {
+                        $best = $distance;
+                    }
+                    // Also compare against each word, so "lookupp" finds
+                    // the tools whose name contains "lookup".
+                    foreach (explode(' ', $candidate) as $word) {
+                        $wordDistance = levenshtein($needle, $word);
+                        if ($wordDistance < $best) {
+                            $best = $wordDistance;
+                        }
+                    }
+                }
+            }
+            // Only offer genuinely close matches.
+            $tolerance = max(2, (int) floor(mb_strlen($query) / 3));
+            if ($best <= $tolerance) {
+                $scored[] = ['distance' => $best, 'tool' => $tool];
+            }
+        }
+
+        usort($scored, function ($a, $b) {
+            if ($a['distance'] === $b['distance']) {
+                return strcmp($a['tool']['name'], $b['tool']['name']);
+            }
+
+            return $a['distance'] <=> $b['distance'];
+        });
+
+        return array_map(function ($s) {
+            return $s['tool'];
+        }, array_slice($scored, 0, $limit));
+    }
+
+    /**
      * Curated "popular" set for the landing page and mega menu.
      */
     public static function popular($limit = 12)
