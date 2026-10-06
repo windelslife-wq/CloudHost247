@@ -1,0 +1,62 @@
+/*!
+ * Domain Broker — WHMCS admin area styles.
+ * Scoped under .domainbroker-admin so the rest of the admin UI is untouched.
+ */
+
+.domainbroker-admin { font-size: 13px; }
+
+.domainbroker-admin .db-page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 18px 0 16px;
+}
+
+.domainbroker-admin .db-page-head h2 { margin: 0; font-size: 22px; }
+.domainbroker-admin .db-page-head p { margin: 4px 0 0; }
+
+.domainbroker-admin .db-tabs { margin-bottom: 18px; }
+
+.domainbroker-admin .db-stats { margin-bottom: 4px; }
+
+.domainbroker-admin .db-stat { text-align: center; margin-bottom: 14px; }
+.domainbroker-admin .db-stat .db-stat-value { font-size: 26px; font-weight: 700; line-height: 1.1; }
+.domainbroker-admin .db-stat .db-stat-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: .85;
+}
+.domainbroker-admin .db-stat-link { display: block; text-decoration: none; color: inherit; }
+.domainbroker-admin .db-stat-link:hover .db-stat { box-shadow: 0 2px 8px rgba(0, 0, 0, .12); }
+
+.domainbroker-admin .db-filters {
+    padding: 10px 12px;
+    background: #f6f8fb;
+    border: 1px solid #e3e8ef;
+    border-radius: 4px;
+    margin-bottom: 14px;
+}
+.domainbroker-admin .db-filters .form-control { display: inline-block; width: auto; margin-right: 6px; }
+
+.domainbroker-admin .db-table > thead > tr > th {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7686;
+}
+
+.domainbroker-admin .db-details dt { width: 160px; color: #6b7686; font-weight: 500; }
+.domainbroker-admin .db-details dd { margin-left: 175px; margin-bottom: 6px; }
+
+.domainbroker-admin .db-inline-form { display: inline-block; margin: 0 2px 2px 0; }
+
+.domainbroker-admin .db-messages { list-style: none; margin: 0 0 14px; padding: 0; }
+.domainbroker-admin .db-message {
+    padding: 10px 12px; border-radius: 4px; background: #f6f8fb; margin-bottom: 8px;
+}
+.domainbroker-admin .db-message-internal { background: #fff6e8; }
+.domainbroker-admin .db-message-owner { background: #eef7f1; }
+
+.domainbroker-admin .db-form .form-group { margin-bottom: 10px; }
+
+@media (max-width: 991px) {
+    .domainbroker-admin .db-details dt { width: auto; float: none; }
+    .domainbroker-admin .db-details dd { margin-left: 0; }
+}

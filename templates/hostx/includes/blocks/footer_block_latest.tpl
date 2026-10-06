@@ -31,6 +31,7 @@
                      <li><a href="#">Register New Domain</a></li>
                      <li><a href="#">Transfer Domain</a></li>
                      <li><a href="#">Domain Extensions</a></li>
+                     <li><a href="{$WEB_ROOT}/domain-broker.php">Domain Broker Service</a></li>
                      <li><a href="#">SSL Security</a></li>
                   </ul>
                   <h4>Hosting</h4>

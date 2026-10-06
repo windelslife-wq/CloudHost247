@@ -17,3 +17,8 @@ Thumbs.db
 desktop.ini
 *.swp
 *~
+
+# Domain Broker module runtime
+modules/addons/domainbroker/node_modules
+modules/addons/domainbroker/storage/*
+!modules/addons/domainbroker/storage/.gitkeep
