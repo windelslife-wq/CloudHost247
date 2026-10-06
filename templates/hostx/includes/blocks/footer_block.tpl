@@ -75,6 +75,7 @@
                         <li><a href="{$WEB_ROOT}/windows-hosting.php">{$LANG.headerwindowhosting} </a></li>
                         <li><a href="{$WEB_ROOT}/vps-hosting.php">{$LANG.homecloudhosting} </a></li>
                         <li><a href="{$WEB_ROOT}/cpanel-hosting.php">{$LANG.footerlinuxservers} </a></li>
+                        <li><a href="{$WEB_ROOT}/domain-broker.php">{if $LANG.domainbrokerservice}{$LANG.domainbrokerservice}{else}Domain Broker Service{/if}</a></li>
                     </ul> 
                 </div>
             </div>

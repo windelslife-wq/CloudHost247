@@ -686,3 +686,59 @@ $_LANG['moduleLicenseStatus'] = 'Your Module License is';
 $_LANG['cartLicenseStatus'] = 'Your Order Form License is';
 $_LANG['buyOrderform'] = 'You need to by it';
 $_LANG['buyButton'] = 'Buy Here';
+
+/* ------------------------------------------------------------------------
+ * Domain Broker Service
+ *
+ * Customer-facing strings for the brokered domain acquisition module
+ * (modules/addons/domainbroker) and the public landing page
+ * (domain-broker.php). Operator-editable copy — headline, sub-headline,
+ * service name, support address — lives in the module's Settings tab so it
+ * can be changed without editing source.
+ * --------------------------------------------------------------------- */
+
+$_LANG['domainbrokerservice'] = 'Domain Broker Service';
+$_LANG['domainbrokertagline'] = 'Acquire the domain you actually want';
+$_LANG['domainbrokerintro'] = 'The domain you want is usually already registered. Our brokers approach the current owner, negotiate on your behalf and manage payment and transfer from start to finish.';
+
+$_LANG['domainbrokernavoverview'] = 'Overview';
+$_LANG['domainbrokernavrequests'] = 'My Acquisitions';
+$_LANG['domainbrokernavnew'] = 'New Request';
+$_LANG['domainbrokernavtransactions'] = 'Transactions';
+$_LANG['domainbrokernavhelp'] = 'Help & FAQ';
+$_LANG['domainbrokernavnotifications'] = 'Notifications';
+
+$_LANG['domainbrokerformdomain'] = 'Domain you want';
+$_LANG['domainbrokerformbudget'] = 'Maximum budget';
+$_LANG['domainbrokerformcurrency'] = 'Currency';
+$_LANG['domainbrokerformincludesfees'] = 'My budget includes your brokerage fee and any tax';
+$_LANG['domainbrokerformanonymous'] = 'Negotiate anonymously — do not reveal my identity to the owner';
+$_LANG['domainbrokerformmessage'] = 'Anything your broker should know';
+$_LANG['domainbrokerformpromo'] = 'Promotional code';
+$_LANG['domainbrokerformsubmit'] = 'Submit request';
+
+$_LANG['domainbrokerrequestid'] = 'Request ID';
+$_LANG['domainbrokerbroker'] = 'Broker';
+$_LANG['domainbrokercurrentoffer'] = 'Current offer';
+$_LANG['domainbrokercounteroffer'] = 'Counteroffer';
+$_LANG['domainbrokerbrokerfee'] = 'Brokerage fee';
+$_LANG['domainbrokertax'] = 'Tax';
+$_LANG['domainbrokertotal'] = 'Total payable';
+$_LANG['domainbrokerpaymentstatus'] = 'Payment status';
+$_LANG['domainbrokertransferstatus'] = 'Transfer status';
+$_LANG['domainbrokertimeline'] = 'Timeline';
+$_LANG['domainbrokermessages'] = 'Messages';
+$_LANG['domainbrokerdocuments'] = 'Documents';
+
+$_LANG['domainbrokeracceptoffer'] = 'Accept offer';
+$_LANG['domainbrokerrejectoffer'] = 'Decline offer';
+$_LANG['domainbrokersendcounter'] = 'Send counteroffer';
+$_LANG['domainbrokerpaynow'] = 'View and pay invoice';
+$_LANG['domainbrokercancelrequest'] = 'Cancel this request';
+$_LANG['domainbrokeropendispute'] = 'Raise a dispute';
+$_LANG['domainbrokeruploaddocument'] = 'Upload a document';
+$_LANG['domainbrokersendmessage'] = 'Send message';
+
+$_LANG['domainbrokerescrownote'] = 'Your funds are held securely and are only released to the seller once the domain transfer has completed and been verified.';
+$_LANG['domainbrokerhistorynote'] = 'Every negotiation round is kept permanently — nothing in this history is ever overwritten.';
+$_LANG['domainbrokernofee'] = 'You are never charged until you have accepted an offer in writing.';
