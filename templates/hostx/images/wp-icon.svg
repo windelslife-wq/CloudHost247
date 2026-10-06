@@ -1,0 +1,17 @@
+<svg width="64" height="64" xmlns="http://www.w3.org/2000/svg">
+
+ <g>
+  <title>background</title>
+  <rect fill="none" id="canvas_background" height="402" width="582" y="-1" x="-1"/>
+ </g>
+ <g>
+  <title>Layer 1</title>
+  <path id="svg_2" stroke-width="2" stroke-miterlimit="10" stroke-linejoin="round" stroke-linecap="round" stroke="#f51322" fill="none" d="m32,44.3c9.9,0 18,-9.2 18,-20.5l-36,0c0,11.4 8.1,20.5 18,20.5z"/>
+  <line id="svg_3" y2="20.9" y1="20.9" x2="47.6" x1="15.6" stroke-width="2" stroke-miterlimit="10" stroke-linejoin="round" stroke-linecap="round" stroke="#f51322" fill="none"/>
+  <line id="svg_4" y2="9.4" y1="19.9" x2="24.7" x1="24.7" stroke-width="3" stroke-miterlimit="10" stroke-linejoin="round" stroke-linecap="round" stroke="#f51322" fill="none"/>
+  <line id="svg_5" y2="9.4" y1="19.9" x2="38.7" x1="38.7" stroke-width="3" stroke-miterlimit="10" stroke-linejoin="round" stroke-linecap="round" stroke="#f51322" fill="none"/>
+  <line id="svg_6" y2="44.3" y1="54.6" x2="30" x1="30" stroke-width="2" stroke-miterlimit="10" stroke-linejoin="round" stroke-linecap="round" stroke="#f51322" fill="none"/>
+  <line id="svg_7" y2="44.3" y1="54.6" x2="34" x1="34" stroke-width="2" stroke-miterlimit="10" stroke-linejoin="round" stroke-linecap="round" stroke="#f51322" fill="none"/>
+  <path id="svg_8" stroke-miterlimit="10" stroke-linejoin="round" stroke-linecap="round" stroke="#f51322" fill="none" d="m44.6,28.2c0,0 -0.4,9.3 -8.4,12"/>
+ </g>
+</svg>

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 135">
+  <defs>
+    <style>
+      .cls-1, .cls-2, .cls-3 {
+        fill: none;
+        stroke: #1a1a1a;
+        stroke-width: 2.54px;
+      }
+
+      .cls-1, .cls-2 {
+        stroke-linecap: round;
+      }
+
+      .cls-1 {
+        stroke-linejoin: round;
+      }
+
+      .cls-2, .cls-3 {
+        stroke-miterlimit: 10;
+      }
+
+      .cls-4 {
+        fill: #1a1a1a;
+      }
+
+      .cls-5 {
+        fill: #d30060;
+      }
+    </style>
+  </defs>
+  <title>simplySite_pricingPlan_icon</title>
+  <g>
+    <path class="cls-1" d="M209.89,101.39,190,108a1.55,1.55,0,0,1-2-2L194.7,86.2,231.85,49A10.74,10.74,0,0,1,247,49h0a10.74,10.74,0,0,1,0,15.19Z"/>
+    <line class="cls-2" x1="202.29" y1="93.79" x2="239.45" y2="56.64"/>
+    <line class="cls-2" x1="194.7" y1="86.2" x2="209.89" y2="101.39"/>
+    <polyline class="cls-2" points="203.56 74.68 186.4 57.53 200.93 43 218.08 60.15"/>
+    <line class="cls-3" x1="205.88" y1="47.95" x2="199.94" y2="53.89"/>
+    <line class="cls-3" x1="210.36" y1="52.43" x2="206.38" y2="56.4"/>
+    <line class="cls-3" x1="214.83" y1="56.9" x2="208.89" y2="62.84"/>
+    <polyline class="cls-2" points="221.4 92.53 238.56 109.68 253.09 95.16 235.93 78"/>
+    <line class="cls-3" x1="248.14" y1="90.21" x2="242.2" y2="96.14"/>
+    <line class="cls-3" x1="243.66" y1="85.73" x2="239.68" y2="89.71"/>
+    <line class="cls-3" x1="239.18" y1="81.25" x2="233.24" y2="87.19"/>
+    <path class="cls-2" d="M186.05,65.55H151.5a2.85,2.85,0,0,0-2.85,2.85v61.22a2.85,2.85,0,0,0,2.85,2.85h42.37"/>
+    <path class="cls-2" d="M239.09,116.56v13.07a2.85,2.85,0,0,1-2.85,2.85H193.87"/>
+    <line class="cls-2" x1="148.65" y1="84.55" x2="187.86" y2="84.55"/>
+    <circle class="cls-4" cx="157.3" cy="75.15" r="2.71"/>
+    <circle class="cls-4" cx="166.34" cy="75.15" r="2.71"/>
+    <circle class="cls-4" cx="175.39" cy="75.15" r="2.71"/>
+  </g>
+  <polygon class="cls-5" points="157.99 52.52 133.96 64.84 122.62 49.3 132.98 52.05 135.03 37.32 148.12 44.26 151.99 34.24 157.99 52.52"/>
+</svg>

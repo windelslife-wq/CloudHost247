@@ -1,0 +1,65 @@
+/* Phone Services - Admin Area Styles */
+.phoneservices-admin-wrapper {
+    padding: 20px;
+}
+
+.phoneservices-dashboard .stats-row {
+    margin-bottom: 30px;
+}
+
+.phoneservices-dashboard .stat-card {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 20px;
+    text-align: center;
+    margin-bottom: 15px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.phoneservices-dashboard .stat-value {
+    font-size: 28px;
+    font-weight: bold;
+    color: #2d3a4a;
+}
+
+.phoneservices-dashboard .stat-card.revenue .stat-value {
+    color: #27ae60;
+}
+
+.phoneservices-dashboard .stat-label {
+    font-size: 12px;
+    color: #888;
+    text-transform: uppercase;
+    margin-top: 5px;
+}
+
+.phoneservices-api-config .panel,
+.phoneservices-pricing .panel,
+.phoneservices-admin-numbers .panel,
+.phoneservices-admin-usage .panel,
+.phoneservices-admin-logs .panel {
+    margin-bottom: 20px;
+}
+
+.phoneservices-admin-numbers table,
+.phoneservices-admin-usage table,
+.phoneservices-admin-logs table {
+    font-size: 13px;
+}
+
+.phoneservices-admin-logs table tr.danger td {
+    background-color: #f2dede;
+}
+
+.phoneservices-admin-logs table tr.warning td {
+    background-color: #fcf8e3;
+}
+
+.phoneservices-pricing table input.form-control {
+    min-width: 80px;
+}
+
+.phoneservices-api-config input[type="password"] {
+    font-family: monospace;
+}

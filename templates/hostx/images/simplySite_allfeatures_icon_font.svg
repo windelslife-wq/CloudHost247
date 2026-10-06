@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 90">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: none;
+        stroke: #333;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 2.5px;
+      }
+    </style>
+  </defs>
+  <title>simplySite_allfeatures_icon</title>
+  <path class="cls-1" d="M80.91,69.93V64.67h0c-4.16,3.31-9.08,6.28-14.43,6.28-6.45,0-11.88-3.48-11.88-11.2,0-9,8.23-13.33,26.32-15.37.17-6.2-1.61-12.9-9.59-12.9-5.52,0-10.27,2.72-13,4.75"/>
+  <polyline class="cls-1" points="7.94 69.86 28.05 12.43 48.04 69.86"/>
+  <line class="cls-1" x1="15.34" y1="48.71" x2="40.54" y2="48.71"/>
+  <line class="cls-1" x1="80.91" y1="69.93" x2="80.91" y2="44.38"/>
+  <line class="cls-1" x1="10.09" y1="79.09" x2="79.91" y2="79.09"/>
+</svg>

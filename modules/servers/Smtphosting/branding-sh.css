@@ -1,0 +1,17 @@
+/*Set brand colors*/
+
+:root {
+  --primarySH: #0077b6;
+  --primarySH-dark: #005885;
+  --primarySH-light: #e6f7ff;
+  --secondarySH: #6c757d;
+  --successSH: #28a745;
+  --infoSH: #17a2b8;
+  --warningSH: #ffc107;
+  --dangerSH: #dc3545;
+  --lightSH: #f8f9fa;
+  --darkSH: #343a40;
+  --border-radiusSH: 8px;
+  --box-shadowSH: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --transitionSH: all 0.3s ease;
+}

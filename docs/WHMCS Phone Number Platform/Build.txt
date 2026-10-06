@@ -1,0 +1,130 @@
+You are a senior WHMCS module developer. Build a production-ready, scalable WHMCS module for a “Phone Number Services Platform” with API-first architecture and clean modular design.
+
+CORE OBJECTIVE
+
+Create a WHMCS module that provides virtual telecom services including phone numbers, VoIP, SMS, eSIM, and usage tracking.
+
+1. CORE FEATURES
+A. Virtual Phone Numbers
+Purchase virtual numbers (multi-country support)
+Support:
+Local numbers
+Second phone numbers
+Toll-free numbers
+Country selection during purchase
+Full lifecycle management:
+Activate number
+Assign to user/service
+Renew number
+Suspend number
+Release number back to pool
+B. VoIP Calling System
+WebRTC browser-based calling system
+Incoming & outgoing calls
+International call support
+Real-time call status:
+ringing
+connected
+ended
+failed
+Call logs with metadata:
+duration
+caller ID
+receiver ID
+cost
+timestamps
+C. SMS & Messaging
+Send/receive SMS globally
+OTP / 2FA SMS support
+WhatsApp Business API integration
+Email sending via SendGrid
+Message logs and delivery status tracking
+D. eSIM & Data Services
+Purchase and activate eSIM profiles
+QR code generation for eSIM provisioning
+Global/local data plans
+Real-time data usage tracking
+Plan lifecycle:
+activate
+expire
+renew
+E. Usage & Monitoring
+Track usage for:
+Calls
+SMS
+Data
+Real-time analytics dashboard for users
+Admin reporting system:
+usage logs
+billing reports
+transaction history
+2. SYSTEM ARCHITECTURE
+Fully modular WHMCS architecture
+Each service must be an independent module:
+Numbers Module
+VoIP Module
+SMS Module
+eSIM Module
+Analytics Module
+API-first design (no hardcoding providers)
+Clean separation:
+frontend (WHMCS client area templates)
+backend (PHP service layer)
+API layer (external integrations)
+3. SUPER ADMIN PANEL
+
+Build a Super Admin control system with:
+
+API configuration management
+Pricing control per:
+country
+service type
+Enable/disable services dynamically
+User & subscription management
+System-wide logs & analytics
+Transaction monitoring
+4. REQUIRED API INTEGRATIONS
+
+Create an abstraction layer so providers can be switched without code changes:
+
+Twilio:
+SMS
+Voice
+Phone numbers
+Vonage:
+SMS
+Voice
+Airalo:
+eSIM provisioning
+data plans
+Truphone:
+eSIM services
+
+IMPORTANT:
+
+Build a provider abstraction interface (e.g., TelecomProviderInterface)
+Each provider must implement the same contract
+System must allow switching providers from admin panel without breaking functionality
+5. ENGINEERING REQUIREMENTS
+PHP 7.4+ compatible WHMCS module
+Follow WHMCS module development standards
+Secure API handling (no exposed keys)
+Clean MVC-style internal structure
+REST API support for internal services
+Proper error handling and logging system
+Scalable and production-ready codebase
+Must not break WHMCS core functionality
+Use Composer where needed
+6. OUTPUT REQUIRED
+
+Generate:
+
+Full WHMCS module structure
+Database schema (SQL)
+API abstraction layer
+Core service classes
+Admin + client area hooks
+Basic UI templates
+Setup/installation guide
+
+Build this as a real-world production telecom platform module, not a demo or pseudo-code project.

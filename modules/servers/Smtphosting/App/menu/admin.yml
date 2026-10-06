@@ -1,0 +1,7 @@
+home: 
+    icon: 'lu-nav__link-icon lu-zmdi lu-zmdi-home'
+LoggerManager:
+    icon: 'lu-nav__link-icon lu-zmdi lu-zmdi-assignment'
+documentation:
+    icon: 'lu-nav__link-icon lu-zmdi lu-zmdi-file-text'
+    externalUrl: "https://www.docs.modulesgarden.com/Domain_Orders_Extended_For_WHMCS"

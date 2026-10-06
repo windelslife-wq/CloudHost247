@@ -9,5 +9,5 @@ $ca->addToBreadCrumb('index.php', Lang::trans('globalsystemname'));
 $ca->addToBreadCrumb('refund-and-cancellation-policy.php', 'Refund and Cancellation Policy');
 $ca->initPage();
 $ca->assign('sidebarHostxRemove', 'true');
-$ca->setTemplate('refund-and-vancellation-policy');
+$ca->setTemplate('refund-and-cancellation-policy');
 $ca->output();

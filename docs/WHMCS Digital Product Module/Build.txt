@@ -1,0 +1,61 @@
+Build a complete WHMCS module for selling downloadable digital products (modules/plugins) on my WHMCS-based marketplace.
+
+Requirements:
+
+1. Core Functionality
+
+* Allow me (admin) to upload downloadable files (ZIP, scripts, plugins) inside WHMCS admin
+* Create products linked to these files
+* After successful payment, clients can download the file from their client area
+* Each product should support version updates (so I can upload new versions later)
+
+2. Client Area
+
+* Add a "My Downloads" or "My Products" section in the client area
+* Only show downloads for paid/active orders
+* Provide secure download links (token-based or time-limited links)
+* Show product name, version, purchase date, and download button
+
+3. Security
+
+* Prevent unauthorized downloads (must validate logged-in user + order ownership)
+* Protect direct file access (files stored outside public directory or protected via PHP)
+* Optional: limit number of downloads or add expiry
+
+4. Integration with WHMCS
+
+* Use WHMCS hooks and API properly (no core file edits)
+* Hook into order paid event to activate download access automatically
+* Compatible with WHMCS 8.x
+* Follow WHMCS module structure (modules/addons or provisioning module if better)
+
+5. Admin Panel
+
+* Upload/manage files
+* Assign files to products
+* Manage versions
+* View download logs (who downloaded and when)
+
+6. Performance & Compatibility
+
+* Must not break WHMCS loading or cause slowdowns
+* Clean, optimized code (PHP 7.4+)
+* Handle errors gracefully (no white screen issues)
+* Fully compatible with IonCube environments
+
+7. Extra (Optional but preferred)
+
+* License key system per purchase
+* Auto email after purchase with download info
+* API-ready structure for future mobile/app integration
+
+Output:
+
+* Full working module code
+* Folder structure
+* Installation guide
+* Step-by-step setup instructions
+* Example hooks and database schema
+
+Important:
+Ensure the module installs cleanly on WHMCS without errors and works smoothly with existing marketplace functionality.

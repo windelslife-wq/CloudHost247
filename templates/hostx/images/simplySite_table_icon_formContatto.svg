@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: none;
+        stroke: #333;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.2px;
+      }
+
+      .cls-2 {
+        fill: #333;
+      }
+    </style>
+  </defs>
+  <title>simplySite_table_icon</title>
+  <rect class="cls-1" x="8.54" y="11.73" width="14.68" height="3.27"/>
+  <rect class="cls-1" x="8.54" y="17.73" width="14.68" height="3.27"/>
+  <polygon class="cls-2" points="20.99 23.72 10.77 23.72 10.77 26 20.99 26 20.99 23.72 20.99 23.72"/>
+  <polyline class="cls-1" points="27.99 9.08 27.99 29.22 3.54 29.22 3.54 3.1 22.37 3.1"/>
+  <polygon class="cls-1" points="27.99 8.83 22.62 8.83 22.62 3.1 27.99 8.83"/>
+</svg>

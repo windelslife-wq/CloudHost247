@@ -1,0 +1,14 @@
+<script type="text/javascript">
+  $(function(){
+    let noVncConsole = document.querySelector('#Primary_Sidebar-Service_Details_Actions-Custom_Module_Button_noVncConsole');
+    let xTermConsole = document.querySelector('#Primary_Sidebar-Service_Details_Actions-Custom_Module_Button_xTermConsole');
+
+    if (noVncConsole) {
+        noVncConsole.onclick = () => window.open(noVncConsole.href, '', 'width=900,height=700');
+    }
+
+    if (xTermConsole) {
+        xTermConsole.onclick = () => window.open(xTermConsole.href, '', 'width=900,height=700');
+    }
+  });
+</script>

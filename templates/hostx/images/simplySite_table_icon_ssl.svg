@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: none;
+        stroke: #333;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.2px;
+      }
+    </style>
+  </defs>
+  <title>simplySite_table_icon</title>
+  <rect class="cls-1" x="5.54" y="11.93" width="20.93" height="17.69" rx="1.69" ry="1.69"/>
+  <path class="cls-1" d="M9.27,11.64V8.8A6.73,6.73,0,0,1,16,2.08h0A6.73,6.73,0,0,1,22.73,8.8v3.13"/>
+  <g>
+    <path class="cls-1" d="M10.75,21.17a1.71,1.71,0,0,1,1.71,1.71h0a1.71,1.71,0,0,1-1.71,1.71H9.26"/>
+    <path class="cls-1" d="M10.76,21.17a1.71,1.71,0,0,1-1.71-1.71h0a1.71,1.71,0,0,1,1.71-1.71h.8"/>
+  </g>
+  <g>
+    <path class="cls-1" d="M15.85,21.17a1.71,1.71,0,0,1,1.71,1.71h0a1.71,1.71,0,0,1-1.71,1.71H14.36"/>
+    <path class="cls-1" d="M15.87,21.17a1.71,1.71,0,0,1-1.71-1.71h0a1.71,1.71,0,0,1,1.71-1.71h.8"/>
+  </g>
+  <polyline class="cls-1" points="19.9 17.74 19.9 24.59 23.06 24.59"/>
+</svg>

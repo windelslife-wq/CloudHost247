@@ -1,0 +1,330 @@
+
+.mg-datapicker {
+    padding: 6px 12px 6px 12px !important;
+    display: flex !important;
+    position: relative !important;
+    margin: 0 !important;
+}
+
+.mg-datapicker:after {
+    background-color: #fff !important;
+}
+
+.md-input-action {
+    top: 6px !important;
+}
+
+.mg-copy-component-field {
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+    opacity: 0;
+}
+
+.mg-copy-component-span:hover {
+    cursor: pointer;
+}
+
+.mg-sidebar-wrapper {
+    padding-left: 0px;
+    padding-top: 0px;
+}
+
+#layers .lu-app--navbar-left {
+    margin-left: -15px;
+    margin-right: -15px;
+    background-color: transparent;
+}
+
+#layers .lu-app-main .lu-app-main__body {
+    padding-right: 0px;
+    padding-top: 0px;
+}
+
+#layers .mg-ajax-menu-item {
+    padding-left: 0px;
+    justify-content: left;
+    align-items: left;
+}
+
+#layers .lu-app .lu-btn--default,
+#layers .lu-app .lu-btn--danger {
+    color: #737880;
+}
+
+#layers .lu-app .vue-app-main-modal-container .lu-btn--danger:not(.lu-btn--outline) {
+    color: #fff;
+}
+
+#layers .lu-app .lu-btn--default:hover {
+    color: #505459;
+}
+
+#layers body, #layers .lu-app {
+    background: transparent;
+}
+
+#layers .lu-list__item .lu-btn-password-show i {
+    width: 16px !important;
+    height: 16px !important;
+    min-width: 16px !important;
+    min-heigh: 16px !important;
+    width: 16px !important;
+    height: 16px !important;
+    font-size: 16px !important;
+    line-height: 16px !important;
+}
+
+#layers .lu-list__item .lu-btn-password-hide i {
+    min-width: 16px !important;
+    min-heigh: 16px !important;
+    width: 16px !important;
+    height: 16px !important;
+    font-size: 16px !important;
+    line-height: 16px !important;
+}
+
+#layers .lu-nav__item:not(.is-active) .lu-nav__link-text-bold {
+    color: #737880;
+}
+
+#layers .lu-nav__item .lu-nav__link-text-bold {
+    font-weight: 500;
+}
+
+#layers .lu-nav__item > .lu-btn {
+    margin: 0px 16px;
+}
+
+/* Fix label inside of datatable */
+#layers .vueDatatableTable .mgTableActions label {
+    display: block;
+    margin-bottom: auto;
+    margin-top: auto;
+}
+
+/* Dropdawn Buttton Wrapper Styles */
+#layers .lu-has-dropdown .drop-content .lu-dropdown__item .lu-dropdown__link .lu-preloader {
+    margin-right: 16px;
+}
+
+#layers .lu-has-dropdown .drop-content .lu-dropdown__item .lu-dropdown__link .lu-preloader:before {
+    border-top-color: rgb(98, 202, 95);
+}
+
+#layers .lu-has-dropdown .drop-content .lu-dropdown__item a.lu-dropdown__link {
+    color: #505459;
+}
+
+#layers .lu-has-dropdown .drop-content .lu-dropdown__item a.lu-dropdown__link:hover {
+    color: rgb(98, 202, 95);
+}
+
+#layers .lu-has-dropdown .mg-drop-bg-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: auto;
+    min-width: 50%;
+    min-height: 50%;
+    z-index: 990;
+}
+
+#layers .lu-has-dropdown .lu-drop-element {
+    z-index: 991;
+    transform: translateX(calc(36px - 100%)) translateY(5px);
+}
+
+/*End Of Dropdawn Buttton Wrapper Styles */
+
+/* RED loader for delete buttons */
+#layers .lu-btn--danger .lu-preloader:before {
+    border-top-color: rgb(244, 62, 62);
+}
+
+/* GREEN loader for submit buttons */
+#layers .lu-btn--success .lu-preloader:before {
+    border-top-color: rgb(98, 202, 95);
+}
+
+/* new navbar left styles */
+#layers .page-content .vue-app-main-container .lu-app .lu-app-main .lu-app-main__body {
+    padding-left: 0px;
+}
+
+#layers .page-content .vue-app-main-container .lu-app .lu-app-main .lu-app-main__body .mg-left-menu-content {
+    padding: 0px 0px 0px 0px;
+}
+
+#layers .page-content .vue-app-main-container .lu-app .lu-app-main .lu-app-main__body .lu-block .lu-row {
+    margin-left: 0px;
+    margin-right: 0px;
+}
+
+/* end of new navbar left styles */
+
+/* selectize css fixes */
+#layers .selectize-control.multi .item {
+    display: inline-block;
+    position: relative;
+    padding: 0;
+    padding-left: 8px;
+    padding-right: 24px;
+    margin: 0 4px 4px 0;
+    background: #e9ebf0;
+    line-height: 24px;
+}
+
+#layers .selectize-control.multi .item a {
+    padding: 0;
+    color: #2368AD;
+    position: absolute;
+    width: 16px;
+    transition: color 0.3s;
+    text-align: center;
+    right: 0px;
+}
+
+#layers .selectize-control.multi.plugin-remove_button .item > a:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+#layers .selectize-control.multi .item.active {
+    color: #333;
+}
+
+#layers .selectize-control.multi .selectize-input {
+    padding-bottom: 0px;
+    padding-left: 15px;
+    display: block;
+}
+
+/* end of selectize css fixes */
+
+/* Modal Background */
+#layers .lu-modal.show {
+    background-color: rgba(80, 84, 89, 0.5);
+}
+
+/* End of Modal Background */
+
+/* Show Allerts on top of new modal background */
+#layers-body #toast-container,
+#layers #toast-container {
+    z-index: 1102;
+}
+
+/* End of Show Allerts on top of new modal background */
+
+/* force break lines on lu-list--info */
+#layers .lu-list--info .lu-list__value {
+    word-break: break-all;
+}
+
+/* end of force break lines */
+
+/* FIX PRELOADER IN SUBMIT BUTTON */
+#layers .lu-btn.mg-submit-form .lu-btn__icon.lu-preloader {
+    margin: 0 0 0 0;
+}
+
+/* End of FIX PRELOADER IN SUBMIT BUTTON*/
+
+/* Datatable Filters */
+#layers .vueDatatableTable .mg-dt-filters-container .mg-filters-wrapper {
+    padding-top: 10px;
+    padding-right: 8px;
+    padding-left: 8px;
+}
+
+#layers .vueDatatableTable .mg-dt-filters-container .mg-filter-search-wrapper a {
+    float: right;
+}
+
+#layers .vueDatatableTable .mg-dt-filters-container .mg-filter-search-wrapper {
+    min-height: 36px;
+}
+
+/* end of Datatable Filters */
+
+/* Loaders for selectize */
+#layers .mg-selectize-loader {
+    position: absolute;
+    right: 35px;
+}
+
+/* End of Loaders for selectize */
+
+/* fix this icon is smaller than others */
+.lu-zmdi-assignment-account {
+    margin-top: 1px;
+}
+
+/* end of fix this icon is smaller than others */
+
+/* Status Widget Styles */
+#layers .mg-status-widget {
+    margin-top: 10px;
+}
+
+#layers .mg-status-widget .lu-widget__body table {
+    margin-top: 0px !important;
+    margin-bottom: 0px !important;
+    text-align: left;
+}
+
+#layers .mg-status-widget .lu-widget__body table tbody tr:first-of-type td {
+    border-top: none;
+}
+
+#layers .mg-status-widget .lu-widget__body table tbody tr td:first-of-type {
+    width: 30%;
+}
+
+#layers .mg-status-widget .mg-status-widget-status-bar .mg-status-title {
+    font-size: 16px;
+}
+
+#layers .mg-status-widget .mg-status-widget-status-bar {
+    padding: 10px;
+}
+
+#layers .mg-status-widget .mg-status-widget-label .mg-status-widget-status-bar span {
+    font-size: 18px;
+}
+
+#layers .mg-status-widget .mg-status-widget-label {
+    margin-left: 10px;
+}
+
+#layers .mg-status-widget .mg-status-widget-status-bar .mg-status-loader {
+    width: 13px;
+    height: 13px;
+    vertical-align: middle;
+}
+
+#layers .mg-status-widget .mg-status-widget-status-bar .mg-status-loader:before {
+    width: 13px;
+    height: 13px;
+}
+
+/* End of Status Widget Styles */
+
+/* modal on service page ca */
+#layers .lu-app .vue-app-main-modal-container #confirmationModal {
+    text-align: left;
+}
+
+/* end of modal on service page ca */
+
+.mg-toast {
+    opacity: 1 !important;
+    border: none !important;
+    max-width: none !important;
+}
+
+.tab-content.bg-white.product-details-tab-container {
+    margin-bottom: 16px;
+}

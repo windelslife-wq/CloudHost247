@@ -1,0 +1,5 @@
+- \ModulesGarden\ProductsReseller\Server\Smtphosting\Core\Lang\Lang
+- \ModulesGarden\ProductsReseller\Server\Smtphosting\Core\App\Controllers\Instances\Addon\Config
+- \ModulesGarden\ProductsReseller\Server\Smtphosting\Core\UI\Widget\Sidebar\SidebarService
+- \ModulesGarden\ProductsReseller\Server\Smtphosting\Core\Helper\WhmcsParams
+- \ModulesGarden\ProductsReseller\Server\Smtphosting\Core\App\AppParamsContainer

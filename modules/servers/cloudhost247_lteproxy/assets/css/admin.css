@@ -1,0 +1,291 @@
+/**
+ * CloudHost247 Isc LTE Proxy Module - Admin Styles
+ * Version: 1.0.0
+ */
+
+:root {
+    --ch247-primary: #2563eb;
+    --ch247-primary-dark: #1d4ed8;
+    --ch247-success: #10b981;
+    --ch247-warning: #f59e0b;
+    --ch247-danger: #ef4444;
+    --ch247-info: #06b6d4;
+    --ch247-bg: #f8fafc;
+    --ch247-surface: #ffffff;
+    --ch247-border: #e2e8f0;
+    --ch247-text: #1e293b;
+    --ch247-text-secondary: #64748b;
+    --ch247-radius: 10px;
+    --ch247-radius-sm: 6px;
+    --ch247-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    --ch247-shadow-lg: 0 10px 40px rgba(0,0,0,0.1);
+}
+
+.ch247-admin-dashboard {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    max-width: 1100px;
+}
+
+.ch247-admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--ch247-border);
+}
+
+.ch247-admin-header h2 {
+    margin: 0;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ch247-admin-version {
+    font-size: 12px;
+    color: var(--ch247-text-secondary);
+    background: var(--ch247-bg);
+    padding: 4px 12px;
+    border-radius: 20px;
+}
+
+.ch247-admin-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.ch247-admin-stat {
+    background: var(--ch247-surface);
+    border: 1px solid var(--ch247-border);
+    border-radius: var(--ch247-radius);
+    padding: 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.ch247-admin-stat i {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--ch247-radius-sm);
+    font-size: 20px;
+}
+
+.ch247-admin-stat:nth-child(1) i { background: #dbeafe; color: var(--ch247-primary); }
+.ch247-admin-stat:nth-child(2) i { background: #d1fae5; color: var(--ch247-success); }
+.ch247-admin-stat:nth-child(3) i { background: #fef3c7; color: var(--ch247-warning); }
+.ch247-admin-stat:nth-child(4) i { background: #dbeafe; color: var(--ch247-primary); }
+
+.ch247-admin-stat-value {
+    display: block;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.ch247-admin-stat-label {
+    font-size: 12px;
+    color: var(--ch247-text-secondary);
+}
+
+.ch247-admin-section {
+    background: var(--ch247-surface);
+    border: 1px solid var(--ch247-border);
+    border-radius: var(--ch247-radius);
+    margin-bottom: 24px;
+    overflow: hidden;
+}
+
+.ch247-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--ch247-border);
+    background: var(--ch247-bg);
+}
+
+.ch247-section-header h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ch247-section-header h3 i {
+    color: var(--ch247-primary);
+}
+
+.ch247-status-indicator {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 20px;
+}
+
+.ch247-status-online {
+    background: var(--ch247-success);
+    color: #fff;
+}
+
+.ch247-status-offline {
+    background: var(--ch247-danger);
+    color: #fff;
+}
+
+.ch247-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.ch247-table th {
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--ch247-text-secondary);
+    background: var(--ch247-bg);
+    border-bottom: 1px solid var(--ch247-border);
+}
+
+.ch247-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--ch247-border);
+}
+
+.ch247-table tbody tr:hover {
+    background: #fafbfc;
+}
+
+.ch247-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.ch247-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: none;
+    border-radius: var(--ch247-radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.ch247-btn-sm {
+    padding: 5px 10px;
+    font-size: 12px;
+}
+
+.ch247-btn-primary {
+    background: var(--ch247-primary);
+    color: #fff;
+}
+
+.ch247-btn-secondary {
+    background: var(--ch247-surface);
+    color: var(--ch247-text);
+    border: 1px solid var(--ch247-border);
+}
+
+.ch247-api-info {
+    padding: 20px;
+}
+
+.ch247-info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--ch247-border);
+}
+
+.ch247-info-row:last-child {
+    border-bottom: none;
+}
+
+.ch247-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.ch247-form-group {
+    margin-bottom: 16px;
+}
+
+.ch247-form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 6px;
+}
+
+.ch247-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--ch247-border);
+    border-radius: var(--ch247-radius-sm);
+    font-size: 13px;
+    box-sizing: border-box;
+}
+
+.ch247-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    padding: 20px;
+}
+
+.ch247-setting-card {
+    background: var(--ch247-bg);
+    border-radius: var(--ch247-radius-sm);
+    padding: 18px;
+}
+
+.ch247-setting-card h4 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+}
+
+.ch247-setting-card p {
+    margin: 4px 0;
+    font-size: 13px;
+    color: var(--ch247-text-secondary);
+}
+
+.ch247-empty-cell {
+    text-align: center;
+    color: var(--ch247-text-secondary);
+    padding: 30px;
+}
+
+@media (max-width: 768px) {
+    .ch247-form-row {
+        grid-template-columns: 1fr;
+    }
+    .ch247-admin-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

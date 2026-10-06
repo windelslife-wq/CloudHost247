@@ -1,0 +1,4 @@
+management:
+  details:
+    href: 'index.php?m=AmazonLightsail&mg-page=home&mg-action=detail'
+    order: 300
