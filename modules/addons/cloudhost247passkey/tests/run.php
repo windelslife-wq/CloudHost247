@@ -97,12 +97,12 @@ $now = '2026-10-07 12:00:00';
 $migrator = new Migrator(dirname(__DIR__) . '/install/migrations');
 $firstRun = $migrator->migrate();
 $secondRun = $migrator->migrate();
-$assert('fresh activation applies the additive Passkey and WebAuthn core migrations once', $firstRun['applied'] === ['0001_passkey_core', '0002_webauthn_core']);
-$assert('repeat activation is idempotent', $secondRun['applied'] === [] && $secondRun['skipped'] === ['0001_passkey_core', '0002_webauthn_core']);
-$assert('migration ledger records only completed migrations', Db::count('migrations') === 2);
+$assert('fresh activation applies the additive Passkey and WebAuthn core migrations once', $firstRun['applied'] === ['0001_passkey_core', '0002_webauthn_core', '0003_passkey_phase11']);
+$assert('repeat activation is idempotent', $secondRun['applied'] === [] && $secondRun['skipped'] === ['0001_passkey_core', '0002_webauthn_core', '0003_passkey_phase11']);
+$assert('migration ledger records only completed migrations', Db::count('migrations') === 3);
 $phase3Migration = require dirname(__DIR__) . '/install/migrations/0002_webauthn_core.php';
 call_user_func($phase3Migration['up']);
-$assert('Phase 3 schema extension safely resumes when its additive DDL already exists', Db::columnExists('credentials', 'credential_source_json') && Db::tableExists('user_handles') && Db::count('migrations') === 2);
+$assert('Phase 3 schema extension safely resumes when its additive DDL already exists', Db::columnExists('credentials', 'credential_source_json') && Db::tableExists('user_handles') && Db::count('migrations') === 3);
 
 $expectedTables = array_map([Db::class, 'table'], array_merge(['migrations'], Schema::tableNames()));
 $actualTables = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
@@ -608,14 +608,16 @@ $moduleConfig = cloudhost247passkey_config();
 $activation = cloudhost247passkey_activate();
 $enabledAfterActivation = Db::firstQuery('SELECT setting_value FROM `' . Db::table('settings') . '` WHERE setting_key = ?', ['service_enabled']);
 ob_start();
+$_SESSION['adminid'] = 1;
 cloudhost247passkey_output([]);
+unset($_SESSION['adminid']);
 $adminOutput = ob_get_clean();
 $beforeDeactivate = Db::count('credentials') + Db::count('events') + Db::count('user_policies');
 $deactivation = cloudhost247passkey_deactivate();
 $afterDeactivate = Db::count('credentials') + Db::count('events') + Db::count('user_policies');
 $assert('WHMCS addon callback exposes the Passkey module without activating login', $moduleConfig['name'] === 'CloudHost247 Passkey' && $moduleConfig['fields'] === []);
 $assert('WHMCS activation callback is repeatable and keeps authentication disabled', $activation['status'] === 'success' && strpos($activation['description'], 'No login') !== false && $enabledAfterActivation['setting_value'] === '0');
-$assert('admin addon status clearly says Passkey authentication is disabled', strpos($adminOutput, 'authentication is currently disabled') !== false && strpos($adminOutput, 'session creation') !== false);
+$assert('admin dashboard honestly reports that Passkey authentication is disabled', strpos($adminOutput, 'authentication is currently disabled') !== false && strpos($adminOutput, 'password login and 2FA') !== false);
 $assert('deactivation preserves credentials, audit events and policies', $deactivation['status'] === 'success' && $beforeDeactivate === $afterDeactivate);
 
 $phase4Policy = new PasskeyLoginPolicy([
@@ -1225,6 +1227,251 @@ $throws('Phase 10 rejects secret audit metadata and rolls back the policy mutati
 $phase10PolicyAfterFailure = Db::firstQuery('SELECT `policy`, `temporary_disabled_until` FROM `' . Db::table('user_policies') . '` WHERE `user_type` = ? AND `user_id` = ?', ['client', $phase6DisabledIdentity]);
 $assert('Phase 10 rejected policy operations do not create a parallel session or mutate the prior scoped policy', !isset($_SESSION['uid']) && $phase10PolicyAfterFailure['policy'] === UserPolicyRecord::DEFAULT_POLICY && $phase10PolicyAfterFailure['temporary_disabled_until'] === null);
 
+// Phase 11 native HTTP boundary, step-up confirmation, and diagnostics.
+$phase11SettingsRow = Db::query(
+    'SELECT `setting_key`, `setting_value` FROM `' . Db::table('settings') . '` WHERE `setting_key` IN (?, ?, ?, ?, ?)',
+    ['login_notifications_enabled', 'security_event_notifications_enabled', 'sensitive_action_policy', 'entra_tenant_id', 'entra_allowed_domains']
+);
+$phase11Seeded = [];
+foreach ($phase11SettingsRow as $phase11Row) {
+    $phase11Seeded[$phase11Row['setting_key']] = $phase11Row['setting_value'];
+}
+$assert(
+    'Phase 11 migration seeds notification, sensitive-action, and Entra settings idempotently',
+    isset($phase11Seeded['login_notifications_enabled'], $phase11Seeded['security_event_notifications_enabled'], $phase11Seeded['sensitive_action_policy'], $phase11Seeded['entra_tenant_id'], $phase11Seeded['entra_allowed_domains'])
+    && $phase11Seeded['login_notifications_enabled'] === '0'
+    && $phase11Seeded['sensitive_action_policy'] === 'optional'
+    && $phase11Seeded['entra_allowed_domains'] === '[]'
+);
+$phase11Defaults = SettingsRecord::defaults();
+$assert(
+    'Phase 11 fresh-install defaults include the native-boundary settings',
+    isset($phase11Defaults['login_notifications_enabled'], $phase11Defaults['sensitive_action_policy'], $phase11Defaults['entra_client_id'])
+    && $phase11Defaults['sensitive_action_policy'] === 'optional'
+);
+$phase11UnlimitedPolicy = new PasskeyLoginPolicy([
+    'service_enabled' => '1', 'client_policy' => 'optional', 'admin_policy' => 'optional',
+    'password_fallback' => 'allowed', 'max_credentials_client' => 'unlimited', 'max_credentials_admin' => '5',
+]);
+$assert('Phase 11 unlimited credential ceiling maps to a bounded practical maximum', $phase11UnlimitedPolicy->maxCredentialsFor('client') === 1000);
+$throws('Phase 11 rejects out-of-range credential ceilings', InvalidArgumentException::class, function () {
+    new PasskeyLoginPolicy([
+        'service_enabled' => '1', 'client_policy' => 'optional', 'admin_policy' => 'optional',
+        'password_fallback' => 'allowed', 'max_credentials_client' => '51', 'max_credentials_admin' => '5',
+    ]);
+});
+
+if (!class_exists('Phase11FakeCeremony')) {
+    eval('class Phase11FakeCeremony implements \\CloudHost247\\Passkey\\Core\\PasskeyAuthenticationCeremonyInterface {'
+        . 'private $verified;'
+        . 'public function __construct(array $verified) { $this->verified = $verified; }'
+        . 'public function beginAuthentication(\\CloudHost247\\Passkey\\Core\\WebAuthnConfig $config, $userType, $userId = null) {'
+        . 'return ["publicKey" => ["challenge" => "ZmFrZS1jaGFsbGVuZ2U", "rpId" => $config->rpId()], "expires_in" => 300]; }'
+        . 'public function finishAuthentication(\\CloudHost247\\Passkey\\Core\\WebAuthnConfig $config, $userType, $userId, $credentialResponseJson) {'
+        . 'if ($credentialResponseJson === "bad-assertion") { throw new \\RuntimeException("bad assertion"); }'
+        . 'return $this->verified; }'
+        . '}');
+}
+$phase11Provider = new CallbackWhmcsIdentityProvider(function ($resolvedType, $resolvedId) {
+    if (($resolvedType === 'client' && in_array($resolvedId, [7001, 7002], true))
+        || ($resolvedType === 'admin' && $resolvedId === 701)) {
+        return ['user_type' => $resolvedType, 'user_id' => $resolvedId, 'loginable' => true];
+    }
+    return null;
+});
+$phase11Policy = new PasskeyLoginPolicy([
+    'service_enabled' => '1', 'client_policy' => 'optional', 'admin_policy' => 'optional',
+    'password_fallback' => 'allowed', 'max_credentials_client' => '5', 'max_credentials_admin' => '5',
+]);
+$phase11Resolver = new PasskeyPolicyResolver($phase11Policy);
+$phase11Confirmation = new \CloudHost247\Passkey\Core\PasskeyActionConfirmationService(
+    $phase11Provider,
+    $phase11Resolver,
+    $phase6Events
+);
+$phase11Identity = new WhmcsIdentity('client', 7001);
+$phase11Ceremony = new Phase11FakeCeremony(['user_type' => 'client', 'user_id' => 7001]);
+$phase11Ticket = $phase11Confirmation->beginConfirmation(
+    $webAuthnConfig,
+    $phase11Ceremony,
+    $phase11Identity,
+    'auth.policy'
+);
+$assert(
+    'Phase 11 step-up confirmation issues a session-bound ticket plus ceremony options',
+    $phase11Ticket['ticket_id'] > 0 && $phase11Ticket['action_code'] === 'auth.policy'
+    && isset($phase11Ticket['publicKey']['challenge'])
+);
+$phase11Receipt = $phase11Confirmation->confirm(
+    $webAuthnConfig,
+    $phase11Ceremony,
+    $phase11Identity,
+    $phase11Ticket['ticket_id'],
+    '{"id":"fake"}'
+);
+$assert(
+    'Phase 11 step-up confirmation consumes its ticket exactly once with audit',
+    $phase11Receipt['confirmed'] === true && $phase11Receipt['action_code'] === 'auth.policy'
+    && $phase11Receipt['event_id'] > 0
+);
+$throws('Phase 11 step-up tickets reject replay after consumption', RuntimeException::class, function () use ($phase11Confirmation, $webAuthnConfig, $phase11Ceremony, $phase11Identity, $phase11Ticket) {
+    $phase11Confirmation->confirm($webAuthnConfig, $phase11Ceremony, $phase11Identity, $phase11Ticket['ticket_id'], '{"id":"fake"}');
+});
+$phase11Tampered = $phase11Confirmation->beginConfirmation($webAuthnConfig, $phase11Ceremony, $phase11Identity, 'config.delete');
+Db::update('challenges', ['id' => $phase11Tampered['ticket_id']], ['session_binding_hash' => str_repeat('0', 64)]);
+$throws('Phase 11 step-up tickets reject a mismatched session binding', RuntimeException::class, function () use ($phase11Confirmation, $webAuthnConfig, $phase11Ceremony, $phase11Identity, $phase11Tampered) {
+    $phase11Confirmation->confirm($webAuthnConfig, $phase11Ceremony, $phase11Identity, $phase11Tampered['ticket_id'], '{"id":"fake"}');
+});
+$phase11ForeignTicket = $phase11Confirmation->beginConfirmation($webAuthnConfig, $phase11Ceremony, $phase11Identity, 'config.delete');
+$throws('Phase 11 step-up tickets reject a different identity', RuntimeException::class, function () use ($phase11Confirmation, $webAuthnConfig, $phase11Ceremony, $phase11ForeignTicket) {
+    $phase11Confirmation->confirm($webAuthnConfig, $phase11Ceremony, new WhmcsIdentity('client', 7002), $phase11ForeignTicket['ticket_id'], '{"id":"fake"}');
+});
+$throws('Phase 11 step-up confirmation rejects unsupported actions', InvalidArgumentException::class, function () use ($phase11Confirmation, $webAuthnConfig, $phase11Ceremony, $phase11Identity) {
+    $phase11Confirmation->beginConfirmation($webAuthnConfig, $phase11Ceremony, $phase11Identity, 'billing.refund');
+});
+$phase11MismatchTicket = $phase11Confirmation->beginConfirmation($webAuthnConfig, $phase11Ceremony, $phase11Identity, 'config.delete');
+$phase11MismatchCeremony = new Phase11FakeCeremony(['user_type' => 'client', 'user_id' => 7002]);
+$throws('Phase 11 step-up confirmation rejects assertions for another identity', RuntimeException::class, function () use ($phase11Confirmation, $webAuthnConfig, $phase11MismatchCeremony, $phase11Identity, $phase11MismatchTicket) {
+    $phase11Confirmation->confirm($webAuthnConfig, $phase11MismatchCeremony, $phase11Identity, $phase11MismatchTicket['ticket_id'], '{"id":"fake"}');
+});
+$phase11ExpiredTicket = $phase11Confirmation->beginConfirmation($webAuthnConfig, $phase11Ceremony, $phase11Identity, 'config.delete');
+Db::update('challenges', ['id' => $phase11ExpiredTicket['ticket_id']], ['expires_at' => '2020-01-01 00:00:00']);
+$throws('Phase 11 step-up tickets expire', RuntimeException::class, function () use ($phase11Confirmation, $webAuthnConfig, $phase11Ceremony, $phase11Identity, $phase11ExpiredTicket) {
+    $phase11Confirmation->confirm($webAuthnConfig, $phase11Ceremony, $phase11Identity, $phase11ExpiredTicket['ticket_id'], '{"id":"fake"}');
+});
+
+$phase11NativeProvider = new \CloudHost247\Passkey\Core\WhmcsNativeIdentityProvider();
+$throws('Phase 11 native identity provider fails closed without the WHMCS database layer', RuntimeException::class, function () use ($phase11NativeProvider) {
+    $phase11NativeProvider->resolve('client', 1);
+});
+$throws('Phase 11 native identity provider rejects unknown scopes', InvalidArgumentException::class, function () use ($phase11NativeProvider) {
+    $phase11NativeProvider->resolve('reseller', 1);
+});
+$phase11Bridge = new \CloudHost247\Passkey\Core\WhmcsNativeAuthBridge();
+$phase11ClientContext = PasskeyLoginContext::fromArray([
+    'remember_me' => false, 'request_id' => 'web-phase11', 'source' => 'client_login',
+]);
+$phase11AdminContext = PasskeyLoginContext::fromArray([
+    'remember_me' => false, 'request_id' => 'web-phase11', 'source' => 'admin_login',
+]);
+$throws('Phase 11 native auth bridge rejects cross-audience handoffs', RuntimeException::class, function () use ($phase11Bridge, $phase11ClientContext) {
+    $phase11Bridge->handoff(new WhmcsIdentity('admin', 701), $phase11ClientContext);
+});
+$throws('Phase 11 native auth bridge reports unavailable without WHMCS platform state', RuntimeException::class, function () use ($phase11Bridge, $phase11ClientContext) {
+    $phase11Bridge->handoff(new WhmcsIdentity('client', 7001), $phase11ClientContext);
+});
+
+$phase11DisabledReport = \CloudHost247\Passkey\Core\PasskeyDiagnostics::collect(
+    ['service_enabled' => '0', 'rp_id' => '', 'allowed_origins' => '[]', 'entra_enabled' => '0'],
+    false,
+    null
+);
+$assert(
+    'Phase 11 diagnostics fail closed with machine-readable codes when disabled',
+    $phase11DisabledReport['overall'] === 'error'
+    && $phase11DisabledReport['checks']['https']['code'] === 'CONFIGURATION_REQUIRED'
+    && $phase11DisabledReport['checks']['webauthn_config']['code'] === 'CONFIGURATION_REQUIRED'
+    && $phase11DisabledReport['checks']['database']['status'] === 'ok'
+);
+$phase11EnabledSettings = [
+    'service_enabled' => '1', 'require_https' => '1', 'rp_name' => 'CloudHost247',
+    'rp_id' => 'cloudhost247.com', 'allowed_origins' => '["https://portal.cloudhost247.com"]',
+    'user_verification' => 'preferred', 'entra_enabled' => '0',
+];
+$phase11EnabledReport = \CloudHost247\Passkey\Core\PasskeyDiagnostics::collect(
+    $phase11EnabledSettings,
+    true,
+    'https://portal.cloudhost247.com'
+);
+$assert(
+    'Phase 11 diagnostics validate explicit RP and origin configuration',
+    $phase11EnabledReport['checks']['https']['status'] === 'ok'
+    && $phase11EnabledReport['checks']['webauthn_config']['status'] === 'ok'
+    && $phase11EnabledReport['checks']['service_switch']['status'] === 'ok'
+);
+$phase11VendorPresent = is_file(dirname(__DIR__) . '/vendor/autoload.php');
+$assert(
+    'Phase 11 diagnostics overall status tracks dependency availability honestly',
+    ($phase11VendorPresent && in_array($phase11EnabledReport['overall'], ['ok', 'warning'], true))
+    || (!$phase11VendorPresent && $phase11EnabledReport['overall'] === 'error')
+);
+
+$phase11SavedServer = $_SERVER;
+$_SERVER['REQUEST_METHOD'] = 'post';
+$assert('Phase 11 request context normalizes the HTTP method', \CloudHost247\Passkey\Http\RequestContext::method() === 'POST');
+unset($_SERVER['REQUEST_METHOD']);
+unset($_SERVER['HTTPS'], $_SERVER['SERVER_PORT'], $_SERVER['HTTP_X_FORWARDED_PROTO']);
+$_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
+$assert(
+    'Phase 11 request context never trusts forwarding headers for TLS state',
+    \CloudHost247\Passkey\Http\RequestContext::isHttps() === false
+);
+$_SERVER['HTTPS'] = 'on';
+$assert('Phase 11 request context accepts server HTTPS state', \CloudHost247\Passkey\Http\RequestContext::isHttps() === true);
+$_SERVER = $phase11SavedServer;
+$_SERVER['REMOTE_ADDR'] = '203.0.113.7';
+$assert('Phase 11 request context validates the client IP', \CloudHost247\Passkey\Http\RequestContext::ipAddress() === '203.0.113.7');
+$_SERVER['REMOTE_ADDR'] = 'not-an-ip';
+$assert('Phase 11 request context rejects malformed IPs', \CloudHost247\Passkey\Http\RequestContext::ipAddress() === null);
+$_SERVER['HTTP_USER_AGENT'] = 'Phase11-Test/1.0';
+$assert('Phase 11 request context truncates the user agent safely', \CloudHost247\Passkey\Http\RequestContext::userAgent() === 'Phase11-Test/1.0');
+$_SERVER['HTTP_USER_AGENT'] = "bad\x01agent";
+$assert('Phase 11 request context rejects control characters in user agents', \CloudHost247\Passkey\Http\RequestContext::userAgent() === null);
+$_SERVER = $phase11SavedServer;
+$_POST['phase11_probe'] = 'post-value';
+$_GET['phase11_probe'] = 'query-value';
+$assert(
+    'Phase 11 request context reads typed request parameters',
+    \CloudHost247\Passkey\Http\RequestContext::postParam('phase11_probe') === 'post-value'
+    && \CloudHost247\Passkey\Http\RequestContext::queryParam('phase11_probe') === 'query-value'
+    && \CloudHost247\Passkey\Http\RequestContext::postParam('phase11_missing', 'fallback') === 'fallback'
+);
+unset($_POST['phase11_probe'], $_GET['phase11_probe']);
+
+$phase11CsrfToken = \CloudHost247\Passkey\Http\CsrfProtection::token();
+$assert(
+    'Phase 11 CSRF fallback issues a verifiable session token',
+    is_string($phase11CsrfToken) && preg_match('/^[a-f0-9]{64}$/', $phase11CsrfToken) === 1
+    && \CloudHost247\Passkey\Http\CsrfProtection::verify($phase11CsrfToken) === true
+);
+$throws('Phase 11 CSRF fallback rejects forged tokens', RuntimeException::class, function () {
+    \CloudHost247\Passkey\Http\CsrfProtection::verify('forged-token');
+});
+$assert(
+    'Phase 11 CSRF fallback renders a session-bound hidden field',
+    strpos(\CloudHost247\Passkey\Http\CsrfProtection::field(), 'ch247pk_csrf') !== false
+);
+
+$phase11ResetRow = [
+    'id' => 9001,
+    'challenge_hash' => hash('sha256', 'phase11-reset-ticket'),
+    'user_type' => 'client',
+    'user_id' => null,
+    'challenge_type' => ChallengeRecord::PASSWORD_RESET,
+    'action_code' => 'password.reset',
+    'session_binding_hash' => hash('sha256', 'phase11-session'),
+    'rp_id' => 'cloudhost247.com',
+    'origin' => 'https://portal.cloudhost247.com',
+    'expires_at' => gmdate('Y-m-d H:i:s', time() + 300),
+    'consumed_at' => null,
+    'created_at' => gmdate('Y-m-d H:i:s'),
+];
+$phase11ResetRecord = new ChallengeRecord($phase11ResetRow);
+$assert(
+    'Phase 11 password-reset tickets bind session, RP, and origin before the user is known',
+    $phase11ResetRecord->toArray()['challenge_type'] === ChallengeRecord::PASSWORD_RESET
+    && $phase11ResetRecord->toArray()['user_id'] === null
+    && $phase11ResetRecord->isUsableAt(gmdate('Y-m-d H:i:s'))
+);
+$assert(
+    'Phase 11 ceremony service exposes the authentication options boundary',
+    in_array(
+        'CloudHost247\\Passkey\\Core\\PasskeyAuthenticationCeremonyInterface',
+        class_implements('CloudHost247\\Passkey\\Core\\WebAuthnService'),
+        true
+    )
+);
+
 $composerManifest = json_decode(file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 $assert('Composer manifest pins the audited WebAuthn library and an explicit PSR-7 adapter', isset($composerManifest['require']['web-auth/webauthn-lib'], $composerManifest['require']['nyholm/psr7']) && $composerManifest['require']['web-auth/webauthn-lib'] === '3.3.12' && $composerManifest['require']['nyholm/psr7'] === '^1.8');
 $assert('WebAuthn ceremony service is present but does not alter the WHMCS authentication flow', class_exists(WebAuthnService::class) && method_exists(WebAuthnService::class, 'finishRegistration') && method_exists(WebAuthnService::class, 'finishAuthentication'));
@@ -1251,6 +1498,7 @@ if ($failures === 0) {
     echo "PASSKEY_PHASE8_NOTIFICATIONS_OK\n";
     echo "PASSKEY_PHASE9_MAINTENANCE_OK\n";
     echo "PASSKEY_PHASE10_POLICY_ADMIN_OK\n";
+    echo "PASSKEY_PHASE11_HTTP_OK\n";
 } else {
     echo "PASSKEY_PHASE3_CORE_FAILED\n";
     echo "PASSKEY_PHASE4_INTEGRATION_FAILED\n";

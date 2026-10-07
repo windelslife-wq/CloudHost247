@@ -14,7 +14,7 @@ use Webauthn\PublicKeyCredentialRpEntity;
 use Webauthn\PublicKeyCredentialUserEntity;
 use Webauthn\Server;
 
-class WebAuthnService implements PasskeyAssertionVerifierInterface, PasskeyRegistrationCeremonyInterface
+class WebAuthnService implements PasskeyAssertionVerifierInterface, PasskeyRegistrationCeremonyInterface, PasskeyAuthenticationCeremonyInterface
 {
     const OPTION_ALGORITHMS = ['ES256', 'RS256'];
 
