@@ -184,26 +184,26 @@ class Blockonomics
         $active_currencies = [];
         $blockonomics_currencies = $this->getSupportedCurrencies();
 
-        // CloudHost247 governance is authoritative for btc/usdt; bch is
-        // still governed solely by the stock checkbox (untouched by design).
+        // CloudHost247 governance is authoritative for every currency it
+        // knows about (btc / bch / usdt). A currency the governance layer
+        // does not model is refused outright rather than defaulting open.
         try {
             $governed = Bridge::availableCurrencies(getGatewayVariables('blockonomics'));
         } catch (\Throwable $governanceError) {
             error_log('cloudhost247 blockonomics active-currency resolution failed: '
                 . $governanceError->getMessage());
-            $governed = ['btc' => false, 'usdt' => false]; // fail closed
+            $governed = Policy::deniedMatrix(); // fail closed
         }
 
+        $gatewayParams = getGatewayVariables('blockonomics');
         foreach ($blockonomics_currencies as $code => $currency) {
-            $gatewayParams = getGatewayVariables('blockonomics');
-            $enabled = $gatewayParams[$code . 'Enabled'];
-            if (!$enabled) {
+            // Stock checkbox first (so removing it still removes the option),
+            // then the CloudHost247 master+currency gate on top.
+            if (empty($gatewayParams[$code . 'Enabled'])) {
                 continue;
             }
-            if ($code === 'btc' || $code === 'usdt') {
-                if (empty($governed[$code])) {
-                    continue;
-                }
+            if (empty($governed[$code])) {
+                continue;
             }
             $active_currencies[$code] = $currency;
         }
@@ -621,16 +621,15 @@ class Blockonomics
      */
     public function createNewCryptoOrder($order, $blockonomics_currency)
     {
-        // Server-side currency enforcement (spec §16): a disabled BTC/USDT
+        // Server-side currency enforcement (spec §16): a disabled currency
         // must never reach address generation, regardless of what the
-        // browser requested.
-        if ($blockonomics_currency === 'btc' || $blockonomics_currency === 'usdt') {
-            try {
-                Bridge::assertCurrencyAllowed($blockonomics_currency, getGatewayVariables('blockonomics'));
-            } catch (\Throwable $blocked) {
-                http_response_code(403);
-                exit('This payment method is currently unavailable.');
-            }
+        // browser requested. Unknown codes are refused too — assertion
+        // throws for anything outside the governed matrix.
+        try {
+            Bridge::assertCurrencyAllowed($blockonomics_currency, getGatewayVariables('blockonomics'));
+        } catch (\Throwable $blocked) {
+            http_response_code(403);
+            exit('This payment method is currently unavailable.');
         }
 
         if ($blockonomics_currency === 'usdt') {

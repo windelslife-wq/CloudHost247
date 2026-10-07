@@ -68,6 +68,7 @@ class BlockonomicsAdmin
     {
         $legacy = $this->legacy();
         $this->governance->seedFromLegacy($legacy);
+        $this->governance->backfillBch($legacy);
         $state = $this->governance->state();
 
         $effectiveKey = $this->effectiveApiKey();
@@ -76,6 +77,7 @@ class BlockonomicsAdmin
         return [
             'gateway_enabled'  => $state['gateway_enabled'],
             'btc_enabled'      => $state['btc_enabled'],
+            'bch_enabled'      => $state['bch_enabled'],
             'usdt_enabled'     => $state['usdt_enabled'],
             'confirmations'    => $state['confirmations'],
             'usdt_network'     => $state['usdt_network'],
@@ -102,11 +104,13 @@ class BlockonomicsAdmin
     {
         $legacy = $this->legacy();
         $this->governance->seedFromLegacy($legacy);
+        $this->governance->backfillBch($legacy);
 
         $effectiveKey = $this->effectiveApiKey();
         $payload = [
             'gateway_enabled'  => !empty($input['gateway_enabled']),
             'btc_enabled'      => !empty($input['btc_enabled']),
+            'bch_enabled'      => !empty($input['bch_enabled']),
             'usdt_enabled'     => !empty($input['usdt_enabled']),
             'confirmations'    => isset($input['confirmations']) ? (int) $input['confirmations'] : 2,
             'usdt_network'     => isset($input['usdt_network']) ? (string) $input['usdt_network'] : '',
@@ -120,14 +124,15 @@ class BlockonomicsAdmin
 
         // Keep stock configgateways.php consistent (additive, never destructive).
         $this->mirror('btcEnabled', $state['btc_enabled'] ? 'on' : '');
+        $this->mirror('bchEnabled', $state['bch_enabled'] ? 'on' : '');
         $this->mirror('usdtEnabled', $state['usdt_enabled'] ? 'on' : '');
         $this->mirror('Confirmations', (string) $state['confirmations']);
         $this->mirror('NetworkType', (string) $state['usdt_network']);
 
         Audit::admin($staffId, 'blockonomics.settings_saved', [
             'gateway' => $state['gateway_enabled'], 'btc' => $state['btc_enabled'],
-            'usdt' => $state['usdt_enabled'], 'confirmations' => $state['confirmations'],
-            'network' => $state['usdt_network'],
+            'bch' => $state['bch_enabled'], 'usdt' => $state['usdt_enabled'],
+            'confirmations' => $state['confirmations'], 'network' => $state['usdt_network'],
         ]);
         return 'Blockonomics settings saved.';
     }

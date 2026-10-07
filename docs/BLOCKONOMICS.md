@@ -103,19 +103,46 @@ Callback/poller remain operational for in-flight orders after a disable
 
 ## Tests
 
-- `tests/11_BlockonomicsTest.php` — 113 assertions (matrix, amounts,
+- `tests/11_BlockonomicsTest.php` — 163 assertions (matrix, amounts,
   status, expiry, networks, readiness, replay policy, vault, governance,
-  tester taxonomy, bridge).
-- `tests/12_BlockonomicsAdminTest.php` — 52 assertions (panel, save chain,
+  tester taxonomy, bridge, BCH governance + legacy backfill, currency-list
+  sync guard).
+- `tests/12_BlockonomicsAdminTest.php` — 66 assertions (panel, save chain,
   credential replacement + redaction, connection audit, transaction
-  filters, masking).
-- Gateway tree parse-checked (17 files) +
-  full module suite `692/692` green.
+  filters, masking, BCH admin control).
+- Gateway tree parse-checked + full module suite `764/764` green.
+
+## Bitcoin Cash
+
+BCH is governed exactly like BTC and USDT: master switch AND the
+`bch_enabled` flag AND a valid config. It has its own toggle in
+Admin → Addons → CloudHost247 Services → Payments · Blockonomics, its own
+audit lines (`bch.enabled` / `bch.disabled`), and it is mirrored back to
+`tblpaymentgateways.bchEnabled` so the stock gateway page agrees.
+
+Readiness is `Policy::bchReadiness()`, which requires the Blockonomics API
+key and nothing else — Blockonomics serves BCH from the same account and
+the same key as BTC (`bch.blockonomics.co`), so no separate BCH credential
+was invented.
+
+**Upgrade behaviour.** Installs whose governance store was seeded before
+BCH came under governance would otherwise read the missing key as
+fail-closed and silently stop offering BCH. `Governance::backfillBch()`
+runs once on such a store, imports the legacy `bchEnabled` checkbox, writes
+a `governance.bch_backfilled` audit line, and then never runs again — a
+site already taking BCH keeps taking it, and a site that had it off stays
+off. Fresh installs are covered by the normal seed, which now imports
+`bchEnabled` and counts BCH towards the master switch.
+
+`getActiveCurrencies()` now denies any currency the policy layer does not
+model, rather than letting unknown codes default open. A test asserts the
+gateway's `getSupportedCurrencies()` codes and `Policy::CURRENCIES` stay
+identical, so a future upstream coin fails the suite loudly instead of
+becoming silently unpayable.
 
 ## Remaining honest limits
 
-- BCH support is unchanged stock behavior (governed only by its stock
-  checkbox) — the CloudHost247 spec scopes BTC + USDT; nothing new was
-  invented for BCH.
 - `mark-paid` style webhooks from Blockonomics Sandbox never auto-verify;
   every credit flows through confirmation depth + amount classification.
+- USDT verification depends on Etherscan availability; when the poller
+  cannot reach it the order stays pending rather than crediting.

@@ -15,10 +15,12 @@ class Governance
 {
     const KEY_GATEWAY = 'gateway_enabled';
     const KEY_BTC     = 'btc_enabled';
+    const KEY_BCH     = 'bch_enabled';
     const KEY_USDT    = 'usdt_enabled';
     const KEY_CONF    = 'confirmations';
     const KEY_NETWORK = 'usdt_network';
     const KEY_SEEDED  = 'seeded_from_legacy';
+    const KEY_BCH_BACKFILLED = 'bch_backfilled';
     const KEY_ETHERSCAN = 'etherscan_api_key_present';
 
     /** @var GovernanceStoreInterface */
@@ -43,6 +45,7 @@ class Governance
         return [
             'gateway_enabled' => $this->bool($this->store->get(self::KEY_GATEWAY)),
             'btc_enabled'     => $this->bool($this->store->get(self::KEY_BTC)),
+            'bch_enabled'     => $this->bool($this->store->get(self::KEY_BCH)),
             'usdt_enabled'    => $this->bool($this->store->get(self::KEY_USDT)),
             'confirmations'   => Policy::normalizeConfirmations(
                 $this->store->get(self::KEY_CONF) === null ? 2 : (int) $this->store->get(self::KEY_CONF)
@@ -73,10 +76,11 @@ class Governance
             return false;
         }
         $btc  = $this->legacyBool(isset($legacy['btcEnabled']) ? $legacy['btcEnabled'] : null);
+        $bch  = $this->legacyBool(isset($legacy['bchEnabled']) ? $legacy['bchEnabled'] : null);
         $usdt = $this->legacyBool(isset($legacy['usdtEnabled']) ? $legacy['usdtEnabled'] : null);
         // Master switch: an existing working install (API key present, at
         // least one currency on) keeps operating after upgrade.
-        $master = ($btc || $usdt) && isset($legacy['ApiKey']) && trim((string) $legacy['ApiKey']) !== '';
+        $master = ($btc || $bch || $usdt) && isset($legacy['ApiKey']) && trim((string) $legacy['ApiKey']) !== '';
 
         $conf = Policy::normalizeConfirmations(
             isset($legacy['Confirmations']) && $legacy['Confirmations'] !== '' ? (int) $legacy['Confirmations'] : 2
@@ -88,14 +92,49 @@ class Governance
 
         $this->store->set(self::KEY_GATEWAY, $master ? '1' : '0');
         $this->store->set(self::KEY_BTC, $btc ? '1' : '0');
+        $this->store->set(self::KEY_BCH, $bch ? '1' : '0');
         $this->store->set(self::KEY_USDT, $usdt ? '1' : '0');
         $this->store->set(self::KEY_CONF, (string) $conf);
         $this->store->set(self::KEY_NETWORK, $network);
         $this->store->set(self::KEY_SEEDED, date('c'));
+        $this->store->set(self::KEY_BCH_BACKFILLED, date('c'));
         $this->writeAudit($actorId, 'governance.seeded', 'all', '', json_encode([
-            'gateway' => $master, 'btc' => $btc, 'usdt' => $usdt,
+            'gateway' => $master, 'btc' => $btc, 'bch' => $bch, 'usdt' => $usdt,
             'confirmations' => $conf, 'network' => $network,
         ]), $ipHash);
+        return true;
+    }
+
+    /**
+     * Bring BCH under governance on a store that was seeded before BCH was
+     * governed (spec §31 — never silently break a working install).
+     *
+     * Without this, `state()` would fail-closed on the missing key and an
+     * install that had been happily accepting BCH would stop offering it the
+     * moment this code deployed. Instead the legacy `bchEnabled` checkbox is
+     * imported once, audited, and governance takes over from there.
+     *
+     * @return bool true when a backfill actually happened
+     */
+    public function backfillBch(array $legacy, $actorId = 0, $ipHash = '')
+    {
+        if (!$this->hasBeenSeeded()) {
+            return false; // seedFromLegacy() covers a fresh store
+        }
+        if ($this->store->get(self::KEY_BCH_BACKFILLED) !== null) {
+            return false; // already migrated
+        }
+        $bch = $this->legacyBool(isset($legacy['bchEnabled']) ? $legacy['bchEnabled'] : null);
+        $this->store->set(self::KEY_BCH, $bch ? '1' : '0');
+        $this->store->set(self::KEY_BCH_BACKFILLED, date('c'));
+        $this->writeAudit(
+            $actorId,
+            'governance.bch_backfilled',
+            self::KEY_BCH,
+            '',
+            $bch ? 'on' : 'off',
+            $ipHash
+        );
         return true;
     }
 
@@ -111,8 +150,11 @@ class Governance
         $before = $this->state();
 
         $gateway = !empty($input['gateway_enabled']);
-        $btc = !empty($input['btc_enabled']);
-        $usdt = !empty($input['usdt_enabled']);
+        $wanted = [
+            'btc'  => !empty($input['btc_enabled']),
+            'bch'  => !empty($input['bch_enabled']),
+            'usdt' => !empty($input['usdt_enabled']),
+        ];
         $conf = Policy::normalizeConfirmations(isset($input['confirmations']) ? $input['confirmations'] : 2);
         $network = isset($input['usdt_network']) ? (string) $input['usdt_network'] : '';
 
@@ -121,24 +163,23 @@ class Governance
         }
 
         // Readiness validation (spec §34): refuse an enabled-but-dead config.
+        $readinessCfg = [
+            'api_key'           => isset($input['effective_api_key']) ? $input['effective_api_key'] : '',
+            'usdt_address'      => isset($input['usdt_address']) ? $input['usdt_address'] : '',
+            'usdt_network'      => $network,
+            'etherscan_api_key' => isset($input['etherscan_api_key']) ? $input['etherscan_api_key'] : '',
+        ];
         $problems = [];
-        if ($btc || $gateway && $btc) {
-            list($ok, $why) = Policy::btcReadiness(['api_key' => isset($input['effective_api_key']) ? $input['effective_api_key'] : '']);
-            if ($btc && !$ok) {
-                $problems[] = 'BTC: ' . $why;
+        foreach ($wanted as $code => $on) {
+            if (!$on) {
+                continue;
             }
-        }
-        if ($usdt) {
-            list($ok, $why) = Policy::usdtReadiness([
-                'usdt_address'      => isset($input['usdt_address']) ? $input['usdt_address'] : '',
-                'usdt_network'      => $network,
-                'etherscan_api_key' => isset($input['etherscan_api_key']) ? $input['etherscan_api_key'] : '',
-            ]);
+            list($ok, $why) = Policy::currencyReadiness($code, $readinessCfg);
             if (!$ok) {
-                $problems[] = 'USDT: ' . $why;
+                $problems[] = strtoupper($code) . ': ' . $why;
             }
         }
-        if (empty($input['effective_api_key']) && ($gateway || $btc || $usdt)) {
+        if (empty($input['effective_api_key']) && ($gateway || in_array(true, $wanted, true))) {
             $problems[] = 'Blockonomics: API key is required before the gateway can be enabled.';
         }
         if ($problems) {
@@ -146,8 +187,9 @@ class Governance
         }
 
         $this->putAudited(self::KEY_GATEWAY, $before['gateway_enabled'], $gateway, $actorId, $ipHash, 'gateway');
-        $this->putAudited(self::KEY_BTC, $before['btc_enabled'], $btc, $actorId, $ipHash, 'btc');
-        $this->putAudited(self::KEY_USDT, $before['usdt_enabled'], $usdt, $actorId, $ipHash, 'usdt');
+        $this->putAudited(self::KEY_BTC, $before['btc_enabled'], $wanted['btc'], $actorId, $ipHash, 'btc');
+        $this->putAudited(self::KEY_BCH, $before['bch_enabled'], $wanted['bch'], $actorId, $ipHash, 'bch');
+        $this->putAudited(self::KEY_USDT, $before['usdt_enabled'], $wanted['usdt'], $actorId, $ipHash, 'usdt');
         if ((int) $before['confirmations'] !== $conf) {
             $this->auditSetting('confirmations.changed', 'confirmations', (string) $before['confirmations'], (string) $conf, $actorId, $ipHash);
         }

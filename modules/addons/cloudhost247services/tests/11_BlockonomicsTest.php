@@ -23,16 +23,25 @@ function chs_gov()
 /* ------------------------------------------------------------- policy -- */
 
 T::section('Availability matrix (spec §15 A–E)');
-$m = function ($gateway, $btc, $usdt) {
+$m = function ($gateway, $btc, $usdt, $bch = 0) {
     return Policy::availabilityMatrix([
-        'gateway_enabled' => $gateway, 'btc_enabled' => $btc, 'usdt_enabled' => $usdt,
+        'gateway_enabled' => $gateway, 'btc_enabled' => $btc,
+        'bch_enabled' => $bch, 'usdt_enabled' => $usdt,
     ]);
 };
-T::eq('A: gateway+btc on, usdt off → btc only', ['btc' => true, 'usdt' => false], $m(1, 1, 0));
-T::eq('B: gateway+usdt on, btc off → usdt only', ['btc' => false, 'usdt' => true], $m(1, 0, 1));
-T::eq('C: all on → both', ['btc' => true, 'usdt' => true], $m(1, 1, 1));
-T::eq('D: gateway on, both off → none', ['btc' => false, 'usdt' => false], $m(1, 0, 0));
-T::eq('E: gateway off → nothing even if currencies on', ['btc' => false, 'usdt' => false], $m(0, 1, 1));
+T::eq('A: gateway+btc on, usdt off → btc only', ['btc' => true, 'bch' => false, 'usdt' => false], $m(1, 1, 0));
+T::eq('B: gateway+usdt on, btc off → usdt only', ['btc' => false, 'bch' => false, 'usdt' => true], $m(1, 0, 1));
+T::eq('C: all on → both', ['btc' => true, 'bch' => false, 'usdt' => true], $m(1, 1, 1));
+T::eq('D: gateway on, both off → none', ['btc' => false, 'bch' => false, 'usdt' => false], $m(1, 0, 0));
+T::eq('E: gateway off → nothing even if currencies on', ['btc' => false, 'bch' => false, 'usdt' => false], $m(0, 1, 1));
+
+// BCH is governed exactly like BTC/USDT — master wins, flag decides.
+T::eq('F: gateway+bch on → bch only', ['btc' => false, 'bch' => true, 'usdt' => false], $m(1, 0, 0, 1));
+T::eq('G: gateway off → bch denied too', ['btc' => false, 'bch' => false, 'usdt' => false], $m(0, 0, 0, 1));
+T::eq('H: all three on', ['btc' => true, 'bch' => true, 'usdt' => true], $m(1, 1, 1, 1));
+T::eq('denied matrix covers every governed currency',
+    ['btc' => false, 'bch' => false, 'usdt' => false], Policy::deniedMatrix());
+T::eq('governed currency list', ['btc', 'bch', 'usdt'], Policy::CURRENCIES);
 
 T::section('Master/currency enforcement throws 403-style (spec §16)');
 $state = ['gateway_enabled' => true, 'btc_enabled' => false, 'usdt_enabled' => true];
@@ -228,13 +237,13 @@ $audit = $store->auditList(100);
 $newRows = array_slice($audit, 0, count($audit) - $before);
 T::eq('exactly one change line', 1, count($newRows));
 T::eq('change is btc.disabled', 'btc.disabled', $newRows[0]['action']);
-T::ok('matrix now matches state', Policy::availabilityMatrix($gov->state()) === ['btc' => false, 'usdt' => true]);
+T::ok('matrix now matches state', Policy::availabilityMatrix($gov->state()) === ['btc' => false, 'bch' => false, 'usdt' => true]);
 
 T::section('Flip helper audits');
 $gov->flip(Governance::KEY_GATEWAY, false, 9);
 T::ok('master flipped off', !$gov->state()['gateway_enabled']);
 T::ok('matrix collapses to none',
-    Policy::availabilityMatrix($gov->state()) === ['btc' => false, 'usdt' => false]);
+    Policy::availabilityMatrix($gov->state()) === ['btc' => false, 'bch' => false, 'usdt' => false]);
 
 /* ---------------------------------------------------- connection test -- */
 
@@ -272,14 +281,192 @@ CloudHost247\Blockonomics\Bridge::$storeFactory = $storeFactory;
 try {
     CloudHost247\Blockonomics\Bridge::state(['ApiKey' => 'x', 'btcEnabled' => 'on']);
     $matrix = CloudHost247\Blockonomics\Bridge::availableCurrencies();
-    T::eq('bridge exposes matrix from seeded state', ['btc' => true, 'usdt' => false], $matrix);
+    T::eq('bridge exposes matrix from seeded state', ['btc' => true, 'bch' => false, 'usdt' => false], $matrix);
     T::throws('bridge enforces disabled currency', function () {
         CloudHost247\Blockonomics\Bridge::assertCurrencyAllowed('usdt');
     }, 'CloudHost247\\Blockonomics\\PaymentUnavailableException');
     CloudHost247\Blockonomics\Bridge::assertCurrencyAllowed('btc');
     T::ok('bridge permits enabled currency', true);
+    T::throws('bridge enforces disabled bch', function () {
+        CloudHost247\Blockonomics\Bridge::assertCurrencyAllowed('bch');
+    }, 'CloudHost247\\Blockonomics\\PaymentUnavailableException');
     T::eq('resolver falls back to legacy key', 'legacy-key', CloudHost247\Blockonomics\Bridge::resolveApiKey(' legacy-key '));
     T::eq('resolver empty without anything', '', CloudHost247\Blockonomics\Bridge::resolveApiKey(''));
+} finally {
+    CloudHost247\Blockonomics\Bridge::$storeFactory = null;
+    CloudHost247\Blockonomics\Bridge::reset();
+}
+
+T::section('Bridge::ensureSeeded backfills BCH on an already-seeded store');
+CloudHost247\Blockonomics\Bridge::reset();
+$pdoOld = new PDO('sqlite::memory:');
+$oldStore = new PdoStore($pdoOld);
+$oldStore->ensureSchema();
+$oldStore->set(Governance::KEY_GATEWAY, '1');
+$oldStore->set(Governance::KEY_BTC, '1');
+$oldStore->set(Governance::KEY_SEEDED, date('c'));
+CloudHost247\Blockonomics\Bridge::$storeFactory = function () use ($oldStore) { return $oldStore; };
+try {
+    $matrix = CloudHost247\Blockonomics\Bridge::availableCurrencies([
+        'ApiKey' => 'k', 'btcEnabled' => 'on', 'bchEnabled' => 'on',
+    ]);
+    T::ok('upgrade keeps a working BCH install working', $matrix['bch']);
+    T::ok('btc unaffected by the upgrade', $matrix['btc']);
+    CloudHost247\Blockonomics\Bridge::assertCurrencyAllowed('bch');
+    T::ok('bch payable after backfill', true);
+} finally {
+    CloudHost247\Blockonomics\Bridge::$storeFactory = null;
+    CloudHost247\Blockonomics\Bridge::reset();
+}
+
+/* ------------------------------------------------- BCH under governance -- */
+
+T::section('BCH readiness (same account + API key as BTC — spec §34)');
+list($ok, $why) = Policy::bchReadiness(['api_key' => '']);
+T::ok('bch blocked without key', !$ok);
+T::ok('bch reason mentions API key', strpos($why, 'API key') !== false);
+list($ok,) = Policy::bchReadiness(['api_key' => 'bk_live_x']);
+T::ok('bch ready with key', $ok);
+list($ok,) = Policy::currencyReadiness('bch', ['api_key' => 'k']);
+T::ok('dispatcher routes bch', $ok);
+list($ok,) = Policy::currencyReadiness('btc', ['api_key' => 'k']);
+T::ok('dispatcher routes btc', $ok);
+list($ok,) = Policy::currencyReadiness('usdt', [
+    'usdt_address' => '0x' . str_repeat('a', 40), 'usdt_network' => 'ethereum', 'etherscan_api_key' => 'E',
+]);
+T::ok('dispatcher routes usdt', $ok);
+list($ok, $why) = Policy::currencyReadiness('doge', ['api_key' => 'k']);
+T::ok('dispatcher refuses unknown currency', !$ok);
+T::ok('unknown currency reason given', $why !== '');
+
+T::section('BCH server-side enforcement (spec §16)');
+$bchOn  = ['gateway_enabled' => true, 'btc_enabled' => false, 'bch_enabled' => true, 'usdt_enabled' => false];
+$bchOff = ['gateway_enabled' => true, 'btc_enabled' => true, 'bch_enabled' => false, 'usdt_enabled' => false];
+Policy::assertPaymentAllowed($bchOn, 'bch');
+T::ok('bch allowed when on', true);
+T::throws('bch refused when its own flag is off', function () use ($bchOff) {
+    Policy::assertPaymentAllowed($bchOff, 'bch');
+}, 'CloudHost247\\Blockonomics\\PaymentUnavailableException');
+T::throws('bch refused when master is off', function () use ($bchOn) {
+    Policy::assertPaymentAllowed(array_merge($bchOn, ['gateway_enabled' => false]), 'bch');
+}, 'CloudHost247\\Blockonomics\\PaymentUnavailableException');
+T::throws('uppercase/unknown code still refused', function () use ($bchOn) {
+    Policy::assertPaymentAllowed($bchOn, 'ltc');
+}, 'CloudHost247\\Blockonomics\\PaymentUnavailableException');
+
+T::section('BCH legacy seeding (spec §31)');
+list($govB, $storeB) = chs_gov();
+$govB->seedFromLegacy([
+    'ApiKey' => 'bk_live_legacy', 'btcEnabled' => '', 'bchEnabled' => 'on', 'usdtEnabled' => '',
+], 7, 'ipx');
+$sB = $govB->state();
+T::ok('seed adopts bch on', $sB['bch_enabled']);
+T::ok('bch-only legacy install keeps master on', $sB['gateway_enabled']);
+T::ok('btc stays off', !$sB['btc_enabled']);
+list($govB2,) = chs_gov();
+$govB2->seedFromLegacy(['ApiKey' => 'k', 'btcEnabled' => 'on'], 1);
+T::ok('absent legacy bchEnabled seeds closed', !$govB2->state()['bch_enabled']);
+list($govB3,) = chs_gov();
+$govB3->seedFromLegacy(['ApiKey' => '', 'bchEnabled' => 'on'], 1);
+T::ok('bch-only install without key keeps master off', !$govB3->state()['gateway_enabled']);
+
+T::section('BCH backfill for stores seeded before BCH was governed');
+// Reproduce a pre-BCH governance store: seeded, but no bch keys at all.
+list($govL, $storeL) = chs_gov();
+$storeL->set(Governance::KEY_GATEWAY, '1');
+$storeL->set(Governance::KEY_BTC, '1');
+$storeL->set(Governance::KEY_USDT, '0');
+$storeL->set(Governance::KEY_CONF, '2');
+$storeL->set(Governance::KEY_NETWORK, '');
+$storeL->set(Governance::KEY_SEEDED, date('c'));
+T::ok('legacy-shaped store reads bch as off before backfill', !$govL->state()['bch_enabled']);
+T::ok('backfill runs', $govL->backfillBch(['bchEnabled' => 'on'], 5, 'iphash'));
+T::ok('backfill adopts the live legacy value', $govL->state()['bch_enabled']);
+T::ok('backfill does not disturb btc', $govL->state()['btc_enabled']);
+T::ok('backfill does not re-run', !$govL->backfillBch(['bchEnabled' => ''], 5, 'iphash'));
+T::ok('second backfill attempt cannot flip the flag', $govL->state()['bch_enabled']);
+$auditL = $storeL->auditList(10);
+T::eq('backfill audited', 'governance.bch_backfilled', $auditL[0]['action']);
+T::eq('backfill audit records actor', 5, (int) $auditL[0]['actor_id']);
+T::eq('backfill audit records new value', 'on', $auditL[0]['new_value']);
+// A store that had BCH off in legacy must stay off, not inherit a default.
+list($govL2, $storeL2) = chs_gov();
+$storeL2->set(Governance::KEY_GATEWAY, '1');
+$storeL2->set(Governance::KEY_BTC, '1');
+$storeL2->set(Governance::KEY_SEEDED, date('c'));
+$govL2->backfillBch(['bchEnabled' => ''], 0, '');
+T::ok('legacy bch off stays off', !$govL2->state()['bch_enabled']);
+// Fresh store: seeding owns it, backfill must stay out of the way.
+list($govL3,) = chs_gov();
+T::ok('backfill no-ops on an unseeded store', !$govL3->backfillBch(['bchEnabled' => 'on']));
+T::ok('unseeded store still fail-closed', !$govL3->state()['bch_enabled']);
+
+T::section('BCH save path: validation + audit (spec §28/§34)');
+list($govS, $storeS) = chs_gov();
+T::throws('enabling bch without api key rejected', function () use ($govS) {
+    $govS->save(['gateway_enabled' => true, 'bch_enabled' => true, 'effective_api_key' => ''], 1);
+}, 'InvalidArgumentException');
+T::ok('rejected save left bch off', !$govS->state()['bch_enabled']);
+$govS->save([
+    'gateway_enabled' => true, 'btc_enabled' => true, 'bch_enabled' => true,
+    'confirmations' => 2, 'effective_api_key' => 'k',
+], 11, 'iph');
+T::ok('bch persisted on', $govS->state()['bch_enabled']);
+$actions = array_column($storeS->auditList(50), 'action');
+T::ok('bch enable audited', in_array('bch.enabled', $actions, true));
+$countBefore = count($storeS->auditList(100));
+$govS->save([
+    'gateway_enabled' => true, 'btc_enabled' => true, 'bch_enabled' => false,
+    'confirmations' => 2, 'effective_api_key' => 'k',
+], 11, 'iph');
+$rows = $storeS->auditList(100);
+$fresh = array_slice($rows, 0, count($rows) - $countBefore);
+T::eq('turning bch off writes exactly one audit line', 1, count($fresh));
+T::eq('and it is bch.disabled', 'bch.disabled', $fresh[0]['action']);
+T::ok('bch now off', !$govS->state()['bch_enabled']);
+T::ok('btc untouched by the bch change', $govS->state()['btc_enabled']);
+
+T::section('Governed currency list stays in sync with the gateway');
+// getActiveCurrencies() now denies anything Policy does not model. If a
+// future upstream merge adds a coin to getSupportedCurrencies() without
+// adding it here, it would be silently unpayable — fail loudly instead.
+$gatewaySrc = file_get_contents(
+    (is_dir('/repo') ? '/repo' : dirname(__DIR__, 3)) . '/modules/gateways/blockonomics/blockonomics.php'
+);
+$supportedBlock = '';
+if (preg_match('/function getSupportedCurrencies\(\)(.*?)\n    \}/s', $gatewaySrc, $mm)) {
+    $supportedBlock = $mm[1];
+}
+T::ok('located getSupportedCurrencies()', $supportedBlock !== '');
+preg_match_all("/'code'\s*=>\s*'([a-z0-9]+)'/i", $supportedBlock, $codes);
+$gatewayCodes = $codes[1];
+T::ok('gateway advertises at least btc/bch/usdt', count($gatewayCodes) >= 3);
+$ungoverned = array_diff($gatewayCodes, Policy::CURRENCIES);
+T::eq('every gateway currency is governed', [], array_values($ungoverned));
+$orphan = array_diff(Policy::CURRENCIES, $gatewayCodes);
+T::eq('no governed currency the gateway cannot serve', [], array_values($orphan));
+
+T::section('Gateway on + every currency off must present as unavailable');
+$allOff = ['gateway_enabled' => true, 'btc_enabled' => false, 'bch_enabled' => false, 'usdt_enabled' => false];
+T::ok('no currency available', !Policy::anyCurrencyAvailable($allOff));
+T::ok('one currency is enough', Policy::anyCurrencyAvailable(array_merge($allOff, ['bch_enabled' => true])));
+T::ok('btc alone is enough', Policy::anyCurrencyAvailable(array_merge($allOff, ['btc_enabled' => true])));
+T::ok('usdt alone is enough', Policy::anyCurrencyAvailable(array_merge($allOff, ['usdt_enabled' => true])));
+T::ok('master off beats every currency on', !Policy::anyCurrencyAvailable(
+    ['gateway_enabled' => false, 'btc_enabled' => true, 'bch_enabled' => true, 'usdt_enabled' => true]));
+T::ok('empty/unknown state is unavailable', !Policy::anyCurrencyAvailable([]));
+
+CloudHost247\Blockonomics\Bridge::reset();
+$pdoAv = new PDO('sqlite::memory:');
+$avStore = new PdoStore($pdoAv);
+CloudHost247\Blockonomics\Bridge::$storeFactory = function () use ($avStore) { return $avStore; };
+try {
+    CloudHost247\Blockonomics\Bridge::state(['ApiKey' => 'k', 'btcEnabled' => 'on']);
+    T::ok('checkout available with btc on', CloudHost247\Blockonomics\Bridge::isCheckoutAvailable());
+    CloudHost247\Blockonomics\Bridge::governance()->flip(Governance::KEY_BTC, false, 1);
+    T::ok('master still reports on', CloudHost247\Blockonomics\Bridge::isGatewayEnabled());
+    T::ok('but checkout is unavailable with nothing payable',
+        !CloudHost247\Blockonomics\Bridge::isCheckoutAvailable());
 } finally {
     CloudHost247\Blockonomics\Bridge::$storeFactory = null;
     CloudHost247\Blockonomics\Bridge::reset();

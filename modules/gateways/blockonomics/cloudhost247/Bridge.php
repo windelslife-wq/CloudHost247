@@ -88,7 +88,11 @@ class Bridge
         $gov = self::governance();
         if (!$gov->hasBeenSeeded()) {
             $gov->seedFromLegacy($legacy, (int) $actorId, self::ipHash());
+            return;
         }
+        // Store seeded before BCH came under governance: import its legacy
+        // checkbox once so an install already taking BCH keeps taking it.
+        $gov->backfillBch($legacy, (int) $actorId, self::ipHash());
     }
 
     /** Effective governed state (after auto-seed when legacy is given). */
@@ -107,9 +111,19 @@ class Bridge
     }
 
     /**
+     * Master switch AND at least one payable currency. This is the check
+     * that decides whether checkout may be offered at all — `gateway on,
+     * every currency off` is unavailable, not an empty picker.
+     */
+    public static function isCheckoutAvailable(array $legacy = null)
+    {
+        return Policy::anyCurrencyAvailable(self::state($legacy));
+    }
+
+    /**
      * Currencies customers may actually be offered right now.
      *
-     * @return array<string,bool> e.g. ['btc'=>true,'usdt'=>false]
+     * @return array<string,bool> e.g. ['btc'=>true,'bch'=>false,'usdt'=>false]
      */
     public static function availableCurrencies(array $legacy = null)
     {
@@ -161,6 +175,7 @@ class Bridge
         try {
             $map = [
                 'btcEnabled'    => $state['btc_enabled'] ? 'on' : '',
+                'bchEnabled'    => !empty($state['bch_enabled']) ? 'on' : '',
                 'usdtEnabled'   => $state['usdt_enabled'] ? 'on' : '',
                 'Confirmations' => (string) (int) $state['confirmations'],
                 'NetworkType'   => (string) $state['usdt_network'],

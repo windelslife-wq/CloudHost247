@@ -432,7 +432,7 @@ function blockonomics_link($params)
     try {
         $legacy = getGatewayVariables('blockonomics');
         Bridge::ensureSeeded($legacy);
-        if (!Bridge::isGatewayEnabled()) {
+        if (!Bridge::isCheckoutAvailable()) {
             return '<div class="alert alert-warning" style="margin:0;">'
                 . 'Cryptocurrency payments are currently unavailable.</div>';
         }

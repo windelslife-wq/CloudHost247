@@ -28,6 +28,7 @@ $swiftChineseNo = '';
       <tbody>
       <?= $toggle('gateway_enabled', 'Blockonomics Gateway', 'Master switch — takes precedence over every currency below.', $st['gateway_enabled']) ?>
       <?= $toggle('btc_enabled', 'Bitcoin (BTC)', 'BTC payment creation against the live Blockonomics integration.', $st['btc_enabled']) ?>
+      <?= $toggle('bch_enabled', 'Bitcoin Cash (BCH)', 'BCH payment creation via the same Blockonomics account and API key.', $st['bch_enabled']) ?>
       <?= $toggle('usdt_enabled', 'Tether (USDT)', 'USDT (web3 checkout) against the configured receiving address.', $st['usdt_enabled']) ?>
       <tr>
         <td>USDT Network</td>
