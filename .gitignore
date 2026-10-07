@@ -27,3 +27,5 @@ modules/addons/domainbroker/storage/*
 !modules/addons/domainbroker/storage/.gitkeep
 modules/addons/digitalproducts/storage/*
 !modules/addons/digitalproducts/storage/.gitkeep
+modules/addons/cloudhost247_cart_recovery/node_modules
+__pycache__/
