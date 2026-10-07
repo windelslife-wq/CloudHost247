@@ -1,5 +1,5 @@
 <?php
-/** Phase 3 through Phase 8 core tests; library-backed ceremonies run separately. */
+/** Phase 3 through Phase 9 core tests; library-backed ceremonies run separately. */
 
 require_once dirname(__DIR__) . '/autoload.php';
 
@@ -9,6 +9,7 @@ use CloudHost247\Passkey\Core\Db;
 use CloudHost247\Passkey\Core\CredentialManagementRepository;
 use CloudHost247\Passkey\Core\ExternalIdentityLinkService;
 use CloudHost247\Passkey\Core\ExternalIdentityRepository;
+use CloudHost247\Passkey\Core\PasskeyMaintenanceService;
 use CloudHost247\Passkey\Core\PasskeyNotificationService;
 use CloudHost247\Passkey\Core\UserPreferencesRepository;
 use CloudHost247\Passkey\Core\Migrator;
@@ -24,6 +25,7 @@ use CloudHost247\Passkey\Core\PasskeyRateLimiter;
 use CloudHost247\Passkey\Core\PasskeyRecoveryGrantService;
 use CloudHost247\Passkey\Core\PasskeySecurityService;
 use CloudHost247\Passkey\Core\SecurityEventRepository;
+use CloudHost247\Passkey\Core\SettingsRepository;
 use CloudHost247\Passkey\Core\Schema;
 use CloudHost247\Passkey\Core\SessionBinding;
 use CloudHost247\Passkey\Core\UserHandleRepository;
@@ -1100,6 +1102,60 @@ $throws('Phase 8 refuses unsupported notification event types', InvalidArgumentE
 });
 $assert('Phase 8 notification envelopes contain no parallel session or contact architecture', !isset($_SESSION['uid']) && !isset($phase8Delivered[0]['email']) && !isset($phase8Delivered[0]['session_id']));
 
+// Phase 9 bounded retention and ephemeral-state maintenance.
+$phase9NowEpoch = time();
+$phase9OldTimestamp = gmdate('Y-m-d H:i:s', $phase9NowEpoch - (400 * 86400));
+$phase9ExpiredTimestamp = gmdate('Y-m-d H:i:s', $phase9NowEpoch - (25 * 3600));
+$phase9RecentTimestamp = gmdate('Y-m-d H:i:s', $phase9NowEpoch);
+$phase9OldEventId = $phase6Events->append([
+    'user_type' => 'client', 'user_id' => 9050,
+    'event_type' => 'authentication.failed', 'success' => 0,
+    'reason_code' => 'old_event', 'created_at' => $phase9OldTimestamp,
+]);
+$phase9RecentEventId = $phase6Events->append([
+    'user_type' => 'client', 'user_id' => 9050,
+    'event_type' => 'authentication.succeeded', 'success' => 1,
+    'reason_code' => 'recent_event', 'created_at' => $phase9RecentTimestamp,
+]);
+$phase9OldChallengeId = Db::insert('challenges', [
+    'challenge_hash' => hash('sha256', 'phase9-old-challenge'),
+    'user_type' => 'client', 'user_id' => 9050,
+    'challenge_type' => ChallengeRecord::ACTION_CONFIRMATION,
+    'action_code' => 'phase9.cleanup',
+    'session_binding_hash' => SessionBinding::currentHash(),
+    'rp_id' => 'example.test', 'origin' => 'https://example.test',
+    'expires_at' => $phase9ExpiredTimestamp, 'consumed_at' => null,
+    'created_at' => $phase9OldTimestamp,
+]);
+$phase9OldGrantId = Db::insert('reset_grants', [
+    'token_hash' => hash('sha256', 'phase9-old-grant'),
+    'user_type' => 'client', 'user_id' => 9050,
+    'session_binding_hash' => SessionBinding::currentHash(),
+    'challenge_id' => null,
+    'expires_at' => $phase9ExpiredTimestamp, 'consumed_at' => null,
+    'created_at' => $phase9OldTimestamp,
+]);
+$phase9OldRateId = Db::insert('rate_limits', [
+    'action' => 'phase9.cleanup',
+    'principal_hash' => hash('sha256', 'phase9-principal'),
+    'window_started_at' => $phase9OldTimestamp,
+    'hit_count' => 1, 'expires_at' => $phase9ExpiredTimestamp,
+    'created_at' => $phase9OldTimestamp, 'updated_at' => $phase9OldTimestamp,
+]);
+$phase9Maintenance = new PasskeyMaintenanceService(new SettingsRepository());
+$phase9MaintenanceResult = $phase9Maintenance->run($phase9NowEpoch, 50);
+$assert('Phase 9 purges only expired ephemeral rows and events beyond configured retention', $phase9MaintenanceResult['deleted']['challenges'] >= 1 && $phase9MaintenanceResult['deleted']['reset_grants'] >= 1 && $phase9MaintenanceResult['deleted']['rate_limits'] >= 1 && $phase9MaintenanceResult['deleted']['events'] >= 1 && Db::firstQuery('SELECT `id` FROM `' . Db::table('events') . '` WHERE `id` = ?', [$phase9OldEventId]) === null && Db::firstQuery('SELECT `id` FROM `' . Db::table('events') . '` WHERE `id` = ?', [$phase9RecentEventId]) !== null);
+$assert('Phase 9 maintenance preserves credentials, preferences, links, and recent audit history', Db::firstQuery('SELECT `id` FROM `' . Db::table('credentials') . '` WHERE `id` = ?', [$credentialIdInDb]) !== null && Db::firstQuery('SELECT `id` FROM `' . Db::table('user_preferences') . '` WHERE `user_type` = ? AND `user_id` = ?', ['client', $phase8IdentityId]) !== null && Db::firstQuery('SELECT `id` FROM `' . Db::table('external_identities') . '` WHERE `user_type` = ? AND `user_id` = ?', ['client', $phase7IdentityId]) !== null && Db::firstQuery('SELECT `id` FROM `' . Db::table('events') . '` WHERE `id` = ?', [$phase9RecentEventId]) !== null);
+$assert('Phase 9 maintenance returns bounded, redacted operational results', $phase9MaintenanceResult['batch_limit'] === 50 && $phase9MaintenanceResult['total_deleted'] === array_sum($phase9MaintenanceResult['deleted']) && !isset($phase9MaintenanceResult['ids']) && !isset($phase9MaintenanceResult['tokens']));
+$throws('Phase 9 rejects an unsafe maintenance batch limit', InvalidArgumentException::class, function () use ($phase9Maintenance, $phase9NowEpoch) {
+    $phase9Maintenance->run($phase9NowEpoch, 0);
+});
+Db::update('settings', ['setting_key' => 'event_retention_days'], ['setting_value' => '0', 'updated_at' => $phase9RecentTimestamp]);
+$throws('Phase 9 fails closed when an event-retention setting is outside the safe range', RuntimeException::class, function () use ($phase9Maintenance, $phase9NowEpoch) {
+    $phase9Maintenance->run($phase9NowEpoch, 50);
+});
+Db::update('settings', ['setting_key' => 'event_retention_days'], ['setting_value' => '365', 'updated_at' => $phase9RecentTimestamp]);
+
 $composerManifest = json_decode(file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 $assert('Composer manifest pins the audited WebAuthn library and an explicit PSR-7 adapter', isset($composerManifest['require']['web-auth/webauthn-lib'], $composerManifest['require']['nyholm/psr7']) && $composerManifest['require']['web-auth/webauthn-lib'] === '3.3.12' && $composerManifest['require']['nyholm/psr7'] === '^1.8');
 $assert('WebAuthn ceremony service is present but does not alter the WHMCS authentication flow', class_exists(WebAuthnService::class) && method_exists(WebAuthnService::class, 'finishRegistration') && method_exists(WebAuthnService::class, 'finishAuthentication'));
@@ -1124,6 +1180,7 @@ if ($failures === 0) {
     echo "PASSKEY_PHASE6_SECURITY_OK\n";
     echo "PASSKEY_PHASE7_EXTERNAL_IDENTITY_OK\n";
     echo "PASSKEY_PHASE8_NOTIFICATIONS_OK\n";
+    echo "PASSKEY_PHASE9_MAINTENANCE_OK\n";
 } else {
     echo "PASSKEY_PHASE3_CORE_FAILED\n";
     echo "PASSKEY_PHASE4_INTEGRATION_FAILED\n";

@@ -1,9 +1,9 @@
 {
   "name": "cloudhost247-passkey",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
-  "description": "Offline WebAuthn core, WHMCS handoff, identity controls, and Phase 8 notification checks",
+  "description": "Offline WebAuthn core, WHMCS handoff, identity controls, notifications, and Phase 9 maintenance checks",
   "scripts": {
     "test": "node tests/run.mjs && node tests/webauthn-integration.mjs",
     "lint": "node tests/lint.mjs"
