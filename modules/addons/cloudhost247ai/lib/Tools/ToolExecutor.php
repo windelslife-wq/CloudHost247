@@ -5,10 +5,12 @@
  *   kill-switch → tool exists & enabled → agent capability (per-tool grant
  *   list inside agent_capabilities table) → actor authority (Rbac) →
  *   client isolation (forced into SQL when the actor is a client) →
- *   parameter validation → redaction → call → audit → citation capture.
+ *   APPROVAL GATE (anything that is not READ needs an approved, unexpired,
+ *   argument-matched approval row) → parameter validation → redaction →
+ *   call → audit → citation capture.
  *
- * Unknown tools, missing grants and missing permission groups all fail
- * closed with REFUSED.
+ * Unknown tools, missing grants, missing permission groups and missing or
+ * mismatched approvals all fail closed with REFUSED.
  */
 
 namespace Ch247Ai\Tools;
@@ -23,6 +25,7 @@ use Ch247Ai\Core\Redaction;
 use Ch247Ai\Core\Settings;
 use Ch247Ai\Core\ValidationException;
 use Ch247Ai\Core\Ch247AiRefused;
+use Ch247Ai\Approval\ApprovalEngine;
 
 class ToolExecutor
 {
@@ -46,7 +49,7 @@ class ToolExecutor
      * @param int    $runId
      * @return ToolResult
      */
-    public static function execute($agentSlug, $toolName, array $args, $runId = 0)
+    public static function execute($agentSlug, $toolName, array $args, $runId = 0, $approvalId = 0)
     {
         $actorLabel = self::actorLabel();
         $context = [
@@ -54,9 +57,10 @@ class ToolExecutor
             'agent' => $agentSlug,
             'run_id' => (int) $runId,
             'actor' => $actorLabel,
+            'approval_id' => (int) $approvalId,
         ];
         try {
-            $result = self::doExecute($agentSlug, $toolName, $args, $runId);
+            $result = self::doExecute($agentSlug, $toolName, $args, $runId, $approvalId);
         } catch (ForbiddenException $e) {
             Audit::record(self::actorType(), Identity::adminId() ?: Identity::clientId() ?: 0, 'ai.tool.refused', [
                 'actor_label' => $actorLabel,
@@ -78,7 +82,7 @@ class ToolExecutor
         return $result;
     }
 
-    protected static function doExecute($agentSlug, $toolName, array $args, $runId)
+    protected static function doExecute($agentSlug, $toolName, array $args, $runId, $approvalId = 0)
     {
         if (!Settings::bool('service_enabled', true) || Settings::bool('kill_switch', false)) {
             throw new ForbiddenException('The AI service is disabled or the kill switch is active.');
@@ -92,6 +96,16 @@ class ToolExecutor
         }
         if (!self::actorMay($tool)) {
             throw new ForbiddenException('You do not have permission to run this tool.');
+        }
+
+        // Approval gate. Reads pass straight through; everything else needs a
+        // human-approved row whose arguments digest-match this call.
+        if (ApprovalEngine::requiresApproval($tool->risk)) {
+            if (!Settings::bool('writes_enabled', false)) {
+                throw new ForbiddenException('CONFIGURATION_REQUIRED: write execution is disabled for this installation.');
+            }
+            ApprovalEngine::assertExecutable($approvalId, $tool->risk);
+            ApprovalEngine::assertArgumentsMatch($approvalId, $args);
         }
 
         $args = Redaction::clean($args);

@@ -84,11 +84,11 @@ class AgentRegistry
             ),
             new AgentDefinition(
                 'resolution_pro',
-                'Resolution Pro (draft-only)',
-                'Drafts support ticket replies for human approval. Drafts are stored, never sent; a human sends them.',
+                'Resolution Pro',
+                'Drafts support ticket replies and proposes them for approval. Nothing reaches a customer until an administrator approves it; the approved text is then posted verbatim.',
                 'on_demand',
-                ['read_tickets', 'read_clients', 'read_client_details', 'read_services', 'read_knowledge'],
-                'You draft support replies. Every factual claim about the customer must cite a tool result. Drafts are only saved for review.'
+                ['read_tickets', 'read_clients', 'read_client_details', 'read_services', 'read_knowledge', 'write_ticket_reply', 'write_ticket_note', 'write_ticket_status'],
+                'You draft support replies. Every factual claim about the customer must cite a tool result. You never post directly: you propose, a human approves, and the approved text is posted unchanged.'
             ),
             new AgentDefinition(
                 'dns_domain_agent',
@@ -117,10 +117,10 @@ class AgentRegistry
             new AgentDefinition(
                 'collections_agent',
                 'Collections Agent',
-                'Identifies overdue invoices and drafts dunning communications for approval. Never sends anything itself.',
+                'Identifies overdue invoices and proposes reminders for approval. It never moves money and never marks anything paid.',
                 'scheduled',
-                ['read_invoices', 'read_clients', 'read_client_details', 'read_payments'],
-                'You identify overdue balances and draft reminder texts. Sending is always a human decision.'
+                ['read_invoices', 'read_clients', 'read_client_details', 'read_payments', 'write_invoice_reminder'],
+                'You identify overdue balances and propose reminder sends. Sending is always a human decision. You have no ability to record a payment, apply credit or alter an invoice.'
             ),
             new AgentDefinition(
                 'customer_intelligence',

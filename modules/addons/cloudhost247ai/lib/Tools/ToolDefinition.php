@@ -30,7 +30,17 @@ class ToolDefinition
     /** @var bool may a client-scoped session call this tool (its reader MUST force client_id in SQL) */
     public $clientBound;
 
-    public function __construct($name, $permission, $risk, $description, array $params, callable $fn, array $dataSource = [], $clientBound = false)
+    /**
+     * Post-write confirmation: function (array $args, array $ctx, array $result) : array
+     * returning ['verified' => bool, 'note' => string]. Required for any tool
+     * whose risk is not READ — a write with no way to confirm it landed may
+     * not claim success (brief §29).
+     *
+     * @var callable|null
+     */
+    public $verify;
+
+    public function __construct($name, $permission, $risk, $description, array $params, callable $fn, array $dataSource = [], $clientBound = false, callable $verify = null)
     {
         if (!preg_match('/^[a-z][a-z0-9_.]{2,60}$/', $name)) {
             throw new Ch247AiException('Invalid tool name: ' . $name);
@@ -43,6 +53,7 @@ class ToolDefinition
         $this->fn = $fn;
         $this->dataSource = $dataSource;
         $this->clientBound = (bool) $clientBound;
+        $this->verify = $verify;
     }
     public function schema()
     {

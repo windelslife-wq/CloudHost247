@@ -160,6 +160,17 @@ class AdminPortal
                 \Ch247Ai\Briefing\BriefingComposer::compose();
                 $this->success = 'Briefing composed. See it on the dashboard.';
                 return;
+            case 'execute_approval':
+                if (!Rbac::adminCan(Rbac::AI_APPROVE)) {
+                    throw new \Ch247Ai\Core\ForbiddenException('You need the AI approve permission.');
+                }
+                $outcome = \Ch247Ai\Approval\ApprovalExecutor::run((int) ($_POST['approval_id'] ?? 0));
+                $this->success = ($outcome['ok']
+                    ? 'Executed and verified. '
+                    : 'NOT APPLIED — the action did not complete and nothing is being claimed. ')
+                    . $outcome['note'];
+                break;
+
             case 'decide_approval':
                 if (!Rbac::adminCan(Rbac::AI_APPROVE)) {
                     throw new \Ch247Ai\Core\ForbiddenException('You need the AI approve permission.');
@@ -225,7 +236,7 @@ class AdminPortal
                 Settings::put($key, Validator::clip(trim((string) $_POST[$key]), 250));
             }
         }
-        $bools = ['copilot_enabled', 'knowledge_enabled', 'briefings_enabled', 'redact_pii'];
+        $bools = ['copilot_enabled', 'knowledge_enabled', 'briefings_enabled', 'redact_pii', 'writes_enabled'];
         foreach ($bools as $key) {
             Settings::put($key, !empty($_POST[$key]) ? '1' : '0');
         }
@@ -379,7 +390,7 @@ class AdminPortal
         // Ground rules card.
         echo '<div class="panel panel-default"><div class="panel-heading"><strong>Operating guarantees</strong></div><div class="panel-body small">'
             . '<ul class="ch247ai-tight"><li>Answers are built from registered tool calls only — missing data fails closed, never invented.</li>'
-            . '<li>Phase 1 registers read tools only; there are no write paths to approve or execute.</li>'
+            . '<li>Writes execute only from an approved decision, bound to the exact arguments approved, and are re-read afterwards to confirm they landed.</li>'
             . '<li>Web-request hooks only record events; agents run from cron or explicit user action.</li>'
             . '<li>Every tool call and run lands in the hash-chained audit log; secrets are redacted before storage.</li>'
             . '<li>Model provider: ' . ($configured ? '<span class="label label-success">configured</span>' : '<span class="label label-warning">not configured (fail closed)</span>') . '</li></ul></div></div>';
@@ -492,7 +503,13 @@ class AdminPortal
                 $writes++;
             }
         }
-        echo '<div class="alert alert-' . ($writes === 0 ? 'success' : 'warning') . ' small">Write tools registered: <strong>' . (int) $writes . '</strong>' . ($writes === 0 ? ' — Phase 1 is read-only by construction.' : ' — approval gate applies to each.') . '</div>';
+        $writesOn = Settings::bool('writes_enabled', false);
+        echo '<div class="alert alert-' . ($writes === 0 ? 'success' : ($writesOn ? 'warning' : 'info')) . ' small">Write tools registered: <strong>' . (int) $writes . '</strong>'
+            . ($writes === 0
+                ? ' — this installation is read-only.'
+                : ' — each one requires an approved decision, is bound to the approved arguments, and is verified by re-reading the database afterwards. Execution master switch is <strong>'
+                  . ($writesOn ? 'ON' : 'OFF (nothing can execute)') . '</strong>.')
+            . '</div>';
     }
 
     protected function knowledge()
@@ -705,11 +722,39 @@ class AdminPortal
         $canApprove = Rbac::adminCan(Rbac::AI_APPROVE);
         echo '<h2>Decision inbox</h2>';
         $pending = Db::all('approvals', ['status' => 'pending'], 'id ASC', 100);
-        echo '<div class="alert alert-info small">Phase 1 registers no write tools, so nothing can create approval requests yet. The gate, expiry and decision flow below are live for Phase 2 (draft replies, dunning drafts).</div>';
+        $approved = Db::all('approvals', ['status' => 'approved'], 'id ASC', 100);
+
+        if (!$canApprove) {
+            echo '<div class="alert alert-warning small">You can see decisions here, but you need the AI approve permission to decide or execute one.</div>';
+        }
+        if (!Settings::bool('writes_enabled', false)) {
+            echo '<div class="alert alert-info small"><strong>Execution is switched off.</strong> Decisions can be recorded, but no approved action will run until <code>writes_enabled</code> is turned on in Settings.</div>';
+        }
+        echo '<div class="alert alert-warning small">Approving does not execute. An approved action waits here until someone presses <strong>Execute now</strong>, then the result is verified by re-reading the database — an action that cannot be confirmed is reported as failed, never as done.</div>';
+
+        if ($approved) {
+            echo '<h4>Approved — awaiting execution</h4>';
+            foreach ($approved as $row) {
+                echo '<div class="panel panel-success"><div class="panel-heading"><strong>' . ch247ai_pill('approved') . ' ' . $this->e($row['agent']) . ' → <code>' . ch247ai_h($row['tool']) . '</code> · risk ' . $this->e($row['risk']) . '</strong></div><div class="panel-body">'
+                    . '<p>' . $this->e((string) $row['reason']) . '</p>'
+                    . ch247ai_pre(json_decode((string) $row['arguments'], true) ?: [])
+                    . '<p class="small text-muted">Approved ' . ch247ai_dt($row['decided_at']) . ' UTC by admin #' . (int) $row['decided_by']
+                    . ' · arguments locked to digest <code>' . ch247ai_h(substr((string) $row['args_digest'], 0, 16)) . '…</code></p>';
+                if ($canApprove) {
+                    echo '<form method="post" class="form-inline">' . Csrf::field()
+                        . '<input type="hidden" name="ch247ai_action" value="execute_approval"><input type="hidden" name="approval_id" value="' . (int) $row['id'] . '">'
+                        . '<button class="btn btn-sm btn-primary">Execute now</button></form>';
+                }
+                echo '</div></div>';
+            }
+        }
+
         if ($pending === []) {
             echo '<div class="panel panel-default"><div class="panel-body text-muted">No pending decisions.</div></div>';
+            $this->approvalHistory();
             return;
         }
+        echo '<h4>Pending decision</h4>';
         foreach ($pending as $row) {
             echo '<div class="panel panel-default"><div class="panel-heading"><strong>' . ch247ai_pill('awaiting_approval') . ' ' . $this->e($row['agent']) . ' → <code>' . ch247ai_h($row['tool']) . '</code> · risk ' . $this->e($row['risk']) . '</strong></div><div class="panel-body">'
                 . '<p>' . $this->e((string) $row['reason']) . '</p>'
@@ -726,15 +771,34 @@ class AdminPortal
             }
             echo '</div></div>';
         }
-        // History
-        $recent = Db::query('SELECT * FROM ' . Db::t('approvals') . " WHERE status != 'pending' ORDER BY id DESC LIMIT 20");
-        if ($recent) {
-            echo '<h4>Recent decisions</h4><div class="table-responsive"><table class="table table-striped"><thead><tr><th>#</th><th>Agent / tool</th><th>Risk</th><th>Status</th><th>Decided</th><th>By admin</th></tr></thead><tbody>';
-            foreach ($recent as $row) {
-                echo '<tr><td>' . (int) $row['id'] . '</td><td>' . $this->e($row['agent']) . ' / <code>' . ch247ai_h($row['tool']) . '</code></td><td>' . $this->e($row['risk']) . '</td><td>' . ch247ai_pill($row['status']) . '</td><td>' . ch247ai_dt($row['decided_at']) . '</td><td>' . (int) $row['decided_by'] . '</td></tr>';
-            }
-            echo '</tbody></table></div>';
+        $this->approvalHistory();
+    }
+
+    /** Decision history, including what actually happened on execution. */
+    protected function approvalHistory()
+    {
+        $recent = Db::query('SELECT * FROM ' . Db::t('approvals') . " WHERE status NOT IN ('pending','approved') ORDER BY id DESC LIMIT 20");
+        if (!$recent) {
+            return;
         }
+        echo '<h4>Recent decisions</h4><div class="table-responsive"><table class="table table-striped"><thead><tr>'
+            . '<th>#</th><th>Agent / tool</th><th>Risk</th><th>Status</th><th>Verified</th><th>What was confirmed</th><th>Decided</th><th>By admin</th></tr></thead><tbody>';
+        foreach ($recent as $row) {
+            $status = (string) $row['status'];
+            $verified = isset($row['verified']) ? (int) $row['verified'] : 0;
+            if ($status === 'executed' && $verified === 1) {
+                $badge = '<span class="label label-success">verified</span>';
+            } elseif ($status === 'failed') {
+                $badge = '<span class="label label-danger">not applied</span>';
+            } else {
+                $badge = '<span class="text-muted">—</span>';
+            }
+            echo '<tr><td>' . (int) $row['id'] . '</td><td>' . $this->e($row['agent']) . ' / <code>' . ch247ai_h($row['tool']) . '</code></td><td>'
+                . $this->e($row['risk']) . '</td><td>' . ch247ai_pill($status) . '</td><td>' . $badge . '</td><td class="small">'
+                . $this->e((string) (isset($row['verification_note']) ? $row['verification_note'] : '')) . '</td><td>'
+                . ch247ai_dt($row['decided_at']) . '</td><td>' . (int) $row['decided_by'] . '</td></tr>';
+        }
+        echo '</tbody></table></div>';
     }
 
     protected function runs()
@@ -899,6 +963,7 @@ class AdminPortal
             . '<label class="checkbox-inline"><input type="checkbox" name="copilot_enabled" ' . (Settings::bool('copilot_enabled', true) ? 'checked' : '') . '> Copilot enabled</label> '
             . '<label class="checkbox-inline"><input type="checkbox" name="knowledge_enabled" ' . (Settings::bool('knowledge_enabled', true) ? 'checked' : '') . '> Knowledge search enabled</label> '
             . '<label class="checkbox-inline"><input type="checkbox" name="briefings_enabled" ' . (Settings::bool('briefings_enabled', true) ? 'checked' : '') . '> Daily briefings enabled</label> '
+            . '<label class="checkbox-inline" title="Master switch for executing approved write actions"><input type="checkbox" name="writes_enabled" ' . (Settings::bool('writes_enabled', false) ? 'checked' : '') . '> <strong>Allow approved actions to execute</strong></label> '
             . '<label class="checkbox-inline"><input type="checkbox" name="redact_pii" ' . (Settings::bool('redact_pii', true) ? 'checked' : '') . '> Redact PII in stored context</label>'
             . '<div class="form-group" style="margin-top:10px"><label>Briefing hour (UTC)</label><input class="form-control" name="briefing_hour" value="' . (int) Settings::int('briefing_hour', 6) . '"></div>'
             . '<div class="form-group"><label>Event max attempts</label><input class="form-control" name="event_max_attempts" value="' . (int) Settings::int('event_max_attempts', 5) . '"></div>'

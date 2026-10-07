@@ -18,6 +18,9 @@ class Settings
         'knowledge_enabled' => '1',
         'briefings_enabled' => '1',
         'briefing_hour' => '6',
+        // Master switch for write execution. Default OFF: a fresh install
+        // can observe and propose, but cannot act until an operator opts in.
+        'writes_enabled' => '0',
         'board_enabled' => '1',
         'board_weekly_dow' => '1',
         'board_monthly_dom' => '1',
@@ -83,7 +86,10 @@ class Settings
         if (in_array($key, self::SECRET_KEYS, true)) {
             throw new Ch247AiException('Secrets are environment-only and never stored in the database.');
         }
-        if (!array_key_exists($key, self::DEFAULTS)) {
+        // Per-tool kill switches are dynamic by nature: one row per
+        // registered tool, named tool_disabled_<tool>. Everything else must
+        // be a declared key so typos cannot create dead settings.
+        if (!array_key_exists($key, self::DEFAULTS) && strpos((string) $key, \Ch247Ai\Tools\Bootstrap::DISABLE_PREFIX) !== 0) {
             throw new Ch247AiException('Unknown setting: ' . $key);
         }
         if (!Db::tableExists('settings')) {

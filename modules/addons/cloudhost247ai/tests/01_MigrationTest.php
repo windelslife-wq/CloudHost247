@@ -56,16 +56,24 @@ T::eq('prompt v1 exists for every operable agent', count(AgentRegistry::availabl
 T::eq('roadmap seats get no prompt', 0, Db::count('prompt_versions', ['agent' => 'hr_assistant']));
 T::ok('tools table seeded from registry', Db::count('tools') >= 25);
 
-T::section('Phase 1 is read-only by construction');
-$writes = 0;
+T::section('Every registered tool obeys its risk class');
+// Phase 2 introduces write tools, so the old "there are no writes"
+// invariant is replaced by the one that has to hold as writes are added:
+// a non-READ tool is always gated, always verifiable, never client-facing.
 foreach (ToolRegistry::all() as $tool) {
-    if ($tool->risk !== 'READ') {
-        $writes++;
+    if ($tool->risk === 'READ') {
+        T::ok("read tool {$tool->name} declares a read.* permission",
+            strpos($tool->permission, 'read.') === 0);
+        continue;
     }
-}
-T::eq('zero write tools registered', 0, $writes);
-foreach (ToolRegistry::all() as $tool) {
-    T::ok("tool {$tool->name} risk is READ", $tool->risk === 'READ');
+    T::ok("write tool {$tool->name} requires approval",
+        \Ch247Ai\Approval\ApprovalEngine::requiresApproval($tool->risk));
+    T::ok("write tool {$tool->name} has a verification step", is_callable($tool->verify));
+    T::ok("write tool {$tool->name} declares an ai.write.* permission",
+        strpos($tool->permission, 'ai.write.') === 0);
+    T::ok("write tool {$tool->name} is never client-bound", $tool->clientBound === false);
+    T::ok("write tool {$tool->name} uses a known risk class",
+        in_array($tool->risk, \Ch247Ai\Approval\ApprovalEngine::RISK_LADDER, true));
 }
 
 T::section('Table prefixes never collide with WHMCS or sibling modules');

@@ -1,7 +1,7 @@
 # CloudHost247 AI Control Plane — module runbook
 
 **Module:** `modules/addons/cloudhost247ai` (namespace `Ch247Ai\`, tables `mod_ch247ai_*`)
-**Status:** Phase 1 (read-only) + Executive Board — implemented per `docs/AI_PLATFORM_PLAN.md`
+**Status:** Phase 1 (read-only) + Executive Board + gated write execution — implemented per `docs/AI_PLATFORM_PLAN.md`
 **Scope decision:** ONE shared control plane. No per-agent chatbots, no duplicated AI stacks.
 
 ---
@@ -23,7 +23,7 @@ A single AI operating layer over the WHMCS install:
 * a **model router** that fails closed with `CONFIGURATION_REQUIRED` when no
   provider is configured — it never invents answers.
 
-## 2. What it is NOT (Phase 1)
+## 2. What it is NOT
 
 * No write tools. Nothing can modify WHMCS records through the AI layer.
 * No model calls inside web-request hooks (hard-refused by `AgentRuntime`).
@@ -128,8 +128,8 @@ hold references, redacted arguments and digests.
 
 ```
 cd modules/addons/cloudhost247ai
-node tests/lint.mjs    # load every shipped PHP file (49 files)
-node tests/run.mjs     # 603 assertions, 11 suites
+node tests/lint.mjs    # load every shipped PHP file (53 files)
+node tests/run.mjs     # 744 assertions, 12 suites
 ```
 
 `node_modules` is shared with `cloudhost247services`; if it is missing, run
@@ -227,10 +227,71 @@ unrecognised risk label fails closed into requiring approval. The ladder still
 distinguishes the classes for reporting, but nothing above a read executes
 without an approved row.
 
-(Phase 1 still registers zero write tools, so nothing reaches the gate yet —
-the policy is set so that it holds the moment the first write tool lands.)
+Four write tools now exist (§14), so the gate is load-bearing rather than
+theoretical.
 
-## 13. Operations runbook
+## 13. Write execution
+
+The acting half of the loop. Four write tools exist; each one mutates through
+the WHMCS API (never hand-written SQL, so WHMCS hooks, logging and
+notifications fire exactly as they would for a human agent), and each one is
+re-read afterwards to confirm it happened.
+
+| Tool | Risk | Confirmed by |
+|---|---|---|
+| `write_ticket_reply` | WRITE_CUSTOMER_VISIBLE | reply count on the ticket increased |
+| `write_ticket_note` | WRITE_LOW | note count on the ticket increased |
+| `write_ticket_status` | WRITE_LOW | status reads back as the requested value |
+| `write_invoice_reminder` | WRITE_CUSTOMER_VISIBLE | email log for the client gained a row |
+
+**Deliberately absent:** marking an invoice paid, applying credit, refunds,
+editing invoice lines, suspending or terminating services. Payment state is
+set by a gateway callback that verified funds, never by an assistant — a
+"mark as paid" tool is a licence to fabricate a receipt. Availability actions
+need an unsuspend path and a blast-radius check this module does not have.
+
+### The execution path
+
+`ApprovalExecutor::run($approvalId)` is the only way a write runs:
+
+1. **Claim** — one conditional `UPDATE … WHERE status = 'approved'` flips the
+   row to `executing`. A second caller loses the race, so a double-submitted
+   form or a retried job cannot send a customer two copies.
+2. **Rebind** — arguments are re-read *from the approval row*, never taken
+   from the caller. The executed action is the approved action by
+   construction.
+3. **Execute** — through `ToolExecutor`, so the kill switch, agent grants,
+   RBAC, validation, redaction and audit all still apply.
+4. **Verify** — the tool's `verify` closure re-reads the database. A tool
+   with no verify closure is refused outright.
+5. **Record** — outcome, verification note and digest land on the approval
+   row and in the hash-chained audit log.
+
+**An unverified write is recorded as `failed`.** If the WHMCS API returns a
+success envelope but the row never appears, the platform reports *not
+applied* and says what it checked. This is the behaviour the test suite
+exercises hardest: a deliberately lying API fake that claims success and
+writes nothing must never produce a success.
+
+### Argument binding
+
+`approvals.args_digest` holds a canonical SHA-256 of the arguments at request
+time (keys sorted recursively, values compared as strings, so `401` and
+`"401"` bind identically). Execution refuses on any mismatch, so an approval
+for "reply to ticket 401 with this text" cannot be spent on ticket 999 or on
+different text. Rows predating the column have a NULL digest and fail closed.
+
+### Switches
+
+* `writes_enabled` — master switch, **defaults OFF**. A fresh install can
+  observe and propose but cannot act until an operator opts in.
+* `tool_disabled_<tool>` — per-tool kill switch. (This had an off-by-one that
+  made it silently never match; fixed, and now covered by a test.)
+* Approving is **not** executing. An approved action waits for an explicit
+  *Execute now*; nothing fires on a timer.
+
+
+## 14. Operations runbook
 
 * **Copilot answered with "cannot verify"** — expected when no tool produced
   evidence. Check the Tools page (tool enabled?), the admin's permission
