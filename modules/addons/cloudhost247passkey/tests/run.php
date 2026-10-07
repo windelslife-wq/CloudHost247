@@ -1,5 +1,5 @@
 <?php
-/** Phase 3 through Phase 9 core tests; library-backed ceremonies run separately. */
+/** Phase 3 through Phase 10 core tests; library-backed ceremonies run separately. */
 
 require_once dirname(__DIR__) . '/autoload.php';
 
@@ -19,6 +19,7 @@ use CloudHost247\Passkey\Core\PasskeyRegistrationCeremonyInterface;
 use CloudHost247\Passkey\Core\PasskeyIntegrationRegistry;
 use CloudHost247\Passkey\Core\PasskeyLoginCoordinator;
 use CloudHost247\Passkey\Core\PasskeyLoginPolicy;
+use CloudHost247\Passkey\Core\PasskeyPolicyAdministrationService;
 use CloudHost247\Passkey\Core\IdentityPolicyRepository;
 use CloudHost247\Passkey\Core\PasskeyPolicyResolver;
 use CloudHost247\Passkey\Core\PasskeyRateLimiter;
@@ -32,6 +33,7 @@ use CloudHost247\Passkey\Core\UserHandleRepository;
 use CloudHost247\Passkey\Core\WebAuthnClientData;
 use CloudHost247\Passkey\Core\WebAuthnConfig;
 use CloudHost247\Passkey\Core\WebAuthnService;
+use CloudHost247\Passkey\Integration\CallbackPasskeyPolicyAdminAuthorization;
 use CloudHost247\Passkey\Integration\CallbackWhmcsAuthBridge;
 use CloudHost247\Passkey\Integration\CallbackWhmcsIdentityProvider;
 use CloudHost247\Passkey\Integration\ExternalIdentityClaims;
@@ -1156,6 +1158,73 @@ $throws('Phase 9 fails closed when an event-retention setting is outside the saf
 });
 Db::update('settings', ['setting_key' => 'event_retention_days'], ['setting_value' => '365', 'updated_at' => $phase9RecentTimestamp]);
 
+// Phase 10 explicitly authorized administrator policy management.
+$phase10Administrator = new WhmcsIdentity('admin', 7);
+$phase10Target = new WhmcsIdentity('client', $phase6DisabledIdentity);
+$phase10Provider = new CallbackWhmcsIdentityProvider(function ($resolvedType, $resolvedId) use ($phase6DisabledIdentity) {
+    if ($resolvedType === 'admin' && $resolvedId === 7) {
+        return ['user_type' => $resolvedType, 'user_id' => $resolvedId, 'loginable' => true];
+    }
+    if ($resolvedType === 'client' && $resolvedId === $phase6DisabledIdentity) {
+        return ['user_type' => $resolvedType, 'user_id' => $resolvedId, 'loginable' => true];
+    }
+    return null;
+});
+$phase10AuthorizationCalls = [];
+$phase10Authorization = new CallbackPasskeyPolicyAdminAuthorization(function ($administrator, $target, $operation) use (&$phase10AuthorizationCalls) {
+    $phase10AuthorizationCalls[] = [$administrator->userType(), $administrator->userId(), $target->userType(), $target->userId(), $operation];
+    return $administrator->userType() === 'admin' && $target->userType() === 'client';
+});
+$phase10Policies = new PasskeyPolicyAdministrationService(
+    $phase10Provider,
+    $phase10Authorization,
+    null,
+    $phase6Events
+);
+$phase10Required = $phase10Policies->setPolicy(
+    $phase10Administrator,
+    $phase10Target,
+    UserPolicyRecord::REQUIRED,
+    null,
+    'enforce_passkey',
+    ['metadata' => ['action_code' => 'admin_review']]
+);
+$phase10RequiredRow = Db::firstQuery('SELECT * FROM `' . Db::table('user_policies') . '` WHERE `user_type` = ? AND `user_id` = ?', ['client', $phase6DisabledIdentity]);
+$assert('Phase 10 changes an existing identity policy only through an authorized WHMCS administrator', $phase10Required['status'] === 'updated' && $phase10Required['policy'] === UserPolicyRecord::REQUIRED && $phase10RequiredRow['policy'] === UserPolicyRecord::REQUIRED && (int) $phase10RequiredRow['updated_by_admin_id'] === 7 && $phase10Required['event_id'] > 0);
+$phase10TemporaryUntil = gmdate('Y-m-d H:i:s', time() + 3600);
+$phase10Temporary = $phase10Policies->setPolicy(
+    $phase10Administrator,
+    $phase10Target,
+    UserPolicyRecord::TEMPORARILY_DISABLED,
+    $phase10TemporaryUntil,
+    'recovery_pending'
+);
+$assert('Phase 10 temporary policy changes require a bounded future expiry and remain an explicit deny state', $phase10Temporary['policy'] === UserPolicyRecord::TEMPORARILY_DISABLED && $phase10Temporary['temporary_disabled_until'] === $phase10TemporaryUntil && $phase6Resolver->effectivePolicy('client', $phase6DisabledIdentity) === UserPolicyRecord::TEMPORARILY_DISABLED);
+$phase10Cleared = $phase10Policies->clearPolicy($phase10Administrator, $phase10Target, 'recovery_complete');
+$assert('Phase 10 can clear an override back to the audience policy without deleting its scoped row', $phase10Cleared['policy'] === UserPolicyRecord::DEFAULT_POLICY && $phase10Cleared['temporary_disabled_until'] === null && Db::firstQuery('SELECT `id` FROM `' . Db::table('user_policies') . '` WHERE `user_type` = ? AND `user_id` = ?', ['client', $phase6DisabledIdentity]) !== null && $phase6Resolver->effectivePolicy('client', $phase6DisabledIdentity) === UserPolicyRecord::OPTIONAL);
+$assert('Phase 10 policy changes are auditable without policy secrets or request data', count($phase10AuthorizationCalls) === 3 && $phase10AuthorizationCalls[0][4] === PasskeyPolicyAdministrationService::SET_OPERATION && $phase10AuthorizationCalls[2][4] === PasskeyPolicyAdministrationService::CLEAR_OPERATION && Db::count('events', ['event_type' => 'policy.changed']) === 3 && strpos(json_encode(Db::query('SELECT `metadata_json` FROM `' . Db::table('events') . '` WHERE `event_type` = \'policy.changed\'')), 'session_id') === false);
+$throws('Phase 10 refuses policy changes from a non-administrator identity', RuntimeException::class, function () use ($phase10Policies, $phase10Target) {
+    $phase10Policies->setPolicy(new WhmcsIdentity('client', 91), $phase10Target, UserPolicyRecord::OPTIONAL, null, 'invalid_actor');
+});
+$throws('Phase 10 refuses an unauthorized administrator policy operation', RuntimeException::class, function () use ($phase10Target, $phase10Provider, $phase6Events) {
+    $authorization = new CallbackPasskeyPolicyAdminAuthorization(function () {
+        return false;
+    });
+    $service = new PasskeyPolicyAdministrationService($phase10Provider, $authorization, null, $phase6Events);
+    $service->setPolicy(new WhmcsIdentity('admin', 7), $phase10Target, UserPolicyRecord::OPTIONAL, null, 'not_authorized');
+});
+$throws('Phase 10 refuses expired temporary policy input', InvalidArgumentException::class, function () use ($phase10Policies, $phase10Administrator, $phase10Target) {
+    $phase10Policies->setPolicy($phase10Administrator, $phase10Target, UserPolicyRecord::TEMPORARILY_DISABLED, '2020-01-01 00:00:00', 'expired_override');
+});
+$throws('Phase 10 rejects unsupported policy values', InvalidArgumentException::class, function () use ($phase10Policies, $phase10Administrator, $phase10Target) {
+    $phase10Policies->setPolicy($phase10Administrator, $phase10Target, 'always_bypass', null, 'invalid_policy');
+});
+$throws('Phase 10 rejects secret audit metadata and rolls back the policy mutation', InvalidArgumentException::class, function () use ($phase10Policies, $phase10Administrator, $phase10Target) {
+    $phase10Policies->setPolicy($phase10Administrator, $phase10Target, UserPolicyRecord::REQUIRED, null, 'secret_metadata', ['metadata' => ['session_id' => 'raw-session']]);
+});
+$phase10PolicyAfterFailure = Db::firstQuery('SELECT `policy`, `temporary_disabled_until` FROM `' . Db::table('user_policies') . '` WHERE `user_type` = ? AND `user_id` = ?', ['client', $phase6DisabledIdentity]);
+$assert('Phase 10 rejected policy operations do not create a parallel session or mutate the prior scoped policy', !isset($_SESSION['uid']) && $phase10PolicyAfterFailure['policy'] === UserPolicyRecord::DEFAULT_POLICY && $phase10PolicyAfterFailure['temporary_disabled_until'] === null);
+
 $composerManifest = json_decode(file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 $assert('Composer manifest pins the audited WebAuthn library and an explicit PSR-7 adapter', isset($composerManifest['require']['web-auth/webauthn-lib'], $composerManifest['require']['nyholm/psr7']) && $composerManifest['require']['web-auth/webauthn-lib'] === '3.3.12' && $composerManifest['require']['nyholm/psr7'] === '^1.8');
 $assert('WebAuthn ceremony service is present but does not alter the WHMCS authentication flow', class_exists(WebAuthnService::class) && method_exists(WebAuthnService::class, 'finishRegistration') && method_exists(WebAuthnService::class, 'finishAuthentication'));
@@ -1181,6 +1250,7 @@ if ($failures === 0) {
     echo "PASSKEY_PHASE7_EXTERNAL_IDENTITY_OK\n";
     echo "PASSKEY_PHASE8_NOTIFICATIONS_OK\n";
     echo "PASSKEY_PHASE9_MAINTENANCE_OK\n";
+    echo "PASSKEY_PHASE10_POLICY_ADMIN_OK\n";
 } else {
     echo "PASSKEY_PHASE3_CORE_FAILED\n";
     echo "PASSKEY_PHASE4_INTEGRATION_FAILED\n";
