@@ -65,6 +65,13 @@ class Events
     const HOSTING_RESTORED        = 'hosting.restored';
     const HOSTING_TERMINATED      = 'hosting.terminated';
 
+    const JOB_QUEUED              = 'job.queued';
+    const JOB_STARTED             = 'job.started';
+    const JOB_COMPLETED           = 'job.completed';
+    const JOB_FAILED              = 'job.failed';
+    const JOB_RETRIED             = 'job.retried';
+    const JOB_DEAD                = 'job.dead';
+
     const APP_UPDATE_AVAILABLE    = 'application.update_available';
     const CIRCUIT_BREAKER_OPEN    = 'recovery.circuit_breaker_open';
 

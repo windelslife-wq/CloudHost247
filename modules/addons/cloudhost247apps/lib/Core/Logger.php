@@ -154,6 +154,28 @@ class Logger
     }
 
     /**
+     * Mask secrets inside free text.
+     *
+     * Agent output, docker error messages and webhook bodies are strings, not
+     * arrays, so redact() cannot walk them. Anything shaped like
+     * `PASSWORD=…`, `"token": "…"` or `Bearer …` is replaced before the text is
+     * stored in a log line or shown in a console.
+     */
+    public static function redactText($text)
+    {
+        $text = (string) $text;
+        $keyPattern = "/([A-Za-z0-9_.\\-]*(?:password|passwd|secret|token|api[_-]?key|private[_-]?key|"
+            . "authorization|credential|access[_-]?key|encryption[_-]?key)[A-Za-z0-9_.\\-]*)"
+            . "([\"']?\\s*[:=]\\s*[\"']?)([^\\s\"',;}\\]]+)/i";
+        $text = preg_replace($keyPattern, '$1$2[redacted]', $text);
+        $text = preg_replace('/\b(Bearer|Basic|token)\s+[A-Za-z0-9._\-\/+=]{8,}/i', '$1 [redacted]', $text);
+        // Private key blocks: keep the markers, drop the material.
+        $text = preg_replace('/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/',
+            '-----BEGIN PRIVATE KEY-----[redacted]-----END PRIVATE KEY-----', $text);
+        return $text;
+    }
+
+    /**
      * Recursively remove secret-bearing keys. Values are replaced, never
      * partially revealed, so no log line can be assembled into a credential.
      */

@@ -41,7 +41,13 @@ class AgentClient
     const OP_METRICS          = 'metrics';
     const OP_HEALTH           = 'health';
     const OP_LOGS             = 'logs';
+    const OP_PREPARE_PATHS    = 'prepare_paths';
+    const OP_WRITE_FILES      = 'write_files';
+    const OP_PULL_IMAGES      = 'pull_images';
     const OP_COMPOSE_VALIDATE = 'compose_validate';
+    const OP_COMPOSE_UP       = 'compose_up';
+    const OP_APPLY_LIMITS     = 'apply_limits';
+    const OP_CONFIGURE_ROUTING = 'configure_routing';
     const OP_DEPLOY           = 'deploy';
     const OP_UPDATE           = 'update';
     const OP_START            = 'start';
@@ -57,13 +63,17 @@ class AgentClient
 
     const OPERATIONS = [
         self::OP_PING, self::OP_CAPABILITIES, self::OP_METRICS, self::OP_HEALTH, self::OP_LOGS,
-        self::OP_COMPOSE_VALIDATE, self::OP_DEPLOY, self::OP_UPDATE, self::OP_START, self::OP_STOP,
+        self::OP_PREPARE_PATHS, self::OP_WRITE_FILES, self::OP_PULL_IMAGES, self::OP_COMPOSE_VALIDATE,
+        self::OP_COMPOSE_UP, self::OP_APPLY_LIMITS, self::OP_CONFIGURE_ROUTING,
+        self::OP_DEPLOY, self::OP_UPDATE, self::OP_START, self::OP_STOP,
         self::OP_RESTART, self::OP_REMOVE, self::OP_BACKUP, self::OP_RESTORE, self::OP_SSL_INSTALL,
         self::OP_SSL_REVOKE, self::OP_RESOURCE_USAGE, self::OP_PRUNE,
     ];
 
     /** Operations that change state on the node. */
     const MUTATING = [
+        self::OP_PREPARE_PATHS, self::OP_WRITE_FILES, self::OP_PULL_IMAGES, self::OP_COMPOSE_UP,
+        self::OP_APPLY_LIMITS, self::OP_CONFIGURE_ROUTING,
         self::OP_DEPLOY, self::OP_UPDATE, self::OP_START, self::OP_STOP, self::OP_RESTART,
         self::OP_REMOVE, self::OP_BACKUP, self::OP_RESTORE, self::OP_SSL_INSTALL,
         self::OP_SSL_REVOKE, self::OP_PRUNE,
@@ -266,6 +276,8 @@ class AgentClient
     private function assertCapability(array $server, $operation)
     {
         $needsDocker = in_array($operation, [
+            self::OP_PREPARE_PATHS, self::OP_WRITE_FILES, self::OP_PULL_IMAGES, self::OP_COMPOSE_UP,
+            self::OP_APPLY_LIMITS, self::OP_CONFIGURE_ROUTING,
             self::OP_DEPLOY, self::OP_UPDATE, self::OP_START, self::OP_STOP, self::OP_RESTART,
             self::OP_REMOVE, self::OP_BACKUP, self::OP_RESTORE, self::OP_COMPOSE_VALIDATE,
             self::OP_LOGS, self::OP_RESOURCE_USAGE, self::OP_PRUNE,

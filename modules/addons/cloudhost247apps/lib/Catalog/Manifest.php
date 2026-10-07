@@ -322,7 +322,7 @@ class Manifest
     {
         $req = $this->get('requirements', []);
         $req = is_array($req) ? $req : [];
-        return [
+        $out = [
             'cpu_min' => max(1, (int) $this->pick($req, ['cpu_min', 'cpu', 'min_cpu'], 1)),
             'cpu_recommended' => max(1, (int) $this->pick($req, ['cpu_recommended', 'recommended_cpu'], 0))
                 ?: max(1, (int) $this->pick($req, ['cpu_min', 'cpu', 'min_cpu'], 1)),
@@ -336,6 +336,13 @@ class Manifest
             ) ?: Str::toMegabytes($this->pick($req, ['storage_min_mb', 'storage'], 5120)),
             'gpu' => (bool) $this->pick($req, ['gpu', 'gpu_required', 'requires_gpu'], false),
         ];
+
+        // Scheduling, capacity accounting and container limits all work in
+        // millicores, while manifests are written in cores. Deriving both here
+        // keeps every consumer reading the same unit.
+        $out['cpu_min_millicores'] = ((int) $out['cpu_min']) * 1000;
+        $out['cpu_recommended_millicores'] = ((int) $out['cpu_recommended']) * 1000;
+        return $out;
     }
 
     /* ---------------------------------------------------------- environment */

@@ -181,6 +181,29 @@ class Crypto
     }
 
     /** Deterministic blind index: exact-match search without decryptability. */
+    /**
+     * Hex HMAC-SHA256 — used for provider webhook signatures and shared-secret
+     * checks. Binary form is hmacRaw().
+     *
+     * @param string $message the exact bytes that were signed
+     * @param string $key     the shared secret
+     * @return string lowercase hex digest
+     */
+    public static function hmac($message, $key)
+    {
+        return hash_hmac('sha256', (string) $message, (string) $key);
+    }
+
+    /**
+     * Binary HMAC-SHA256, for providers that send base64/raw digests.
+     *
+     * @return string raw digest
+     */
+    public static function hmacRaw($message, $key)
+    {
+        return hash_hmac('sha256', (string) $message, (string) $key, true);
+    }
+
     public static function blindIndex($value, $context = 'generic')
     {
         if ($value === null || $value === '') {

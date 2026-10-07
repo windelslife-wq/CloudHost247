@@ -214,6 +214,8 @@ class Harness
         RateLimiter::resetConfiguration();
         Gateway::reset();
         Whmcs::reset();
+        // A fake adapter from a previous scenario must never leak into this one.
+        \Ch247Apps\Adapters\AdapterFactory::reset();
         $_SESSION = [];
         $_SERVER = ['REMOTE_ADDR' => '203.0.113.7', 'REQUEST_METHOD' => 'GET'];
         $_REQUEST = [];
@@ -380,6 +382,26 @@ class Harness
         ], $overrides));
     }
 
+    /**
+     * A server that has checked in: registered *and* online, so it is eligible
+     * for scheduling. A freshly registered server is deliberately not.
+     */
+    public static function onlineServer(array $overrides = [])
+    {
+        $service = new \Ch247Apps\Servers\ServerService(
+            Actor::admin(1, Actor::ROLE_SUPER_ADMIN, 'Harness')
+        );
+        $server = self::server($overrides);
+        $agents = $service->agents((int) $server['id']);
+        if ($agents !== []) {
+            $service->heartbeat($agents[0]['agent_uuid'], [
+                'agent_version' => '1.4.2',
+                'ip' => '198.51.100.10',
+            ]);
+        }
+        return $service->present((int) $server['id']);
+    }
+
     /** Import the shipped manifests and publish the validated set. */
     public static function catalog($publish = true)
     {
@@ -410,7 +432,11 @@ class Harness
 
     public static function plan(array $overrides = [])
     {
-        $service = new \Ch247Apps\Billing\PlanService(Actor::system('Harness'));
+        // Plans are an administrator resource; the system/worker role deliberately
+        // cannot manage billing, so the fixture must not either.
+        $service = new \Ch247Apps\Billing\PlanService(
+            Actor::admin(1, Actor::ROLE_SUPER_ADMIN, 'Harness')
+        );
         return $service->create(array_merge([
             'name' => 'App Cloud Starter',
             'slug' => 'app-cloud-starter',
@@ -443,7 +469,7 @@ class Harness
             $app = self::application($appSlug);
             $version = self::version($appSlug);
         }
-        $server = self::server();
+        $server = self::onlineServer();
         $plan = self::plan();
 
         $order = self::$gateway->createOrder([

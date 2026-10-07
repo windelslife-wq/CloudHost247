@@ -93,6 +93,7 @@ return [
             $t->string('current_version', 60, true);
             $t->string('available_version', 60, true);
             $t->boolean('auto_update', 0);
+            $t->boolean('requires_approval', 0);          // admin sign-off before provisioning
             $t->boolean('backup_enabled', 1);
             $t->datetime('last_backup_at', true);
             $t->datetime('suspended_at', true);
