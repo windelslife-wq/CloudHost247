@@ -1,5 +1,5 @@
 <?php
-/** Phase 3 core, Phase 4 handoff, and Phase 5 management tests; library-backed ceremonies run separately. */
+/** Phase 3 through Phase 6 core tests; library-backed ceremonies run separately. */
 
 require_once dirname(__DIR__) . '/autoload.php';
 
@@ -14,6 +14,12 @@ use CloudHost247\Passkey\Core\PasskeyRegistrationCeremonyInterface;
 use CloudHost247\Passkey\Core\PasskeyIntegrationRegistry;
 use CloudHost247\Passkey\Core\PasskeyLoginCoordinator;
 use CloudHost247\Passkey\Core\PasskeyLoginPolicy;
+use CloudHost247\Passkey\Core\IdentityPolicyRepository;
+use CloudHost247\Passkey\Core\PasskeyPolicyResolver;
+use CloudHost247\Passkey\Core\PasskeyRateLimiter;
+use CloudHost247\Passkey\Core\PasskeyRecoveryGrantService;
+use CloudHost247\Passkey\Core\PasskeySecurityService;
+use CloudHost247\Passkey\Core\SecurityEventRepository;
 use CloudHost247\Passkey\Core\Schema;
 use CloudHost247\Passkey\Core\SessionBinding;
 use CloudHost247\Passkey\Core\UserHandleRepository;
@@ -797,6 +803,112 @@ if ($sessionStarted) {
     $assert('Phase 5 management requires an active WHMCS session', false);
 }
 
+// Phase 6 policy, recovery-grant, rate-limit, and audit orchestration.
+$phase6Policy = new PasskeyLoginPolicy([
+    'service_enabled' => '1',
+    'client_policy' => 'optional',
+    'admin_policy' => 'required',
+    'password_fallback' => 'allowed',
+    'max_credentials_client' => '5',
+    'max_credentials_admin' => '5',
+]);
+$phase6DisabledIdentity = 9026;
+$phase6ExpiredIdentity = 9027;
+Db::insert('user_policies', [
+    'user_type' => 'client', 'user_id' => $phase6DisabledIdentity,
+    'policy' => 'temporarily_disabled', 'temporary_disabled_until' => '2099-01-01 00:00:00',
+    'reason_code' => 'recovery_pending', 'updated_by_admin_id' => 7,
+    'created_at' => $now, 'updated_at' => $now,
+]);
+Db::insert('user_policies', [
+    'user_type' => 'client', 'user_id' => $phase6ExpiredIdentity,
+    'policy' => 'temporarily_disabled', 'temporary_disabled_until' => '2020-01-01 00:00:00',
+    'reason_code' => 'old_exemption', 'updated_by_admin_id' => 7,
+    'created_at' => $now, 'updated_at' => $now,
+]);
+$phase6Resolver = new PasskeyPolicyResolver($phase6Policy, new IdentityPolicyRepository());
+$assert('Phase 6 resolves an active per-identity temporary exemption as an explicit deny state', $phase6Resolver->effectivePolicy('client', $phase6DisabledIdentity, $now) === UserPolicyRecord::TEMPORARILY_DISABLED);
+$assert('Phase 6 expires temporary exemptions back to the configured audience policy', $phase6Resolver->effectivePolicy('client', $phase6ExpiredIdentity, $now) === UserPolicyRecord::OPTIONAL);
+$throws('Phase 6 policy gate fails closed for an active temporary exemption', RuntimeException::class, function () use ($phase6Resolver, $phase6DisabledIdentity) {
+    $phase6Resolver->assertAllowed('client', $phase6DisabledIdentity);
+});
+$assert('Phase 6 policy gate preserves the required global administrator policy', $phase6Resolver->effectivePolicy('admin', 7, $now) === UserPolicyRecord::REQUIRED);
+
+$phase6Limiter = new PasskeyRateLimiter();
+$phase6Epoch = strtotime('2026-10-07 12:00:30 UTC');
+$phase6Principal = '203.0.113.50';
+$phase6FirstLimit = $phase6Limiter->consume('auth.phase6', $phase6Principal, 2, 60, $phase6Epoch);
+$phase6SecondLimit = $phase6Limiter->consume('auth.phase6', $phase6Principal, 2, 60, $phase6Epoch + 1);
+$phase6ThirdLimit = $phase6Limiter->consume('auth.phase6', $phase6Principal, 2, 60, $phase6Epoch + 2);
+$phase6LimitRow = Db::firstQuery('SELECT * FROM `' . Db::table('rate_limits') . '` WHERE `action` = ? AND `principal_hash` = ?', ['auth.phase6', PasskeyRateLimiter::principalHash($phase6Principal)]);
+$assert('Phase 6 fixed-window rate limiting counts attempts and denies after the configured threshold', $phase6FirstLimit['allowed'] && $phase6FirstLimit['remaining'] === 1 && $phase6SecondLimit['allowed'] && !$phase6ThirdLimit['allowed'] && $phase6ThirdLimit['retry_after'] === 28);
+$assert('Phase 6 rate-limit rows store only a hash of the raw principal', $phase6LimitRow !== null && strpos(json_encode($phase6LimitRow), $phase6Principal) === false && $phase6LimitRow['principal_hash'] === PasskeyRateLimiter::principalHash($phase6Principal));
+$phase6NextWindow = $phase6Limiter->consume('auth.phase6', $phase6Principal, 2, 60, $phase6Epoch + 60);
+$assert('Phase 6 rate-limit buckets reset only at the next fixed window', $phase6NextWindow['allowed'] && $phase6NextWindow['remaining'] === 1);
+
+$phase6Events = new SecurityEventRepository();
+$phase6EventId = $phase6Events->append([
+    'user_type' => 'client', 'user_id' => $phase6DisabledIdentity,
+    'event_type' => 'authentication.failed', 'success' => 0,
+    'reason_code' => 'invalid_signature', 'ip_address' => '192.0.2.60',
+    'user_agent' => 'Phase6 test browser',
+    'metadata' => ['origin' => 'https://example.test', 'arbitrary' => 'dropped'],
+]);
+$phase6EventRow = Db::firstQuery('SELECT * FROM `' . Db::table('events') . '` WHERE `id` = ?', [$phase6EventId]);
+$phase6EventMetadata = $phase6EventRow ? json_decode($phase6EventRow['metadata_json'], true) : [];
+$assert('Phase 6 audit repository appends redacted allowlisted events', $phase6EventId > 0 && $phase6EventMetadata === ['origin' => 'https://example.test'] && (int) $phase6EventRow['success'] === 0);
+$throws('Phase 6 audit repository rejects raw ceremony secrets', InvalidArgumentException::class, function () use ($phase6Events, $phase6DisabledIdentity) {
+    $phase6Events->append([
+        'user_type' => 'client', 'user_id' => $phase6DisabledIdentity,
+        'event_type' => 'authentication.failed', 'success' => 0,
+        'metadata' => ['signature' => 'raw-signature'],
+    ]);
+});
+
+$phase6Security = new PasskeySecurityService($phase6Resolver, $phase6Limiter, new PasskeyRecoveryGrantService(), $phase6Events);
+$phase6AuditBeforeLimit = Db::count('events', ['event_type' => 'rate_limit.exceeded']);
+$phase6Security->consumeRateLimit('auth.phase6.audit', '198.51.100.60', 1, 60, ['user_type' => 'client', 'user_id' => $phase6DisabledIdentity], $phase6Epoch);
+$phase6AuditLimit = $phase6Security->consumeRateLimit('auth.phase6.audit', '198.51.100.60', 1, 60, ['user_type' => 'client', 'user_id' => $phase6DisabledIdentity], $phase6Epoch + 1);
+$assert('Phase 6 orchestration records a redacted security event when a bucket is exceeded', !$phase6AuditLimit['allowed'] && Db::count('events', ['event_type' => 'rate_limit.exceeded']) === $phase6AuditBeforeLimit + 1);
+
+$phase6RecoveryChallengeId = Db::insert('challenges', [
+    'challenge_hash' => hash('sha256', 'phase6-recovery-challenge'),
+    'user_type' => 'client', 'user_id' => $phase6DisabledIdentity,
+    'challenge_type' => ChallengeRecord::ACTION_CONFIRMATION,
+    'action_code' => 'passkey.recovery.grant',
+    'session_binding_hash' => SessionBinding::currentHash(),
+    'rp_id' => 'example.test', 'origin' => 'https://example.test',
+    'expires_at' => gmdate('Y-m-d H:i:s', time() + 600),
+    'consumed_at' => null, 'created_at' => gmdate('Y-m-d H:i:s'),
+]);
+$phase6DeliveredToken = null;
+$phase6Grant = $phase6Security->issueRecoveryGrant(
+    'client',
+    $phase6DisabledIdentity,
+    function ($token) use (&$phase6DeliveredToken) {
+        $phase6DeliveredToken = $token;
+    },
+    $phase6RecoveryChallengeId,
+    60,
+    ['ip_address' => '192.0.2.61', 'user_agent' => 'Phase6 recovery host']
+);
+$phase6GrantRow = Db::firstQuery('SELECT * FROM `' . Db::table('reset_grants') . '` WHERE `user_id` = ? ORDER BY `id` DESC', [$phase6DisabledIdentity]);
+$assert('Phase 6 recovery grants deliver an opaque value only through the explicit host callback and persist its hash', $phase6Grant['issued'] === true && is_string($phase6DeliveredToken) && strlen($phase6DeliveredToken) === 43 && $phase6GrantRow !== null && strpos(json_encode($phase6GrantRow), $phase6DeliveredToken) === false && $phase6GrantRow['token_hash'] === PasskeyRecoveryGrantService::tokenHash($phase6DeliveredToken));
+$phase6Capability = $phase6Security->consumeRecoveryGrant(
+    $phase6DeliveredToken,
+    'client',
+    $phase6DisabledIdentity,
+    $phase6RecoveryChallengeId,
+    ['ip_address' => '192.0.2.61', 'user_agent' => 'Phase6 recovery host']
+);
+$phase6ConsumedRow = Db::firstQuery('SELECT `consumed_at` FROM `' . Db::table('reset_grants') . '` WHERE `id` = ?', [$phase6GrantRow['id']]);
+$assert('Phase 6 recovery grants are session-bound, identity-bound, single-use capabilities without raw-token output', $phase6Capability === ['user_type' => 'client', 'user_id' => $phase6DisabledIdentity, 'challenge_id' => $phase6RecoveryChallengeId] && $phase6ConsumedRow['consumed_at'] !== null);
+$throws('Phase 6 recovery grants reject replay', RuntimeException::class, function () use ($phase6Security, $phase6DeliveredToken, $phase6DisabledIdentity, $phase6RecoveryChallengeId) {
+    $phase6Security->consumeRecoveryGrant($phase6DeliveredToken, 'client', $phase6DisabledIdentity, $phase6RecoveryChallengeId);
+});
+$phase6GrantEvents = Db::count('events', ['event_type' => 'recovery_grant.issued']) + Db::count('events', ['event_type' => 'recovery_grant.consumed']);
+$assert('Phase 6 recovery issuance and consumption are auditable without token metadata', $phase6GrantEvents === 2 && strpos(json_encode(Db::query('SELECT `metadata_json` FROM `' . Db::table('events') . '` WHERE `event_type` LIKE \'recovery_grant.%\'')), $phase6DeliveredToken) === false);
+
 $composerManifest = json_decode(file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 $assert('Composer manifest pins the audited WebAuthn library and an explicit PSR-7 adapter', isset($composerManifest['require']['web-auth/webauthn-lib'], $composerManifest['require']['nyholm/psr7']) && $composerManifest['require']['web-auth/webauthn-lib'] === '3.3.12' && $composerManifest['require']['nyholm/psr7'] === '^1.8');
 $assert('WebAuthn ceremony service is present but does not alter the WHMCS authentication flow', class_exists(WebAuthnService::class) && method_exists(WebAuthnService::class, 'finishRegistration') && method_exists(WebAuthnService::class, 'finishAuthentication'));
@@ -818,6 +930,7 @@ if ($failures === 0) {
     echo "PASSKEY_PHASE3_CORE_OK\n";
     echo "PASSKEY_PHASE4_INTEGRATION_OK\n";
     echo "PASSKEY_PHASE5_MANAGEMENT_OK\n";
+    echo "PASSKEY_PHASE6_SECURITY_OK\n";
 } else {
     echo "PASSKEY_PHASE3_CORE_FAILED\n";
     echo "PASSKEY_PHASE4_INTEGRATION_FAILED\n";

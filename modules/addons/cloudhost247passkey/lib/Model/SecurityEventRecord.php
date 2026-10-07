@@ -11,6 +11,7 @@ class SecurityEventRecord
         'credential.revoked', 'credential.disabled', 'credential.enabled',
         'password_reset.succeeded', 'action_confirmation.succeeded',
         'policy.changed', 'credential.admin_managed', 'rate_limit.exceeded',
+        'recovery_grant.issued', 'recovery_grant.consumed',
         'entra.linked', 'entra.unlinked',
     ];
 

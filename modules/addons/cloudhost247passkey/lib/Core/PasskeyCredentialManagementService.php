@@ -14,18 +14,21 @@ class PasskeyCredentialManagementService
     private $ceremonies;
     private $identityProvider;
     private $policy;
+    private $policyResolver;
     private $credentials;
 
     public function __construct(
         PasskeyRegistrationCeremonyInterface $ceremonies,
         WhmcsIdentityProviderInterface $identityProvider,
         PasskeyLoginPolicy $policy,
-        CredentialManagementRepository $credentials = null
+        CredentialManagementRepository $credentials = null,
+        PasskeyPolicyResolver $policyResolver = null
     ) {
         $this->ceremonies = $ceremonies;
         $this->identityProvider = $identityProvider;
         $this->policy = $policy;
         $this->credentials = $credentials ?: new CredentialManagementRepository();
+        $this->policyResolver = $policyResolver ?: new PasskeyPolicyResolver($policy);
     }
 
     /** Begin enrollment only from an authenticated, current WHMCS identity. */
@@ -131,7 +134,7 @@ class PasskeyCredentialManagementService
         // This is the same binding used by WebAuthn challenges. Management
         // operations never run without the existing WHMCS PHP session.
         SessionBinding::currentHash();
-        $this->policy->assertLoginAllowed($identity->userType());
+        $this->policyResolver->assertAllowed($identity->userType(), $identity->userId());
         $resolved = $this->identityProvider->resolve($identity->userType(), $identity->userId());
         if (!$resolved instanceof WhmcsIdentity
             || $resolved->userType() !== $identity->userType()

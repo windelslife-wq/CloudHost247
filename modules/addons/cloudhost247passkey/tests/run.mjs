@@ -31,8 +31,8 @@ if (errors.trim()) {
   process.stderr.write(errors);
 }
 const match = output.match(/CHECKS=(\d+)\s+FAILURES=(\d+)/);
-if (result.exitCode !== 0 || !match || match[2] !== '0' || !output.includes('PASSKEY_PHASE3_CORE_OK') || !output.includes('PASSKEY_PHASE4_INTEGRATION_OK') || !output.includes('PASSKEY_PHASE5_MANAGEMENT_OK')) {
-  console.error('\nCloudHost247 Passkey Phase 3/4/5 core tests failed.');
+if (result.exitCode !== 0 || !match || match[2] !== '0' || !output.includes('PASSKEY_PHASE3_CORE_OK') || !output.includes('PASSKEY_PHASE4_INTEGRATION_OK') || !output.includes('PASSKEY_PHASE5_MANAGEMENT_OK') || !output.includes('PASSKEY_PHASE6_SECURITY_OK')) {
+  console.error('\nCloudHost247 Passkey Phase 3/4/5/6 core tests failed.');
   process.exit(1);
 }
 console.log(`PHP_WASM_VERSION=${phpVersion}`);

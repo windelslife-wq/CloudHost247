@@ -2,10 +2,11 @@
 /**
  * CloudHost247 Passkey — native WHMCS addon.
  *
- * Phase 4 provides an opt-in, fail-closed handoff boundary and Phase 5
- * provides authenticated credential management for WHMCS's existing identity,
- * session, and 2FA architecture. No native session is synthesized by this
- * addon and the feature remains disabled by default.
+ * Phase 4 provides an opt-in, fail-closed handoff boundary, Phase 5
+ * provides authenticated credential management, and Phase 6 provides
+ * policy, recovery-grant, rate-limit, and audit orchestration for WHMCS's
+ * existing identity, session, and 2FA architecture. No native session is
+ * synthesized by this addon and the feature remains disabled by default.
  *
  * @package CloudHost247\Passkey
  */
@@ -25,10 +26,10 @@ function cloudhost247passkey_config()
 {
     return [
         'name' => 'CloudHost247 Passkey',
-        'description' => 'Fail-closed Passkey handoff and authenticated credential management are available for explicit WHMCS adapters; login and management remain disabled by default.',
+        'description' => 'Fail-closed Passkey handoff, authenticated credential management, and Phase 6 security controls are available for explicit WHMCS adapters; login and management remain disabled by default.',
         'author' => 'CloudHost247',
         'language' => 'english',
-        'version' => '0.4.0',
+        'version' => '0.5.0',
         'fields' => [],
     ];
 }

@@ -30,15 +30,21 @@ class PasskeyLoginPolicy
         $this->maxCredentialsAdmin = self::maxCredentials($settings, 'max_credentials_admin');
     }
 
+    /** The global service switch must always be enabled. */
+    public function assertServiceEnabled()
+    {
+        if (!$this->serviceEnabled) {
+            throw new \RuntimeException('Passkey authentication is disabled.');
+        }
+    }
+
     /** The global service switch and audience-specific policy must both opt in. */
     public function assertLoginAllowed($userType)
     {
         if (!in_array($userType, [IdentityScope::CLIENT, IdentityScope::ADMIN], true)) {
             throw new \RuntimeException('Passkey login audience is not supported.');
         }
-        if (!$this->serviceEnabled) {
-            throw new \RuntimeException('Passkey authentication is disabled.');
-        }
+        $this->assertServiceEnabled();
         $policy = $this->policyFor($userType);
         if (!in_array($policy, ['optional', 'required'], true)) {
             throw new \RuntimeException('Passkey login policy is not explicitly enabled for this audience.');

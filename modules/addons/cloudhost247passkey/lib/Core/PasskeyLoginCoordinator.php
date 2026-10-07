@@ -23,17 +23,20 @@ class PasskeyLoginCoordinator
     private $identityProvider;
     private $authBridge;
     private $policy;
+    private $policyResolver;
 
     public function __construct(
         PasskeyAssertionVerifierInterface $verifier,
         WhmcsIdentityProviderInterface $identityProvider,
         WhmcsAuthBridgeInterface $authBridge,
-        PasskeyLoginPolicy $policy
+        PasskeyLoginPolicy $policy,
+        PasskeyPolicyResolver $policyResolver = null
     ) {
         $this->verifier = $verifier;
         $this->identityProvider = $identityProvider;
         $this->authBridge = $authBridge;
         $this->policy = $policy;
+        $this->policyResolver = $policyResolver ?: new PasskeyPolicyResolver($policy);
     }
 
     /**
@@ -52,7 +55,13 @@ class PasskeyLoginCoordinator
             $requestedUserId,
             true
         );
-        $this->policy->assertLoginAllowed($requestedUserType);
+        if ($requestedUserId === null) {
+            // Discoverable credentials cannot be policy-resolved until the
+            // verifier returns their existing WHMCS identity.
+            $this->policy->assertLoginAllowed($requestedUserType);
+        } else {
+            $this->policyResolver->assertAllowed($requestedUserType, $requestedUserId);
+        }
         $loginContext = PasskeyLoginContext::fromArray($context);
         self::assertContextAudience($loginContext, $requestedUserType);
 
@@ -76,6 +85,7 @@ class PasskeyLoginCoordinator
             || ($requestedUserId !== null && $verifiedId !== $requestedUserId)) {
             throw new RuntimeException('Verified Passkey identity is outside the requested audience.');
         }
+        $this->policyResolver->assertAllowed($verifiedType, $verifiedId);
 
         $identity = $this->identityProvider->resolve($verifiedType, $verifiedId);
         if (!$identity instanceof WhmcsIdentity) {
