@@ -1,0 +1,119 @@
+# CloudHost247 App Cloud manifest — Traefik (node reverse proxy)
+#
+# kind: infrastructure, platform-managed. Traefik is deployed once per Docker
+# node by an administrator; it is not a customer product. Every customer
+# application's routing rules are generated from its own manifest and domain and
+# are attached as container labels — domains are never written into the Traefik
+# configuration itself (specification §33).
+schema: 1
+id: traefik
+name: Traefik Proxy
+slug: traefik
+category: infrastructure
+kind: infrastructure
+vendor: Traefik Labs
+license: MIT
+summary: Edge reverse proxy and TLS terminator for app-cloud nodes.
+description: Traefik watches the Docker socket on a node and publishes customer containers on ports 80 and 443 with automatically issued Let's Encrypt certificates. It requires admin approval to deploy because it is node-level infrastructure shared by every tenant on that node.
+website: https://traefik.io
+repository: https://github.com/traefik/traefik
+documentation: https://doc.traefik.io/traefik
+logo_url: https://cdn.cloudhost247.test/apps/traefik.svg
+tags: [infrastructure, proxy, ssl, edge, traefik]
+version: 3.2.1
+channel: stable
+featured: false
+requires_admin_approval: true
+
+deployment:
+  engine: docker-compose
+  supported_hosting_types: [vps, dedicated, docker]
+  update_strategy: recreate
+
+requirements:
+  cpu_min: 1
+  cpu_recommended: 2
+  memory_min_mb: 512
+  memory_recommended_mb: 2048
+  storage_min_mb: 1024
+  storage_recommended_mb: 5120
+  gpu: false
+
+services:
+  app:
+    image: traefik:v3.2.1
+    port: 8080
+    primary: true
+    restart: always
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=ch247_edge
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --api.dashboard=false
+      - --log.level=INFO
+      - --accesslog=true
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - name: acme
+        mount: /letsencrypt
+        size_mb: 512
+        backup: true
+
+environment:
+  required:
+    - key: ACME_EMAIL
+      description: Address Let's Encrypt uses for expiry and revocation notices.
+      validation: email
+  optional:
+    - key: TZ
+      description: Timezone for access logs.
+      default: UTC
+
+volumes:
+  - name: acme
+    service: app
+    mount: /letsencrypt
+    size_mb: 512
+
+ports: [8080]
+
+healthcheck:
+  type: http
+  path: /ping
+  port: 8080
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  expected_status: [200]
+
+domain:
+  enabled: false
+  required: false
+
+ssl:
+  enabled: false
+  force_https: true
+  min_tls: VersionTLS12
+
+backup:
+  enabled: true
+  schedule: daily
+  retention_days: 30
+  include_volumes: [acme]
+  pre_update: true
+
+update:
+  strategy: recreate
+  backup_before: true
+  health_check_after: true
+  rollback_on_failure: true
+  auto_update_allowed: false

@@ -1,0 +1,1402 @@
+# CloudHost247 App Cloud — catalog registry
+#
+# The wider catalog. These entries are imported as DRAFT rows and are explicitly
+# **not deployable**: a catalog entry is not a promise that the platform can
+# install something. An entry becomes deployable only when a manifest for it is
+# written and passes all seven publication gates (manifest, security,
+# deployment, health check, backup, update, uninstall).
+#
+# kind implements the specification's distinction:
+#   application    — a customer-facing product (n8n, Nextcloud, WordPress)
+#   infrastructure — a dependency/service other applications use (PostgreSQL,
+#                    Redis, RabbitMQ, Qdrant, Docker, Traefik)
+#   platform       — a stack or runtime (LEMP, LAMP, MERN, MEAN, Kubernetes)
+schema: 1
+updated: 2026-01-01
+
+applications:
+  # ------------------------------------------------------------- AI ------
+  - id: open-webui
+    name: Open WebUI
+    category: ai
+    kind: application
+    summary: Self-hosted chat interface for local and hosted LLMs.
+    website: https://openwebui.com
+    license: MIT
+    tags: [ai, chat, llm]
+  - id: ollama
+    name: Ollama
+    category: ai
+    kind: application
+    summary: Run large language models locally with a simple API.
+    website: https://ollama.com
+    license: MIT
+    tags: [ai, llm, inference]
+  - id: librechat
+    name: LibreChat
+    category: ai
+    kind: application
+    summary: Multi-provider AI chat with agents, RAG and image generation.
+    website: https://www.librechat.ai
+    license: MIT
+    tags: [ai, chat]
+  - id: flowise
+    name: Flowise
+    category: ai
+    kind: application
+    summary: Drag-and-drop builder for LLM orchestration flows.
+    website: https://flowiseai.com
+    license: Apache-2.0
+    tags: [ai, automation, llm]
+  - id: langfuse
+    name: Langfuse
+    category: ai
+    kind: application
+    summary: Tracing, evaluation and prompt management for LLM applications.
+    website: https://langfuse.com
+    license: MIT
+    tags: [ai, observability]
+  - id: qdrant
+    name: Qdrant
+    category: ai
+    kind: infrastructure
+    summary: Vector similarity search engine for embeddings.
+    website: https://qdrant.tech
+    license: Apache-2.0
+    tags: [ai, database, vector]
+  - id: milvus
+    name: Milvus
+    category: ai
+    kind: infrastructure
+    summary: Distributed vector database for AI workloads.
+    website: https://milvus.io
+    license: Apache-2.0
+    tags: [ai, database, vector]
+  - id: stable-diffusion-webui
+    name: Stable Diffusion WebUI
+    category: ai
+    kind: application
+    summary: Browser interface for image generation models. Requires GPU.
+    website: https://github.com/AUTOMATIC1111/stable-diffusion-webui
+    license: AGPL-3.0
+    tags: [ai, images, gpu]
+
+  # -------------------------------------------------------- Analytics ----
+  - id: plausible
+    name: Plausible Analytics
+    category: analytics
+    kind: application
+    summary: Lightweight, privacy-friendly web analytics.
+    website: https://plausible.io
+    license: AGPL-3.0
+    tags: [analytics, privacy]
+  - id: matomo
+    name: Matomo
+    category: analytics
+    kind: application
+    summary: Full-featured open web analytics platform.
+    website: https://matomo.org
+    license: GPL-3.0
+    tags: [analytics]
+  - id: umami
+    name: Umami
+    category: analytics
+    kind: application
+    summary: Simple, fast website analytics without cookies.
+    website: https://umami.is
+    license: MIT
+    tags: [analytics]
+  - id: posthog
+    name: PostHog
+    category: analytics
+    kind: application
+    summary: Product analytics, session replay, flags and experiments.
+    website: https://posthog.com
+    license: MIT
+    tags: [analytics, product]
+  - id: metabase
+    name: Metabase
+    category: analytics
+    kind: application
+    summary: Business intelligence and dashboards over your databases.
+    website: https://www.metabase.com
+    license: AGPL-3.0
+    tags: [analytics, bi]
+
+  # ------------------------------------------------------- Automation ----
+  - id: activepieces
+    name: Activepieces
+    category: automation
+    kind: application
+    summary: No-code automation platform with an open piece framework.
+    website: https://www.activepieces.com
+    license: MIT
+    tags: [automation, integration]
+  - id: node-red
+    name: Node-RED
+    category: automation
+    kind: application
+    summary: Flow-based programming for event-driven applications and IoT.
+    website: https://nodered.org
+    license: Apache-2.0
+    tags: [automation, iot]
+  - id: windmill
+    name: Windmill
+    category: automation
+    kind: application
+    summary: Developer platform for scripts, workflows and internal UIs.
+    website: https://www.windmill.dev
+    license: AGPL-3.0
+    tags: [automation, developer]
+  - id: temporal
+    name: Temporal
+    category: automation
+    kind: infrastructure
+    summary: Durable workflow execution engine.
+    website: https://temporal.io
+    license: MIT
+    tags: [automation, workflows]
+
+  # --------------------------------------------------------- Business ----
+  - id: odoo
+    name: Odoo
+    category: business
+    kind: application
+    summary: Suite of business applications: CRM, inventory, accounting, HR.
+    website: https://www.odoo.com
+    license: LGPL-3.0
+    tags: [erp, business]
+  - id: erpnext
+    name: ERPNext
+    category: business
+    kind: application
+    summary: Open-source ERP for manufacturing, retail and services.
+    website: https://erpnext.com
+    license: GPL-3.0
+    tags: [erp, business]
+  - id: invoice-ninja
+    name: Invoice Ninja
+    category: business
+    kind: application
+    summary: Invoicing, payments and expense tracking for small businesses.
+    website: https://www.invoiceninja.com
+    license: Elastic-2.0
+    tags: [invoicing, finance]
+  - id: crater
+    name: Crater
+    category: business
+    kind: application
+    summary: Simple invoicing and expense tracking for freelancers.
+    website: https://crater.app
+    license: AGPL-3.0
+    tags: [invoicing]
+
+  # -------------------------------------------------------------- CMS ----
+  - id: ghost
+    name: Ghost
+    category: cms
+    kind: application
+    summary: Independent publishing platform with memberships and newsletters.
+    website: https://ghost.org
+    license: MIT
+    tags: [cms, blog, publishing]
+  - id: strapi
+    name: Strapi
+    category: cms
+    kind: application
+    summary: Headless CMS with a REST and GraphQL API.
+    website: https://strapi.io
+    license: Elastic-2.0
+    tags: [cms, headless, api]
+  - id: directus
+    name: Directus
+    category: cms
+    kind: application
+    summary: Data platform and headless CMS over any SQL database.
+    website: https://directus.io
+    license: BSL-1.1
+    tags: [cms, headless]
+  - id: payload
+    name: Payload CMS
+    category: cms
+    kind: application
+    summary: Code-first TypeScript headless CMS.
+    website: https://payloadcms.com
+    license: MIT
+    tags: [cms, headless]
+  - id: wagtail
+    name: Wagtail
+    category: cms
+    kind: application
+    summary: Django-based CMS with a flexible streamfield editor.
+    website: https://wagtail.org
+    license: BSD-3-Clause
+    tags: [cms, python]
+  - id: joomla
+    name: Joomla
+    category: cms
+    kind: application
+    summary: PHP CMS for portals and complex content sites.
+    website: https://www.joomla.org
+    license: GPL-2.0
+    tags: [cms, php]
+
+  # ---------------------------------------------------- Communication ----
+  - id: rocket-chat
+    name: Rocket.Chat
+    category: communication
+    kind: application
+    summary: Team chat platform with federation and omnichannel support.
+    website: https://rocket.chat
+    license: MIT
+    tags: [chat, team]
+  - id: matrix-synapse
+    name: Matrix Synapse
+    category: communication
+    kind: application
+    summary: Federated Matrix homeserver for secure messaging.
+    website: https://matrix.org
+    license: Apache-2.0
+    tags: [chat, matrix, federated]
+  - id: element-web
+    name: Element Web
+    category: communication
+    kind: application
+    summary: Web client for Matrix homeservers.
+    website: https://element.io
+    license: Apache-2.0
+    tags: [chat, matrix]
+  - id: mattermost
+    name: Mattermost
+    category: communication
+    kind: application
+    summary: Secure collaboration platform for technical teams.
+    website: https://mattermost.com
+    license: AGPL-3.0
+    tags: [chat, team]
+  - id: zulip
+    name: Zulip
+    category: communication
+    kind: application
+    summary: Team chat organised by topics and threads.
+    website: https://zulip.com
+    license: Apache-2.0
+    tags: [chat, team]
+  - id: listmonk
+    name: listmonk
+    category: communication
+    kind: application
+    summary: Self-hosted newsletter and mailing list manager.
+    website: https://listmonk.app
+    license: AGPL-3.0
+    tags: [email, newsletter]
+  - id: mailu
+    name: Mailu
+    category: communication
+    kind: application
+    summary: Full-featured mail server: SMTP, IMAP, webmail and admin.
+    website: https://mailu.io
+    license: MIT
+    tags: [email, mail]
+  - id: mailcow
+    name: Mailcow
+    category: communication
+    kind: application
+    summary: Dockerised mail server suite with SOGo webmail.
+    website: https://mailcow.email
+    license: GPL-3.0
+    tags: [email, mail]
+
+  # -------------------------------------------------------------- CRM ----
+  - id: twenty
+    name: Twenty
+    category: crm
+    kind: application
+    summary: Modern open-source CRM with a flexible data model.
+    website: https://twenty.com
+    license: AGPL-3.0
+    tags: [crm]
+  - id: suitecrm
+    name: SuiteCRM
+    category: crm
+    kind: application
+    summary: Enterprise CRM for sales, marketing and support.
+    website: https://suitecrm.com
+    license: AGPL-3.0
+    tags: [crm]
+  - id: monica
+    name: Monica
+    category: crm
+    kind: application
+    summary: Personal relationship manager for contacts and interactions.
+    website: https://monicahq.com
+    license: AGPL-3.0
+    tags: [crm, personal]
+
+  # --------------------------------------------------------- Database ----
+  - id: mysql
+    name: MySQL
+    category: database
+    kind: infrastructure
+    summary: Managed MySQL 8 database server.
+    website: https://www.mysql.com
+    license: GPL-2.0
+    tags: [database, sql]
+  - id: mariadb
+    name: MariaDB
+    category: database
+    kind: infrastructure
+    summary: Managed MariaDB database server.
+    website: https://mariadb.org
+    license: GPL-2.0
+    tags: [database, sql]
+  - id: mongodb
+    name: MongoDB
+    category: database
+    kind: infrastructure
+    summary: Document database for JSON-style workloads.
+    website: https://www.mongodb.com
+    license: SSPL-1.0
+    tags: [database, document]
+  - id: clickhouse
+    name: ClickHouse
+    category: database
+    kind: infrastructure
+    summary: Columnar OLAP database for real-time analytics.
+    website: https://clickhouse.com
+    license: Apache-2.0
+    tags: [database, analytics]
+  - id: rabbitmq
+    name: RabbitMQ
+    category: database
+    kind: infrastructure
+    summary: Message broker for queues and pub/sub.
+    website: https://www.rabbitmq.com
+    license: MPL-2.0
+    tags: [queue, messaging]
+  - id: valkey
+    name: Valkey
+    category: database
+    kind: infrastructure
+    summary: Open-source fork of the Redis protocol for caching and queues.
+    website: https://valkey.io
+    license: BSD-3-Clause
+    tags: [cache, queue]
+  - id: adminer
+    name: Adminer
+    category: database
+    kind: application
+    summary: Single-file database management interface.
+    website: https://www.adminer.org
+    license: Apache-2.0
+    tags: [database, admin]
+  - id: phpmyadmin
+    name: phpMyAdmin
+    category: database
+    kind: application
+    summary: Web administration for MySQL and MariaDB.
+    website: https://www.phpmyadmin.net
+    license: GPL-2.0
+    tags: [database, admin]
+
+  # ------------------------------------------------- Developer Tools ----
+  - id: gitlab-ce
+    name: GitLab CE
+    category: developer-tools
+    kind: application
+    summary: Complete DevOps platform: Git, CI/CD, registry and issues.
+    website: https://about.gitlab.com
+    license: MIT (CE)
+    tags: [git, ci, devops]
+  - id: forgejo
+    name: Forgejo
+    category: developer-tools
+    kind: application
+    summary: Community-maintained lightweight Git forge.
+    website: https://forgejo.org
+    license: GPL-3.0
+    tags: [git, developer]
+  - id: woodpecker-ci
+    name: Woodpecker CI
+    category: developer-tools
+    kind: application
+    summary: Simple, container-native continuous integration.
+    website: https://woodpecker-ci.org
+    license: Apache-2.0
+    tags: [ci, automation]
+  - id: drone
+    name: Drone CI
+    category: developer-tools
+    kind: application
+    summary: Container-native CI/CD platform.
+    website: https://www.drone.io
+    license: Apache-2.0
+    tags: [ci]
+  - id: verdaccio
+    name: Verdaccio
+    category: developer-tools
+    kind: application
+    summary: Private npm-compatible package registry.
+    website: https://verdaccio.org
+    license: MIT
+    tags: [registry, npm]
+  - id: nexus
+    name: Sonatype Nexus
+    category: developer-tools
+    kind: application
+    summary: Universal artifact repository and proxy.
+    website: https://www.sonatype.com/products/nexus-repository
+    license: EPL-1.0
+    tags: [registry, artifacts]
+  - id: harbor
+    name: Harbor
+    category: developer-tools
+    kind: application
+    summary: Cloud-native container registry with policy and scanning.
+    website: https://goharbor.io
+    license: Apache-2.0
+    tags: [registry, docker]
+  - id: code-server
+    name: code-server
+    category: developer-tools
+    kind: application
+    summary: VS Code in the browser, running on your own server.
+    website: https://coder.com/docs/code-server
+    license: MIT
+    tags: [ide, developer]
+  - id: coder
+    name: Coder
+    category: developer-tools
+    kind: application
+    summary: Remote development environments as code.
+    website: https://coder.com
+    license: AGPL-3.0
+    tags: [devenvironments]
+  - id: sonarqube
+    name: SonarQube
+    category: developer-tools
+    kind: application
+    summary: Continuous code quality and security inspection.
+    website: https://www.sonarsource.com/products/sonarqube
+    license: LGPL-3.0
+    tags: [quality, ci]
+  - id: swagger-ui
+    name: Swagger UI
+    category: developer-tools
+    kind: application
+    summary: Render OpenAPI specifications as interactive documentation.
+    website: https://swagger.io
+    license: Apache-2.0
+    tags: [api, docs]
+
+  # -------------------------------------------------------- Documents ----
+  - id: paperless-ngx
+    name: Paperless-ngx
+    category: documents
+    kind: application
+    summary: Scan, tag and archive physical documents with OCR.
+    website: https://docs.paperless-ngx.com
+    license: GPL-3.0
+    tags: [documents, ocr]
+  - id: collabora-online
+    name: Collabora Online
+    category: documents
+    kind: application
+    summary: Online office suite for document editing (Nextcloud Office).
+    website: https://www.collaboraonline.com
+    license: MPL-2.0
+    tags: [documents, office]
+  - id: onlyoffice
+    name: ONLYOFFICE Docs
+    category: documents
+    kind: application
+    summary: Collaborative document, spreadsheet and slide editing.
+    website: https://www.onlyoffice.com
+    license: AGPL-3.0
+    tags: [documents, office]
+  - id: stirling-pdf
+    name: Stirling-PDF
+    category: documents
+    kind: application
+    summary: Web-based PDF manipulation toolkit.
+    website: https://github.com/Stirling-Tools/Stirling-PDF
+    license: MIT
+    tags: [pdf, documents]
+  - id: docmost
+    name: Docmost
+    category: documents
+    kind: application
+    summary: Collaborative wiki and documentation editor.
+    website: https://docmost.com
+    license: AGPL-3.0
+    tags: [wiki, documents]
+
+  # ----------------------------------------------------- E-commerce ----
+  - id: magento
+    name: Adobe Commerce (Magento)
+    category: e-commerce
+    kind: application
+    summary: Enterprise PHP commerce platform.
+    website: https://business.adobe.com/products/magento/magento-commerce.html
+    license: OSL-3.0
+    tags: [ecommerce, php]
+  - id: shopware
+    name: Shopware
+    category: e-commerce
+    kind: application
+    summary: PHP commerce platform popular in the EU.
+    website: https://www.shopware.com
+    license: MIT
+    tags: [ecommerce]
+  - id: medusa
+    name: Medusa
+    category: e-commerce
+    kind: application
+    summary: Headless Node.js commerce engine.
+    website: https://medusajs.com
+    license: MIT
+    tags: [ecommerce, headless]
+  - id: saleor
+    name: Saleor
+    category: e-commerce
+    kind: application
+    summary: GraphQL headless commerce platform.
+    website: https://saleor.io
+    license: BSD-3-Clause
+    tags: [ecommerce, graphql]
+  - id: pretix
+    name: pretix
+    category: e-commerce
+    kind: application
+    summary: Ticket shop for events with payments and check-in.
+    website: https://pretix.eu
+    license: Apache-2.0
+    tags: [tickets, events]
+
+  # -------------------------------------------------------- Education ----
+  - id: moodle
+    name: Moodle
+    category: education
+    kind: application
+    summary: Learning management system for courses and assessments.
+    website: https://moodle.org
+    license: GPL-3.0
+    tags: [lms, education]
+  - id: canvas-lms
+    name: Canvas LMS
+    category: education
+    kind: application
+    summary: Open-source learning platform for institutions.
+    website: https://www.instructure.com/canvas
+    license: AGPL-3.0
+    tags: [lms, education]
+
+  # ---------------------------------------------------------- Finance ----
+  - id: firefly-iii
+    name: Firefly III
+    category: finance
+    kind: application
+    summary: Personal finance manager with budgets and reports.
+    website: https://www.firefly-iii.org
+    license: AGPL-3.0
+    tags: [finance, personal]
+  - id: actual-budget
+    name: Actual Budget
+    category: finance
+    kind: application
+    summary: Local-first budgeting with bank sync.
+    website: https://actualbudget.org
+    license: MIT
+    tags: [finance, budgeting]
+  - id: maybe
+    name: Maybe
+    category: finance
+    kind: application
+    summary: Personal finance and wealth planning dashboard.
+    website: https://maybe.co
+    license: AGPL-3.0
+    tags: [finance]
+
+  # ------------------------------------------------ Home Automation ----
+  - id: home-assistant
+    name: Home Assistant
+    category: home-automation
+    kind: application
+    summary: Local-first home automation and dashboards.
+    website: https://www.home-assistant.io
+    license: Apache-2.0
+    tags: [iot, home]
+  - id: zigbee2mqtt
+    name: Zigbee2MQTT
+    category: home-automation
+    kind: application
+    summary: Bridge Zigbee devices to MQTT without vendor hubs.
+    website: https://www.zigbee2mqtt.io
+    license: GPL-3.0
+    tags: [iot, mqtt]
+  - id: mosquitto
+    name: Eclipse Mosquitto
+    category: home-automation
+    kind: infrastructure
+    summary: Lightweight MQTT broker for IoT workloads.
+    website: https://mosquitto.org
+    license: EPL-2.0
+    tags: [mqtt, iot]
+  - id: frigate
+    name: Frigate NVR
+    category: home-automation
+    kind: application
+    summary: Real-time object detection NVR for IP cameras.
+    website: https://frigate.video
+    license: MIT
+    tags: [nvr, video, ai]
+
+  # ------------------------------------------------------------ Media ----
+  - id: jellyfin
+    name: Jellyfin
+    category: media
+    kind: application
+    summary: Free software media system for movies, TV and music.
+    website: https://jellyfin.org
+    license: GPL-2.0
+    tags: [media, streaming]
+  - id: plex
+    name: Plex Media Server
+    category: media
+    kind: application
+    summary: Commercial media server with client apps everywhere.
+    website: https://www.plex.tv
+    license: Proprietary
+    tags: [media, streaming]
+  - id: navidrome
+    name: Navidrome
+    category: media
+    kind: application
+    summary: Lightweight Subsonic-compatible music server.
+    website: https://www.navidrome.org
+    license: GPL-3.0
+    tags: [music, streaming]
+  - id: audiobookshelf
+    name: Audiobookshelf
+    category: media
+    kind: application
+    summary: Audiobook and podcast server with progress sync.
+    website: https://www.audiobookshelf.org
+    license: GPL-3.0
+    tags: [audio, books]
+  - id: radarr
+    name: Radarr
+    category: media
+    kind: application
+    summary: Movie collection manager for Usenet and BitTorrent.
+    website: https://radarr.video
+    license: GPL-3.0
+    tags: [media, automation]
+  - id: sonarr
+    name: Sonarr
+    category: media
+    kind: application
+    summary: TV series collection manager and downloader.
+    website: https://sonarr.tv
+    license: GPL-3.0
+    tags: [media, automation]
+  - id: bazarr
+    name: Bazarr
+    category: media
+    kind: application
+    summary: Subtitle manager for Sonarr and Radarr libraries.
+    website: https://www.bazarr.media
+    license: GPL-3.0
+    tags: [media, subtitles]
+  - id: photoprism
+    name: PhotoPrism
+    category: media
+    kind: application
+    summary: AI-powered photo library with maps and face search.
+    website: https://www.photoprism.app
+    license: AGPL-3.0
+    tags: [photos, ai]
+  - id: owncast
+    name: Owncast
+    category: media
+    kind: application
+    summary: Self-hosted live video streaming and chat.
+    website: https://owncast.online
+    license: MIT
+    tags: [streaming, live]
+
+  # ------------------------------------------------------- Monitoring ----
+  - id: prometheus
+    name: Prometheus
+    category: monitoring
+    kind: infrastructure
+    summary: Metrics collection, storage and alerting.
+    website: https://prometheus.io
+    license: Apache-2.0
+    tags: [metrics, monitoring]
+  - id: alertmanager
+    name: Alertmanager
+    category: monitoring
+    kind: infrastructure
+    summary: Routing, deduplication and silencing for Prometheus alerts.
+    website: https://prometheus.io/docs/alerting/latest/alertmanager
+    license: Apache-2.0
+    tags: [alerting]
+  - id: loki
+    name: Grafana Loki
+    category: monitoring
+    kind: infrastructure
+    summary: Log aggregation designed for cost-efficient storage.
+    website: https://grafana.com/oss/loki
+    license: AGPL-3.0
+    tags: [logs]
+  - id: tempo
+    name: Grafana Tempo
+    category: monitoring
+    kind: infrastructure
+    summary: Distributed tracing backend.
+    website: https://grafana.com/oss/tempo
+    license: AGPL-3.0
+    tags: [tracing]
+  - id: zabbix
+    name: Zabbix
+    category: monitoring
+    kind: application
+    summary: Enterprise infrastructure monitoring and alerting.
+    website: https://www.zabbix.com
+    license: GPL-2.0
+    tags: [monitoring]
+  - id: netdata
+    name: Netdata
+    category: monitoring
+    kind: application
+    summary: Real-time per-second infrastructure monitoring.
+    website: https://www.netdata.cloud
+    license: GPL-3.0
+    tags: [monitoring, metrics]
+  - id: beszel
+    name: Beszel
+    category: monitoring
+    kind: application
+    summary: Lightweight server monitoring with Docker stats and alerts.
+    website: https://beszel.dev
+    license: MIT
+    tags: [monitoring]
+  - id: healthchecks
+    name: Healthchecks.io
+    category: monitoring
+    kind: application
+    summary: Cron job and heartbeat monitoring with alerts.
+    website: https://healthchecks.io
+    license: BSD-3-Clause
+    tags: [monitoring, cron]
+  - id: glances
+    name: Glances
+    category: monitoring
+    kind: application
+    summary: Cross-platform system monitoring dashboard.
+    website: https://nicolargo.github.io/glances
+    license: LGPL-3.0
+    tags: [monitoring]
+
+  # ------------------------------------------------------- Networking ----
+  - id: wireguard
+    name: WireGuard VPN
+    category: networking
+    kind: application
+    summary: Fast, modern VPN with simple peer configuration.
+    website: https://www.wireguard.com
+    license: GPL-2.0
+    tags: [vpn, networking]
+  - id: tailscale
+    name: Tailscale (self-hosted Headscale)
+    category: networking
+    kind: application
+    summary: Open-source control server for a WireGuard mesh VPN.
+    website: https://headscale.net
+    license: BSD-3-Clause
+    tags: [vpn, mesh]
+  - id: nginx-proxy-manager
+    name: Nginx Proxy Manager
+    category: networking
+    kind: application
+    summary: Reverse proxy UI with automatic TLS certificates.
+    website: https://nginxproxymanager.com
+    license: MIT
+    tags: [proxy, ssl]
+  - id: pihole
+    name: Pi-hole
+    category: networking
+    kind: application
+    summary: Network-wide DNS ad blocking and filtering.
+    website: https://pi-hole.net
+    license: EUPL-1.2
+    tags: [dns, filtering]
+  - id: adguard-home
+    name: AdGuard Home
+    category: networking
+    kind: application
+    summary: Network-wide DNS filtering with a modern dashboard.
+    website: https://adguard.com/adguard-home/overview.html
+    license: GPL-3.0
+    tags: [dns, filtering]
+  - id: unbound
+    name: Unbound
+    category: networking
+    kind: infrastructure
+    summary: Validating, recursive DNS resolver.
+    website: https://nlnetlabs.nl/projects/unbound/about
+    license: BSD-3-Clause
+    tags: [dns]
+  - id: coredns
+    name: CoreDNS
+    category: networking
+    kind: infrastructure
+    summary: Flexible DNS server for clusters and service discovery.
+    website: https://coredns.io
+    license: Apache-2.0
+    tags: [dns, kubernetes]
+  - id: speedtest-tracker
+    name: Speedtest Tracker
+    category: networking
+    kind: application
+    summary: Continuous internet speed monitoring with history.
+    website: https://speedtest-tracker.dev
+    license: MIT
+    tags: [networking]
+  - id: caddy
+    name: Caddy
+    category: networking
+    kind: infrastructure
+    summary: Web server with automatic HTTPS by default.
+    website: https://caddyserver.com
+    license: Apache-2.0
+    tags: [proxy, ssl]
+  - id: haproxy
+    name: HAProxy
+    category: networking
+    kind: infrastructure
+    summary: High-performance TCP/HTTP load balancer.
+    website: https://www.haproxy.org
+    license: GPL-2.0
+    tags: [load-balancer]
+  - id: nginx
+    name: Nginx
+    category: networking
+    kind: infrastructure
+    summary: Web server, reverse proxy and cache.
+    website: https://nginx.org
+    license: BSD-2-Clause
+    tags: [proxy, webserver]
+
+  # ----------------------------------------------------- Productivity ----
+  - id: vikunja
+    name: Vikunja
+    category: productivity
+    kind: application
+    summary: To-do and task management with lists, labels and reminders.
+    website: https://vikunja.io
+    license: AGPL-3.0
+    tags: [tasks]
+  - id: obsidian-livesync
+    name: CouchDB for Obsidian Sync
+    category: productivity
+    kind: application
+    summary: Self-hosted sync backend for Obsidian vaults.
+    website: https://github.com/vrtmrz/obsidian-livesync
+    license: MIT
+    tags: [notes, sync]
+  - id: trilium
+    name: Trilium Notes
+    category: productivity
+    kind: application
+    summary: Hierarchical note-taking for large personal knowledge bases.
+    website: https://github.com/zadam/trilium
+    license: AGPL-3.0
+    tags: [notes]
+  - id: affine
+    name: AFFiNE
+    category: productivity
+    kind: application
+    summary: Workspace combining docs, whiteboards and databases.
+    website: https://affine.pro
+    license: MIT
+    tags: [notes, docs]
+  - id: appflowy
+    name: AppFlowy
+    category: productivity
+    kind: application
+    summary: Open-source Notion alternative with local-first storage.
+    website: https://appflowy.io
+    license: AGPL-3.0
+    tags: [notes, docs]
+  - id: calibre-web
+    name: Calibre-Web
+    category: productivity
+    kind: application
+    summary: Browse, read and download an ebook library.
+    website: https://github.com/janeczku/calibre-web
+    license: GPL-3.0
+    tags: [books]
+  - id: wallabag
+    name: Wallabag
+    category: productivity
+    kind: application
+    summary: Read-it-later service that saves articles for offline reading.
+    website: https://www.wallabag.org
+    license: MIT
+    tags: [reading]
+  - id: linkding
+    name: Linkding
+    category: productivity
+    kind: application
+    summary: Minimal bookmark manager with tags and full-text search.
+    website: https://github.com/sissbruecker/linkding
+    license: MIT
+    tags: [bookmarks]
+  - id: memos
+    name: Memos
+    category: productivity
+    kind: application
+    summary: Lightweight, self-hosted microblog and note stream.
+    website: https://www.usememos.com
+    license: MIT
+    tags: [notes]
+
+  # ------------------------------------------------ Project Management ----
+  - id: jira-alternative-opproject
+    name: OpenProject
+    category: project-management
+    kind: application
+    summary: Classic and agile project management with Gantt and boards.
+    website: https://www.openproject.org
+    license: GPL-3.0
+    tags: [project, agile]
+  - id: taiga
+    name: Taiga
+    category: project-management
+    kind: application
+    summary: Agile project management with Scrum and Kanban.
+    website: https://www.taiga.io
+    license: AGPL-3.0
+    tags: [agile, kanban]
+  - id: leantime
+    name: Leantime
+    category: project-management
+    kind: application
+    summary: Project management for non-project managers.
+    website: https://leantime.io
+    license: AGPL-3.0
+    tags: [project]
+  - id: focalboard
+    name: Focalboard
+    category: project-management
+    kind: application
+    summary: Kanban boards and project tracking.
+    website: https://www.focalboard.com
+    license: MIT
+    tags: [kanban]
+  - id: plane
+    name: Plane
+    category: project-management
+    kind: application
+    summary: Open-source issue and sprint tracking for product teams.
+    website: https://plane.so
+    license: AGPL-3.0
+    tags: [issues, agile]
+  - id: kanboard
+    name: Kanboard
+    category: project-management
+    kind: application
+    summary: Minimalist Kanban board with automation.
+    website: https://kanboard.org
+    license: MIT
+    tags: [kanban]
+
+  # --------------------------------------------------------- Security ----
+  - id: authentik
+    name: authentik
+    category: security
+    kind: application
+    summary: Identity provider with SSO, MFA and application proxying.
+    website: https://goauthentik.io
+    license: MIT
+    tags: [identity, sso]
+  - id: keycloak
+    name: Keycloak
+    category: security
+    kind: application
+    summary: Enterprise identity and access management (OIDC, SAML).
+    website: https://www.keycloak.org
+    license: Apache-2.0
+    tags: [identity, sso]
+  - id: authelia
+    name: Authelia
+    category: security
+    kind: application
+    summary: Authentication and authorisation server for reverse proxies.
+    website: https://www.authelia.com
+    license: Apache-2.0
+    tags: [identity, proxy]
+  - id: bitwarden
+    name: Bitwarden (official server)
+    category: security
+    kind: application
+    summary: Official Bitwarden server stack. Heavy resource profile.
+    website: https://bitwarden.com
+    license: AGPL-3.0
+    tags: [passwords]
+  - id: passbolt
+    name: Passbolt
+    category: security
+    kind: application
+    summary: Team password manager built on OpenPGP.
+    website: https://www.passbolt.com
+    license: AGPL-3.0
+    tags: [passwords, team]
+  - id: hashicorp-vault
+    name: HashiCorp Vault
+    category: security
+    kind: infrastructure
+    summary: Secret storage, encryption as a service and access control.
+    website: https://www.vaultproject.io
+    license: BUSL-1.1
+    tags: [secrets]
+  - id: wazuh
+    name: Wazuh
+    category: security
+    kind: application
+    summary: SIEM, endpoint detection and compliance monitoring.
+    website: https://wazuh.com
+    license: GPL-2.0
+    tags: [siem, security]
+  - id: fail2ban
+    name: Fail2Ban
+    category: security
+    kind: infrastructure
+    summary: Log-based intrusion prevention for SSH and services.
+    website: https://www.fail2ban.org
+    license: GPL-2.0
+    tags: [security]
+  - id: crowdsec
+    name: CrowdSec
+    category: security
+    kind: infrastructure
+    summary: Collaborative intrusion prevention with behaviour detection.
+    website: https://www.crowdsec.net
+    license: MIT
+    tags: [security]
+  - id: step-ca
+    name: smallstep CA
+    category: security
+    kind: infrastructure
+    summary: Private certificate authority for internal TLS and SSH.
+    website: https://smallstep.com/certificate-manager
+    license: Apache-2.0
+    tags: [pki, ssl]
+
+  # ---------------------------------------------------------- Storage ----
+  - id: minio
+    name: MinIO
+    category: storage
+    kind: infrastructure
+    summary: S3-compatible high-performance object storage.
+    website: https://min.io
+    license: AGPL-3.0
+    tags: [object-storage, s3]
+  - id: seaweedfs
+    name: SeaweedFS
+    category: storage
+    kind: infrastructure
+    summary: Distributed file and object store for small files.
+    website: https://seaweedfs.github.io
+    license: Apache-2.0
+    tags: [storage]
+  - id: syncthing
+    name: Syncthing
+    category: storage
+    kind: application
+    summary: Continuous peer-to-peer file synchronisation.
+    website: https://syncthing.net
+    license: MPL-2.0
+    tags: [sync, files]
+  - id: filebrowser
+    name: File Browser
+    category: storage
+    kind: application
+    summary: Web file manager with sharing and permissions.
+    website: https://filebrowser.org
+    license: Apache-2.0
+    tags: [files]
+  - id: seafile
+    name: Seafile
+    category: storage
+    kind: application
+    summary: File sync and share platform with versioning.
+    website: https://www.seafile.com
+    license: GPL-2.0
+    tags: [files, sync]
+  - id: pydio
+    name: Pydio Cells
+    category: storage
+    kind: application
+    summary: Enterprise file sharing and collaboration.
+    website: https://pydio.com
+    license: AGPL-3.0
+    tags: [files]
+  - id: restic-rest-server
+    name: restic REST server
+    category: storage
+    kind: infrastructure
+    summary: Backup target for restic clients over HTTPS.
+    website: https://restic.net
+    license: BSD-2-Clause
+    tags: [backup]
+
+  # ------------------------------------------- System Administration ----
+  - id: portainer
+    name: Portainer
+    category: system-administration
+    kind: application
+    summary: Container management UI for Docker and Kubernetes.
+    website: https://www.portainer.io
+    license: Zlib
+    tags: [docker, admin]
+  - id: dokploy
+    name: Dokploy
+    category: system-administration
+    kind: application
+    summary: Self-hosted application deployment dashboard over Docker.
+    website: https://dokploy.com
+    license: Apache-2.0
+    tags: [deployment]
+  - id: coolify
+    name: Coolify
+    category: system-administration
+    kind: application
+    summary: Self-hosted Heroku/Netlify-style deployment platform.
+    website: https://coolify.io
+    license: Apache-2.0
+    tags: [deployment]
+  - id: cockpit
+    name: Cockpit
+    category: system-administration
+    kind: application
+    summary: Web console for administering Linux servers.
+    website: https://cockpit-project.org
+    license: LGPL-2.1
+    tags: [admin, linux]
+  - id: dozzle
+    name: Dozzle
+    category: system-administration
+    kind: application
+    summary: Real-time log viewer for Docker containers.
+    website: https://dozzle.dev
+    license: Apache-2.0
+    tags: [logs, docker]
+  - id: heimdall
+    name: Heimdall
+    category: system-administration
+    kind: application
+    summary: Application dashboard and launcher for your services.
+    website: https://heimdall.site
+    license: MIT
+    tags: [dashboard]
+  - id: homepage
+    name: Homepage
+    category: system-administration
+    kind: application
+    summary: Highly customisable services dashboard with widgets.
+    website: https://gethomepage.dev
+    license: Apache-2.0
+    tags: [dashboard]
+  - id: watchdog
+    name: Watchtower
+    category: system-administration
+    kind: infrastructure
+    summary: Automatic container image updates. Used with care: the platform's own update policy governs production.
+    website: https://containrrr.dev/watchtower
+    license: Apache-2.0
+    tags: [docker, updates]
+  - id: ansible-semaphore
+    name: Ansible Semaphore
+    category: system-administration
+    kind: application
+    summary: Web UI for running and scheduling Ansible playbooks.
+    website: https://semaphoreui.com
+    license: MIT
+    tags: [automation, config]
+
+  # ------------------------------------------------------ Web Hosting ----
+  - id: cpanel-hosting
+    name: cPanel Hosting Account
+    category: web-hosting
+    kind: platform
+    summary: Classic cPanel/WHM hosting account provisioned through the cPanel adapter.
+    website: https://cpanel.net
+    license: Proprietary
+    tags: [hosting, cpanel]
+  - id: cyberpanel
+    name: CyberPanel
+    category: web-hosting
+    kind: application
+    summary: Hosting control panel built on OpenLiteSpeed.
+    website: https://cyberpanel.net
+    license: GPL-3.0
+    tags: [panel, hosting]
+  - id: hestia
+    name: HestiaCP
+    category: web-hosting
+    kind: application
+    summary: Lightweight multi-site hosting control panel.
+    website: https://hestiacp.com
+    license: GPL-3.0
+    tags: [panel, hosting]
+  - id: cloudpanel
+    name: CloudPanel
+    category: web-hosting
+    kind: application
+    summary: High-performance PHP hosting control panel.
+    website: https://www.cloudpanel.io
+    license: Proprietary
+    tags: [panel, hosting]
+  - id: apache
+    name: Apache HTTP Server
+    category: web-hosting
+    kind: infrastructure
+    summary: Battle-tested HTTP server and reverse proxy.
+    website: https://httpd.apache.org
+    license: Apache-2.0
+    tags: [webserver]
+  - id: varnish
+    name: Varnish Cache
+    category: web-hosting
+    kind: infrastructure
+    summary: HTTP accelerator for content-heavy sites.
+    website: https://varnish-cache.org
+    license: BSD-2-Clause
+    tags: [cache]
+
+  # ------------------------------------------------- Infrastructure ----
+  - id: docker-engine
+    name: Docker Engine
+    category: infrastructure
+    kind: infrastructure
+    summary: Container runtime installed and managed by the CloudHost247 server agent.
+    website: https://www.docker.com
+    license: Apache-2.0
+    tags: [docker, runtime]
+  - id: etcd
+    name: etcd
+    category: infrastructure
+    kind: infrastructure
+    summary: Distributed key-value store used by Kubernetes and service discovery.
+    website: https://etcd.io
+    license: Apache-2.0
+    tags: [kubernetes, storage]
+  - id: consul
+    name: HashiCorp Consul
+    category: infrastructure
+    kind: infrastructure
+    summary: Service discovery, configuration and service mesh.
+    website: https://www.consul.io
+    license: BUSL-1.1
+    tags: [service-discovery]
+  - id: nats
+    name: NATS
+    category: infrastructure
+    kind: infrastructure
+    summary: High-performance messaging system for streaming and queues.
+    website: https://nats.io
+    license: Apache-2.0
+    tags: [messaging]
+  - id: kafka
+    name: Apache Kafka
+    category: infrastructure
+    kind: infrastructure
+    summary: Distributed event streaming platform.
+    website: https://kafka.apache.org
+    license: Apache-2.0
+    tags: [streaming]
+  - id: influxdb
+    name: InfluxDB
+    category: infrastructure
+    kind: infrastructure
+    summary: Time-series database for metrics and events.
+    website: https://www.influxdata.com
+    license: MIT
+    tags: [timeseries]
+  - id: elastic-opensearch
+    name: OpenSearch
+    category: infrastructure
+    kind: infrastructure
+    summary: Search and analytics engine with an OpenSearch Dashboards UI.
+    website: https://opensearch.org
+    license: Apache-2.0
+    tags: [search, logs]
+  - id: infisical
+    name: Infisical
+    category: infrastructure
+    kind: infrastructure
+    summary: Secret management and configuration for development teams.
+    website: https://infisical.com
+    license: MIT
+    tags: [secrets]
+
+  # --------------------------------------------------------- Platforms ----
+  - id: lemp-stack
+    name: LEMP Stack
+    category: web-hosting
+    kind: platform
+    summary: Linux, Nginx, MySQL/MariaDB and PHP application stack.
+    website: https://nginx.org
+    license: Mixed
+    tags: [stack, php]
+  - id: lamp-stack
+    name: LAMP Stack
+    category: web-hosting
+    kind: platform
+    summary: Linux, Apache, MySQL and PHP application stack.
+    website: https://httpd.apache.org
+    license: Mixed
+    tags: [stack, php]
+  - id: mern-stack
+    name: MERN Stack
+    category: developer-tools
+    kind: platform
+    summary: MongoDB, Express, React and Node.js application stack.
+    website: https://www.mongodb.com/mern-stack
+    license: Mixed
+    tags: [stack, node]
+  - id: mean-stack
+    name: MEAN Stack
+    category: developer-tools
+    kind: platform
+    summary: MongoDB, Express, Angular and Node.js application stack.
+    website: https://angular.io
+    license: Mixed
+    tags: [stack, node]
+  - id: kubernetes-cluster
+    name: Kubernetes Cluster
+    category: infrastructure
+    kind: platform
+    summary: Container orchestration cluster registered as a deployment target.
+    website: https://kubernetes.io
+    license: Apache-2.0
+    tags: [kubernetes, orchestration]
+  - id: rancher
+    name: Rancher
+    category: infrastructure
+    kind: platform
+    summary: Multi-cluster Kubernetes management platform.
+    website: https://www.rancher.com
+    license: Apache-2.0
+    tags: [kubernetes]
+  - id: longhorn
+    name: Longhorn
+    category: infrastructure
+    kind: platform
+    summary: Distributed block storage for Kubernetes.
+    website: https://longhorn.io
+    license: Apache-2.0
+    tags: [kubernetes, storage]

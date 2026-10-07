@@ -1,0 +1,119 @@
+# CloudHost247 App Cloud manifest — PostgreSQL (managed database)
+#
+# kind: infrastructure. A PostgreSQL installation is a managed service other
+# applications depend on (specification §60, §61): it is not a customer-facing
+# website, so it exposes no public domain by default and its health check is a
+# TCP probe. Applications that request an isolated database get exactly this
+# stack inside their own project.
+schema: 1
+id: postgresql
+name: PostgreSQL
+slug: postgresql
+category: database
+kind: infrastructure
+vendor: PostgreSQL Global Development Group
+license: PostgreSQL License
+summary: Managed PostgreSQL database server.
+description: A dedicated PostgreSQL 16 instance with automatic backups, TLS-ready connections and resource limits from the customer's plan. Use it as the database for your own applications, or let the platform provision it automatically as an isolated dependency of another catalog entry.
+website: https://www.postgresql.org
+repository: https://github.com/postgres/postgres
+documentation: https://www.postgresql.org/docs
+logo_url: https://cdn.cloudhost247.test/apps/postgresql.svg
+tags: [database, sql, postgres, infrastructure]
+version: 16.6
+channel: stable
+featured: false
+
+deployment:
+  engine: docker-compose
+  supported_hosting_types: [vps, dedicated, docker, kubernetes]
+  update_strategy: recreate
+
+requirements:
+  cpu_min: 1
+  cpu_recommended: 2
+  memory_min_mb: 1024
+  memory_recommended_mb: 4096
+  storage_min_mb: 10240
+  storage_recommended_mb: 51200
+  gpu: false
+
+services:
+  app:
+    image: postgres:16.6-alpine
+    port: 5432
+    primary: true
+    internal: false
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - name: dbdata
+        mount: /var/lib/postgresql/data
+        size_mb: 40960
+        backup: true
+
+environment:
+  optional:
+    - key: TZ
+      description: Server timezone for logs and scheduled jobs.
+      default: UTC
+  generated:
+    - key: DB_NAME
+      generate: uuid
+    - key: DB_USER
+      generate: uuid
+    - key: DB_PASSWORD
+      generate: password
+      secret: true
+
+databases:
+  - name: main
+    engine: postgres
+    version: "16"
+    isolated: true
+    service: app
+    size_mb: 40960
+
+volumes:
+  - name: dbdata
+    service: app
+    mount: /var/lib/postgresql/data
+    size_mb: 40960
+
+ports: [5432]
+
+healthcheck:
+  type: tcp
+  port: 5432
+  interval: 30s
+  timeout: 5s
+  retries: 3
+
+domain:
+  enabled: false
+  required: false
+
+ssl:
+  enabled: false
+  force_https: false
+  min_tls: VersionTLS12
+
+backup:
+  enabled: true
+  schedule: daily
+  retention_days: 14
+  include_volumes: [dbdata]
+  include_databases: [main]
+  pre_update: true
+
+update:
+  strategy: recreate
+  backup_before: true
+  health_check_after: true
+  rollback_on_failure: true
+  auto_update_allowed: false

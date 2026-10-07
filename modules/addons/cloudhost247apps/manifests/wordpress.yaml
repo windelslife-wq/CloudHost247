@@ -1,0 +1,181 @@
+# CloudHost247 App Cloud manifest — WordPress
+#
+# WordPress supports two deployment modes on CloudHost247 (specification §38):
+# this Docker compose stack on a VPS/dedicated node, and the cPanel adapter on
+# shared/cPanel hosting. The customer chooses a hosting product; the platform
+# chooses the backend.
+schema: 1
+id: wordpress
+name: WordPress
+slug: wordpress
+category: cms
+kind: application
+vendor: WordPress Foundation
+license: GPL-2.0-or-later
+summary: The world's most popular CMS for blogs, marketing sites and stores.
+description: WordPress with a private MariaDB database, persistent uploads volume and automatic HTTPS. Deployed through Docker on VPS and dedicated nodes, or provisioned through cPanel on shared hosting — the same catalog entry, the right backend for the product the customer bought.
+website: https://wordpress.org
+repository: https://github.com/WordPress/WordPress
+documentation: https://developer.wordpress.org
+logo_url: https://cdn.cloudhost247.test/apps/wordpress.svg
+tags: [cms, blog, website, php, ecommerce]
+version: 6.7.1
+channel: stable
+featured: true
+
+deployment:
+  engine: docker-compose
+  supported_hosting_types: [shared, cpanel, vps, dedicated, docker, kubernetes]
+  update_strategy: recreate
+
+requirements:
+  cpu_min: 1
+  cpu_recommended: 2
+  memory_min_mb: 1024
+  memory_recommended_mb: 2048
+  storage_min_mb: 5120
+  storage_recommended_mb: 20480
+  gpu: false
+
+services:
+  app:
+    image: wordpress:6.7.1-php8.3-apache
+    port: 8080
+    primary: true
+    restart: unless-stopped
+    depends_on: [db]
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: ${DB_NAME}
+      WORDPRESS_DB_USER: ${DB_USER}
+      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}
+      WORDPRESS_TABLE_PREFIX: ${TABLE_PREFIX}
+      WORDPRESS_CONFIG_EXTRA: "define('WP_HOME', 'https://${PRIMARY_DOMAIN}'); define('WP_SITEURL', 'https://${PRIMARY_DOMAIN}'); define('FORCE_SSL_ADMIN', true);"
+    volumes:
+      - name: html
+        mount: /var/www/html
+        size_mb: 10240
+        backup: true
+  db:
+    image: mariadb:11.4
+    internal: true
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_NAME}
+      MARIADB_USER: ${DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+    volumes:
+      - name: dbdata
+        mount: /var/lib/mysql
+        size_mb: 8192
+        backup: true
+
+environment:
+  required:
+    - key: SITE_TITLE
+      description: The title used for the WordPress site during setup.
+      default: My CloudHost247 Site
+    - key: ADMIN_USERNAME
+      description: WordPress administrator username.
+      validation: username
+    - key: ADMIN_EMAIL
+      description: Administrator email address, used for password recovery.
+      validation: email
+  optional:
+    - key: TZ
+      description: Site timezone.
+      default: UTC
+    - key: TABLE_PREFIX
+      description: Database table prefix.
+      default: wp_
+  generated:
+    - key: DB_NAME
+      generate: uuid
+    - key: DB_USER
+      generate: uuid
+    - key: DB_PASSWORD
+      generate: password
+      secret: true
+    - key: ADMIN_PASSWORD
+      generate: password
+      secret: true
+      description: Initial administrator password, shown once in the client area and emailed as a secure reset link.
+
+databases:
+  - name: wordpress
+    engine: mariadb
+    version: "11.4"
+    isolated: true
+    service: db
+
+volumes:
+  - name: html
+    service: app
+    mount: /var/www/html
+    size_mb: 10240
+  - name: dbdata
+    service: db
+    mount: /var/lib/mysql
+    size_mb: 8192
+
+dependencies:
+  - id: mariadb
+    type: database
+    requirement: required
+    isolation: isolated
+
+ports: [8080]
+
+healthcheck:
+  type: http
+  path: /wp-login.php
+  port: 8080
+  interval: 30s
+  timeout: 8s
+  retries: 4
+  expected_status: [200, 302]
+
+domain:
+  enabled: true
+  required: true
+  path: /
+  www_redirect: true
+
+ssl:
+  enabled: true
+  force_https: true
+  min_tls: VersionTLS12
+
+backup:
+  enabled: true
+  schedule: daily
+  retention_days: 14
+  include_volumes: [html, dbdata]
+  include_databases: [wordpress]
+  pre_update: true
+
+update:
+  strategy: recreate
+  backup_before: true
+  health_check_after: true
+  rollback_on_failure: true
+  auto_update_allowed: false
+
+# cPanel deployment mode (specification §38): the adapter creates the account,
+# domain, database and user, then installs WordPress through the host's own
+# installer rather than shipping containers onto shared hosting.
+adapters:
+  cpanel:
+    mode: script
+    script: wordpress
+    package_from_plan: true
+    create_database: true
+    create_email: false
+    ssl: autossl
+    features:
+      - create_account
+      - add_domain
+      - create_database
+      - install_script
+      - enable_ssl

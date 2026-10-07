@@ -29,3 +29,10 @@ modules/addons/digitalproducts/storage/*
 !modules/addons/digitalproducts/storage/.gitkeep
 modules/addons/cloudhost247_cart_recovery/node_modules
 __pycache__/
+
+# CloudHost247 App Cloud (application marketplace / deployment platform)
+modules/addons/cloudhost247apps/node_modules/
+modules/addons/cloudhost247apps/storage/*
+!modules/addons/cloudhost247apps/storage/.gitkeep
+modules/addons/cloudhost247apps/logs/
+modules/addons/cloudhost247apps/cache/

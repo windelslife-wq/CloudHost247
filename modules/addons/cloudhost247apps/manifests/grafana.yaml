@@ -1,0 +1,157 @@
+# CloudHost247 App Cloud manifest — Grafana
+schema: 1
+id: grafana
+name: Grafana OSS
+slug: grafana
+category: monitoring
+kind: application
+vendor: Grafana Labs
+license: AGPL-3.0-or-later
+summary: Dashboards, metrics visualisation and alerting.
+description: Grafana OSS with persistent configuration and dashboards. Customers connect their own data sources; CloudHost247 provisions the instance, its HTTPS domain and its backups.
+website: https://grafana.com
+repository: https://github.com/grafana/grafana
+documentation: https://grafana.com/docs
+logo_url: https://cdn.cloudhost247.test/apps/grafana.svg
+tags: [monitoring, dashboards, metrics, alerting]
+version: 11.3.1
+channel: stable
+featured: false
+
+deployment:
+  engine: docker-compose
+  supported_hosting_types: [vps, dedicated, docker, kubernetes]
+  update_strategy: recreate
+
+requirements:
+  cpu_min: 1
+  cpu_recommended: 2
+  memory_min_mb: 1024
+  memory_recommended_mb: 2048
+  storage_min_mb: 5120
+  storage_recommended_mb: 20480
+  gpu: false
+
+services:
+  app:
+    image: grafana/grafana-oss:11.3.1
+    port: 3000
+    primary: true
+    restart: unless-stopped
+    user: "472:472"
+    environment:
+      GF_SERVER_ROOT_URL: https://${PRIMARY_DOMAIN}
+      GF_SERVER_DOMAIN: ${PRIMARY_DOMAIN}
+      GF_SERVER_PROTOCOL: http
+      GF_SECURITY_ADMIN_USER: ${ADMIN_USERNAME}
+      GF_SECURITY_ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: ${ALLOW_SIGNUP}
+      GF_DATABASE_TYPE: postgres
+      GF_DATABASE_HOST: db:5432
+      GF_DATABASE_NAME: ${DB_NAME}
+      GF_DATABASE_USER: ${DB_USER}
+      GF_DATABASE_PASSWORD: ${DB_PASSWORD}
+      GF_DATABASE_SSL_MODE: disable
+    volumes:
+      - name: data
+        mount: /var/lib/grafana
+        size_mb: 10240
+        backup: true
+  db:
+    image: postgres:16-alpine
+    internal: true
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - name: dbdata
+        mount: /var/lib/postgresql/data
+        size_mb: 8192
+        backup: true
+
+environment:
+  required:
+    - key: ADMIN_USERNAME
+      description: Grafana administrator login.
+      validation: username
+  optional:
+    - key: ALLOW_SIGNUP
+      description: Allow visitors to create their own Grafana accounts.
+      default: "false"
+      options: ["true", "false"]
+    - key: TZ
+      description: Dashboard timezone.
+      default: UTC
+  generated:
+    - key: ADMIN_PASSWORD
+      generate: password
+      secret: true
+    - key: DB_NAME
+      generate: uuid
+    - key: DB_USER
+      generate: uuid
+    - key: DB_PASSWORD
+      generate: password
+      secret: true
+
+databases:
+  - name: grafana
+    engine: postgres
+    version: "16"
+    isolated: true
+    service: db
+
+volumes:
+  - name: data
+    service: app
+    mount: /var/lib/grafana
+    size_mb: 10240
+  - name: dbdata
+    service: db
+    mount: /var/lib/postgresql/data
+    size_mb: 8192
+
+dependencies:
+  - id: postgresql
+    type: database
+    requirement: required
+    isolation: isolated
+
+ports: [3000]
+
+healthcheck:
+  type: http
+  path: /api/health
+  port: 3000
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  expected_status: [200]
+
+domain:
+  enabled: true
+  required: true
+  path: /
+
+ssl:
+  enabled: true
+  force_https: true
+  min_tls: VersionTLS12
+
+backup:
+  enabled: true
+  schedule: daily
+  retention_days: 14
+  include_volumes: [data, dbdata]
+  include_databases: [grafana]
+  pre_update: true
+
+update:
+  strategy: recreate
+  backup_before: true
+  health_check_after: true
+  rollback_on_failure: true
+  auto_update_allowed: true

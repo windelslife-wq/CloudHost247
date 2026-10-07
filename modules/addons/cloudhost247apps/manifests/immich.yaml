@@ -1,0 +1,199 @@
+# CloudHost247 App Cloud manifest — Immich
+#
+# Multi-service stack: API server, microservices worker, machine learning
+# container, Postgres with pgvecto.rs and Redis. The deployment engine creates
+# one isolated compose project per customer, so each tenant gets their own
+# database, volumes and network.
+schema: 1
+id: immich
+name: Immich
+slug: immich
+category: media
+kind: application
+vendor: Immich contributors
+license: AGPL-3.0-or-later
+summary: Self-hosted photo and video backup with AI search.
+description: A high-performance self-hosted photo and video management solution with mobile backup, face and object recognition, map view and sharing. Requires more resources than most catalog entries; the install wizard will only offer plans that meet the minimums.
+website: https://immich.app
+repository: https://github.com/immich-app/immich
+documentation: https://immich.app/docs
+logo_url: https://cdn.cloudhost247.test/apps/immich.svg
+tags: [media, photos, videos, backup, ai]
+version: 1.120.2
+channel: stable
+featured: true
+
+deployment:
+  engine: docker-compose
+  supported_hosting_types: [vps, dedicated, docker, kubernetes]
+  update_strategy: recreate
+
+requirements:
+  cpu_min: 4
+  cpu_recommended: 8
+  memory_min_mb: 6144
+  memory_recommended_mb: 16384
+  storage_min_mb: 51200
+  storage_recommended_mb: 512000
+  gpu: false
+
+services:
+  app:
+    image: ghcr.io/immich-app/immich-server:v1.120.2
+    port: 2283
+    primary: true
+    restart: unless-stopped
+    depends_on: [db, redis]
+    environment:
+      DB_HOSTNAME: db
+      DB_DATABASE_NAME: ${DB_NAME}
+      DB_USERNAME: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOSTNAME: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      IMMICH_MEDIA_LOCATION: /usr/src/app/upload
+      UPLOAD_LOCATION: /usr/src/app/upload
+    volumes:
+      - name: upload
+        mount: /usr/src/app/upload
+        size_mb: 409600
+        backup: false
+  microservices:
+    image: ghcr.io/immich-app/immich-server:v1.120.2
+    internal: true
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "./start-microservices.sh"]
+    depends_on: [db, redis]
+    environment:
+      DB_HOSTNAME: db
+      DB_DATABASE_NAME: ${DB_NAME}
+      DB_USERNAME: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOSTNAME: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - name: upload
+        mount: /usr/src/app/upload
+  machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:v1.120.2
+    internal: true
+    restart: unless-stopped
+    volumes:
+      - name: mlcache
+        mount: /cache
+        size_mb: 8192
+        backup: false
+  db:
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.1.3-pgvectors0.2.1
+    internal: true
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - name: dbdata
+        mount: /var/lib/postgresql/data
+        size_mb: 40960
+        backup: true
+  redis:
+    image: redis:7-alpine
+    internal: true
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--maxmemory", "1gb", "--maxmemory-policy", "allkeys-lru"]
+
+environment:
+  required:
+    - key: ADMIN_EMAIL
+      description: Email address of the first Immich administrator.
+      validation: email
+  optional:
+    - key: TZ
+      description: Timezone for photo timestamps.
+      default: UTC
+  generated:
+    - key: DB_NAME
+      generate: uuid
+    - key: DB_USER
+      generate: uuid
+    - key: DB_PASSWORD
+      generate: password
+      secret: true
+    - key: REDIS_PASSWORD
+      generate: password
+      secret: true
+
+databases:
+  - name: immich
+    engine: postgres
+    version: "14"
+    isolated: true
+    service: db
+    size_mb: 40960
+  - name: queue
+    engine: redis
+    version: "7"
+    isolated: true
+    service: redis
+
+volumes:
+  - name: upload
+    service: app
+    mount: /usr/src/app/upload
+    size_mb: 409600
+    backup: false
+  - name: dbdata
+    service: db
+    mount: /var/lib/postgresql/data
+    size_mb: 40960
+  - name: mlcache
+    service: machine-learning
+    mount: /cache
+    size_mb: 8192
+    backup: false
+
+dependencies:
+  - id: postgresql
+    type: database
+    requirement: required
+    isolation: isolated
+  - id: redis
+    type: cache
+    requirement: required
+    isolation: isolated
+
+ports: [2283]
+
+healthcheck:
+  type: http
+  path: /api/server-info/ping
+  port: 2283
+  interval: 60s
+  timeout: 10s
+  retries: 5
+  expected_status: [200]
+
+domain:
+  enabled: true
+  required: true
+  path: /
+
+ssl:
+  enabled: true
+  force_https: true
+  min_tls: VersionTLS12
+
+backup:
+  enabled: true
+  schedule: daily
+  retention_days: 7
+  include_volumes: [dbdata]
+  include_databases: [immich]
+  pre_update: true
+
+update:
+  strategy: recreate
+  backup_before: true
+  health_check_after: true
+  rollback_on_failure: true
+  auto_update_allowed: false

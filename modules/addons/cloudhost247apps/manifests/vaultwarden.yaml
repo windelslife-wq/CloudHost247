@@ -1,0 +1,126 @@
+# CloudHost247 App Cloud manifest — Vaultwarden
+schema: 1
+id: vaultwarden
+name: Vaultwarden
+slug: vaultwarden
+category: security
+kind: application
+vendor: Vaultwarden contributors
+license: AGPL-3.0-or-later
+summary: Self-hosted Bitwarden-compatible password manager.
+description: An unofficial Bitwarden server written in Rust, compatible with the official browser extensions and mobile apps. Runs read-only against its own SQLite database with HTTPS enforced; signups are disabled by default so an installation is not an open relay.
+website: https://github.com/dani-garcia/vaultwarden
+repository: https://github.com/dani-garcia/vaultwarden
+documentation: https://github.com/dani-garcia/vaultwarden/wiki
+logo_url: https://cdn.cloudhost247.test/apps/vaultwarden.svg
+tags: [security, passwords, vault, bitwarden]
+version: 1.32.5
+channel: stable
+featured: true
+
+deployment:
+  engine: docker-compose
+  supported_hosting_types: [vps, dedicated, docker, kubernetes]
+  update_strategy: recreate
+
+requirements:
+  cpu_min: 1
+  cpu_recommended: 1
+  memory_min_mb: 256
+  memory_recommended_mb: 512
+  storage_min_mb: 1024
+  storage_recommended_mb: 5120
+  gpu: false
+
+services:
+  app:
+    image: vaultwarden/server:1.32.5-alpine
+    port: 8080
+    primary: true
+    restart: unless-stopped
+    environment:
+      DOMAIN: https://${PRIMARY_DOMAIN}
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
+      SIGNUPS_ALLOWED: ${SIGNUPS_ALLOWED}
+      INVITATIONS_ALLOWED: "true"
+      WEBSOCKET_ENABLED: "true"
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_FROM: ${SMTP_FROM}
+      SMTP_PORT: ${SMTP_PORT}
+      DATA_FOLDER: /data
+      ROCKET_PORT: "8080"
+    volumes:
+      - name: data
+        mount: /data
+        size_mb: 2048
+        backup: true
+
+environment:
+  required:
+    - key: SMTP_FROM
+      description: Address password-reset and invitation emails are sent from.
+      validation: email
+  optional:
+    - key: SMTP_HOST
+      description: SMTP relay used for invitations and alerts.
+      default: ""
+    - key: SMTP_PORT
+      description: SMTP relay port.
+      default: "587"
+    - key: SIGNUPS_ALLOWED
+      description: Allow new accounts to register themselves. Off by default.
+      default: "false"
+      options: ["true", "false"]
+  generated:
+    - key: ADMIN_TOKEN
+      generate: password
+      secret: true
+      description: Vaultwarden admin console token. Shown once in the client area; never emailed in plaintext.
+
+databases:
+  - name: vault
+    engine: sqlite
+    version: "3"
+    isolated: true
+
+volumes:
+  - name: data
+    service: app
+    mount: /data
+    size_mb: 2048
+
+ports: [8080]
+
+healthcheck:
+  type: http
+  path: /alive
+  port: 8080
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  expected_status: [200]
+
+domain:
+  enabled: true
+  required: true
+  path: /
+
+ssl:
+  enabled: true
+  force_https: true
+  min_tls: VersionTLS12
+
+backup:
+  enabled: true
+  schedule: daily
+  retention_days: 30
+  include_volumes: [data]
+  include_databases: [vault]
+  pre_update: true
+
+update:
+  strategy: recreate
+  backup_before: true
+  health_check_after: true
+  rollback_on_failure: true
+  auto_update_allowed: false
