@@ -25,6 +25,14 @@ class Validator
         }
         return max($min, min($max, (int) $value));
     }
+    public static function email($value)
+    {
+        if (!is_string($value) || strlen($value) > 190) {
+            return false;
+        }
+        return filter_var(trim($value), FILTER_VALIDATE_EMAIL) !== false;
+    }
+
     public static function clip($value, $length)
     {
         $value = trim((string) $value);

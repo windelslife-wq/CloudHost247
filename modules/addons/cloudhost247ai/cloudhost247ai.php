@@ -91,6 +91,7 @@ function cloudhost247ai_sidebar($vars)
     $items = [
         'dashboard' => 'Dashboard',
         'copilot' => 'Copilot',
+        'support' => 'AI Support',
         'agents' => 'Agents',
         'tools' => 'Tools',
         'knowledge' => 'Knowledge',

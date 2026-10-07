@@ -51,6 +51,8 @@ use Ch247Ai\Core\RateLimiter;
 use Ch247Ai\Core\RateLimitException;
 use Ch247Ai\Core\Settings;
 use Ch247Ai\Core\Validator;
+use Ch247Ai\SupportOperator\ConversationService;
+use Ch247Ai\SupportOperator\OperatorEngine;
 use Ch247Ai\Tools\Bootstrap as ToolBootstrap;
 
 class CustomerPortal
@@ -68,6 +70,14 @@ class CustomerPortal
         $action = isset($_GET['action']) ? (string) $_GET['action'] : 'assistant';
         if (!preg_match('/^[a-z_]+$/', $action)) {
             $action = 'assistant';
+        }
+
+        // The AI Support Operator serves guests as well as clients, so it
+        // is routed before the login gate. It never shows account records:
+        // guests and clients alike get public knowledge, live catalog
+        // prices, and human escalation.
+        if ($action === 'support') {
+            return $this->dispatchSupport();
         }
 
         $clientId = Identity::clientId();
@@ -187,6 +197,165 @@ class CustomerPortal
             Audit::system('ai.client_assistant.error', ['client_id' => (int) $clientId, 'reason' => get_class($e)]);
             return $fail('The assistant could not answer that. The problem has been logged.');
         }
+    }
+
+    // -----------------------------------------------------------------
+    // AI Support Operator (guests + clients, server-posted like the rest)
+    // -----------------------------------------------------------------
+
+    protected function dispatchSupport()
+    {
+        if (!Settings::bool('service_enabled', true) || Settings::bool('kill_switch', false)) {
+            return $this->supportPage('Support unavailable', [
+                'reason' => 'The AI support chat is currently switched off by the provider.',
+            ]);
+        }
+        if (!OperatorEngine::enabled()) {
+            return $this->supportPage('Support unavailable', [
+                'reason' => 'The AI support chat is not enabled on this platform.',
+            ]);
+        }
+        try {
+            return $this->pageSupport();
+        } catch (\Throwable $e) {
+            return $this->supportPage('Something went wrong', [
+                'reason' => 'The support chat could not load. The problem has been logged.',
+            ]);
+        }
+    }
+
+    protected function pageSupport()
+    {
+        $clientId = Identity::clientId() ?: 0;
+        $client = null;
+        if ($clientId > 0) {
+            $rows = Db::query('SELECT * FROM tblclients WHERE id = ?', [$clientId]);
+            $client = $rows ? $rows[0] : null;
+            if ($client === null) {
+                $clientId = 0;
+            }
+        }
+        $ctx = [
+            'client_id' => $clientId,
+            'actor' => $clientId > 0 ? 'client' : 'guest',
+            'client' => $client,
+            'session_convs' => ConversationService::sessionClaims(),
+        ];
+        $rate = OperatorEngine::rateConfig();
+        $vars = [
+            'conversation' => null,
+            'messages' => [],
+            'error' => null,
+            'message' => '',
+            'guest_name' => '',
+            'guest_email' => '',
+            'client_name' => $client !== null ? trim($client['firstname'] . ' ' . $client['lastname']) : '',
+            'max_message' => max(200, Settings::int('support_max_message', 2000)),
+            'rate_max' => $rate['max'],
+            'rate_minutes' => (int) ($rate['window'] / 60),
+            'availability' => 'offline',
+        ];
+        try {
+            $vars['availability'] = \Ch247Ai\SupportOperator\PresenceService::availability()['status'];
+        } catch (\Throwable $e) {
+            // The chat works without presence; it only colours the label.
+        }
+
+        $publicId = (string) ($_POST['c'] ?? $_GET['c'] ?? '');
+        $conv = null;
+        if ($publicId !== '') {
+            $conv = ConversationService::findByPublic($publicId);
+            if ($conv === null || !ConversationService::visibleTo($conv, $ctx)) {
+                $vars['error'] = 'That conversation link is invalid or belongs to another session. Start a new conversation below.';
+                return $this->supportPage('AI Support', $vars);
+            }
+        }
+
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+            if (!Csrf::verify((string) ($_POST['ch247ai_csrf'] ?? ''))) {
+                $vars['error'] = 'Your session expired. Reload the page and try again.';
+            } else {
+                $op = (string) ($_POST['ch247ai_support'] ?? '');
+                if ($op === 'start') {
+                    $vars['guest_name'] = trim((string) ($_POST['name'] ?? ''));
+                    $vars['guest_email'] = trim((string) ($_POST['email'] ?? ''));
+                    $vars['message'] = trim((string) ($_POST['message'] ?? ''));
+                    $conv = $this->supportStart($client, $ctx, $vars);
+                } elseif ($op === 'message' || $op === 'human') {
+                    if ($conv === null) {
+                        $vars['error'] = 'Start a conversation first.';
+                    } else {
+                        $text = $op === 'human'
+                            ? 'I would like to talk to a human, please.'
+                            : trim((string) ($_POST['message'] ?? ''));
+                        if ($text === '') {
+                            $vars['error'] = 'Type a message first.';
+                        } else {
+                            OperatorEngine::handle($conv, $text, $ctx);
+                            $conv = ConversationService::find((int) $conv['id']);
+                        }
+                    }
+                }
+            }
+        }
+
+        if ($conv !== null) {
+            $vars['conversation'] = $conv;
+            $messages = [];
+            foreach (ConversationService::messages((int) $conv['id']) as $message) {
+                $message['citations'] = isset($message['meta_decoded']['citations'])
+                    ? (array) $message['meta_decoded']['citations'] : [];
+                $messages[] = $message;
+            }
+            $vars['messages'] = $messages;
+        }
+        return $this->supportPage('AI Support', $vars);
+    }
+
+    /** Start a conversation and run the first message through the engine. */
+    protected function supportStart($client, array $ctx, array &$vars)
+    {
+        if ($client !== null) {
+            $name = trim($client['firstname'] . ' ' . $client['lastname']);
+            $email = (string) $client['email'];
+        } else {
+            $name = $vars['guest_name'];
+            $email = $vars['guest_email'];
+            if (!Validator::email($email)) {
+                $vars['error'] = 'Enter a valid email address so Support can reach you if a human is needed.';
+                return null;
+            }
+        }
+        if ($vars['message'] === '') {
+            $vars['error'] = 'Tell us how we can help, then start chatting.';
+            return null;
+        }
+        $conv = ConversationService::create($client !== null ? (int) $client['id'] : 0, $name, $email);
+        $ctx['session_convs'] = ConversationService::sessionClaims();
+        OperatorEngine::handle($conv, $vars['message'], $ctx);
+        $vars['message'] = '';
+        return ConversationService::find((int) $conv['id']);
+    }
+
+    /** Guest-capable page variant: the support chat needs no login. */
+    protected function supportPage($title, array $vars)
+    {
+        $vars += [
+            'conversation' => null, 'messages' => [], 'error' => null, 'message' => '',
+            'guest_name' => '', 'guest_email' => '', 'client_name' => '',
+            'max_message' => 2000, 'rate_max' => 20, 'rate_minutes' => 5, 'availability' => 'offline',
+        ];
+        $vars['modulelink'] = 'index.php?m=cloudhost247ai';
+        $vars['csrf_token'] = Csrf::token();
+        $vars['generated_at'] = Clock::now();
+
+        return [
+            'pagetitle' => $title,
+            'breadcrumb' => ['index.php?m=cloudhost247ai&action=support' => 'AI Support'],
+            'templatefile' => isset($vars['reason']) ? 'templates/client/unavailable' : 'templates/client/support',
+            'requirelogin' => false,
+            'templatevariables' => $vars,
+        ];
     }
 
     // -----------------------------------------------------------------
