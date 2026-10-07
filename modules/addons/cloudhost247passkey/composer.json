@@ -1,0 +1,30 @@
+{
+  "name": "cloudhost247/cloudhost247passkey",
+  "description": "Native WHMCS WebAuthn addon core",
+  "type": "project",
+  "license": "proprietary",
+  "require": {
+    "php": ">=7.4",
+    "ext-bcmath": "*",
+    "ext-json": "*",
+    "ext-mbstring": "*",
+    "ext-openssl": "*",
+    "ext-simplexml": "*",
+    "nyholm/psr7": "^1.8",
+    "web-auth/webauthn-lib": "3.3.12"
+  },
+  "autoload": {
+    "psr-4": {
+      "CloudHost247\\Passkey\\": "lib/"
+    }
+  },
+  "config": {
+    "platform": {
+      "php": "7.4.33"
+    },
+    "sort-packages": true,
+    "allow-plugins": {}
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}
