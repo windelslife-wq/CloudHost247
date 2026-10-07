@@ -15,6 +15,7 @@ use CBOR\UnsignedIntegerObject;
 use CloudHost247\Passkey\Core\Base64Url;
 use CloudHost247\Passkey\Core\Db;
 use CloudHost247\Passkey\Core\Migrator;
+use CloudHost247\Passkey\Core\PasskeyCredentialManagementService;
 use CloudHost247\Passkey\Core\PasskeyLoginCoordinator;
 use CloudHost247\Passkey\Core\PasskeyLoginPolicy;
 use CloudHost247\Passkey\Core\UserHandleRepository;
@@ -23,6 +24,7 @@ use CloudHost247\Passkey\Core\WebAuthnService;
 use CloudHost247\Passkey\Integration\CallbackWhmcsAuthBridge;
 use CloudHost247\Passkey\Integration\CallbackWhmcsIdentityProvider;
 use CloudHost247\Passkey\Integration\PasskeyLoginContext;
+use CloudHost247\Passkey\Integration\PasskeyRegistrationContext;
 use CloudHost247\Passkey\Integration\WhmcsAuthHandoff;
 use CloudHost247\Passkey\Integration\WhmcsIdentity;
 use CloudHost247\Passkey\Model\IdentityScope;
@@ -295,6 +297,43 @@ try {
         $phase4Result->identity()->toArray() === ['user_type' => IdentityScope::CLIENT, 'user_id' => $userId]
         && $phase4Result->handoff()->requiresTwoFactor()
         && $credentialRow !== null && (int) $credentialRow['sign_count'] === 3);
+
+    $managedUserId = 74292;
+    $managedIdentity = new WhmcsIdentity(IdentityScope::CLIENT, $managedUserId);
+    $managedProvider = new CallbackWhmcsIdentityProvider(function ($resolvedType, $resolvedId) use ($managedUserId) {
+        return $resolvedType === IdentityScope::CLIENT && $resolvedId === $managedUserId
+            ? ['user_type' => $resolvedType, 'user_id' => $resolvedId, 'loginable' => true]
+            : null;
+    });
+    $managedPolicy = new PasskeyLoginPolicy([
+        'service_enabled' => '1',
+        'client_policy' => 'optional',
+        'admin_policy' => 'optional',
+        'password_fallback' => 'allowed',
+    ]);
+    $managedCredentials = new PasskeyCredentialManagementService($service, $managedProvider, $managedPolicy);
+    $managedOptions = $managedCredentials->beginRegistration($config, $managedIdentity, 'managed-client@example.invalid', 'Managed Client');
+    $managedChallenge = $managedOptions['publicKey']['challenge'] ?? null;
+    if (!is_string($managedChallenge)) {
+        throw new RuntimeException('Managed client registration challenge was not issued.');
+    }
+    $managedCredentialId = random_bytes(32);
+    $managedResponse = $registrationResponse($managedCredentialId, $privateKey, $managedChallenge, $rpId);
+    $managedRegistration = $managedCredentials->finishRegistration(
+        $config,
+        $managedIdentity,
+        $managedResponse,
+        'Managed security key',
+        PasskeyRegistrationContext::fromTrustedArray([
+            'ip_address' => '198.51.100.21',
+            'user_agent' => 'Phase5 real-library browser',
+        ])
+    );
+    $managedList = $managedCredentials->listCredentials($managedIdentity);
+    $assert('Phase 5 management completes a real library-backed enrollment for the existing client session',
+        !empty($managedRegistration['registered']) && count($managedList) === 1
+        && $managedList[0]['device_name'] === 'Managed security key'
+        && $managedList[0]['status'] === 'active');
 
     $expectFailure('a discoverable assertion cannot authenticate through the administrator scope', function () use ($service, $config, $credentialId, $privateKey, $rpId, $userHandle, $assertionResponse) {
         $adminOptions = $service->beginAuthentication($config, IdentityScope::ADMIN, null);

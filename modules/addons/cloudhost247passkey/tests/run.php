@@ -1,13 +1,16 @@
 <?php
-/** Phase 3 core and Phase 4 WHMCS handoff-boundary tests; library-backed ceremony tests run separately. */
+/** Phase 3 core, Phase 4 handoff, and Phase 5 management tests; library-backed ceremonies run separately. */
 
 require_once dirname(__DIR__) . '/autoload.php';
 
 use CloudHost247\Passkey\Core\Base64Url;
 use CloudHost247\Passkey\Core\CeremonyChallengeStore;
 use CloudHost247\Passkey\Core\Db;
+use CloudHost247\Passkey\Core\CredentialManagementRepository;
 use CloudHost247\Passkey\Core\Migrator;
 use CloudHost247\Passkey\Core\PasskeyAssertionVerifierInterface;
+use CloudHost247\Passkey\Core\PasskeyCredentialManagementService;
+use CloudHost247\Passkey\Core\PasskeyRegistrationCeremonyInterface;
 use CloudHost247\Passkey\Core\PasskeyIntegrationRegistry;
 use CloudHost247\Passkey\Core\PasskeyLoginCoordinator;
 use CloudHost247\Passkey\Core\PasskeyLoginPolicy;
@@ -20,6 +23,7 @@ use CloudHost247\Passkey\Core\WebAuthnService;
 use CloudHost247\Passkey\Integration\CallbackWhmcsAuthBridge;
 use CloudHost247\Passkey\Integration\CallbackWhmcsIdentityProvider;
 use CloudHost247\Passkey\Integration\PasskeyLoginContext;
+use CloudHost247\Passkey\Integration\PasskeyRegistrationContext;
 use CloudHost247\Passkey\Integration\WhmcsAuthHandoff;
 use CloudHost247\Passkey\Integration\WhmcsIdentity;
 use CloudHost247\Passkey\Model\ChallengeRecord;
@@ -701,6 +705,98 @@ $assert('WHMCS registration API exposes the explicit adapter boundary without en
 PasskeyIntegrationRegistry::reset();
 $assert('Phase 4 coordinator does not write a synthetic WHMCS session', !isset($_SESSION['uid']) || (int) $_SESSION['uid'] !== 91);
 
+if ($sessionStarted) {
+    $phase5Ceremony = new class implements PasskeyRegistrationCeremonyInterface {
+        public $begun = [];
+        public $finished = [];
+
+        public function beginRegistration(WebAuthnConfig $config, $userType, $userId, $userName, $displayName)
+        {
+            $this->begun[] = [$userType, $userId, $userName, $displayName];
+            return ['publicKey' => ['challenge' => 'phase5-registration-challenge'], 'expires_in' => 300];
+        }
+
+        public function finishRegistration(
+            WebAuthnConfig $config,
+            $userType,
+            $userId,
+            $credentialResponseJson,
+            $deviceName = 'Passkey',
+            $registrationIp = null,
+            $registrationUserAgent = null
+        ) {
+            $this->finished[] = [$userType, $userId, $credentialResponseJson, $deviceName, $registrationIp, $registrationUserAgent];
+            return ['registered' => true, 'credential_record_id' => 5001];
+        }
+    };
+    $phase5Identity = new WhmcsIdentity('client', 91);
+    $phase5Manager = new PasskeyCredentialManagementService(
+        $phase5Ceremony,
+        $phase4IdentityProvider,
+        $phase4Policy,
+        new CredentialManagementRepository()
+    );
+    $phase5List = $phase5Manager->listCredentials($phase5Identity);
+    $assert('Phase 5 lists only masked credentials owned by the authenticated existing client', count($phase5List) === 1 && $phase5List[0]['id'] === $credentialIdInDb && !isset($phase5List[0]['credential_source_json']) && !isset($phase5List[0]['public_key']));
+    $phase5Begin = $phase5Manager->beginRegistration($webAuthnConfig, $phase5Identity, 'existing-client@example.invalid', 'Existing Client');
+    $phase5Context = PasskeyRegistrationContext::fromTrustedArray([
+        'ip_address' => '198.51.100.20',
+        'user_agent' => 'Phase5 management browser',
+    ]);
+    $phase5Finish = $phase5Manager->finishRegistration(
+        $webAuthnConfig,
+        $phase5Identity,
+        '{"opaque":"registration-response"}',
+        'Office security key',
+        $phase5Context
+    );
+    $assert('Phase 5 enrollment uses the existing session identity and never accepts browser-supplied secrets as metadata', $phase5Begin['publicKey']['challenge'] === 'phase5-registration-challenge' && $phase5Finish['registered'] === true && count($phase5Ceremony->begun) === 1 && $phase5Ceremony->begun[0][1] === 91 && $phase5Ceremony->finished[0][2] === '{"opaque":"registration-response"}' && $phase5Ceremony->finished[0][4] === '198.51.100.20');
+    $renamed = $phase5Manager->renameCredential($phase5Identity, $credentialIdInDb, 'Travel key');
+    $assert('Phase 5 device names can be changed only inside the current client scope', $renamed['device_name'] === 'Travel key' && $renamed['user_type'] === 'client' && $renamed['user_id'] === 91);
+    $disabled = $phase5Manager->disableCredential($phase5Identity, $credentialIdInDb);
+    $assert('Phase 5 can disable an owned credential without deleting its public record', $disabled['status'] === 'disabled' && $phase5Manager->listCredentials($phase5Identity)[0]['status'] === 'disabled');
+    $enabled = $phase5Manager->enableCredential($phase5Identity, $credentialIdInDb);
+    $assert('Phase 5 can re-enable an owned non-revoked credential', $enabled['status'] === 'active');
+    $strictPhase5Policy = new PasskeyLoginPolicy([
+        'service_enabled' => '1',
+        'client_policy' => 'required',
+        'admin_policy' => 'optional',
+        'password_fallback' => 'disabled',
+        'max_credentials_client' => '5',
+        'max_credentials_admin' => '5',
+    ]);
+    $strictPhase5Manager = new PasskeyCredentialManagementService($phase5Ceremony, $phase4IdentityProvider, $strictPhase5Policy, new CredentialManagementRepository());
+    $throws('Phase 5 refuses to disable the last credential when password fallback is disabled', RuntimeException::class, function () use ($strictPhase5Manager, $phase5Identity, $credentialIdInDb) {
+        $strictPhase5Manager->disableCredential($phase5Identity, $credentialIdInDb);
+    });
+    $limitedPhase5Policy = new PasskeyLoginPolicy([
+        'service_enabled' => '1',
+        'client_policy' => 'optional',
+        'admin_policy' => 'optional',
+        'password_fallback' => 'allowed',
+        'max_credentials_client' => '1',
+        'max_credentials_admin' => '5',
+    ]);
+    $limitedPhase5Manager = new PasskeyCredentialManagementService($phase5Ceremony, $phase4IdentityProvider, $limitedPhase5Policy, new CredentialManagementRepository());
+    $throws('Phase 5 enforces the configured active-credential limit before starting enrollment', RuntimeException::class, function () use ($limitedPhase5Manager, $webAuthnConfig, $phase5Identity) {
+        $limitedPhase5Manager->beginRegistration($webAuthnConfig, $phase5Identity, 'existing-client@example.invalid', 'Existing Client');
+    });
+    $revoked = $phase5Manager->revokeCredential($phase5Identity, $credentialIdInDb);
+    $assert('Phase 5 revocation is scoped, auditable through status, and preserves the record for history', $revoked['status'] === 'revoked' && $phase5Manager->listCredentials($phase5Identity)[0]['status'] === 'revoked');
+    $throws('Phase 5 cannot rename a revoked credential', RuntimeException::class, function () use ($phase5Manager, $phase5Identity, $credentialIdInDb) {
+        $phase5Manager->renameCredential($phase5Identity, $credentialIdInDb, 'Should fail');
+    });
+    $adminIdentity = new WhmcsIdentity('admin', 7);
+    $throws('Phase 5 client credential records cannot be managed through the administrator scope', RuntimeException::class, function () use ($phase5Manager, $adminIdentity, $credentialIdInDb) {
+        $phase5Manager->renameCredential($adminIdentity, $credentialIdInDb, 'Cross scope');
+    });
+    $throws('Phase 5 registration context rejects unsupported secret fields', InvalidArgumentException::class, function () {
+        PasskeyRegistrationContext::fromTrustedArray(['ip_address' => '198.51.100.20', 'credential_response_json' => 'secret']);
+    });
+} else {
+    $assert('Phase 5 management requires an active WHMCS session', false);
+}
+
 $composerManifest = json_decode(file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 $assert('Composer manifest pins the audited WebAuthn library and an explicit PSR-7 adapter', isset($composerManifest['require']['web-auth/webauthn-lib'], $composerManifest['require']['nyholm/psr7']) && $composerManifest['require']['web-auth/webauthn-lib'] === '3.3.12' && $composerManifest['require']['nyholm/psr7'] === '^1.8');
 $assert('WebAuthn ceremony service is present but does not alter the WHMCS authentication flow', class_exists(WebAuthnService::class) && method_exists(WebAuthnService::class, 'finishRegistration') && method_exists(WebAuthnService::class, 'finishAuthentication'));
@@ -721,6 +817,7 @@ echo 'FAILURES=' . $failures . "\n";
 if ($failures === 0) {
     echo "PASSKEY_PHASE3_CORE_OK\n";
     echo "PASSKEY_PHASE4_INTEGRATION_OK\n";
+    echo "PASSKEY_PHASE5_MANAGEMENT_OK\n";
 } else {
     echo "PASSKEY_PHASE3_CORE_FAILED\n";
     echo "PASSKEY_PHASE4_INTEGRATION_FAILED\n";

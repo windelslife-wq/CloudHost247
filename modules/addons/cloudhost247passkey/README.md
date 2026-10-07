@@ -2,9 +2,9 @@
 
 Native WHMCS addon work for Passkey/WebAuthn support. It reuses WHMCS identities, sessions, and database connectivity; it is not a standalone application or an alternate account system.
 
-## Phase 3 and Phase 4 status
+## Phase 3 through Phase 5 status
 
-**Phase 3 WebAuthn core is complete and its library-backed cryptographic gate passes. Phase 4 now adds a tested, opt-in authentication handoff boundary; Passkey login remains disabled by default and no production login endpoint is enabled by this addon.** Existing WHMCS password login, 2FA, recovery, sessions, and account records remain untouched.
+**Phase 3 WebAuthn core, Phase 4's fail-closed WHMCS handoff boundary, and Phase 5's authenticated credential-management service are implemented and tested. Passkey login and management UI remain disabled by default; no production login or registration endpoint is enabled by this addon.** Existing WHMCS password login, 2FA, recovery, sessions, and account records remain untouched.
 
 Phase 3 includes:
 
@@ -22,7 +22,14 @@ Phase 4 adds:
 - A browser-safe handoff result that contains only the next step. Session IDs, session tokens, passwords, cookies, assertion JSON, raw challenges, and 2FA secrets never cross the integration boundary.
 - A per-request registry exposed through `cloudhost247passkey_register_auth_integration()`. The registry fails closed when a deployment has not supplied both host adapters; it never writes `$_SESSION` or synthesizes a WHMCS login.
 
-The Phase 4 boundary deliberately does **not** guess at WHMCS internals or copy a proprietary/reference login implementation. A deployment must supply and staging-test the two host adapters against its installed WHMCS version before any login surface is enabled. Client-user login is also intentionally rejected until its WHMCS session and authorization semantics are separately audited. No registration or login UI was enabled in this phase.
+The Phase 4 boundary deliberately does **not** guess at WHMCS internals or copy a proprietary/reference login implementation. A deployment must supply and staging-test the two host adapters against its installed WHMCS version before any login surface is enabled. Client-user login is also intentionally rejected until its WHMCS session and authorization semantics are separately audited.
+
+Phase 5 adds:
+
+- `PasskeyCredentialManagementService` for authenticated enrollment, masked credential listing, device-name changes, disable/enable, and revocation.
+- `CredentialManagementRepository` with mandatory identity and active-session scope on every read or mutation; client credentials cannot be managed through an administrator identity and vice versa.
+- Explicit active-credential limits, server-side registration metadata validation, and last-credential protection when password fallback is disabled.
+- Real library-backed enrollment coverage for an existing client identity, while leaving registration and management UI disabled until a WHMCS host adapter and CSRF-protected surface are staged.
 
 Private keys and biometrics are never received or stored. Raw challenges and session IDs are not stored in the database; only their hashes are stored. Attestation objects, assertion bodies, signatures, and secret key material are not persisted. WebAuthn assertions are verified by the library; the coordinator only passes the resulting existing identity to the host-owned handoff. The integration fixture generates a temporary test key in memory; no test key or credential secret is checked in.
 
@@ -32,7 +39,7 @@ The audited compatibility floor is PHP 7.4. `composer.json` pins `web-auth/webau
 
 The v3.3.12 package metadata declares PHP 7.2+. Its built-in RP-ID suffix check is not an exact origin check, so the addon independently compares the complete configured origin before calling the library. The official [CVE-2026-30964 advisory](https://github.com/web-auth/webauthn-framework/security/advisories/GHSA-f7pm-6hr8-7ggm) lists versions `>=5.2.0,<5.2.4` as affected; 3.3.12 is outside that stated range. The lock also uses Symfony Process 5.4.51, above the fixed floor for [CVE-2026-24739](https://github.com/advisories/GHSA-r39x-jcww-82v6). A GitHub Advisory Database exact-version query on 2026-10-07 found no matching advisories for the 21 locked packages. This is not a guarantee against future or unreported vulnerabilities.
 
-The older WebAuthn 3.x line and the PHP 7.4 runtime are legacy choices; PHP 7.4 is end-of-life. **Keep authentication disabled in production until the deployment owner accepts the runtime/dependency support policy, supplies and tests the WHMCS adapter, or upgrades to a maintained PHP and WebAuthn line.** If the platform can move to PHP 8.2+, prefer a maintained fixed WebAuthn release instead. Phase 5 and later have not started.
+The older WebAuthn 3.x line and the PHP 7.4 runtime are legacy choices; PHP 7.4 is end-of-life. **Keep authentication and management disabled in production until the deployment owner accepts the runtime/dependency support policy, supplies and tests the WHMCS adapter, or upgrades to a maintained PHP and WebAuthn line.** If the platform can move to PHP 8.2+, prefer a maintained fixed WebAuthn release instead. Phase 6 and later have not started.
 
 `WebAuthnService` fails closed if its Composer dependencies or required runtime extensions are missing. The addon still defaults to `service_enabled=0`, an unset RP ID, and an empty origin list. HTTPS state supplied to the config factory must come from trusted WHMCS/server TLS state, never an untrusted forwarding header.
 
@@ -51,4 +58,4 @@ npm test
 npm run lint
 ```
 
-The test and lint runners honor `PHP_WASM_VERSION` (default `8.3`). Both PHP-WASM 8.3 and 7.4 pass **106 core checks and 12 library-backed registration/assertion plus Phase 4 coordinator checks**, with zero failures. The integration tests exercise a real `none`-attestation registration, ES256 assertion verification, discoverable user-handle normalization, stored counter updates, replay rejection, corrupted-signature rejection, client/admin isolation, and a real library assertion through the Phase 4 handoff coordinator. The fixture key is generated at test time; verification is performed by the PHP WebAuthn library. Lint passes on **45 PHP files** under both runtimes. Composer validation and locked platform requirements also pass under PHP 8.3.8 with the declared extensions.
+The test and lint runners honor `PHP_WASM_VERSION` (default `8.3`). Both PHP-WASM 8.3 and 7.4 pass **117 core checks and 13 library-backed registration/assertion plus Phase 4/5 integration checks**, with zero failures. The integration tests exercise a real `none`-attestation registration, ES256 assertion verification, discoverable user-handle normalization, stored counter updates, replay rejection, corrupted-signature rejection, client/admin isolation, a real Phase 4 handoff, and a real Phase 5 authenticated enrollment. The fixture key is generated at test time; verification is performed by the PHP WebAuthn library. Lint passes on **49 PHP files** under both runtimes. Composer validation and locked platform requirements also pass under PHP 8.3.8 with the declared extensions.

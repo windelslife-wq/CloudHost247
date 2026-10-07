@@ -2,9 +2,10 @@
 /**
  * CloudHost247 Passkey — native WHMCS addon.
  *
- * Phase 4 provides an opt-in, fail-closed handoff boundary to WHMCS's
- * existing identity, session, and 2FA architecture. No native session is
- * synthesized by this addon and the feature remains disabled by default.
+ * Phase 4 provides an opt-in, fail-closed handoff boundary and Phase 5
+ * provides authenticated credential management for WHMCS's existing identity,
+ * session, and 2FA architecture. No native session is synthesized by this
+ * addon and the feature remains disabled by default.
  *
  * @package CloudHost247\Passkey
  */
@@ -24,10 +25,10 @@ function cloudhost247passkey_config()
 {
     return [
         'name' => 'CloudHost247 Passkey',
-        'description' => 'Fail-closed Passkey authentication handoff is available for an explicit WHMCS adapter; login remains disabled by default.',
+        'description' => 'Fail-closed Passkey handoff and authenticated credential management are available for explicit WHMCS adapters; login and management remain disabled by default.',
         'author' => 'CloudHost247',
         'language' => 'english',
-        'version' => '0.3.0',
+        'version' => '0.4.0',
         'fields' => [],
     ];
 }
@@ -98,6 +99,6 @@ function cloudhost247passkey_auth_integration_configured()
 function cloudhost247passkey_output($vars)
 {
     echo '<div class="alert alert-info"><strong>Passkey authentication is currently disabled by default.</strong> '
-        . 'Phase 4 adds a fail-closed handoff boundary for an explicitly registered WHMCS identity/session adapter. '
-        . 'This module does not perform session creation, bypass existing 2FA, or replace password recovery; no login endpoint is enabled until the deployment owner supplies and verifies that adapter.</div>';
+        . 'Phase 4 adds a fail-closed handoff boundary and Phase 5 adds authenticated credential-management services for explicitly registered WHMCS adapters. '
+        . 'This module does not perform session creation, bypass existing 2FA, or replace password recovery; no login or management UI is enabled until the deployment owner supplies and verifies those adapters.</div>';
 }

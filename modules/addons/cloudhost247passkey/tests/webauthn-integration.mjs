@@ -39,7 +39,7 @@ if (errors.trim()) {
 }
 const match = output.match(/INTEGRATION_CHECKS=(\d+)\s+INTEGRATION_FAILURES=(\d+)/);
 if (result.exitCode !== 0 || !match || match[2] !== '0' || !output.includes('PASSKEY_WEBAUTHN_INTEGRATION_OK')) {
-  console.error('\nCloudHost247 Passkey WebAuthn library integration tests failed.');
+  console.error('\nCloudHost247 Passkey WebAuthn and management integration tests failed.');
   process.exit(1);
 }
 console.log(`PHP_WASM_VERSION=${phpVersion}`);

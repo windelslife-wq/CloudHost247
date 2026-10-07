@@ -41,8 +41,11 @@ $classes = [
     'CloudHost247\\Passkey\\Model\\SettingsRecord',
     'CloudHost247\\Passkey\\Core\\PasskeyLoginCoordinator',
     'CloudHost247\\Passkey\\Core\\PasskeyLoginPolicy',
+    'CloudHost247\\Passkey\\Core\\PasskeyCredentialManagementService',
+    'CloudHost247\\Passkey\\Core\\CredentialManagementRepository',
     'CloudHost247\\Passkey\\Integration\\WhmcsIdentity',
     'CloudHost247\\Passkey\\Integration\\WhmcsAuthHandoff',
+    'CloudHost247\\Passkey\\Integration\\PasskeyRegistrationContext',
 ];
 foreach ($classes as $class) {
     try {

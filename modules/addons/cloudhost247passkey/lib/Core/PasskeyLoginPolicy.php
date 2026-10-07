@@ -11,6 +11,8 @@ class PasskeyLoginPolicy
     private $clientPolicy;
     private $adminPolicy;
     private $passwordFallback;
+    private $maxCredentialsClient;
+    private $maxCredentialsAdmin;
 
     public function __construct(array $settings)
     {
@@ -24,6 +26,8 @@ class PasskeyLoginPolicy
         if (!in_array($this->passwordFallback, ['allowed', 'disabled'], true)) {
             throw new \InvalidArgumentException('Passkey password-fallback policy is invalid.');
         }
+        $this->maxCredentialsClient = self::maxCredentials($settings, 'max_credentials_client');
+        $this->maxCredentialsAdmin = self::maxCredentials($settings, 'max_credentials_admin');
     }
 
     /** The global service switch and audience-specific policy must both opt in. */
@@ -66,6 +70,27 @@ class PasskeyLoginPolicy
             return $this->adminPolicy;
         }
         throw new \InvalidArgumentException('Unsupported Passkey login audience.');
+    }
+
+    public function maxCredentialsFor($userType)
+    {
+        if ($userType === IdentityScope::CLIENT) {
+            return $this->maxCredentialsClient;
+        }
+        if ($userType === IdentityScope::ADMIN) {
+            return $this->maxCredentialsAdmin;
+        }
+        throw new \InvalidArgumentException('Unsupported Passkey credential audience.');
+    }
+
+    private static function maxCredentials(array $settings, $key)
+    {
+        $value = array_key_exists($key, $settings) ? $settings[$key] : '5';
+        $number = filter_var($value, FILTER_VALIDATE_INT);
+        if ($number === false || (int) $number < 1 || (int) $number > 50) {
+            throw new \InvalidArgumentException('Passkey ' . $key . ' must be between 1 and 50.');
+        }
+        return (int) $number;
     }
 
     private static function policyValue(array $settings, $key)
