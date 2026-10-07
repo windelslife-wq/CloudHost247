@@ -60,20 +60,47 @@ class Policy
 
     /* --------------------------------------------------- availability -- */
 
+    /** Every currency the governance layer controls. */
+    const CURRENCIES = ['btc', 'bch', 'usdt'];
+
     /**
      * Effective per-currency availability: master switch takes precedence,
      * then the individual currency flag (spec §15).
      *
-     * @param array $state ['gateway_enabled'=>bool,'btc_enabled'=>bool,'usdt_enabled'=>bool]
-     * @return array ['btc'=>bool,'usdt'=>bool]
+     * @param array $state ['gateway_enabled'=>bool,'btc_enabled'=>bool,'bch_enabled'=>bool,'usdt_enabled'=>bool]
+     * @return array ['btc'=>bool,'bch'=>bool,'usdt'=>bool]
      */
     public static function availabilityMatrix(array $state)
     {
         $master = !empty($state['gateway_enabled']);
-        return [
-            'btc'  => $master && !empty($state['btc_enabled']),
-            'usdt' => $master && !empty($state['usdt_enabled']),
-        ];
+        $matrix = [];
+        foreach (self::CURRENCIES as $code) {
+            $matrix[$code] = $master && !empty($state[$code . '_enabled']);
+        }
+        return $matrix;
+    }
+
+    /** Fail-closed matrix used when governance cannot be resolved at all. */
+    public static function deniedMatrix()
+    {
+        return array_fill_keys(self::CURRENCIES, false);
+    }
+
+    /**
+     * True when at least one currency is actually payable right now.
+     *
+     * The master switch alone is not enough to offer checkout: a gateway
+     * that is "on" with every currency off must present as unavailable
+     * rather than as an empty currency picker.
+     */
+    public static function anyCurrencyAvailable(array $state)
+    {
+        foreach (self::availabilityMatrix($state) as $allowed) {
+            if ($allowed) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -266,6 +293,38 @@ class Policy
             return [false, 'Blockonomics API key is not configured.'];
         }
         return [true, ''];
+    }
+
+    /**
+     * BCH readiness. Blockonomics serves BCH from the same account and the
+     * same API key as BTC (bch.blockonomics.co), so the requirement is
+     * identical — there is no separate BCH credential to invent.
+     */
+    public static function bchReadiness(array $cfg)
+    {
+        $key = isset($cfg['api_key']) ? trim((string) $cfg['api_key']) : '';
+        if ($key === '') {
+            return [false, 'Blockonomics API key is not configured.'];
+        }
+        return [true, ''];
+    }
+
+    /**
+     * Readiness for any governed currency, dispatched by code.
+     *
+     * @return array{0:bool,1:string}
+     */
+    public static function currencyReadiness($currency, array $cfg)
+    {
+        switch (strtolower((string) $currency)) {
+            case 'btc':
+                return self::btcReadiness($cfg);
+            case 'bch':
+                return self::bchReadiness($cfg);
+            case 'usdt':
+                return self::usdtReadiness($cfg);
+        }
+        return [false, 'Unsupported currency.'];
     }
 
     /* ---------------------------------------------------- idempotency -- */

@@ -140,6 +140,11 @@ function ch247ai_fixture_tables(PDO $pdo)
         "CREATE TABLE tbladmins (id INTEGER PRIMARY KEY, username TEXT, roleid INTEGER DEFAULT 1)",
         "CREATE TABLE tbladdonmodules (id INTEGER PRIMARY KEY, module TEXT, setting TEXT, value TEXT)",
         "CREATE TABLE tbladminroles (id INTEGER PRIMARY KEY, name TEXT)",
+        // Write-target tables (Phase 2). Empty by default: the write tests
+        // assert on the delta they cause, not on preloaded rows.
+        "CREATE TABLE tblticketreplies (id INTEGER PRIMARY KEY AUTOINCREMENT, tid INTEGER, userid INTEGER DEFAULT 0, name TEXT DEFAULT '', message TEXT, admin TEXT DEFAULT '', date TEXT)",
+        "CREATE TABLE tblticketnotes (id INTEGER PRIMARY KEY AUTOINCREMENT, tid INTEGER, admin TEXT DEFAULT '', message TEXT, created_at TEXT)",
+        "CREATE TABLE tblemails (id INTEGER PRIMARY KEY AUTOINCREMENT, userid INTEGER, subject TEXT, message TEXT, date TEXT)",
     ];
     foreach ($ddl as $sql) {
         $pdo->exec($sql);

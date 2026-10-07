@@ -11,15 +11,22 @@ ch247ai_boot();
 ch247ai_freeze();
 
 T::section('Risk ladder');
+// Operator policy for this deployment: every write is gated, including
+// WRITE_LOW. Only pure reads execute without an approved row.
 T::ok('READ requires no approval', !ApprovalEngine::requiresApproval('READ'));
-T::ok('WRITE_LOW requires no approval (auto + audit)', !ApprovalEngine::requiresApproval('WRITE_LOW'));
+T::ok('WRITE_LOW now requires approval (all-gated policy)', ApprovalEngine::requiresApproval('WRITE_LOW'));
 foreach (['WRITE_CUSTOMER_VISIBLE', 'WRITE_FINANCIAL', 'AVAILABILITY', 'SECURITY_ENFORCEMENT', 'MASS_COMMUNICATION'] as $risk) {
     T::ok("{$risk} requires approval", ApprovalEngine::requiresApproval($risk));
 }
+T::ok('an unrecognised risk label fails closed into requiring approval',
+    ApprovalEngine::requiresApproval('SOMETHING_NEW'));
+T::ok('empty risk label fails closed too', ApprovalEngine::requiresApproval(''));
 
 T::section('Execution gate');
-T::ok('low-risk passes the gate', ApprovalEngine::assertExecutable(0, 'READ'));
-T::ok('low-risk write passes with audit', ApprovalEngine::assertExecutable(0, 'WRITE_LOW'));
+T::ok('reads pass the gate', ApprovalEngine::assertExecutable(0, 'READ'));
+T::throws('low-risk write is blocked without approval (all-gated)', function () {
+    ApprovalEngine::assertExecutable(0, 'WRITE_LOW');
+}, \Ch247Ai\Core\ForbiddenException::class);
 T::throws('high-risk write without approval blocked', function () {
     ApprovalEngine::assertExecutable(0, 'WRITE_FINANCIAL');
 }, \Ch247Ai\Core\ForbiddenException::class);

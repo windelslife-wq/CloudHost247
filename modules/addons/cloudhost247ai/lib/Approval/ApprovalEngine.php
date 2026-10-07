@@ -4,12 +4,17 @@
  *
  * Risk ladder:
  *   READ                      → auto (still audited)
- *   WRITE_LOW                 → auto + audit (internal notes)          [Phase 2]
+ *   WRITE_LOW                 → human approval   (operator policy: all-gated)
  *   WRITE_CUSTOMER_VISIBLE    → human approval
  *   WRITE_FINANCIAL           → human approval
  *   AVAILABILITY              → human approval
  *   SECURITY_ENFORCEMENT      → human approval
  *   MASS_COMMUNICATION        → human approval
+ *
+ * Operator policy for this deployment: EVERY write is gated. WRITE_LOW
+ * (internal notes, drafts) is deliberately NOT auto-executed — the ladder
+ * still distinguishes the classes for reporting and for future policy, but
+ * no risk class above READ may execute without an approved row.
  *
  * Phase 1 registers zero write tools, so this engine only ever sees READ —
  * but the gate, the statuses and the expiry are real so Phase 2 can add
@@ -32,10 +37,19 @@ class ApprovalEngine
 {
     const RISK_LADDER = ['READ', 'WRITE_LOW', 'WRITE_CUSTOMER_VISIBLE', 'WRITE_FINANCIAL', 'AVAILABILITY', 'SECURITY_ENFORCEMENT', 'MASS_COMMUNICATION'];
 
-    /** Does this risk class require an approved row before execution? */
+    /**
+     * Does this risk class require an approved row before execution?
+     *
+     * Everything that is not a pure READ does. Reads are still audited.
+     */
     public static function requiresApproval($risk)
     {
-        return in_array((string) $risk, ['WRITE_CUSTOMER_VISIBLE', 'WRITE_FINANCIAL', 'AVAILABILITY', 'SECURITY_ENFORCEMENT', 'MASS_COMMUNICATION'], true);
+        $risk = (string) $risk;
+        if ($risk === 'READ') {
+            return false;
+        }
+        // Unknown/unexpected risk labels fail closed into requiring approval.
+        return true;
     }
 
     /** Gate used before ANY write tool executes. Phase 1: no write tools exist. */
@@ -48,7 +62,12 @@ class ApprovalEngine
         if ($row === null) {
             throw new ForbiddenException('APPROVAL_REQUIRED: this action requires explicit human approval before execution.');
         }
-        if ($row['status'] !== 'approved') {
+        // 'executing' is approved-and-in-flight: ApprovalExecutor claims the
+        // row (approved -> executing) before calling the tool, so the gate
+        // must recognise the claim it just made. Only claim() can produce
+        // this state, and it can only do so once, so accepting it here does
+        // not widen the window — a second claim on the same row still loses.
+        if (!in_array((string) $row['status'], ['approved', 'executing'], true)) {
             throw new ForbiddenException('APPROVAL_REQUIRED: approval #' . $row['id'] . ' is ' . $row['status'] . ', not approved.');
         }
         if (self::isExpired($row)) {
@@ -70,6 +89,7 @@ class ApprovalEngine
             'agent' => (string) $agentSlug,
             'tool' => (string) $toolName,
             'arguments' => json_encode(\Ch247Ai\Core\Redaction::clean($arguments), JSON_UNESCAPED_UNICODE),
+            'args_digest' => self::argsDigest($arguments),
             'risk' => (string) $risk,
             'reason' => \Ch247Ai\Core\Validator::clip((string) $reason, 1000),
             'status' => 'pending',
@@ -134,5 +154,111 @@ class ApprovalEngine
     public static function pending()
     {
         return Db::count('approvals', ['status' => 'pending']);
+    }
+
+    /**
+     * Canonical SHA-256 of tool arguments.
+     *
+     * Keys are sorted recursively so that key order cannot change the digest,
+     * and values are compared as strings so that 401 and "401" bind the same.
+     * This is what stops an approved request being spent on different
+     * arguments later (approval swapping / TOCTOU).
+     */
+    public static function argsDigest(array $arguments)
+    {
+        return hash('sha256', json_encode(self::canonicalize($arguments), JSON_UNESCAPED_UNICODE));
+    }
+
+    protected static function canonicalize($value)
+    {
+        if (is_array($value)) {
+            $out = [];
+            foreach ($value as $k => $v) {
+                $out[(string) $k] = self::canonicalize($v);
+            }
+            ksort($out, SORT_STRING);
+            return $out;
+        }
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+        if ($value === null) {
+            return '';
+        }
+        return (string) $value;
+    }
+
+    /**
+     * Confirm the arguments about to execute are the ones a human approved.
+     *
+     * Rows written before this column existed have a NULL digest; those fail
+     * closed rather than being grandfathered through.
+     */
+    public static function assertArgumentsMatch($approvalId, array $arguments)
+    {
+        $row = Db::first('approvals', ['id' => (int) $approvalId]);
+        if ($row === null) {
+            throw new NotFoundException('Approval not found.');
+        }
+        $stored = isset($row['args_digest']) ? (string) $row['args_digest'] : '';
+        if ($stored === '') {
+            throw new ForbiddenException('APPROVAL_REQUIRED: approval #' . (int) $approvalId . ' has no argument digest; request a fresh approval.');
+        }
+        if (!hash_equals($stored, self::argsDigest($arguments))) {
+            throw new ForbiddenException('APPROVAL_MISMATCH: approval #' . (int) $approvalId . ' was granted for different arguments.');
+        }
+        return true;
+    }
+
+    /**
+     * Atomically take ownership of an approved row for execution.
+     *
+     * The UPDATE is conditional on status still being 'approved', so two
+     * concurrent executors cannot both win, and a replayed request cannot
+     * execute an action twice. Returns false when the row was already
+     * claimed, decided otherwise, or does not exist.
+     */
+    public static function claim($approvalId)
+    {
+        $affected = Db::exec(
+            'UPDATE ' . Db::t('approvals') . " SET status = 'executing', attempts = attempts + 1 WHERE id = ? AND status = 'approved'",
+            [(int) $approvalId]
+        );
+        return (int) $affected === 1;
+    }
+
+    /** Release a claim when execution could not start (keeps the approval usable). */
+    public static function release($approvalId)
+    {
+        Db::exec(
+            'UPDATE ' . Db::t('approvals') . " SET status = 'approved' WHERE id = ? AND status = 'executing'",
+            [(int) $approvalId]
+        );
+    }
+
+    /**
+     * Final state of an execution attempt.
+     *
+     * $verified must come from a real post-write re-read. An unverified
+     * attempt is recorded as failed: the platform never reports success it
+     * has not confirmed (brief §29).
+     */
+    public static function recordOutcome($approvalId, $succeeded, $verified, $note, array $result = [])
+    {
+        $succeeded = (bool) $succeeded && (bool) $verified;
+        Db::update('approvals', ['id' => (int) $approvalId], [
+            'status' => $succeeded ? 'executed' : 'failed',
+            'execution_status' => $succeeded ? 'succeeded' : 'failed',
+            'execution_result' => json_encode(\Ch247Ai\Core\Redaction::clean($result), JSON_UNESCAPED_UNICODE),
+            'verified' => $verified ? 1 : 0,
+            'verification_note' => \Ch247Ai\Core\Validator::clip((string) $note, 500),
+            'executed_at' => Clock::now(),
+        ]);
+        Audit::system('ai.approval.' . ($succeeded ? 'executed' : 'execution_failed'), [
+            'approval_id' => (int) $approvalId,
+            'verified' => $verified ? 1 : 0,
+            'note' => (string) $note,
+        ]);
+        return $succeeded;
     }
 }

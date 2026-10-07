@@ -31,7 +31,8 @@ return [
             }
         }
 
-        foreach (AgentRegistry::all() as $def) {
+        // Roadmap seats have no charter to version — they never run.
+        foreach (AgentRegistry::available() as $def) {
             if (Db::first('prompt_versions', ['agent' => $def->slug, 'version' => 1]) === null) {
                 Db::insert('prompt_versions', [
                     'agent' => $def->slug,

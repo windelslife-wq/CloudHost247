@@ -191,4 +191,57 @@ T::eq('future range empty', 0, count($future['rows']));
 $today = $tx->query(['confirmations' => 2, 'time_period_min' => 10, 'from' => date('Y-m-d', $now - 3600), 'to' => date('Y-m-d', $now)]);
 T::eq('today range finds live rows', 2, count($today['rows']));
 
+/* --------------------------------------------------- BCH admin control -- */
+
+T::section('Admin console governs BCH alongside BTC/USDT');
+$LEGACY_BCH = array_merge($LEGACY_FULL, ['bchEnabled' => 'on']);
+list($adminB, $storeB) = chs_bn($LEGACY_BCH);
+$stB = $adminB->panelState();
+T::ok('panel exposes bch state', array_key_exists('bch_enabled', $stB));
+T::ok('bch adopted on from legacy', $stB['bch_enabled']);
+
+// Legacy install with BCH off must not be switched on by the migration.
+list($adminB2,) = chs_bn($LEGACY_FULL);
+T::ok('bch stays off when legacy had it off', !$adminB2->panelState()['bch_enabled']);
+
+T::section('Saving BCH mirrors back to tblpaymentgateways');
+$mirrorsB = [];
+list($adminB3, $storeB3) = chs_bn($LEGACY_BCH, null, $mirrorsB);
+$adminB3->saveSettings([
+    'gateway_enabled' => true, 'btc_enabled' => true, 'bch_enabled' => false,
+    'usdt_enabled' => false, 'confirmations' => 2, 'usdt_network' => 'sepolia',
+], 42, 'ipx');
+T::eq('bch mirror cleared', '', $mirrorsB['bchEnabled']);
+T::ok('bch now off in state', !$adminB3->panelState()['bch_enabled']);
+$auditB = array_map(function ($r) { return $r['action']; }, $storeB3->auditList(30));
+T::ok('bch.disabled audited', in_array('bch.disabled', $auditB, true));
+
+$mirrorsB2 = [];
+list($adminB4, $storeB4) = chs_bn($LEGACY_FULL, null, $mirrorsB2);
+$adminB4->saveSettings([
+    'gateway_enabled' => true, 'btc_enabled' => true, 'bch_enabled' => true,
+    'usdt_enabled' => false, 'confirmations' => 2,
+], 42, 'ipx');
+T::eq('bch mirror set on', 'on', $mirrorsB2['bchEnabled']);
+T::ok('bch enabled in state', $adminB4->panelState()['bch_enabled']);
+T::ok('bch.enabled audited',
+    in_array('bch.enabled', array_map(function ($r) { return $r['action']; }, $storeB4->auditList(30)), true));
+
+T::section('BCH cannot be enabled without the Blockonomics API key');
+list($adminB5,) = chs_bn(['ApiKey' => '', 'btcEnabled' => '', 'bchEnabled' => '']);
+T::throws('dead bch config rejected', function () use ($adminB5) {
+    $adminB5->saveSettings(['gateway_enabled' => true, 'bch_enabled' => true], 1);
+}, 'InvalidArgumentException');
+T::ok('bch still off after rejection', !$adminB5->panelState()['bch_enabled']);
+
+T::section('Omitting bch_enabled from the POST turns it off (no sticky flags)');
+$mirrorsB3 = [];
+list($adminB6,) = chs_bn($LEGACY_BCH, null, $mirrorsB3);
+T::ok('precondition: bch on', $adminB6->panelState()['bch_enabled']);
+$adminB6->saveSettings([
+    'gateway_enabled' => true, 'btc_enabled' => true, 'confirmations' => 2,
+], 42, 'ipx'); // unchecked checkbox => key absent
+T::ok('absent checkbox disables bch', !$adminB6->panelState()['bch_enabled']);
+T::eq('and the mirror follows', '', $mirrorsB3['bchEnabled']);
+
 T::finish();

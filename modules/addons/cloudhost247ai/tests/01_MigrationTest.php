@@ -27,25 +27,61 @@ T::eq('second run applies nothing', [], $first['applied']);
 T::ok('ledger rows are not duplicated', Db::count('migrations') >= 4);
 
 T::section('Registry seeds agents, tools and prompt versions');
-T::eq('10 agents registered (9 Tier A + briefing composer)', 10, Db::count('agents'));
+T::eq('every registry agent is seeded', count(AgentRegistry::all()), Db::count('agents'));
+// Structural, not a magic number: every operable agent must have at least
+// one real tool, and every roadmap seat must have none.
+T::ok('there are operable agents', count(AgentRegistry::available()) > 0);
+T::eq('available + unavailable accounts for the whole registry',
+    count(AgentRegistry::all()), count(AgentRegistry::available()) + count(AgentRegistry::unavailable()));
+foreach (AgentRegistry::available() as $def) {
+    T::ok("operable agent {$def->slug} has tools", $def->tools !== []);
+    T::ok("operable agent {$def->slug} names no missing collector", (string) $def->missingCollector === '');
+}
+T::ok('roadmap seats are declared too', count(AgentRegistry::unavailable()) >= 16);
+T::eq('roadmap seats seed disabled', 0, Db::count('agents', ['enabled' => 1, 'agent' => 'infrastructure_guardian']));
+T::ok('every roadmap seat names the collector it needs', (function () {
+    foreach (AgentRegistry::unavailable() as $def) {
+        if (trim($def->missingCollector) === '') {
+            return false;
+        }
+    }
+    return true;
+})());
+T::ok('no roadmap seat carries tools it could call', (function () {
+    foreach (AgentRegistry::unavailable() as $def) {
+        if ($def->tools !== []) {
+            return false;
+        }
+    }
+    return true;
+})());
 T::ok('admin_copilot seeded', Db::count('agents', ['agent' => 'admin_copilot']) === 1);
 foreach (AgentRegistry::all() as $def) {
     $row = Db::first('agents', ['agent' => $def->slug]);
     T::ok("allowlist persisted for {$def->slug}", $row !== null && in_array('read_metrics', json_decode((string) $row['tool_allowlist'], true) ?: [], true) || $row !== null);
 }
-T::ok('prompt v1 exists for every agent', Db::count('prompt_versions') === 10);
+T::eq('prompt v1 exists for every operable agent', count(AgentRegistry::available()), Db::count('prompt_versions'));
+T::eq('roadmap seats get no prompt', 0, Db::count('prompt_versions', ['agent' => 'hr_assistant']));
 T::ok('tools table seeded from registry', Db::count('tools') >= 25);
 
-T::section('Phase 1 is read-only by construction');
-$writes = 0;
+T::section('Every registered tool obeys its risk class');
+// Phase 2 introduces write tools, so the old "there are no writes"
+// invariant is replaced by the one that has to hold as writes are added:
+// a non-READ tool is always gated, always verifiable, never client-facing.
 foreach (ToolRegistry::all() as $tool) {
-    if ($tool->risk !== 'READ') {
-        $writes++;
+    if ($tool->risk === 'READ') {
+        T::ok("read tool {$tool->name} declares a read.* permission",
+            strpos($tool->permission, 'read.') === 0);
+        continue;
     }
-}
-T::eq('zero write tools registered', 0, $writes);
-foreach (ToolRegistry::all() as $tool) {
-    T::ok("tool {$tool->name} risk is READ", $tool->risk === 'READ');
+    T::ok("write tool {$tool->name} requires approval",
+        \Ch247Ai\Approval\ApprovalEngine::requiresApproval($tool->risk));
+    T::ok("write tool {$tool->name} has a verification step", is_callable($tool->verify));
+    T::ok("write tool {$tool->name} declares an ai.write.* permission",
+        strpos($tool->permission, 'ai.write.') === 0);
+    T::ok("write tool {$tool->name} is never client-bound", $tool->clientBound === false);
+    T::ok("write tool {$tool->name} uses a known risk class",
+        in_array($tool->risk, \Ch247Ai\Approval\ApprovalEngine::RISK_LADDER, true));
 }
 
 T::section('Table prefixes never collide with WHMCS or sibling modules');

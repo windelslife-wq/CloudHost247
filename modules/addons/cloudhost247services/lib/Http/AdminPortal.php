@@ -241,6 +241,7 @@ class AdminPortal
                     return $bn->saveSettings([
                         'gateway_enabled' => !empty($_POST['gateway_enabled']),
                         'btc_enabled'     => !empty($_POST['btc_enabled']),
+                        'bch_enabled'     => !empty($_POST['bch_enabled']),
                         'usdt_enabled'    => !empty($_POST['usdt_enabled']),
                         'confirmations'   => isset($_POST['confirmations']) ? (int) $_POST['confirmations'] : 2,
                         'usdt_network'    => isset($_POST['usdt_network']) ? (string) $_POST['usdt_network'] : '',

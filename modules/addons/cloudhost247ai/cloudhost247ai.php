@@ -72,6 +72,19 @@ function cloudhost247ai_output($vars)
     return (new \Ch247Ai\Http\AdminPortal($vars))->render();
 }
 
+/**
+ * Customer-facing surface (brief §17/§33), reached at
+ * index.php?m=cloudhost247ai in the normal WHMCS client area.
+ *
+ * The question is posted to this page and handled server-side; api.php stays
+ * strictly admin-only so the two authority models never share a door.
+ */
+function cloudhost247ai_clientarea($vars)
+{
+    require_once __DIR__ . '/lib/Http/CustomerPortal.php';
+    return (new \Ch247Ai\Http\CustomerPortal())->dispatch($vars);
+}
+
 function cloudhost247ai_sidebar($vars)
 {
     $link = htmlspecialchars($vars['modulelink'], ENT_QUOTES, 'UTF-8');

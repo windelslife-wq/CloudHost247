@@ -66,7 +66,9 @@ class AdminPortal
                 case 'tools': $this->tools(); break;
                 case 'knowledge': $this->knowledge(); break;
                 case 'knowledge-edit': $this->knowledgeEdit(); break;
+                case 'board': $this->board(); break;
                 case 'approvals': $this->approvals(); break;
+                case 'evaluations': $this->evaluations(); break;
                 case 'runs': $this->runs(); break;
                 case 'run': $this->runDetail(); break;
                 case 'audit': $this->audit(); break;
@@ -141,11 +143,45 @@ class AdminPortal
                 $slug = (string) ($_POST['agent'] ?? '');
                 $this->runAgentNow($slug);
                 return;
+            case 'compose_board':
+                $manage();
+                $res = \Ch247Ai\Board\ExecutiveBoard::compose(isset($_POST['period']) ? (string) $_POST['period'] : 'daily');
+                if (empty($res['report_id'])) {
+                    $this->success = 'Executive board is disabled in settings.';
+                } else {
+                    $this->success = 'Executive board composed (' . $res['period'] . '): '
+                        . (int) $res['seats_ok'] . ' seat(s) reporting, '
+                        . (int) $res['seats_unavailable'] . ' awaiting a data source'
+                        . ($res['metrics_only'] ? ', metrics only (no model configured)' : ', narrated') . '.';
+                }
+                return;
+
             case 'compose_briefing':
                 $manage();
                 \Ch247Ai\Briefing\BriefingComposer::compose();
                 $this->success = 'Briefing composed. See it on the dashboard.';
                 return;
+            case 'run_evaluation':
+                $manage();
+                $ev = \Ch247Ai\Eval\Evaluator::run(7);
+                $this->success = $ev['enabled']
+                    ? ('Evaluation complete: ' . (int) $ev['metrics'] . ' metrics stored, probes '
+                        . (int) $ev['probes_passed'] . ' pass / ' . (int) $ev['probes_failed'] . ' fail / '
+                        . (int) $ev['probes_skipped'] . ' skipped.')
+                    : 'Evaluations are disabled in settings.';
+                break;
+
+            case 'execute_approval':
+                if (!Rbac::adminCan(Rbac::AI_APPROVE)) {
+                    throw new \Ch247Ai\Core\ForbiddenException('You need the AI approve permission.');
+                }
+                $outcome = \Ch247Ai\Approval\ApprovalExecutor::run((int) ($_POST['approval_id'] ?? 0));
+                $this->success = ($outcome['ok']
+                    ? 'Executed and verified. '
+                    : 'NOT APPLIED — the action did not complete and nothing is being claimed. ')
+                    . $outcome['note'];
+                break;
+
             case 'decide_approval':
                 if (!Rbac::adminCan(Rbac::AI_APPROVE)) {
                     throw new \Ch247Ai\Core\ForbiddenException('You need the AI approve permission.');
@@ -211,7 +247,7 @@ class AdminPortal
                 Settings::put($key, Validator::clip(trim((string) $_POST[$key]), 250));
             }
         }
-        $bools = ['copilot_enabled', 'knowledge_enabled', 'briefings_enabled', 'redact_pii'];
+        $bools = ['copilot_enabled', 'knowledge_enabled', 'briefings_enabled', 'redact_pii', 'writes_enabled', 'client_assistant_enabled'];
         foreach ($bools as $key) {
             Settings::put($key, !empty($_POST[$key]) ? '1' : '0');
         }
@@ -292,6 +328,7 @@ class AdminPortal
             'dashboard' => 'Dashboard',
             'copilot' => 'Copilot',
             'agents' => 'Agents',
+            'board' => 'Executive board',
             'tools' => 'Tools',
             'knowledge' => 'Knowledge',
             'approvals' => 'Approvals' . ($this->pendingApprovals() ? ' <span class="badge">' . $this->pendingApprovals() . '</span>' : ''),
@@ -364,7 +401,7 @@ class AdminPortal
         // Ground rules card.
         echo '<div class="panel panel-default"><div class="panel-heading"><strong>Operating guarantees</strong></div><div class="panel-body small">'
             . '<ul class="ch247ai-tight"><li>Answers are built from registered tool calls only — missing data fails closed, never invented.</li>'
-            . '<li>Phase 1 registers read tools only; there are no write paths to approve or execute.</li>'
+            . '<li>Writes execute only from an approved decision, bound to the exact arguments approved, and are re-read afterwards to confirm they landed.</li>'
             . '<li>Web-request hooks only record events; agents run from cron or explicit user action.</li>'
             . '<li>Every tool call and run lands in the hash-chained audit log; secrets are redacted before storage.</li>'
             . '<li>Model provider: ' . ($configured ? '<span class="label label-success">configured</span>' : '<span class="label label-warning">not configured (fail closed)</span>') . '</li></ul></div></div>';
@@ -477,7 +514,13 @@ class AdminPortal
                 $writes++;
             }
         }
-        echo '<div class="alert alert-' . ($writes === 0 ? 'success' : 'warning') . ' small">Write tools registered: <strong>' . (int) $writes . '</strong>' . ($writes === 0 ? ' — Phase 1 is read-only by construction.' : ' — approval gate applies to each.') . '</div>';
+        $writesOn = Settings::bool('writes_enabled', false);
+        echo '<div class="alert alert-' . ($writes === 0 ? 'success' : ($writesOn ? 'warning' : 'info')) . ' small">Write tools registered: <strong>' . (int) $writes . '</strong>'
+            . ($writes === 0
+                ? ' — this installation is read-only.'
+                : ' — each one requires an approved decision, is bound to the approved arguments, and is verified by re-reading the database afterwards. Execution master switch is <strong>'
+                  . ($writesOn ? 'ON' : 'OFF (nothing can execute)') . '</strong>.')
+            . '</div>';
     }
 
     protected function knowledge()
@@ -546,17 +589,183 @@ class AdminPortal
             . '<div class="form-group"><div class="col-sm-offset-2 col-sm-8"><button class="btn btn-primary">Save &amp; index</button> <a class="btn btn-default" href="' . $this->u('knowledge') . '">Back</a></div></div></form>';
     }
 
+
+    /**
+     * Executive war room. Renders the deterministic board report: which seats
+     * reported, which are waiting on a data source (shown, never hidden),
+     * cross-department findings, and the optional narration clearly labelled
+     * as narration rather than as a finding.
+     */
+    protected function board()
+    {
+        $this->nav();
+        // The board surfaces revenue, receivables and customer counts — it is
+        // not a public admin page. Same read permission as every other AI view.
+        if (!Rbac::adminCan(Rbac::AI_READ)) {
+            echo '<div class="alert alert-warning">You need the AI read permission to view the executive board.</div>';
+            return;
+        }
+        $canCompose = Rbac::adminCan(Rbac::AI_MANAGE);
+        $period = isset($_GET['period']) ? \Ch247Ai\Board\ExecutiveBoard::normalizePeriod($_GET['period']) : 'daily';
+
+        echo '<h2>Executive board</h2>';
+        echo '<div class="alert alert-info small">Seats are deterministic SQL packs over live WHMCS data. '
+            . 'Cross-department findings are single SQL joins, not agent-to-agent conversation — no seat can state '
+            . 'another seat\'s conclusion. A seat with no data feed says so instead of estimating.</div>';
+
+        echo '<ul class="nav nav-tabs" style="margin-bottom:15px">';
+        foreach (\Ch247Ai\Board\ExecutiveBoard::TYPES as $p) {
+            $cls = $p === $period ? 'active' : '';
+            echo '<li class="' . $cls . '"><a href="' . $this->u('board', ['period' => $p]) . '">' . ucfirst($p) . '</a></li>';
+        }
+        echo '</ul>';
+
+        if ($canCompose) {
+            echo '<form method="post" style="margin-bottom:15px">' . Csrf::field()
+                . '<input type="hidden" name="ch247ai_action" value="compose_board">'
+                . '<input type="hidden" name="period" value="' . $this->e($period) . '">'
+                . '<button class="btn btn-primary btn-sm" type="submit">Compose ' . $this->e($period) . ' board now</button></form>';
+        }
+
+        $row = \Ch247Ai\Board\ExecutiveBoard::latest($period);
+        if ($row === null) {
+            echo '<div class="panel panel-default"><div class="panel-body text-muted">No ' . $this->e($period)
+                . ' board report yet. The cron composes one on schedule, or press the button above.</div></div>';
+            return;
+        }
+
+        $pack = json_decode((string) $row['metric_pack'], true) ?: [];
+        $summary = isset($pack['summary']) ? $pack['summary'] : [];
+        $seats = isset($pack['seats']) ? $pack['seats'] : [];
+        $cross = isset($pack['cross']['findings']) ? $pack['cross']['findings'] : [];
+
+        echo '<p class="small text-muted">Composed ' . ch247ai_dt($row['created_at']) . ' UTC — period '
+            . $this->e($row['period_start']) . ' to ' . $this->e($row['period_end']) . ' — '
+            . ((int) $row['metrics_only'] === 1 ? 'metrics only (no model configured)' : 'narrated') . '</p>';
+
+        // Headline counters.
+        if ($summary) {
+            $sev = isset($summary['severity_counts']) ? $summary['severity_counts'] : [];
+            echo '<div class="row">';
+            foreach ([
+                'Seats reporting' => (int) $summary['seats_ok'] . ' / ' . (int) $summary['seats_total'],
+                'Critical' => (int) (isset($sev['critical']) ? $sev['critical'] : 0),
+                'Warnings' => (int) (isset($sev['warn']) ? $sev['warn'] : 0),
+                'Cross-department' => (int) $summary['cross_findings'],
+                'Awaiting data' => (int) $summary['seats_unavailable'],
+            ] as $label => $value) {
+                echo '<div class="col-sm-2"><div class="ch247ai-stat"><div class="number">' . $this->e((string) $value)
+                    . '</div><div class="text-muted small">' . $this->e($label) . '</div></div></div>';
+            }
+            echo '</div>';
+        }
+
+        // Requires attention.
+        if (!empty($summary['attention'])) {
+            echo '<div class="panel panel-warning"><div class="panel-heading"><strong>Requires attention</strong></div>'
+                . '<table class="table table-condensed"><tbody>';
+            foreach ($summary['attention'] as $a) {
+                $badge = $a['severity'] === 'critical' ? 'label-danger' : 'label-warning';
+                echo '<tr><td style="width:90px"><span class="label ' . $badge . '">' . $this->e(strtoupper($a['severity']))
+                    . '</span></td><td style="width:110px"><code>' . $this->e($a['origin']) . '</code></td><td>'
+                    . $this->e($a['text']) . '</td></tr>';
+            }
+            echo '</tbody></table></div>';
+        }
+
+        // Cross-department findings with their SQL.
+        if ($cross) {
+            echo '<div class="panel panel-default"><div class="panel-heading"><strong>Cross-department findings</strong> '
+                . '<span class="text-muted small">— one SQL join each, spanning two seats</span></div>'
+                . '<table class="table table-striped"><thead><tr><th>Seats</th><th>Finding</th><th>Evidence</th></tr></thead><tbody>';
+            foreach ($cross as $f) {
+                echo '<tr><td><code>' . $this->e(implode(' + ', $f['seats'])) . '</code></td>'
+                    . '<td><strong>' . $this->e($f['title']) . '</strong><br>' . $this->e($f['text']) . '</td>'
+                    . '<td><code class="small">' . ch247ai_h($f['sql']) . '</code></td></tr>';
+            }
+            echo '</tbody></table></div>';
+        }
+
+        // Seats.
+        foreach ($seats as $seat) {
+            $unavailable = $seat['status'] !== 'ok';
+            echo '<div class="panel ' . ($unavailable ? 'panel-default' : 'panel-success') . '">'
+                . '<div class="panel-heading"><strong>' . $this->e($seat['title']) . '</strong> '
+                . ($unavailable ? '<span class="label label-default">NO DATA SOURCE</span>' : '') . '</div>';
+            if ($unavailable) {
+                echo '<div class="panel-body"><p class="text-muted"><strong>CONFIGURATION_REQUIRED</strong> — '
+                    . $this->e($seat['reason']) . '</p></div></div>';
+                continue;
+            }
+            echo '<div class="panel-body">';
+            if (!empty($seat['findings'])) {
+                echo '<ul class="list-unstyled" style="margin-bottom:12px">';
+                foreach ($seat['findings'] as $f) {
+                    $badge = $f['severity'] === 'critical' ? 'label-danger' : ($f['severity'] === 'warn' ? 'label-warning' : 'label-info');
+                    echo '<li><span class="label ' . $badge . '">' . $this->e(strtoupper($f['severity'])) . '</span> '
+                        . $this->e($f['text']) . '</li>';
+                }
+                echo '</ul>';
+            }
+            echo '<table class="table table-condensed"><thead><tr><th>Metric</th><th>Value</th><th>Query</th></tr></thead><tbody>';
+            foreach ($seat['metrics'] as $m) {
+                $value = strpos($m['metric'], 'amount') !== false
+                    ? number_format((float) $m['value'], 2, '.', '')
+                    : (string) (int) $m['value'];
+                echo '<tr><td><code>' . $this->e($m['metric']) . '</code></td><td><strong>' . $this->e($value)
+                    . '</strong></td><td><code class="small">' . ch247ai_h($m['sql']) . '</code></td></tr>';
+            }
+            echo '</tbody></table></div></div>';
+        }
+
+        // Narration last, explicitly labelled.
+        if (!empty($row['narrative'])) {
+            echo '<div class="panel panel-info"><div class="panel-heading"><strong>Narration</strong> '
+                . '<span class="text-muted small">— model-written summary of the verified figures above. '
+                . 'Not a source of facts.</span></div><div class="panel-body">'
+                . nl2br($this->e((string) $row['narrative'])) . '</div></div>';
+        }
+    }
+
     protected function approvals()
     {
         $this->nav();
         $canApprove = Rbac::adminCan(Rbac::AI_APPROVE);
         echo '<h2>Decision inbox</h2>';
         $pending = Db::all('approvals', ['status' => 'pending'], 'id ASC', 100);
-        echo '<div class="alert alert-info small">Phase 1 registers no write tools, so nothing can create approval requests yet. The gate, expiry and decision flow below are live for Phase 2 (draft replies, dunning drafts).</div>';
+        $approved = Db::all('approvals', ['status' => 'approved'], 'id ASC', 100);
+
+        if (!$canApprove) {
+            echo '<div class="alert alert-warning small">You can see decisions here, but you need the AI approve permission to decide or execute one.</div>';
+        }
+        if (!Settings::bool('writes_enabled', false)) {
+            echo '<div class="alert alert-info small"><strong>Execution is switched off.</strong> Decisions can be recorded, but no approved action will run until <code>writes_enabled</code> is turned on in Settings.</div>';
+        }
+        echo '<div class="alert alert-warning small">Approving does not execute. An approved action waits here until someone presses <strong>Execute now</strong>, then the result is verified by re-reading the database — an action that cannot be confirmed is reported as failed, never as done.</div>';
+
+        if ($approved) {
+            echo '<h4>Approved — awaiting execution</h4>';
+            foreach ($approved as $row) {
+                echo '<div class="panel panel-success"><div class="panel-heading"><strong>' . ch247ai_pill('approved') . ' ' . $this->e($row['agent']) . ' → <code>' . ch247ai_h($row['tool']) . '</code> · risk ' . $this->e($row['risk']) . '</strong></div><div class="panel-body">'
+                    . '<p>' . $this->e((string) $row['reason']) . '</p>'
+                    . ch247ai_pre(json_decode((string) $row['arguments'], true) ?: [])
+                    . '<p class="small text-muted">Approved ' . ch247ai_dt($row['decided_at']) . ' UTC by admin #' . (int) $row['decided_by']
+                    . ' · arguments locked to digest <code>' . ch247ai_h(substr((string) $row['args_digest'], 0, 16)) . '…</code></p>';
+                if ($canApprove) {
+                    echo '<form method="post" class="form-inline">' . Csrf::field()
+                        . '<input type="hidden" name="ch247ai_action" value="execute_approval"><input type="hidden" name="approval_id" value="' . (int) $row['id'] . '">'
+                        . '<button class="btn btn-sm btn-primary">Execute now</button></form>';
+                }
+                echo '</div></div>';
+            }
+        }
+
         if ($pending === []) {
             echo '<div class="panel panel-default"><div class="panel-body text-muted">No pending decisions.</div></div>';
+            $this->approvalHistory();
             return;
         }
+        echo '<h4>Pending decision</h4>';
         foreach ($pending as $row) {
             echo '<div class="panel panel-default"><div class="panel-heading"><strong>' . ch247ai_pill('awaiting_approval') . ' ' . $this->e($row['agent']) . ' → <code>' . ch247ai_h($row['tool']) . '</code> · risk ' . $this->e($row['risk']) . '</strong></div><div class="panel-body">'
                 . '<p>' . $this->e((string) $row['reason']) . '</p>'
@@ -573,15 +782,34 @@ class AdminPortal
             }
             echo '</div></div>';
         }
-        // History
-        $recent = Db::query('SELECT * FROM ' . Db::t('approvals') . " WHERE status != 'pending' ORDER BY id DESC LIMIT 20");
-        if ($recent) {
-            echo '<h4>Recent decisions</h4><div class="table-responsive"><table class="table table-striped"><thead><tr><th>#</th><th>Agent / tool</th><th>Risk</th><th>Status</th><th>Decided</th><th>By admin</th></tr></thead><tbody>';
-            foreach ($recent as $row) {
-                echo '<tr><td>' . (int) $row['id'] . '</td><td>' . $this->e($row['agent']) . ' / <code>' . ch247ai_h($row['tool']) . '</code></td><td>' . $this->e($row['risk']) . '</td><td>' . ch247ai_pill($row['status']) . '</td><td>' . ch247ai_dt($row['decided_at']) . '</td><td>' . (int) $row['decided_by'] . '</td></tr>';
-            }
-            echo '</tbody></table></div>';
+        $this->approvalHistory();
+    }
+
+    /** Decision history, including what actually happened on execution. */
+    protected function approvalHistory()
+    {
+        $recent = Db::query('SELECT * FROM ' . Db::t('approvals') . " WHERE status NOT IN ('pending','approved') ORDER BY id DESC LIMIT 20");
+        if (!$recent) {
+            return;
         }
+        echo '<h4>Recent decisions</h4><div class="table-responsive"><table class="table table-striped"><thead><tr>'
+            . '<th>#</th><th>Agent / tool</th><th>Risk</th><th>Status</th><th>Verified</th><th>What was confirmed</th><th>Decided</th><th>By admin</th></tr></thead><tbody>';
+        foreach ($recent as $row) {
+            $status = (string) $row['status'];
+            $verified = isset($row['verified']) ? (int) $row['verified'] : 0;
+            if ($status === 'executed' && $verified === 1) {
+                $badge = '<span class="label label-success">verified</span>';
+            } elseif ($status === 'failed') {
+                $badge = '<span class="label label-danger">not applied</span>';
+            } else {
+                $badge = '<span class="text-muted">—</span>';
+            }
+            echo '<tr><td>' . (int) $row['id'] . '</td><td>' . $this->e($row['agent']) . ' / <code>' . ch247ai_h($row['tool']) . '</code></td><td>'
+                . $this->e($row['risk']) . '</td><td>' . ch247ai_pill($status) . '</td><td>' . $badge . '</td><td class="small">'
+                . $this->e((string) (isset($row['verification_note']) ? $row['verification_note'] : '')) . '</td><td>'
+                . ch247ai_dt($row['decided_at']) . '</td><td>' . (int) $row['decided_by'] . '</td></tr>';
+        }
+        echo '</tbody></table></div>';
     }
 
     protected function runs()
@@ -746,6 +974,8 @@ class AdminPortal
             . '<label class="checkbox-inline"><input type="checkbox" name="copilot_enabled" ' . (Settings::bool('copilot_enabled', true) ? 'checked' : '') . '> Copilot enabled</label> '
             . '<label class="checkbox-inline"><input type="checkbox" name="knowledge_enabled" ' . (Settings::bool('knowledge_enabled', true) ? 'checked' : '') . '> Knowledge search enabled</label> '
             . '<label class="checkbox-inline"><input type="checkbox" name="briefings_enabled" ' . (Settings::bool('briefings_enabled', true) ? 'checked' : '') . '> Daily briefings enabled</label> '
+            . '<label class="checkbox-inline" title="Master switch for executing approved write actions"><input type="checkbox" name="writes_enabled" ' . (Settings::bool('writes_enabled', false) ? 'checked' : '') . '> <strong>Allow approved actions to execute</strong></label> '
+            . '<label class="checkbox-inline" title="Read-only account assistant in the customer client area"><input type="checkbox" name="client_assistant_enabled" ' . (Settings::bool('client_assistant_enabled', false) ? 'checked' : '') . '> Customer account assistant</label> '
             . '<label class="checkbox-inline"><input type="checkbox" name="redact_pii" ' . (Settings::bool('redact_pii', true) ? 'checked' : '') . '> Redact PII in stored context</label>'
             . '<div class="form-group" style="margin-top:10px"><label>Briefing hour (UTC)</label><input class="form-control" name="briefing_hour" value="' . (int) Settings::int('briefing_hour', 6) . '"></div>'
             . '<div class="form-group"><label>Event max attempts</label><input class="form-control" name="event_max_attempts" value="' . (int) Settings::int('event_max_attempts', 5) . '"></div>'
@@ -791,5 +1021,75 @@ class AdminPortal
             $url .= '&' . rawurlencode($key) . '=' . rawurlencode($value);
         }
         return htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+    }
+
+    /**
+     * Observability + evaluation (§30/§31).
+     *
+     * Two things an operator needs: are the safety guarantees still holding
+     * right now, and what do the numbers say about quality. A metric with no
+     * samples is shown as "no data", never as a reassuring percentage.
+     */
+    protected function evaluations()
+    {
+        $this->nav();
+        echo '<h2>Evaluation &amp; observability</h2>';
+
+        if (!Rbac::adminCan(Rbac::AI_AUDIT) && !Rbac::adminCan(Rbac::AI_READ)) {
+            echo '<div class="alert alert-danger">You need the AI audit or AI read permission group to view evaluation results.</div>';
+            return;
+        }
+
+        if (Rbac::adminCan(Rbac::AI_MANAGE)) {
+            echo '<form method="post" style="margin-bottom:14px">' . Csrf::field()
+                . '<input type="hidden" name="ch247ai_action" value="run_evaluation">'
+                . '<button class="btn btn-primary btn-sm">Run evaluation now</button> '
+                . '<span class="small text-muted">Deterministic: no model is called.</span></form>';
+        }
+
+        // --- live safety probes -------------------------------------
+        echo '<h4>Safety probes <span class="small text-muted">(run live, against this database)</span></h4>';
+        $probes = \Ch247Ai\Eval\SafetyProbes::runAll();
+        $failed = 0;
+        echo '<div class="table-responsive"><table class="table table-striped"><thead><tr><th>Probe</th><th>Result</th><th>Detail</th></tr></thead><tbody>';
+        foreach ($probes as $probe) {
+            if ($probe['status'] === 'fail') {
+                $failed++;
+                $label = '<span class="label label-danger">FAIL</span>';
+            } elseif ($probe['status'] === 'pass') {
+                $label = '<span class="label label-success">pass</span>';
+            } else {
+                $label = '<span class="label label-default">skipped</span>';
+            }
+            echo '<tr><td><code>' . ch247ai_h($probe['probe']) . '</code></td><td>' . $label . '</td><td class="small">' . $this->e($probe['detail']) . '</td></tr>';
+        }
+        echo '</tbody></table></div>';
+        if ($failed > 0) {
+            echo '<div class="alert alert-danger"><strong>' . (int) $failed . ' safety probe(s) are failing.</strong> A guarantee this platform depends on is not holding. Treat as an incident.</div>';
+        }
+
+        // --- stored metrics -----------------------------------------
+        $latest = \Ch247Ai\Eval\Evaluator::latest();
+        if ($latest['rows'] === []) {
+            echo '<div class="alert alert-info">No evaluation has been stored yet. It runs daily from cron, or press the button above.</div>';
+            return;
+        }
+        echo '<h4>Quality metrics <span class="small text-muted">window ' . $this->e((string) $latest['window_start']) . ' to ' . $this->e((string) $latest['window_end']) . ' (UTC)</span></h4>';
+        echo '<div class="table-responsive"><table class="table table-striped"><thead><tr><th>Scope</th><th>Metric</th><th>Value</th><th>Samples</th></tr></thead><tbody>';
+        foreach ($latest['rows'] as $row) {
+            $agent = (string) $row['agent'];
+            if ($agent === \Ch247Ai\Eval\Evaluator::PROBE_AGENT) {
+                continue; // probes are shown live above
+            }
+            $value = (string) $row['value'];
+            $samples = (int) $row['sample_size'];
+            // The honest rendering: no samples means no number.
+            $display = ($value === '' || $samples === 0)
+                ? '<span class="text-muted">no data in this window</span>'
+                : '<strong>' . ch247ai_h($value) . '</strong>';
+            echo '<tr><td>' . ($agent === '*' ? '<em>platform</em>' : $this->e($agent)) . '</td><td><code>' . ch247ai_h((string) $row['metric']) . '</code></td><td>' . $display . '</td><td>' . $samples . '</td></tr>';
+        }
+        echo '</tbody></table></div>';
+        echo '<p class="small text-muted">Every figure is a SQL aggregate over recorded runs, tool calls, decisions and usage. No model grades this platform: the headline quality signal is <code>human_override_rate</code> — how often a reviewer rejected what an agent proposed.</p>';
     }
 }

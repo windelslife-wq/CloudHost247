@@ -42,11 +42,15 @@ $get_order = isset($_GET['get_order']) ? htmlspecialchars($_GET['get_order']) : 
 try {
     $chsLegacy = getGatewayVariables('blockonomics');
     $chsMatrix = Bridge::availableCurrencies($chsLegacy);
-    $chsEnabled = !empty($chsLegacy['type']) && Bridge::isGatewayEnabled($chsLegacy);
+    // Master switch AND at least one payable currency — otherwise the page
+    // would render an empty currency picker instead of saying "unavailable".
+    $chsEnabled = !empty($chsLegacy['type'])
+        && Bridge::isGatewayEnabled($chsLegacy)
+        && Policy::anyCurrencyAvailable(Bridge::state($chsLegacy));
 } catch (\Throwable $governanceError) {
     error_log('cloudhost247 blockonomics payment gate error: ' . $governanceError->getMessage());
     $chsEnabled = false;
-    $chsMatrix = ['btc' => false, 'usdt' => false];
+    $chsMatrix = Policy::deniedMatrix();
 }
 
 if (!$chsEnabled) {
@@ -72,13 +76,13 @@ try {
 
 // 2) Per-currency gate for any explicit crypto request below.
 $chsGuardCurrency = function ($code) use ($chsLegacy) {
-    if ($code === 'btc' || $code === 'usdt') {
-        try {
-            Bridge::assertCurrencyAllowed($code, $chsLegacy);
-        } catch (PaymentUnavailableException $blocked) {
-            http_response_code(403);
-            exit('This payment method is currently unavailable.');
-        }
+    // Every governed currency (btc / bch / usdt) passes through here, and an
+    // unrecognised code throws as well — the matrix has no default-open path.
+    try {
+        Bridge::assertCurrencyAllowed($code, $chsLegacy);
+    } catch (PaymentUnavailableException $blocked) {
+        http_response_code(403);
+        exit('This payment method is currently unavailable.');
     }
 };
 
