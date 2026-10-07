@@ -1,0 +1,33 @@
+/* CloudHost247 Passkey — narrowly scoped styles; inherits the active theme. */
+.ch247pk .card { border-radius: 8px; }
+.ch247pk-status { border-radius: 6px; }
+.ch247pk-login-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px 14px;
+    border: 1px solid #c7d2fe;
+    border-radius: 6px;
+    background: #eef2ff;
+    color: #3730a3;
+    font-weight: 600;
+    cursor: pointer;
+}
+.ch247pk-login-btn:hover { background: #e0e7ff; }
+.ch247pk-login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.ch247pk-login-status { margin-top: 8px; font-size: 13px; }
+.ch247pk-reset-link {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: underline;
+}
+.ch247pk-reset-form { margin-top: 10px; }
+.ch247pk-reset-form input { margin-bottom: 8px; }
+@media (max-width: 576px) {
+    .ch247pk .card-footer .btn { margin-bottom: 6px; }
+}

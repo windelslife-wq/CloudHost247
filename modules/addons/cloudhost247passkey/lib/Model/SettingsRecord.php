@@ -57,6 +57,15 @@ class SettingsRecord
             'event_retention_days' => '365',
             'challenge_retention_hours' => '24',
             'entra_enabled' => '0',
+            'login_notifications_enabled' => '0',
+            'security_event_notifications_enabled' => '0',
+            'entra_client_login_enabled' => '0',
+            'entra_admin_login_enabled' => '0',
+            'entra_tenant_id' => '',
+            'entra_client_id' => '',
+            'entra_redirect_uri' => '',
+            'entra_allowed_domains' => '[]',
+            'sensitive_action_policy' => 'optional',
         ];
     }
 

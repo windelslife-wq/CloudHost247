@@ -116,3 +116,33 @@ add_hook('AdminAreaHeaderOutput', 1, function ($vars) {
         . 'ul.ch247ai-tight{padding-left:18px}ul.ch247ai-tight li{margin-bottom:4px}'
         . '</style>';
 });
+
+/* ------------------------------------------ AI Support Operator widget -- */
+
+add_hook('ClientAreaFooterOutput', 1, function ($vars) {
+    // Zero-JS floating button: one cheap presence read max, wrapped so a
+    // widget failure can never break a customer-facing page.
+    try {
+        if (!\Ch247Ai\Core\Settings::bool('support_operator_enabled', false)
+            || !\Ch247Ai\Core\Settings::bool('support_widget_enabled', false)
+        ) {
+            return '';
+        }
+        $status = 'offline';
+        try {
+            $status = \Ch247Ai\SupportOperator\PresenceService::availability()['status'];
+        } catch (\Throwable $e) {
+            $status = 'offline';
+        }
+        $dot = $status === 'online' ? '#16a34a' : ($status === 'busy' ? '#d97706' : '#94a3b8');
+        $label = $status === 'online' ? 'AI Support — agents online' : ($status === 'busy' ? 'AI Support — agents busy' : 'AI Support — ask us anything');
+        return '<a href="index.php?m=cloudhost247ai&amp;action=support" title="' . $label . '" '
+            . 'style="position:fixed;right:18px;bottom:18px;z-index:9999;display:inline-flex;align-items:center;gap:8px;'
+            . 'background:#1e293b;color:#fff;padding:12px 18px;border-radius:999px;text-decoration:none;'
+            . 'font:600 13px/1 system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.25)">'
+            . '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' . $dot . '"></span>'
+            . 'AI Support</a>';
+    } catch (\Throwable $e) {
+        return '';
+    }
+});

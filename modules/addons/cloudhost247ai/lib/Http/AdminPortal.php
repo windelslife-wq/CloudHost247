@@ -73,6 +73,11 @@ class AdminPortal
                 case 'run': $this->runDetail(); break;
                 case 'audit': $this->audit(); break;
                 case 'events': $this->events(); break;
+                case 'support':
+                case 'support-view':
+                case 'support-newsletter':
+                    echo (new \Ch247Ai\Http\SupportAdmin($this->moduleLink))->render($this->action);
+                    break;
                 case 'settings': $this->settings(); break;
                 default: $this->dashboard(); break;
             }
@@ -93,6 +98,10 @@ class AdminPortal
         }
         Csrf::verifyRequest();
         $action = (string) ($_POST['ch247ai_action'] ?? '');
+        if (strpos($action, 'support') === 0) {
+            $this->success = \Ch247Ai\Http\SupportAdmin::handle($action);
+            return;
+        }
         $manage = function () {
             if (!Rbac::adminCan(Rbac::AI_MANAGE)) {
                 throw new \Ch247Ai\Core\ForbiddenException('You need the AI manage permission for this.');
@@ -235,7 +244,7 @@ class AdminPortal
 
     protected function saveSettings()
     {
-        $ints = ['max_tool_calls_per_run', 'run_wall_clock_seconds', 'daily_tokens_per_agent', 'monthly_platform_cost_micros', 'event_max_attempts', 'approval_expiry_hours', 'retention_days_runs', 'retention_days_events', 'model_timeout_seconds', 'model_price_per_mtok_in_micros', 'model_price_per_mtok_out_micros', 'briefing_hour'];
+        $ints = ['max_tool_calls_per_run', 'run_wall_clock_seconds', 'daily_tokens_per_agent', 'monthly_platform_cost_micros', 'event_max_attempts', 'approval_expiry_hours', 'retention_days_runs', 'retention_days_events', 'model_timeout_seconds', 'model_price_per_mtok_in_micros', 'model_price_per_mtok_out_micros', 'briefing_hour', 'support_ticket_dept', 'support_presence_ttl', 'support_rate_max', 'support_rate_window', 'support_max_message'];
         foreach ($ints as $key) {
             if (isset($_POST[$key])) {
                 Settings::put($key, (string) max(0, (int) $_POST[$key]));
@@ -247,7 +256,7 @@ class AdminPortal
                 Settings::put($key, Validator::clip(trim((string) $_POST[$key]), 250));
             }
         }
-        $bools = ['copilot_enabled', 'knowledge_enabled', 'briefings_enabled', 'redact_pii', 'writes_enabled', 'client_assistant_enabled'];
+        $bools = ['copilot_enabled', 'knowledge_enabled', 'briefings_enabled', 'redact_pii', 'writes_enabled', 'client_assistant_enabled', 'support_operator_enabled', 'support_widget_enabled'];
         foreach ($bools as $key) {
             Settings::put($key, !empty($_POST[$key]) ? '1' : '0');
         }
@@ -327,6 +336,7 @@ class AdminPortal
         $items = [
             'dashboard' => 'Dashboard',
             'copilot' => 'Copilot',
+            'support' => 'AI Support',
             'agents' => 'Agents',
             'board' => 'Executive board',
             'tools' => 'Tools',
@@ -339,7 +349,7 @@ class AdminPortal
         ];
         echo '<ul class="nav nav-pills" style="margin-bottom:20px">';
         foreach ($items as $action => $label) {
-            $active = $this->action === $action || ($action === 'knowledge' && $this->action === 'knowledge-edit') || ($action === 'runs' && $this->action === 'run') ? 'active' : '';
+            $active = $this->action === $action || ($action === 'knowledge' && $this->action === 'knowledge-edit') || ($action === 'runs' && $this->action === 'run') || ($action === 'support' && in_array($this->action, ['support', 'support-view', 'support-newsletter'], true)) ? 'active' : '';
             echo '<li class="' . $active . '"><a href="' . $this->u($action) . '">' . $label . '</a></li>';
         }
         echo '</ul>';
@@ -982,6 +992,17 @@ class AdminPortal
             . '<div class="form-group"><label>Approval expiry (hours)</label><input class="form-control" name="approval_expiry_hours" value="' . (int) Settings::int('approval_expiry_hours', 72) . '"></div>'
             . '<div class="form-group"><label>Run retention (days)</label><input class="form-control" name="retention_days_runs" value="' . (int) Settings::int('retention_days_runs', 180) . '"></div>'
             . '<div class="form-group"><label>Event retention (days)</label><input class="form-control" name="retention_days_events" value="' . (int) Settings::int('retention_days_events', 60) . '"></div>'
+            . '</div></div>';
+        // AI Support Operator.
+        echo '<div class="panel panel-default"><div class="panel-heading"><strong>AI Support Operator</strong></div><div class="panel-body">'
+            . '<label class="checkbox-inline" title="Guest-capable support chat at index.php?m=cloudhost247ai&action=support"><input type="checkbox" name="support_operator_enabled" ' . (Settings::bool('support_operator_enabled', false) ? 'checked' : '') . '> <strong>Support chat enabled</strong></label> '
+            . '<label class="checkbox-inline"><input type="checkbox" name="support_widget_enabled" ' . (Settings::bool('support_widget_enabled', false) ? 'checked' : '') . '> Floating widget on client area</label> '
+            . '<div class="form-group" style="margin-top:10px"><label>Escalation ticket department id</label><input class="form-control" name="support_ticket_dept" value="' . (int) Settings::int('support_ticket_dept', 1) . '"></div>'
+            . '<div class="form-group"><label>Presence TTL (seconds)</label><input class="form-control" name="support_presence_ttl" value="' . (int) Settings::int('support_presence_ttl', 300) . '"></div>'
+            . '<div class="form-group"><label>Chat rate limit (messages)</label><input class="form-control" name="support_rate_max" value="' . (int) Settings::int('support_rate_max', 20) . '"></div>'
+            . '<div class="form-group"><label>Chat rate window (seconds)</label><input class="form-control" name="support_rate_window" value="' . (int) Settings::int('support_rate_window', 300) . '"></div>'
+            . '<div class="form-group"><label>Max message length</label><input class="form-control" name="support_max_message" value="' . (int) Settings::int('support_max_message', 2000) . '"></div>'
+            . '<p class="small text-muted">Escalations file real tickets via OpenTicket and mirror agent replies back as notes. Viewing conversations needs <code>ai.client.read</code>; replying and managing need <code>ai.manage</code>.</p>'
             . '</div></div>';
         // Role permissions matrix.
         $roles = \Ch247Ai\Core\Whmcs::roles();

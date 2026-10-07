@@ -9,8 +9,11 @@
  * opt-in notification preference and host-delivery orchestration, Phase 9
  * provides bounded host-invoked retention maintenance, and Phase 10 provides
  * explicitly authorized administrator policy management for WHMCS's existing
- * identity, session, and 2FA architecture. No native session is synthesized
- * by this addon and the feature remains disabled by default.
+ * identity, session, and 2FA architecture. Phase 11 adds the native WHMCS
+ * HTTP boundary: client and administrator Passkey login, registration,
+ * credential management, step-up confirmation, Passkey-assisted password
+ * reset, notifications, and the admin dashboard. Password login and 2FA
+ * remain available and the feature stays disabled by default.
  *
  * @package CloudHost247\Passkey
  */
@@ -30,10 +33,10 @@ function cloudhost247passkey_config()
 {
     return [
         'name' => 'CloudHost247 Passkey',
-        'description' => 'Fail-closed Passkey handoff, security controls, host-verified identity linking, notification orchestration, bounded retention maintenance, and authorized policy management are available for explicit WHMCS adapters; login and management remain disabled by default.',
+        'description' => 'Native WebAuthn/Passkey login for clients and administrators, with credential management, enforcement policies, step-up confirmation, Passkey-assisted password reset, activity logs, and login notifications. Disabled by default; password login and 2FA remain available.',
         'author' => 'CloudHost247',
         'language' => 'english',
-        'version' => '0.9.0',
+        'version' => '0.11.0',
         'fields' => [],
     ];
 }
@@ -100,10 +103,31 @@ function cloudhost247passkey_auth_integration_configured()
     return PasskeyIntegrationRegistry::isConfigured();
 }
 
-/** Honest Phase 4 status; the adapter boundary is present but login stays opt-in. */
+/** Administrator dashboard; admin-session JSON actions exit through Admin::dispatchAjax(). */
 function cloudhost247passkey_output($vars)
 {
-    echo '<div class="alert alert-info"><strong>Passkey authentication is currently disabled by default.</strong> '
-        . 'Phase 4 adds a fail-closed handoff boundary, Phase 5 adds authenticated credential-management services, Phase 6 adds security controls, Phase 7 adds a host-verified external-identity linking boundary, Phase 8 adds opt-in notification preferences with an explicit host delivery sink, Phase 9 adds bounded host-invoked retention maintenance, and Phase 10 adds explicitly authorized administrator policy management. '
-        . 'This module does not perform session creation, bypass existing 2FA, replace password recovery, send mail, perform OAuth verification, register a scheduler, or provide an admin permission model; no login or management UI is enabled until the deployment owner supplies and verifies those adapters.</div>';
+    $ajax = (isset($_GET['passkey_ajax']) ? (string) $_GET['passkey_ajax'] : '')
+        . (isset($_POST['passkey_ajax']) ? (string) $_POST['passkey_ajax'] : '');
+    if ($ajax !== '') {
+        \CloudHost247\Passkey\Admin::dispatchAjax();
+    }
+    $admin = new \CloudHost247\Passkey\Admin(is_array($vars) ? $vars : []);
+    $admin->render();
+}
+
+function cloudhost247passkey_sidebar($vars)
+{
+    $link = isset($vars['modulelink']) ? (string) $vars['modulelink'] : 'addonmodules.php?module=cloudhost247passkey';
+    $safe = htmlspecialchars($link, ENT_QUOTES, 'UTF-8');
+    return '<div class="panel panel-default"><div class="panel-heading"><strong><i class="fa fa-key"></i> Passkey</strong></div>'
+        . '<div class="list-group">'
+        . '<a class="list-group-item" href="' . $safe . '&ch247pk_tab=dashboard">Dashboard</a>'
+        . '<a class="list-group-item" href="' . $safe . '&ch247pk_tab=mine">My Passkeys</a>'
+        . '<a class="list-group-item" href="' . $safe . '&ch247pk_tab=credentials">Credentials</a>'
+        . '<a class="list-group-item" href="' . $safe . '&ch247pk_tab=events">Activity Log</a>'
+        . '<a class="list-group-item" href="' . $safe . '&ch247pk_tab=policy">Policy</a>'
+        . '<a class="list-group-item" href="' . $safe . '&ch247pk_tab=settings">Settings</a>'
+        . '<a class="list-group-item" href="' . $safe . '&ch247pk_tab=entra">Entra ID</a>'
+        . '<a class="list-group-item" href="' . $safe . '&ch247pk_tab=diagnostics">Diagnostics</a>'
+        . '</div></div>';
 }

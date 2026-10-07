@@ -92,9 +92,14 @@ class PasskeyLoginPolicy
     private static function maxCredentials(array $settings, $key)
     {
         $value = array_key_exists($key, $settings) ? $settings[$key] : '5';
+        if ($value === 'unlimited') {
+            // Bounded practical equivalent of unlimited; prevents abuse while
+            // satisfying deployments that do not want a low fixed ceiling.
+            return 1000;
+        }
         $number = filter_var($value, FILTER_VALIDATE_INT);
         if ($number === false || (int) $number < 1 || (int) $number > 50) {
-            throw new \InvalidArgumentException('Passkey ' . $key . ' must be between 1 and 50.');
+            throw new \InvalidArgumentException('Passkey ' . $key . ' must be between 1 and 50, or unlimited.');
         }
         return (int) $number;
     }

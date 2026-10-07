@@ -20,6 +20,30 @@ router. See `docs/AI_CONTROL_PLANE.md` (runbook) and `docs/AI_PLATFORM_PLAN.md`
 * **Every operation audited** in a SHA-256 hash chain; secrets redacted before
   any storage; API keys are environment-only.
 
+## AI Support Operator (embedded, deterministic)
+
+A guest-capable support chat at `index.php?m=cloudhost247ai&action=support`,
+plus an optional zero-JS floating widget. It answers from public knowledge
+base articles and live `tblproducts`/`tblpricing` rows only — no model calls,
+no external APIs, no invented facts. Anything needing account access, a
+judgment call, or an answer the platform cannot support escalates into a real
+WHMCS ticket (OpenTicket) with the full transcript attached.
+
+* **Enable:** Settings → AI Support Operator (chat + widget are separate
+  switches; both default off). Set the escalation ticket department id.
+* **Guests** own conversations through unguessable 128-bit ids bound to their
+  PHP session; clients see only their own threads.
+* **Escalation:** an online/busy agent (presence heartbeat on the support
+  page) is assigned and notified; when nobody is online the ticket still
+  lands in the support queue. Agent replies mirror back as ticket notes.
+* **Grants:** `ai.client.read` views conversations and newsletter emails;
+  `ai.manage` replies, assigns and changes status.
+* **Newsletter:** signups mirror into the marketing module's audience store
+  when installed, and are always kept in the local fallback list.
+* Every start, answer, escalation, reply and subscription is audit-chained
+  under `ai.support.*`. Suite: `tests/15_SupportOperatorTest.php` (131
+  assertions, incl. the no-fabrication and ownership-isolation matrix).
+
 ## Install
 
 1. Copy the module to `modules/addons/cloudhost247ai/`.
@@ -34,19 +58,20 @@ router. See `docs/AI_CONTROL_PLANE.md` (runbook) and `docs/AI_PLATFORM_PLAN.md`
 
 ```
 npm install          # @php-wasm/node
-node tests/lint.mjs  # 45 files load clean
-node tests/run.mjs   # 370 assertions / 10 suites, incl. adversarial suite
+node tests/lint.mjs  # 65 files load clean
+node tests/run.mjs   # 1126 assertions / 15 suites, incl. adversarial + operator suites
 ```
 
 ## Layout
 
 ```
 cloudhost247ai.php        addon entry (config/activate/upgrade/output/sidebar)
-hooks.php                 INSERT-only event capture + admin CSS
+hooks.php                 INSERT-only event capture + admin CSS + support widget
 api.php                   copilot XHR (CSRF + RBAC + rate limited)
 cron/cloudhost247ai.php   drain, scheduled agents, briefing, housekeeping
 autoload.php              PSR-4 Ch247Ai\ + constants
-install/migrations/       0001 core, 0002 governance, 0003 seeds, 0004 fulltext
+install/migrations/       0001 core, 0002 governance, 0003 seeds, 0004 fulltext,
+                          0006 support operator (conversations, presence, newsletter)
 lib/Core/                 Db, Migrator, Blueprint, Settings, Rbac, Audit,
                           RateLimiter, Clock, Redaction, Csrf, Whmcs seam…
 lib/Model/                ModelRouter, OpenAiCompatibleProvider, NullProvider
@@ -55,5 +80,9 @@ lib/Agents/               AgentRegistry (9 Tier-A + composer), AgentRuntime
 lib/Event/                EventBus, Subscribers
 lib/Memory/, lib/Approval/, lib/Briefing/, lib/Knowledge/
 lib/Http/AdminPortal.php  admin pages (dashboard … settings)
-tests/                    lint + 10 suites (php-wasm)
+lib/Http/SupportAdmin.php operator admin (conversations, replies, newsletter)
+lib/SupportOperator/      OperatorEngine, ConversationService, PresenceService,
+                          EscalationService, NewsletterBridge, CatalogGrounding
+templates/client/support.tpl  guest-capable chat page
+tests/                    lint + 15 suites (php-wasm)
 ```
