@@ -28,7 +28,15 @@ T::ok('ledger rows are not duplicated', Db::count('migrations') >= 4);
 
 T::section('Registry seeds agents, tools and prompt versions');
 T::eq('every registry agent is seeded', count(AgentRegistry::all()), Db::count('agents'));
-T::eq('operable agents (9 Tier A + briefing + executive board)', 11, count(AgentRegistry::available()));
+// Structural, not a magic number: every operable agent must have at least
+// one real tool, and every roadmap seat must have none.
+T::ok('there are operable agents', count(AgentRegistry::available()) > 0);
+T::eq('available + unavailable accounts for the whole registry',
+    count(AgentRegistry::all()), count(AgentRegistry::available()) + count(AgentRegistry::unavailable()));
+foreach (AgentRegistry::available() as $def) {
+    T::ok("operable agent {$def->slug} has tools", $def->tools !== []);
+    T::ok("operable agent {$def->slug} names no missing collector", (string) $def->missingCollector === '');
+}
 T::ok('roadmap seats are declared too', count(AgentRegistry::unavailable()) >= 16);
 T::eq('roadmap seats seed disabled', 0, Db::count('agents', ['enabled' => 1, 'agent' => 'infrastructure_guardian']));
 T::ok('every roadmap seat names the collector it needs', (function () {

@@ -55,6 +55,26 @@ class AgentRegistry
     const DIAG_TOOLS = ['read_diag_dns_lookup', 'read_diag_dns_health', 'read_diag_dns_propagation', 'read_diag_domain_dns_validation', 'read_diag_ssl_checker', 'read_diag_spf_checker', 'read_diag_dmarc_checker', 'read_diag_dkim_checker', 'read_diag_mx_checker', 'read_diag_ns_checker', 'read_diag_cname_lookup', 'read_diag_reverse_ip', 'read_diag_domain_whois', 'read_diag_website_status', 'read_diag_port_checker', 'read_diag_asn_lookup', 'read_diag_ip_blacklist'];
 
     /** @return AgentDefinition[] */
+    /**
+     * The only tools a signed-in customer's assistant may ever call.
+     *
+     * Every one is marked client-bound, which makes ToolExecutor force the
+     * session's own client id into the SQL WHERE clause. Deliberately
+     * excluded: read_clients (lists every customer), read_metrics
+     * (platform-wide figures) and all diagnostics.
+     */
+    const READ_TOOLS_CUSTOMER = [
+        'read_client_details',
+        'read_invoices',
+        'read_payments',
+        'read_orders',
+        'read_services',
+        'read_tickets',
+        'read_domains',
+        'read_credit',
+        'read_knowledge',
+    ];
+
     public static function all()
     {
         return array_merge([
@@ -65,6 +85,15 @@ class AgentRegistry
                 'interactive',
                 array_merge(self::READ_TOOLS_ADMIN, self::DIAG_TOOLS),
                 'You are the Admin Copilot for a WHMCS hosting platform. You answer administrators\' questions strictly from tool results. You never perform actions.'
+            ),
+            new AgentDefinition(
+                'customer_assistant',
+                'Customer Assistant',
+                'Answers a signed-in customer\'s questions about their own account: their invoices, services, domains, orders and tickets. Read-only, and every query is forced to their own client id.',
+                'interactive',
+                self::READ_TOOLS_CUSTOMER,
+                'You are the account assistant for ONE signed-in customer of a hosting provider. You may only discuss that customer\'s own account, and every fact must come from a tool result. You cannot see other customers and must never speculate about them. You cannot change anything: no payments, no cancellations, no settings. If you are asked to act, say plainly that you can only look things up and point the customer to the right page or to support. If a tool returns nothing, say you could not find it rather than guessing.',
+                false
             ),
             new AgentDefinition(
                 'billing_reconciliation',

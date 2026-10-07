@@ -1,7 +1,7 @@
 # CloudHost247 AI Control Plane — module runbook
 
 **Module:** `modules/addons/cloudhost247ai` (namespace `Ch247Ai\`, tables `mod_ch247ai_*`)
-**Status:** Phase 1 (read-only) + Executive Board + gated write execution — implemented per `docs/AI_PLATFORM_PLAN.md`
+**Status:** read plane + Executive Board + gated write execution + customer assistant — implemented per `docs/AI_PLATFORM_PLAN.md`
 **Scope decision:** ONE shared control plane. No per-agent chatbots, no duplicated AI stacks.
 
 ---
@@ -43,6 +43,7 @@ A single AI operating layer over the WHMCS install:
 | Admin portal | `addonmodules.php?module=cloudhost247ai&action=…` → dashboard, copilot, agents, **board**, tools, knowledge, approvals, runs, run&id=, audit, events, settings |
 | Copilot XHR | `modules/addons/cloudhost247ai/api.php` (POST JSON, CSRF + admin session + `ai.read` group + rate limit 20/5 min) |
 | Cron | `php modules/addons/cloudhost247ai/cron/cloudhost247ai.php` — every 5 minutes (`--quiet`, `--force` supported) |
+| Customer area | `index.php?m=cloudhost247ai&action=…` → assistant, activity (signed-in customers, own account only — §14) |
 | Event capture | `hooks.php` — INSERT-only rows in `mod_ch247ai_events` |
 
 ## 4. Configuration
@@ -128,8 +129,8 @@ hold references, redacted arguments and digests.
 
 ```
 cd modules/addons/cloudhost247ai
-node tests/lint.mjs    # load every shipped PHP file (53 files)
-node tests/run.mjs     # 744 assertions, 12 suites
+node tests/lint.mjs    # load every shipped PHP file (55 files)
+node tests/run.mjs     # 899 assertions, 13 suites
 ```
 
 `node_modules` is shared with `cloudhost247services`; if it is missing, run
@@ -291,7 +292,65 @@ different text. Rows predating the column have a NULL digest and fail closed.
   *Execute now*; nothing fires on a timer.
 
 
-## 14. Operations runbook
+## 14. Customer surface (§17, §33)
+
+Reached at `index.php?m=cloudhost247ai` in the normal WHMCS client area, via
+the repo's standard `_clientarea()` + `templates/client/*.tpl` convention.
+
+| Page | What it does |
+|---|---|
+| `assistant` | A signed-in customer asks about **their own** account |
+| `activity` | Every AI run on that account, and the records each one read |
+
+### Why there is no new endpoint
+
+The question is posted to the page and handled server-side. `api.php` stays
+**strictly admin-only**: widening it to also accept customer sessions would
+put two different authority models behind one door, which is how privilege
+bugs happen. The customer surface therefore adds no new public endpoint, no
+XHR, and no CORS surface, and it works without JavaScript.
+
+### Isolation is not the prompt's job
+
+The assistant runs under a client session, so:
+
+* `ToolExecutor::actorMay()` allows **only** READ tools explicitly marked
+  client-bound — 9 of them;
+* the readers force `userid = <this client>` into the SQL;
+* a customer asking for `client_id = 22` still gets their own rows, because
+  the forced predicate wins over the argument;
+* `read_clients` (every customer), `read_metrics` (platform revenue) and all
+  diagnostics are **not granted** to the customer agent and are refused in
+  client scope even if they were;
+* **no write tool is reachable in client scope at all**, structurally — a
+  customer cannot reply to their own ticket or pay an invoice through the
+  assistant even if an operator mis-granted a write tool.
+
+The system prompt tells the model it is scoped to one account. The gate is
+what enforces it. The isolation tests assert at the tool layer for that
+reason — the model is not the control.
+
+### Failing closed in front of a customer
+
+Not signed in, feature disabled, kill switch, no model configured, rate
+limited, bad CSRF, empty or over-long question — each renders a plain
+explanation. None of them invent an answer, and the no-model case says so
+rather than guessing at invoices.
+
+Rate limit: 10 questions per 5 minutes per customer.
+
+### Transparency (§33)
+
+The activity page shows the customer every run on their account — question,
+answer, status, and the tool calls behind it — filtered to their own
+`actor_id` in SQL. One customer cannot see another's AI history; there is a
+test for each direction.
+
+`client_assistant_enabled` is **OFF by default** and the `customer_assistant`
+agent seeds disabled.
+
+
+## 15. Operations runbook
 
 * **Copilot answered with "cannot verify"** — expected when no tool produced
   evidence. Check the Tools page (tool enabled?), the admin's permission

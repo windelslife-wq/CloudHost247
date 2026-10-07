@@ -236,7 +236,7 @@ class AdminPortal
                 Settings::put($key, Validator::clip(trim((string) $_POST[$key]), 250));
             }
         }
-        $bools = ['copilot_enabled', 'knowledge_enabled', 'briefings_enabled', 'redact_pii', 'writes_enabled'];
+        $bools = ['copilot_enabled', 'knowledge_enabled', 'briefings_enabled', 'redact_pii', 'writes_enabled', 'client_assistant_enabled'];
         foreach ($bools as $key) {
             Settings::put($key, !empty($_POST[$key]) ? '1' : '0');
         }
@@ -964,6 +964,7 @@ class AdminPortal
             . '<label class="checkbox-inline"><input type="checkbox" name="knowledge_enabled" ' . (Settings::bool('knowledge_enabled', true) ? 'checked' : '') . '> Knowledge search enabled</label> '
             . '<label class="checkbox-inline"><input type="checkbox" name="briefings_enabled" ' . (Settings::bool('briefings_enabled', true) ? 'checked' : '') . '> Daily briefings enabled</label> '
             . '<label class="checkbox-inline" title="Master switch for executing approved write actions"><input type="checkbox" name="writes_enabled" ' . (Settings::bool('writes_enabled', false) ? 'checked' : '') . '> <strong>Allow approved actions to execute</strong></label> '
+            . '<label class="checkbox-inline" title="Read-only account assistant in the customer client area"><input type="checkbox" name="client_assistant_enabled" ' . (Settings::bool('client_assistant_enabled', false) ? 'checked' : '') . '> Customer account assistant</label> '
             . '<label class="checkbox-inline"><input type="checkbox" name="redact_pii" ' . (Settings::bool('redact_pii', true) ? 'checked' : '') . '> Redact PII in stored context</label>'
             . '<div class="form-group" style="margin-top:10px"><label>Briefing hour (UTC)</label><input class="form-control" name="briefing_hour" value="' . (int) Settings::int('briefing_hour', 6) . '"></div>'
             . '<div class="form-group"><label>Event max attempts</label><input class="form-control" name="event_max_attempts" value="' . (int) Settings::int('event_max_attempts', 5) . '"></div>'
