@@ -68,6 +68,7 @@ class AdminPortal
                 case 'knowledge-edit': $this->knowledgeEdit(); break;
                 case 'board': $this->board(); break;
                 case 'approvals': $this->approvals(); break;
+                case 'evaluations': $this->evaluations(); break;
                 case 'runs': $this->runs(); break;
                 case 'run': $this->runDetail(); break;
                 case 'audit': $this->audit(); break;
@@ -160,6 +161,16 @@ class AdminPortal
                 \Ch247Ai\Briefing\BriefingComposer::compose();
                 $this->success = 'Briefing composed. See it on the dashboard.';
                 return;
+            case 'run_evaluation':
+                $manage();
+                $ev = \Ch247Ai\Eval\Evaluator::run(7);
+                $this->success = $ev['enabled']
+                    ? ('Evaluation complete: ' . (int) $ev['metrics'] . ' metrics stored, probes '
+                        . (int) $ev['probes_passed'] . ' pass / ' . (int) $ev['probes_failed'] . ' fail / '
+                        . (int) $ev['probes_skipped'] . ' skipped.')
+                    : 'Evaluations are disabled in settings.';
+                break;
+
             case 'execute_approval':
                 if (!Rbac::adminCan(Rbac::AI_APPROVE)) {
                     throw new \Ch247Ai\Core\ForbiddenException('You need the AI approve permission.');
@@ -1010,5 +1021,75 @@ class AdminPortal
             $url .= '&' . rawurlencode($key) . '=' . rawurlencode($value);
         }
         return htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+    }
+
+    /**
+     * Observability + evaluation (§30/§31).
+     *
+     * Two things an operator needs: are the safety guarantees still holding
+     * right now, and what do the numbers say about quality. A metric with no
+     * samples is shown as "no data", never as a reassuring percentage.
+     */
+    protected function evaluations()
+    {
+        $this->nav();
+        echo '<h2>Evaluation &amp; observability</h2>';
+
+        if (!Rbac::adminCan(Rbac::AI_AUDIT) && !Rbac::adminCan(Rbac::AI_READ)) {
+            echo '<div class="alert alert-danger">You need the AI audit or AI read permission group to view evaluation results.</div>';
+            return;
+        }
+
+        if (Rbac::adminCan(Rbac::AI_MANAGE)) {
+            echo '<form method="post" style="margin-bottom:14px">' . Csrf::field()
+                . '<input type="hidden" name="ch247ai_action" value="run_evaluation">'
+                . '<button class="btn btn-primary btn-sm">Run evaluation now</button> '
+                . '<span class="small text-muted">Deterministic: no model is called.</span></form>';
+        }
+
+        // --- live safety probes -------------------------------------
+        echo '<h4>Safety probes <span class="small text-muted">(run live, against this database)</span></h4>';
+        $probes = \Ch247Ai\Eval\SafetyProbes::runAll();
+        $failed = 0;
+        echo '<div class="table-responsive"><table class="table table-striped"><thead><tr><th>Probe</th><th>Result</th><th>Detail</th></tr></thead><tbody>';
+        foreach ($probes as $probe) {
+            if ($probe['status'] === 'fail') {
+                $failed++;
+                $label = '<span class="label label-danger">FAIL</span>';
+            } elseif ($probe['status'] === 'pass') {
+                $label = '<span class="label label-success">pass</span>';
+            } else {
+                $label = '<span class="label label-default">skipped</span>';
+            }
+            echo '<tr><td><code>' . ch247ai_h($probe['probe']) . '</code></td><td>' . $label . '</td><td class="small">' . $this->e($probe['detail']) . '</td></tr>';
+        }
+        echo '</tbody></table></div>';
+        if ($failed > 0) {
+            echo '<div class="alert alert-danger"><strong>' . (int) $failed . ' safety probe(s) are failing.</strong> A guarantee this platform depends on is not holding. Treat as an incident.</div>';
+        }
+
+        // --- stored metrics -----------------------------------------
+        $latest = \Ch247Ai\Eval\Evaluator::latest();
+        if ($latest['rows'] === []) {
+            echo '<div class="alert alert-info">No evaluation has been stored yet. It runs daily from cron, or press the button above.</div>';
+            return;
+        }
+        echo '<h4>Quality metrics <span class="small text-muted">window ' . $this->e((string) $latest['window_start']) . ' to ' . $this->e((string) $latest['window_end']) . ' (UTC)</span></h4>';
+        echo '<div class="table-responsive"><table class="table table-striped"><thead><tr><th>Scope</th><th>Metric</th><th>Value</th><th>Samples</th></tr></thead><tbody>';
+        foreach ($latest['rows'] as $row) {
+            $agent = (string) $row['agent'];
+            if ($agent === \Ch247Ai\Eval\Evaluator::PROBE_AGENT) {
+                continue; // probes are shown live above
+            }
+            $value = (string) $row['value'];
+            $samples = (int) $row['sample_size'];
+            // The honest rendering: no samples means no number.
+            $display = ($value === '' || $samples === 0)
+                ? '<span class="text-muted">no data in this window</span>'
+                : '<strong>' . ch247ai_h($value) . '</strong>';
+            echo '<tr><td>' . ($agent === '*' ? '<em>platform</em>' : $this->e($agent)) . '</td><td><code>' . ch247ai_h((string) $row['metric']) . '</code></td><td>' . $display . '</td><td>' . $samples . '</td></tr>';
+        }
+        echo '</tbody></table></div>';
+        echo '<p class="small text-muted">Every figure is a SQL aggregate over recorded runs, tool calls, decisions and usage. No model grades this platform: the headline quality signal is <code>human_override_rate</code> — how often a reviewer rejected what an agent proposed.</p>';
     }
 }

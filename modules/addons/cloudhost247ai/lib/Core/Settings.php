@@ -21,6 +21,7 @@ class Settings
         // Master switch for write execution. Default OFF: a fresh install
         // can observe and propose, but cannot act until an operator opts in.
         'writes_enabled' => '0',
+        'evaluations_enabled' => '1',
         'board_enabled' => '1',
         'board_weekly_dow' => '1',
         'board_monthly_dom' => '1',

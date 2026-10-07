@@ -1,7 +1,7 @@
 # CloudHost247 AI Control Plane — module runbook
 
 **Module:** `modules/addons/cloudhost247ai` (namespace `Ch247Ai\`, tables `mod_ch247ai_*`)
-**Status:** read plane + Executive Board + gated write execution + customer assistant — implemented per `docs/AI_PLATFORM_PLAN.md`
+**Status:** read plane + Executive Board + gated writes + customer assistant + evaluation — implemented per `docs/AI_PLATFORM_PLAN.md`
 **Scope decision:** ONE shared control plane. No per-agent chatbots, no duplicated AI stacks.
 
 ---
@@ -43,6 +43,7 @@ A single AI operating layer over the WHMCS install:
 | Admin portal | `addonmodules.php?module=cloudhost247ai&action=…` → dashboard, copilot, agents, **board**, tools, knowledge, approvals, runs, run&id=, audit, events, settings |
 | Copilot XHR | `modules/addons/cloudhost247ai/api.php` (POST JSON, CSRF + admin session + `ai.read` group + rate limit 20/5 min) |
 | Cron | `php modules/addons/cloudhost247ai/cron/cloudhost247ai.php` — every 5 minutes (`--quiet`, `--force` supported) |
+| Evaluation | `addonmodules.php?module=cloudhost247ai&action=evaluations` — live safety probes + quality metrics (§15) |
 | Customer area | `index.php?m=cloudhost247ai&action=…` → assistant, activity (signed-in customers, own account only — §14) |
 | Event capture | `hooks.php` — INSERT-only rows in `mod_ch247ai_events` |
 
@@ -129,8 +130,8 @@ hold references, redacted arguments and digests.
 
 ```
 cd modules/addons/cloudhost247ai
-node tests/lint.mjs    # load every shipped PHP file (55 files)
-node tests/run.mjs     # 899 assertions, 13 suites
+node tests/lint.mjs    # load every shipped PHP file (59 files)
+node tests/run.mjs     # 992 assertions, 14 suites
 ```
 
 `node_modules` is shared with `cloudhost247services`; if it is missing, run
@@ -350,7 +351,82 @@ test for each direction.
 agent seeds disabled.
 
 
-## 15. Operations runbook
+## 15. Evaluation and observability (§30, §31)
+
+Admin → `action=evaluations`. Runs daily from cron and on demand. **No model
+is involved**, so it works on an installation with no provider configured and
+two runs over the same window produce the same numbers.
+
+### The rule that shapes it
+
+**A rate over zero samples is not a rate.** An agent that ran zero times does
+not have a 100% success rate; it has no success rate. Every metric carries
+its sample size, a metric with `sample_size = 0` stores no value, and the
+page renders that as *"no data in this window"*. A dashboard showing 100%
+green for a system nobody used is worse than one that admits it knows
+nothing.
+
+### Quality metrics
+
+Per agent and platform-wide, each a SQL aggregate over real rows:
+
+| Metric | Why it is here |
+|---|---|
+| `runs`, `success_rate`, `failure_rate` | basic health |
+| `citation_coverage` | share of successful answers carrying evidence |
+| **`uncited_answers`** | answers produced with NO evidence — the anti-fabrication alarm; should be 0 |
+| `tool_calls`, `tool_refusal_rate`, `tool_avg_duration_ms` | tool reliability |
+| `proposals` | what the agents asked to do |
+| **`human_override_rate`** | share of decided proposals a human **rejected** |
+| `approval_rate`, `decision_expiry_rate` | is the inbox being worked |
+| `write_verified_rate`, **`unverified_writes`** | executions confirmed by re-read |
+| `tokens_in`, `tokens_out`, `cost_micros` | spend |
+
+`human_override_rate` is the headline. It measures the agents against human
+judgement, and it is the one signal the AI cannot improve by being more
+confident about itself. A rising rejection rate means the proposals are
+getting worse, full stop.
+
+### Live safety probes
+
+Unit tests prove the guards worked against fixtures on a developer's
+machine. Probes prove they are **still working on this installation, right
+now** — after an upgrade, a settings change or a half-finished migration.
+
+| Probe | Asserts |
+|---|---|
+| `audit_chain_intact` | the hash chain still verifies |
+| `unknown_tool_refused` | unregistered tool names are refused |
+| `approval_gate_blocks_unapproved_write` | a write with no approval is refused |
+| `client_scope_blocks_writes` | a customer session cannot reach any write tool |
+| `client_scope_isolates_reads` | one real customer asking for another's invoices gets only their own |
+| `redaction_strips_secrets` | credential-shaped text is still redacted |
+| `audit_carries_no_secrets` | the stored audit log contains no unredacted credentials |
+
+Three rules govern them:
+
+* **Read only.** No probe creates, modifies or deletes a business record.
+  Probes that exercise write paths aim at a deliberately non-existent entity,
+  so even a completely broken guard cannot cause a write — the worst case is
+  a NotFound. There is a test asserting the row counts are unchanged.
+* **No synthetic records** (§37). A probe with nothing real to test reports
+  `skipped` and says what was missing. It never manufactures a customer in
+  order to test customer isolation.
+* **Failure is specific.** A failing probe names the invariant that broke.
+  The suite proves this by actually tampering with an audit row and checking
+  the probe reports the broken row id.
+
+Results are stored in the existing `evaluations` table (§34 — no new schema),
+probes under the `probe` scope.
+
+### Alerts
+
+Deliberately short, because an alert list that cries wolf gets ignored:
+any failing probe, any uncited answer, any unverified write, a human
+override rate ≥ 50% over ≥ 5 decisions, and an expiry rate ≥ 50%.
+
+
+## 16. Operations runbook
 
 * **Copilot answered with "cannot verify"** — expected when no tool produced
   evidence. Check the Tools page (tool enabled?), the admin's permission

@@ -109,7 +109,27 @@ try {
         }
     }
 
-    // 4. Housekeeping.
+    // 4b. Daily evaluation pass: deterministic quality metrics + live
+    //     safety probes. Needs no model, so it runs on every installation.
+    if ($isHour || $force) {
+        try {
+            $eval = \Ch247Ai\Eval\Evaluator::run(7);
+            if (!$eval['enabled']) {
+                $log('evaluations: disabled');
+            } else {
+                $log('evaluations: ' . $eval['metrics'] . ' metrics, probes '
+                    . $eval['probes_passed'] . ' pass / ' . $eval['probes_failed'] . ' fail / '
+                    . $eval['probes_skipped'] . ' skipped');
+                foreach ($eval['alerts'] as $alert) {
+                    $log('  ALERT [' . $alert['severity'] . '] ' . $alert['text']);
+                }
+            }
+        } catch (\Throwable $e) {
+            $log('evaluations failed — ' . get_class($e) . ': ' . $e->getMessage());
+        }
+    }
+
+    // 5. Housekeeping.
     $expired = ApprovalEngine::expireStale();
     if ($expired) {
         $log('approvals expired: ' . $expired);
