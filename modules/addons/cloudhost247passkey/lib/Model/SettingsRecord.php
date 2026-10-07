@@ -78,6 +78,10 @@ class SettingsRecord
 
     private static function requiresCiphertext($key)
     {
-        return preg_match('/(?:^|_)(?:(?:client_)?secret|(?:access|refresh|id)_?token|(?:api|private|signing|encryption)_?key|password)(?:_|$)/i', (string) $key) === 1;
+        $key = strtolower((string) $key);
+        if (in_array($key, ['password', 'password_secret', 'password_token', 'password_key'], true)) {
+            return true;
+        }
+        return preg_match('/(?:^|_)(?:secret|(?:access|refresh|id)_?token|(?:api|private|signing|encryption)_?key)(?:_|$)/i', $key) === 1;
     }
 }

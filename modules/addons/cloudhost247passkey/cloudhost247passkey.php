@@ -3,9 +3,10 @@
  * CloudHost247 Passkey — native WHMCS addon.
  *
  * Phase 4 provides an opt-in, fail-closed handoff boundary, Phase 5
- * provides authenticated credential management, and Phase 6 provides
- * policy, recovery-grant, rate-limit, and audit orchestration for WHMCS's
- * existing identity, session, and 2FA architecture. No native session is
+ * provides authenticated credential management, Phase 6 provides policy,
+ * recovery-grant, rate-limit, and audit orchestration, and Phase 7 provides
+ * a host-verified external-identity linking boundary for WHMCS's existing
+ * identity, session, and 2FA architecture. No native session is
  * synthesized by this addon and the feature remains disabled by default.
  *
  * @package CloudHost247\Passkey
@@ -26,10 +27,10 @@ function cloudhost247passkey_config()
 {
     return [
         'name' => 'CloudHost247 Passkey',
-        'description' => 'Fail-closed Passkey handoff, authenticated credential management, and Phase 6 security controls are available for explicit WHMCS adapters; login and management remain disabled by default.',
+        'description' => 'Fail-closed Passkey handoff, security controls, and host-verified external-identity linking are available for explicit WHMCS adapters; login and management remain disabled by default.',
         'author' => 'CloudHost247',
         'language' => 'english',
-        'version' => '0.5.0',
+        'version' => '0.6.0',
         'fields' => [],
     ];
 }
@@ -100,6 +101,6 @@ function cloudhost247passkey_auth_integration_configured()
 function cloudhost247passkey_output($vars)
 {
     echo '<div class="alert alert-info"><strong>Passkey authentication is currently disabled by default.</strong> '
-        . 'Phase 4 adds a fail-closed handoff boundary and Phase 5 adds authenticated credential-management services for explicitly registered WHMCS adapters. '
-        . 'This module does not perform session creation, bypass existing 2FA, or replace password recovery; no login or management UI is enabled until the deployment owner supplies and verifies those adapters.</div>';
+        . 'Phase 4 adds a fail-closed handoff boundary, Phase 5 adds authenticated credential-management services, Phase 6 adds security controls, and Phase 7 adds a host-verified external-identity linking boundary for explicitly registered WHMCS adapters. '
+        . 'This module does not perform session creation, bypass existing 2FA, replace password recovery, or perform OAuth verification; no login or management UI is enabled until the deployment owner supplies and verifies those adapters.</div>';
 }

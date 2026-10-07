@@ -1,5 +1,5 @@
 <?php
-/** Phase 3 through Phase 6 core tests; library-backed ceremonies run separately. */
+/** Phase 3 through Phase 7 core tests; library-backed ceremonies run separately. */
 
 require_once dirname(__DIR__) . '/autoload.php';
 
@@ -7,6 +7,8 @@ use CloudHost247\Passkey\Core\Base64Url;
 use CloudHost247\Passkey\Core\CeremonyChallengeStore;
 use CloudHost247\Passkey\Core\Db;
 use CloudHost247\Passkey\Core\CredentialManagementRepository;
+use CloudHost247\Passkey\Core\ExternalIdentityLinkService;
+use CloudHost247\Passkey\Core\ExternalIdentityRepository;
 use CloudHost247\Passkey\Core\Migrator;
 use CloudHost247\Passkey\Core\PasskeyAssertionVerifierInterface;
 use CloudHost247\Passkey\Core\PasskeyCredentialManagementService;
@@ -28,6 +30,7 @@ use CloudHost247\Passkey\Core\WebAuthnConfig;
 use CloudHost247\Passkey\Core\WebAuthnService;
 use CloudHost247\Passkey\Integration\CallbackWhmcsAuthBridge;
 use CloudHost247\Passkey\Integration\CallbackWhmcsIdentityProvider;
+use CloudHost247\Passkey\Integration\ExternalIdentityClaims;
 use CloudHost247\Passkey\Integration\PasskeyLoginContext;
 use CloudHost247\Passkey\Integration\PasskeyRegistrationContext;
 use CloudHost247\Passkey\Integration\WhmcsAuthHandoff;
@@ -909,6 +912,110 @@ $throws('Phase 6 recovery grants reject replay', RuntimeException::class, functi
 $phase6GrantEvents = Db::count('events', ['event_type' => 'recovery_grant.issued']) + Db::count('events', ['event_type' => 'recovery_grant.consumed']);
 $assert('Phase 6 recovery issuance and consumption are auditable without token metadata', $phase6GrantEvents === 2 && strpos(json_encode(Db::query('SELECT `metadata_json` FROM `' . Db::table('events') . '` WHERE `event_type` LIKE \'recovery_grant.%\'')), $phase6DeliveredToken) === false);
 
+// Phase 7 external identity linking boundary.
+$phase7IdentityId = 9030;
+$phase7OtherIdentityId = 9031;
+Db::update('settings', ['setting_key' => 'entra_enabled'], [
+    'setting_value' => '1',
+    'updated_at' => gmdate('Y-m-d H:i:s'),
+]);
+$phase7Provider = new CallbackWhmcsIdentityProvider(function ($resolvedType, $resolvedId) use ($phase7IdentityId) {
+    return $resolvedType === 'client' && $resolvedId === $phase7IdentityId
+        ? ['user_type' => $resolvedType, 'user_id' => $resolvedId, 'loginable' => true]
+        : null;
+});
+$phase7OtherProvider = new CallbackWhmcsIdentityProvider(function ($resolvedType, $resolvedId) use ($phase7OtherIdentityId) {
+    return $resolvedType === 'client' && $resolvedId === $phase7OtherIdentityId
+        ? ['user_type' => $resolvedType, 'user_id' => $resolvedId, 'loginable' => true]
+        : null;
+});
+$phase7Identity = new WhmcsIdentity('client', $phase7IdentityId);
+$phase7OtherIdentity = new WhmcsIdentity('client', $phase7OtherIdentityId);
+$phase7Service = new ExternalIdentityLinkService(
+    $phase7Provider,
+    $phase6Resolver,
+    null,
+    new ExternalIdentityRepository(),
+    new SecurityEventRepository()
+);
+$phase7OtherService = new ExternalIdentityLinkService(
+    $phase7OtherProvider,
+    $phase6Resolver,
+    null,
+    new ExternalIdentityRepository(),
+    new SecurityEventRepository()
+);
+$phase7Challenge = function ($ownerId, $action) {
+    $createdAt = gmdate('Y-m-d H:i:s');
+    return Db::insert('challenges', [
+        'challenge_hash' => hash('sha256', 'phase7-' . $ownerId . '-' . $action . '-' . bin2hex(random_bytes(16))),
+        'user_type' => 'client', 'user_id' => $ownerId,
+        'challenge_type' => ChallengeRecord::ENTRA_LINK,
+        'action_code' => $action,
+        'session_binding_hash' => SessionBinding::currentHash(),
+        'rp_id' => 'example.test', 'origin' => 'https://example.test',
+        'expires_at' => gmdate('Y-m-d H:i:s', time() + 600),
+        'consumed_at' => null, 'created_at' => $createdAt,
+    ]);
+};
+$phase7Claims = new ExternalIdentityClaims([
+    'provider' => ExternalIdentityClaims::PROVIDER_MICROSOFT_ENTRA,
+    'tenant_id' => 'tenant-phase7',
+    'subject_id' => 'subject-phase7',
+    'issued_at' => gmdate('Y-m-d H:i:s', time() - 30),
+    'expires_at' => gmdate('Y-m-d H:i:s', time() + 300),
+]);
+$assert('Phase 7 starts with no externally linked identities in the current WHMCS scope', $phase7Service->listLinks($phase7Identity) === []);
+$phase7LinkChallengeId = $phase7Challenge($phase7IdentityId, ExternalIdentityLinkService::LINK_ACTION);
+$phase7Linked = $phase7Service->link($phase7Identity, $phase7Claims, $phase7LinkChallengeId, [
+    'ip_address' => '192.0.2.70', 'user_agent' => 'Phase7 host adapter',
+]);
+$assert('Phase 7 links only host-verified Entra claims after an identity/session-bound confirmation', $phase7Linked['status'] === 'linked' && $phase7Linked['link']['provider'] === ExternalIdentityClaims::PROVIDER_MICROSOFT_ENTRA && $phase7Linked['link']['tenant_id'] === 'tenant-phase7' && !isset($phase7Linked['link']['subject_id']) && !isset($phase7Linked['link']['access_token']));
+$phase7LinkRow = Db::firstQuery('SELECT * FROM `' . Db::table('external_identities') . '` WHERE `identity_hash` = ?', [$phase7Claims->identityHash()]);
+$assert('Phase 7 stores the external subject only in its scoped link record and never stores OAuth tokens', $phase7LinkRow !== null && $phase7LinkRow['subject_id'] === 'subject-phase7' && !array_key_exists('access_token', $phase7LinkRow) && !array_key_exists('refresh_token', $phase7LinkRow));
+$phase7DuplicateChallengeId = $phase7Challenge($phase7IdentityId, ExternalIdentityLinkService::LINK_ACTION);
+$phase7Duplicate = $phase7Service->link($phase7Identity, $phase7Claims, $phase7DuplicateChallengeId);
+$assert('Phase 7 retries are idempotent for the same local identity without creating a duplicate link', $phase7Duplicate['status'] === 'already_linked' && Db::count('external_identities', ['user_type' => 'client', 'user_id' => $phase7IdentityId]) === 1);
+$phase7OtherChallengeId = $phase7Challenge($phase7OtherIdentityId, ExternalIdentityLinkService::LINK_ACTION);
+$throws('Phase 7 refuses to link one external subject to a different WHMCS identity', RuntimeException::class, function () use ($phase7OtherService, $phase7OtherIdentity, $phase7Claims, $phase7OtherChallengeId) {
+    $phase7OtherService->link($phase7OtherIdentity, $phase7Claims, $phase7OtherChallengeId);
+});
+$phase7OtherChallengeRow = Db::firstQuery('SELECT `consumed_at` FROM `' . Db::table('challenges') . '` WHERE `id` = ?', [$phase7OtherChallengeId]);
+$assert('Phase 7 does not consume another identity\'s confirmation when uniqueness rejects a link', $phase7OtherChallengeRow['consumed_at'] === null);
+$phase7UnlinkChallengeId = $phase7Challenge($phase7IdentityId, ExternalIdentityLinkService::UNLINK_ACTION);
+$phase7Unlinked = $phase7Service->unlink($phase7Identity, $phase7Linked['link']['id'], $phase7UnlinkChallengeId);
+$phase7ListedAfterUnlink = $phase7Service->listLinks($phase7Identity);
+$assert('Phase 7 unlinks by scoped record ID, preserves history, and returns no raw subject', $phase7Unlinked['status'] === 'unlinked' && $phase7ListedAfterUnlink[0]['active'] === false && !isset($phase7ListedAfterUnlink[0]['subject_id']));
+$phase7RelinkChallengeId = $phase7Challenge($phase7IdentityId, ExternalIdentityLinkService::LINK_ACTION);
+$phase7Relinked = $phase7Service->link($phase7Identity, $phase7Claims, $phase7RelinkChallengeId);
+$assert('Phase 7 can explicitly relink the same revoked external identity without creating a second record', $phase7Relinked['status'] === 'relinked' && $phase7Relinked['link']['id'] === $phase7Linked['link']['id'] && $phase7Relinked['link']['active'] === true && Db::count('external_identities', ['user_type' => 'client', 'user_id' => $phase7IdentityId]) === 1);
+$phase7StaleClaims = new ExternalIdentityClaims([
+    'provider' => ExternalIdentityClaims::PROVIDER_MICROSOFT_ENTRA,
+    'tenant_id' => 'tenant-stale', 'subject_id' => 'subject-stale',
+    'issued_at' => gmdate('Y-m-d H:i:s', time() - 301),
+    'expires_at' => gmdate('Y-m-d H:i:s', time() + 300),
+]);
+$phase7StaleChallengeId = $phase7Challenge($phase7IdentityId, ExternalIdentityLinkService::LINK_ACTION);
+$throws('Phase 7 rejects stale host-verified external claims before consuming a confirmation', RuntimeException::class, function () use ($phase7Service, $phase7Identity, $phase7StaleClaims, $phase7StaleChallengeId) {
+    $phase7Service->link($phase7Identity, $phase7StaleClaims, $phase7StaleChallengeId);
+});
+$phase7StaleChallengeRow = Db::firstQuery('SELECT `consumed_at` FROM `' . Db::table('challenges') . '` WHERE `id` = ?', [$phase7StaleChallengeId]);
+$assert('Phase 7 leaves the confirmation usable when external claims fail freshness validation', $phase7StaleChallengeRow['consumed_at'] === null);
+$throws('Phase 7 claims refuse raw identity tokens and profile data at the host boundary', InvalidArgumentException::class, function () {
+    new ExternalIdentityClaims([
+        'provider' => ExternalIdentityClaims::PROVIDER_MICROSOFT_ENTRA,
+        'tenant_id' => 'tenant-phase7', 'subject_id' => 'subject-token',
+        'issued_at' => gmdate('Y-m-d H:i:s'),
+        'expires_at' => gmdate('Y-m-d H:i:s', time() + 300),
+        'id_token' => 'raw-token',
+    ]);
+});
+$phase7ReplayChallengeId = $phase7DuplicateChallengeId;
+$throws('Phase 7 confirmation challenges are one-use even for an idempotent link retry', RuntimeException::class, function () use ($phase7Service, $phase7Identity, $phase7Claims, $phase7ReplayChallengeId) {
+    $phase7Service->link($phase7Identity, $phase7Claims, $phase7ReplayChallengeId);
+});
+$assert('Phase 7 link lifecycle is auditable without external subject or token metadata', Db::count('events', ['event_type' => 'entra.linked']) === 3 && Db::count('events', ['event_type' => 'entra.unlinked']) === 1 && strpos(json_encode(Db::query('SELECT `metadata_json` FROM `' . Db::table('events') . '` WHERE `event_type` LIKE \'entra.%\'')), 'subject-phase7') === false);
+
 $composerManifest = json_decode(file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 $assert('Composer manifest pins the audited WebAuthn library and an explicit PSR-7 adapter', isset($composerManifest['require']['web-auth/webauthn-lib'], $composerManifest['require']['nyholm/psr7']) && $composerManifest['require']['web-auth/webauthn-lib'] === '3.3.12' && $composerManifest['require']['nyholm/psr7'] === '^1.8');
 $assert('WebAuthn ceremony service is present but does not alter the WHMCS authentication flow', class_exists(WebAuthnService::class) && method_exists(WebAuthnService::class, 'finishRegistration') && method_exists(WebAuthnService::class, 'finishAuthentication'));
@@ -931,6 +1038,7 @@ if ($failures === 0) {
     echo "PASSKEY_PHASE4_INTEGRATION_OK\n";
     echo "PASSKEY_PHASE5_MANAGEMENT_OK\n";
     echo "PASSKEY_PHASE6_SECURITY_OK\n";
+    echo "PASSKEY_PHASE7_EXTERNAL_IDENTITY_OK\n";
 } else {
     echo "PASSKEY_PHASE3_CORE_FAILED\n";
     echo "PASSKEY_PHASE4_INTEGRATION_FAILED\n";
