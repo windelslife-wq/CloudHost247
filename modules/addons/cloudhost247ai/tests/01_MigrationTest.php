@@ -27,13 +27,33 @@ T::eq('second run applies nothing', [], $first['applied']);
 T::ok('ledger rows are not duplicated', Db::count('migrations') >= 4);
 
 T::section('Registry seeds agents, tools and prompt versions');
-T::eq('10 agents registered (9 Tier A + briefing composer)', 10, Db::count('agents'));
+T::eq('every registry agent is seeded', count(AgentRegistry::all()), Db::count('agents'));
+T::eq('operable agents (9 Tier A + briefing + executive board)', 11, count(AgentRegistry::available()));
+T::ok('roadmap seats are declared too', count(AgentRegistry::unavailable()) >= 16);
+T::eq('roadmap seats seed disabled', 0, Db::count('agents', ['enabled' => 1, 'agent' => 'infrastructure_guardian']));
+T::ok('every roadmap seat names the collector it needs', (function () {
+    foreach (AgentRegistry::unavailable() as $def) {
+        if (trim($def->missingCollector) === '') {
+            return false;
+        }
+    }
+    return true;
+})());
+T::ok('no roadmap seat carries tools it could call', (function () {
+    foreach (AgentRegistry::unavailable() as $def) {
+        if ($def->tools !== []) {
+            return false;
+        }
+    }
+    return true;
+})());
 T::ok('admin_copilot seeded', Db::count('agents', ['agent' => 'admin_copilot']) === 1);
 foreach (AgentRegistry::all() as $def) {
     $row = Db::first('agents', ['agent' => $def->slug]);
     T::ok("allowlist persisted for {$def->slug}", $row !== null && in_array('read_metrics', json_decode((string) $row['tool_allowlist'], true) ?: [], true) || $row !== null);
 }
-T::ok('prompt v1 exists for every agent', Db::count('prompt_versions') === 10);
+T::eq('prompt v1 exists for every operable agent', count(AgentRegistry::available()), Db::count('prompt_versions'));
+T::eq('roadmap seats get no prompt', 0, Db::count('prompt_versions', ['agent' => 'hr_assistant']));
 T::ok('tools table seeded from registry', Db::count('tools') >= 25);
 
 T::section('Phase 1 is read-only by construction');

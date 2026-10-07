@@ -66,6 +66,7 @@ class AdminPortal
                 case 'tools': $this->tools(); break;
                 case 'knowledge': $this->knowledge(); break;
                 case 'knowledge-edit': $this->knowledgeEdit(); break;
+                case 'board': $this->board(); break;
                 case 'approvals': $this->approvals(); break;
                 case 'runs': $this->runs(); break;
                 case 'run': $this->runDetail(); break;
@@ -141,6 +142,19 @@ class AdminPortal
                 $slug = (string) ($_POST['agent'] ?? '');
                 $this->runAgentNow($slug);
                 return;
+            case 'compose_board':
+                $manage();
+                $res = \Ch247Ai\Board\ExecutiveBoard::compose(isset($_POST['period']) ? (string) $_POST['period'] : 'daily');
+                if (empty($res['report_id'])) {
+                    $this->success = 'Executive board is disabled in settings.';
+                } else {
+                    $this->success = 'Executive board composed (' . $res['period'] . '): '
+                        . (int) $res['seats_ok'] . ' seat(s) reporting, '
+                        . (int) $res['seats_unavailable'] . ' awaiting a data source'
+                        . ($res['metrics_only'] ? ', metrics only (no model configured)' : ', narrated') . '.';
+                }
+                return;
+
             case 'compose_briefing':
                 $manage();
                 \Ch247Ai\Briefing\BriefingComposer::compose();
@@ -292,6 +306,7 @@ class AdminPortal
             'dashboard' => 'Dashboard',
             'copilot' => 'Copilot',
             'agents' => 'Agents',
+            'board' => 'Executive board',
             'tools' => 'Tools',
             'knowledge' => 'Knowledge',
             'approvals' => 'Approvals' . ($this->pendingApprovals() ? ' <span class="badge">' . $this->pendingApprovals() . '</span>' : ''),
@@ -544,6 +559,144 @@ class AdminPortal
             . '<div class="form-group"><label class="col-sm-2 control-label">Body</label><div class="col-sm-8"><textarea class="form-control" name="body" rows="14" required>' . ch247ai_h((string) $row['body']) . '</textarea>'
             . '<span class="help-block">Plain text. Split with blank lines — chunks are created automatically and indexed for search.</span></div></div>'
             . '<div class="form-group"><div class="col-sm-offset-2 col-sm-8"><button class="btn btn-primary">Save &amp; index</button> <a class="btn btn-default" href="' . $this->u('knowledge') . '">Back</a></div></div></form>';
+    }
+
+
+    /**
+     * Executive war room. Renders the deterministic board report: which seats
+     * reported, which are waiting on a data source (shown, never hidden),
+     * cross-department findings, and the optional narration clearly labelled
+     * as narration rather than as a finding.
+     */
+    protected function board()
+    {
+        $this->nav();
+        // The board surfaces revenue, receivables and customer counts — it is
+        // not a public admin page. Same read permission as every other AI view.
+        if (!Rbac::adminCan(Rbac::AI_READ)) {
+            echo '<div class="alert alert-warning">You need the AI read permission to view the executive board.</div>';
+            return;
+        }
+        $canCompose = Rbac::adminCan(Rbac::AI_MANAGE);
+        $period = isset($_GET['period']) ? \Ch247Ai\Board\ExecutiveBoard::normalizePeriod($_GET['period']) : 'daily';
+
+        echo '<h2>Executive board</h2>';
+        echo '<div class="alert alert-info small">Seats are deterministic SQL packs over live WHMCS data. '
+            . 'Cross-department findings are single SQL joins, not agent-to-agent conversation — no seat can state '
+            . 'another seat\'s conclusion. A seat with no data feed says so instead of estimating.</div>';
+
+        echo '<ul class="nav nav-tabs" style="margin-bottom:15px">';
+        foreach (\Ch247Ai\Board\ExecutiveBoard::TYPES as $p) {
+            $cls = $p === $period ? 'active' : '';
+            echo '<li class="' . $cls . '"><a href="' . $this->u('board', ['period' => $p]) . '">' . ucfirst($p) . '</a></li>';
+        }
+        echo '</ul>';
+
+        if ($canCompose) {
+            echo '<form method="post" style="margin-bottom:15px">' . Csrf::field()
+                . '<input type="hidden" name="ch247ai_action" value="compose_board">'
+                . '<input type="hidden" name="period" value="' . $this->e($period) . '">'
+                . '<button class="btn btn-primary btn-sm" type="submit">Compose ' . $this->e($period) . ' board now</button></form>';
+        }
+
+        $row = \Ch247Ai\Board\ExecutiveBoard::latest($period);
+        if ($row === null) {
+            echo '<div class="panel panel-default"><div class="panel-body text-muted">No ' . $this->e($period)
+                . ' board report yet. The cron composes one on schedule, or press the button above.</div></div>';
+            return;
+        }
+
+        $pack = json_decode((string) $row['metric_pack'], true) ?: [];
+        $summary = isset($pack['summary']) ? $pack['summary'] : [];
+        $seats = isset($pack['seats']) ? $pack['seats'] : [];
+        $cross = isset($pack['cross']['findings']) ? $pack['cross']['findings'] : [];
+
+        echo '<p class="small text-muted">Composed ' . ch247ai_dt($row['created_at']) . ' UTC — period '
+            . $this->e($row['period_start']) . ' to ' . $this->e($row['period_end']) . ' — '
+            . ((int) $row['metrics_only'] === 1 ? 'metrics only (no model configured)' : 'narrated') . '</p>';
+
+        // Headline counters.
+        if ($summary) {
+            $sev = isset($summary['severity_counts']) ? $summary['severity_counts'] : [];
+            echo '<div class="row">';
+            foreach ([
+                'Seats reporting' => (int) $summary['seats_ok'] . ' / ' . (int) $summary['seats_total'],
+                'Critical' => (int) (isset($sev['critical']) ? $sev['critical'] : 0),
+                'Warnings' => (int) (isset($sev['warn']) ? $sev['warn'] : 0),
+                'Cross-department' => (int) $summary['cross_findings'],
+                'Awaiting data' => (int) $summary['seats_unavailable'],
+            ] as $label => $value) {
+                echo '<div class="col-sm-2"><div class="ch247ai-stat"><div class="number">' . $this->e((string) $value)
+                    . '</div><div class="text-muted small">' . $this->e($label) . '</div></div></div>';
+            }
+            echo '</div>';
+        }
+
+        // Requires attention.
+        if (!empty($summary['attention'])) {
+            echo '<div class="panel panel-warning"><div class="panel-heading"><strong>Requires attention</strong></div>'
+                . '<table class="table table-condensed"><tbody>';
+            foreach ($summary['attention'] as $a) {
+                $badge = $a['severity'] === 'critical' ? 'label-danger' : 'label-warning';
+                echo '<tr><td style="width:90px"><span class="label ' . $badge . '">' . $this->e(strtoupper($a['severity']))
+                    . '</span></td><td style="width:110px"><code>' . $this->e($a['origin']) . '</code></td><td>'
+                    . $this->e($a['text']) . '</td></tr>';
+            }
+            echo '</tbody></table></div>';
+        }
+
+        // Cross-department findings with their SQL.
+        if ($cross) {
+            echo '<div class="panel panel-default"><div class="panel-heading"><strong>Cross-department findings</strong> '
+                . '<span class="text-muted small">— one SQL join each, spanning two seats</span></div>'
+                . '<table class="table table-striped"><thead><tr><th>Seats</th><th>Finding</th><th>Evidence</th></tr></thead><tbody>';
+            foreach ($cross as $f) {
+                echo '<tr><td><code>' . $this->e(implode(' + ', $f['seats'])) . '</code></td>'
+                    . '<td><strong>' . $this->e($f['title']) . '</strong><br>' . $this->e($f['text']) . '</td>'
+                    . '<td><code class="small">' . ch247ai_h($f['sql']) . '</code></td></tr>';
+            }
+            echo '</tbody></table></div>';
+        }
+
+        // Seats.
+        foreach ($seats as $seat) {
+            $unavailable = $seat['status'] !== 'ok';
+            echo '<div class="panel ' . ($unavailable ? 'panel-default' : 'panel-success') . '">'
+                . '<div class="panel-heading"><strong>' . $this->e($seat['title']) . '</strong> '
+                . ($unavailable ? '<span class="label label-default">NO DATA SOURCE</span>' : '') . '</div>';
+            if ($unavailable) {
+                echo '<div class="panel-body"><p class="text-muted"><strong>CONFIGURATION_REQUIRED</strong> — '
+                    . $this->e($seat['reason']) . '</p></div></div>';
+                continue;
+            }
+            echo '<div class="panel-body">';
+            if (!empty($seat['findings'])) {
+                echo '<ul class="list-unstyled" style="margin-bottom:12px">';
+                foreach ($seat['findings'] as $f) {
+                    $badge = $f['severity'] === 'critical' ? 'label-danger' : ($f['severity'] === 'warn' ? 'label-warning' : 'label-info');
+                    echo '<li><span class="label ' . $badge . '">' . $this->e(strtoupper($f['severity'])) . '</span> '
+                        . $this->e($f['text']) . '</li>';
+                }
+                echo '</ul>';
+            }
+            echo '<table class="table table-condensed"><thead><tr><th>Metric</th><th>Value</th><th>Query</th></tr></thead><tbody>';
+            foreach ($seat['metrics'] as $m) {
+                $value = strpos($m['metric'], 'amount') !== false
+                    ? number_format((float) $m['value'], 2, '.', '')
+                    : (string) (int) $m['value'];
+                echo '<tr><td><code>' . $this->e($m['metric']) . '</code></td><td><strong>' . $this->e($value)
+                    . '</strong></td><td><code class="small">' . ch247ai_h($m['sql']) . '</code></td></tr>';
+            }
+            echo '</tbody></table></div></div>';
+        }
+
+        // Narration last, explicitly labelled.
+        if (!empty($row['narrative'])) {
+            echo '<div class="panel panel-info"><div class="panel-heading"><strong>Narration</strong> '
+                . '<span class="text-muted small">— model-written summary of the verified figures above. '
+                . 'Not a source of facts.</span></div><div class="panel-body">'
+                . nl2br($this->e((string) $row['narrative'])) . '</div></div>';
+        }
     }
 
     protected function approvals()

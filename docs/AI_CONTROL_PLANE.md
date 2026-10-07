@@ -1,7 +1,7 @@
 # CloudHost247 AI Control Plane — module runbook
 
 **Module:** `modules/addons/cloudhost247ai` (namespace `Ch247Ai\`, tables `mod_ch247ai_*`)
-**Status:** Phase 1 (read-only) — implemented per `docs/AI_PLATFORM_PLAN.md`
+**Status:** Phase 1 (read-only) + Executive Board — implemented per `docs/AI_PLATFORM_PLAN.md`
 **Scope decision:** ONE shared control plane. No per-agent chatbots, no duplicated AI stacks.
 
 ---
@@ -28,19 +28,19 @@ A single AI operating layer over the WHMCS install:
 * No write tools. Nothing can modify WHMCS records through the AI layer.
 * No model calls inside web-request hooks (hard-refused by `AgentRuntime`).
 * No client-facing assistant yet (Phase 5 at the earliest, per plan §12).
-* No Tier-B agents (Infrastructure Guardian, Provisioning, Security Sentinel,
-  Fraud) — their data collectors (server telemetry, deployment events) do not
-  exist in this platform. They will be added by extending the registry, not by
-  prompt changes.
-* No inter-agent "executive board" — the Briefing Composer assembles
-  deterministic SQL metric packs and optionally narrates them with ONE model
-  call.
+* No Tier-B/C agents are *operable*. They are now **declared** in the registry
+  as roadmap seats, each naming the collector it needs, and the runtime
+  refuses them with `CONFIGURATION_REQUIRED` even if `enabled` is flipped in
+  the database. See §10.
+* No inter-agent chatter. The Executive Board (§11) is deterministic SQL plus
+  at most ONE narration call — agents never confer, so none can assert another
+  seat's conclusion.
 
 ## 3. Surfaces
 
 | Surface | Where |
 |---|---|
-| Admin portal | `addonmodules.php?module=cloudhost247ai&action=…` → dashboard, copilot, agents, tools, knowledge, approvals, runs, run&id=, audit, events, settings |
+| Admin portal | `addonmodules.php?module=cloudhost247ai&action=…` → dashboard, copilot, agents, **board**, tools, knowledge, approvals, runs, run&id=, audit, events, settings |
 | Copilot XHR | `modules/addons/cloudhost247ai/api.php` (POST JSON, CSRF + admin session + `ai.read` group + rate limit 20/5 min) |
 | Cron | `php modules/addons/cloudhost247ai/cron/cloudhost247ai.php` — every 5 minutes (`--quiet`, `--force` supported) |
 | Event capture | `hooks.php` — INSERT-only rows in `mod_ch247ai_events` |
@@ -73,7 +73,9 @@ shows `CONFIGURATION_REQUIRED` instead of guessing.
 
 Each run: drains up to 100 events → at the configured briefing hour (default
 06 UTC) runs the scheduled agents (SSL Guardian, DNS & Domain, Billing
-Reconciliation, Collections) and composes the daily briefing → expires stale
+Reconciliation, Collections), composes the daily briefing and the executive
+board (plus the weekly board on `board_weekly_dow`, default Monday, and the
+monthly board on `board_monthly_dom`, default the 1st) → expires stale
 approvals → prunes events/memories/runs/rate limits per retention settings.
 
 ## 6. Safety model (summary)
@@ -120,20 +122,115 @@ hold references, redacted arguments and digests.
 | `collections_agent` | scheduled | overdue exposure listing (no comms) |
 | `customer_intelligence` | on demand | one-customer footprint for staff |
 | `briefing_composer` | scheduled | daily briefing (deterministic + 1 optional narration) |
+| `executive_board` | scheduled | narrates the board report (§11); deterministic packs do the work |
 
 ## 9. Tests
 
 ```
 cd modules/addons/cloudhost247ai
-node tests/lint.mjs    # load every shipped PHP file (45 files)
-node tests/run.mjs     # 370 assertions, 10 suites
+node tests/lint.mjs    # load every shipped PHP file (49 files)
+node tests/run.mjs     # 603 assertions, 11 suites
 ```
+
+`node_modules` is shared with `cloudhost247services`; if it is missing, run
+`npm install` here or symlink that module's copy.
 
 The suites include the adversarial acceptance tests from plan §15: fabrication
 attempts, prompt injection (in questions and in tool results), cross-client
 fishing, anonymous callers, masquerading admins and secret-leak checks.
 
-## 10. Operations runbook
+## 10. Roadmap seats (declared, inert)
+
+Sixteen agents from the brief have **no data source in this platform**. Rather
+than omit them silently or ship prompts that would invent infrastructure
+state, they are registered as roadmap seats:
+
+* they appear in the registry and on the Agents page, so the roadmap is
+  visible;
+* they seed `enabled = 0` and carry **no tools at all**;
+* `AgentRuntime::run()` refuses them with `CONFIGURATION_REQUIRED` *before*
+  checking `enabled`, so flipping the database flag changes nothing;
+* each names the exact collector that must be built first.
+
+| Seat | Needs first |
+|---|---|
+| Infrastructure Guardian, Server Health | Server telemetry collector (CPU/RAM/disk/load) |
+| Provisioning Agent | Normalised provisioning outcome events |
+| Deployment Agent | A deployment/release record source |
+| Security Sentinel | Derived, indexed auth-event table |
+| Fraud & Abuse Guardian | Feature extraction over orders/payments |
+| Vulnerability Analyst | Server software inventory |
+| Incident Commander, Root Cause Analyst | An incident system + monitoring feed |
+| Cloud Cost Guardian | Cost and utilisation feed |
+| Pricing Analyst, Account Expansion | Usage metering |
+| Internal IT, HR Assistant, Recruitment Assistant, Asset & Inventory | A system of record (none exists) |
+
+To promote one: build its collector, give it tools, and clear
+`missingCollector` in `AgentRegistry`. No prompt change is involved.
+
+## 11. Executive Board
+
+`Ch247Ai\Board\*` — the brief's "AI board of directors", built as an output
+rather than an org chart.
+
+**Nine seats**, each a deterministic SQL pack:
+
+| Seat | Reports | Source |
+|---|---|---|
+| Finance (CFO) | receipts, refunds, unpaid and overdue exposure | `tblinvoices`, `tblaccounts` |
+| Operations (COO) | ticket queue, service states, renewals, expiring domains | `tbltickets`, `tblhosting`, `tbldomains` |
+| Revenue & Growth (CRO) | new clients, orders, pending conversion, fraud-flagged | `tblclients`, `tblorders` |
+| Customer (CCO) | ticket volume, closure ratio, repeat contact | `tbltickets` |
+| Risk & Compliance | receivable concentration, fraud orders | `tblinvoices`, `tblorders` |
+| Marketing (CMO) | campaigns, subscribers — **only if** `cloudhost247marketing` is installed | `mod_ch247m_*` |
+| Technology (CTO) | abstains — no telemetry exists | — |
+| Security (CISO) | abstains — no auth-event table exists | — |
+| Product (CPO) | abstains — no usage metering exists | — |
+
+A seat returns `ok` (metrics + findings, **every figure carrying the exact SQL
+that produced it**) or `data_unavailable` with the named gap. It never
+estimates from a neighbouring table, and an abstaining seat is rendered on the
+page rather than dropped from it.
+
+**Cross-department findings** are the part that makes it a board. The brief's
+war room has the CFO, CRO and COO trading observations; implemented literally
+that is three agents asserting things about each other's domains, which is
+exactly the fabrication the safety rules forbid. So the correlation is
+*computed, not conversed* — each finding is ONE SQL join spanning two seats:
+
+* renewals due within 7 days owned by customers already in arrears (CFO+COO);
+* customers with both an overdue invoice and an open ticket (CFO+CCO);
+* suspended services whose owner is waiting on support (COO+CCO);
+* domains expiring within 30 days for customers in arrears (CFO+COO);
+* customers acquired in the last 30 days who are already overdue (CRO+CFO);
+* orders that are **paid but still Pending** — charged and not yet served (COO+CFO).
+
+A correlation with no matching rows produces no finding; the report is not
+padded. A correlation whose tables are absent is reported as skipped.
+
+**Composition.** `ExecutiveBoard::compose('daily'|'weekly'|'monthly')` writes
+one row into the existing `reports` table as `board_daily` / `board_weekly` /
+`board_monthly` — no duplicate schema. The deterministic report ships in full
+with no model configured; narration is at most one call, is labelled as
+narration in the UI, and is told explicitly that any seat marked NO DATA
+SOURCE must not be discussed.
+
+**Surface.** Admin → `action=board`. Requires the `ai.read` group (it shows
+revenue); composing requires `ai.manage`. Settings: `board_enabled`,
+`board_weekly_dow`, `board_monthly_dom`.
+
+## 12. Approval policy — all writes gated
+
+This deployment runs **all-gated**: `ApprovalEngine::requiresApproval()`
+returns true for every risk class except `READ`, including `WRITE_LOW`, and an
+unrecognised risk label fails closed into requiring approval. The ladder still
+distinguishes the classes for reporting, but nothing above a read executes
+without an approved row.
+
+(Phase 1 still registers zero write tools, so nothing reaches the gate yet —
+the policy is set so that it holds the moment the first write tool lands.)
+
+## 13. Operations runbook
 
 * **Copilot answered with "cannot verify"** — expected when no tool produced
   evidence. Check the Tools page (tool enabled?), the admin's permission

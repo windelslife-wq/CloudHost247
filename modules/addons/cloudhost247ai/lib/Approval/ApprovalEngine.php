@@ -4,12 +4,17 @@
  *
  * Risk ladder:
  *   READ                      → auto (still audited)
- *   WRITE_LOW                 → auto + audit (internal notes)          [Phase 2]
+ *   WRITE_LOW                 → human approval   (operator policy: all-gated)
  *   WRITE_CUSTOMER_VISIBLE    → human approval
  *   WRITE_FINANCIAL           → human approval
  *   AVAILABILITY              → human approval
  *   SECURITY_ENFORCEMENT      → human approval
  *   MASS_COMMUNICATION        → human approval
+ *
+ * Operator policy for this deployment: EVERY write is gated. WRITE_LOW
+ * (internal notes, drafts) is deliberately NOT auto-executed — the ladder
+ * still distinguishes the classes for reporting and for future policy, but
+ * no risk class above READ may execute without an approved row.
  *
  * Phase 1 registers zero write tools, so this engine only ever sees READ —
  * but the gate, the statuses and the expiry are real so Phase 2 can add
@@ -32,10 +37,19 @@ class ApprovalEngine
 {
     const RISK_LADDER = ['READ', 'WRITE_LOW', 'WRITE_CUSTOMER_VISIBLE', 'WRITE_FINANCIAL', 'AVAILABILITY', 'SECURITY_ENFORCEMENT', 'MASS_COMMUNICATION'];
 
-    /** Does this risk class require an approved row before execution? */
+    /**
+     * Does this risk class require an approved row before execution?
+     *
+     * Everything that is not a pure READ does. Reads are still audited.
+     */
     public static function requiresApproval($risk)
     {
-        return in_array((string) $risk, ['WRITE_CUSTOMER_VISIBLE', 'WRITE_FINANCIAL', 'AVAILABILITY', 'SECURITY_ENFORCEMENT', 'MASS_COMMUNICATION'], true);
+        $risk = (string) $risk;
+        if ($risk === 'READ') {
+            return false;
+        }
+        // Unknown/unexpected risk labels fail closed into requiring approval.
+        return true;
     }
 
     /** Gate used before ANY write tool executes. Phase 1: no write tools exist. */

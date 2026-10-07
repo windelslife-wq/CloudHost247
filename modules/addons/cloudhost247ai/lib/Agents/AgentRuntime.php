@@ -69,6 +69,15 @@ class AgentRuntime
         if ($source === self::SOURCE_HOOK) {
             throw new ForbiddenException('Agents never run inside web-request hooks (event capture is INSERT-only; the cron drains it).');
         }
+        // Roadmap seats can never run: their data source does not exist, so
+        // the only output they could produce is invented. This is checked
+        // before `enabled`, so flipping the DB flag cannot bypass it.
+        if (!$def->isAvailable()) {
+            throw new ForbiddenException(
+                'CONFIGURATION_REQUIRED: agent "' . $agentSlug . '" has no data source in this platform. '
+                . 'Required first: ' . $def->missingCollector
+            );
+        }
         if (!AgentRegistry::isEnabled($agentSlug)) {
             throw new ForbiddenException('Agent "' . $agentSlug . '" is disabled.');
         }

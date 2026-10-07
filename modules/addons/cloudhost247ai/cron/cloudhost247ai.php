@@ -6,6 +6,7 @@
  *  2. Scheduled agent passes (SSL Guardian, DNS & Domain, Billing
  *     Reconciliation, Collections evidence gathering).
  *  3. Daily briefing (deterministic metrics + optional single narration).
+ *  3b. Executive board report (daily, plus weekly/monthly on their days).
  *  4. Housekeeping: expire approvals, prune events/memories/runs, rate limits.
  *
  * Run: php cron/cloudhost247ai.php  (add to crontab every 5 minutes; the
@@ -79,6 +80,32 @@ try {
             $log('briefing #' . $briefing['briefing_id'] . ' (' . ($briefing['metrics_only'] ? 'metrics only' : 'narrated') . ')');
         } catch (\Throwable $e) {
             $log('briefing failed — ' . get_class($e) . ': ' . $e->getMessage());
+        }
+
+        // 3b. Executive board — daily always; weekly on the configured
+        // weekday; monthly on the configured day of month. Each period is a
+        // separate report row, so a missed run is visible rather than merged.
+        $periods = ['daily'];
+        if ((int) gmdate('N', Clock::time()) === Settings::int('board_weekly_dow', 1)) {
+            $periods[] = 'weekly';
+        }
+        if ((int) gmdate('j', Clock::time()) === Settings::int('board_monthly_dom', 1)) {
+            $periods[] = 'monthly';
+        }
+        foreach ($periods as $period) {
+            try {
+                $board = \Ch247Ai\Board\ExecutiveBoard::compose($period);
+                if (empty($board['report_id'])) {
+                    $log('board ' . $period . ' skipped (disabled)');
+                    continue;
+                }
+                $log('board ' . $period . ' #' . $board['report_id'] . ' — '
+                    . $board['seats_ok'] . ' seat(s) reporting, '
+                    . $board['seats_unavailable'] . ' awaiting a data source'
+                    . ($board['metrics_only'] ? ', metrics only' : ', narrated'));
+            } catch (\Throwable $e) {
+                $log('board ' . $period . ' failed — ' . get_class($e) . ': ' . $e->getMessage());
+            }
         }
     }
 

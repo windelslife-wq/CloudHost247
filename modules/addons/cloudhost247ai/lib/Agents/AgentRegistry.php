@@ -20,7 +20,16 @@ class AgentDefinition
     public $promptRole;   // one-paragraph role charter for the system prompt
     public $defaultEnabled;
 
-    public function __construct($slug, $name, $description, $runMode, array $tools, $promptRole, $defaultEnabled = true)
+    /**
+     * Collector this agent needs before it can ever run. '' means the data
+     * already exists. Anything else makes the agent a declared-but-inert
+     * roadmap entry: the runtime refuses it with CONFIGURATION_REQUIRED even
+     * if an operator flips `enabled` in the database, because the alternative
+     * is an agent whose entire job is reading data the platform does not have.
+     */
+    public $missingCollector;
+
+    public function __construct($slug, $name, $description, $runMode, array $tools, $promptRole, $defaultEnabled = true, $missingCollector = '')
     {
         $this->slug = $slug;
         $this->name = $name;
@@ -29,6 +38,13 @@ class AgentDefinition
         $this->tools = $tools;
         $this->promptRole = $promptRole;
         $this->defaultEnabled = $defaultEnabled;
+        $this->missingCollector = (string) $missingCollector;
+    }
+
+    /** True when the platform has the data this agent would read. */
+    public function isAvailable()
+    {
+        return $this->missingCollector === '';
     }
 }
 
@@ -41,7 +57,7 @@ class AgentRegistry
     /** @return AgentDefinition[] */
     public static function all()
     {
-        return [
+        return array_merge([
             new AgentDefinition(
                 'admin_copilot',
                 'Admin Copilot',
@@ -122,6 +138,82 @@ class AgentRegistry
                 ['read_metrics', 'read_knowledge'],
                 'You narrate the daily metric pack. You may not add facts beyond the pack.'
             ),
+            new AgentDefinition(
+                'executive_board',
+                'Executive Board',
+                'Narrates the deterministic executive board report (department packs + cross-department findings). One model call, no decisions, no facts beyond the packs.',
+                'scheduled',
+                ['read_metrics', 'read_knowledge'],
+                'You narrate an executive board report for a hosting operator. Every department figure and finding is supplied to you already verified. You may not add facts, invent a department\'s conclusion, or speculate about data marked unavailable.'
+            ),
+        ], self::roadmap());
+    }
+
+    /**
+     * Tier C — declared, permanently inert roadmap seats.
+     *
+     * These appear in the registry and the admin UI so the roadmap is honest
+     * and visible, but each names the collector it needs and the runtime
+     * refuses to run it (CONFIGURATION_REQUIRED). An agent whose entire job is
+     * to read data this platform does not collect would have nothing to do but
+     * fabricate, which the safety rules forbid outright.
+     *
+     * @return AgentDefinition[]
+     */
+    public static function roadmap()
+    {
+        $stub = function ($slug, $name, $description, $collector) {
+            return new AgentDefinition($slug, $name, $description, 'scheduled', [], '', false, $collector);
+        };
+        return [
+            $stub('infrastructure_guardian', 'Infrastructure Guardian',
+                'Server health and resource exhaustion monitoring across VPS, dedicated and shared hosting.',
+                'Server telemetry collector: a cron polling provisioning-module APIs and tblservers reachability into a metrics table with retention. No CPU/RAM/disk/load feed exists in this platform.'),
+            $stub('server_health_agent', 'Server Health Agent',
+                'Per-server uptime, service failures, disk and memory pressure reporting.',
+                'The same server telemetry collector as Infrastructure Guardian.'),
+            $stub('provisioning_agent', 'Provisioning Agent',
+                'Watches provisioning and activation jobs, detects stuck or failed provisioning.',
+                'Normalised provisioning outcomes: provisioning state is scattered across module logs and tblhosting.domainstatus and must be collected into a structured events table first.'),
+            $stub('deployment_agent', 'Deployment Agent',
+                'Deployment, build and rollback health for applications.',
+                'A deployment record source. This platform performs no application deployments and stores no build or release events.'),
+            $stub('security_sentinel', 'Security Sentinel',
+                'Suspicious authentication, account takeover indicators and security event triage.',
+                'A derived, indexed auth-event table. tblactivitylog holds login records but is unindexed and too noisy for detection work.'),
+            $stub('fraud_abuse_guardian', 'Fraud & Abuse Guardian',
+                'Suspicious signups, abnormal ordering, payment anomalies and resource abuse.',
+                'A feature-extraction layer over orders, payments and gateway responses. Highest false-positive cost of any agent; must be approval-gated when built.'),
+            $stub('vulnerability_analyst', 'Vulnerability Analyst',
+                'Dependency and server software vulnerability analysis.',
+                'A software inventory: no record of server software versions or installed dependencies exists.'),
+            $stub('incident_commander', 'Incident Commander',
+                'Correlates events into incidents, coordinates response and verifies recovery.',
+                'An incident system plus the monitoring feed that would create incidents. Neither exists yet.'),
+            $stub('root_cause_analyst', 'Root Cause Analyst',
+                'Post-incident timeline and probable-cause analysis.',
+                'Logs, metrics, deployment records and an incident history. None are collected.'),
+            $stub('cloud_cost_guardian', 'Cloud Cost Guardian',
+                'Infrastructure cost, utilisation and hosting margin optimisation.',
+                'A cost and utilisation feed from the infrastructure providers. No cost data is ingested.'),
+            $stub('pricing_analyst', 'Pricing Analyst',
+                'Plan utilisation, discount and pricing recommendations.',
+                'The usage-metering layer. Product demand exists in orders, but plan utilisation does not.'),
+            $stub('account_expansion_agent', 'Account Expansion Agent',
+                'Detects customers outgrowing their plan and genuine upgrade opportunities.',
+                'Per-service resource usage metering. Upgrade signals without usage data would be guesswork.'),
+            $stub('internal_it_agent', 'Internal IT Agent',
+                'Internal staff support, access requests and equipment workflow.',
+                'An internal IT request system. No system of record exists.'),
+            $stub('hr_assistant', 'HR Assistant',
+                'Internal HR policy lookup and employee documentation.',
+                'An HR system of record. None exists in this platform.'),
+            $stub('recruitment_assistant', 'Recruitment Assistant',
+                'Candidate pipeline organisation and interview scheduling.',
+                'An applicant tracking system. None exists in this platform.'),
+            $stub('asset_inventory_agent', 'Asset & Inventory Agent',
+                'Hardware, licence and datacenter asset tracking with renewal detection.',
+                'An asset register. Servers exist in tblservers but hardware, licences and datacenter resources are not inventoried.'),
         ];
     }
 
@@ -143,6 +235,18 @@ class AgentRegistry
             $out[] = $agent->slug;
         }
         return $out;
+    }
+
+    /** Agents whose data actually exists (the operable set). @return AgentDefinition[] */
+    public static function available()
+    {
+        return array_values(array_filter(self::all(), function ($a) { return $a->isAvailable(); }));
+    }
+
+    /** Declared-but-inert roadmap seats. @return AgentDefinition[] */
+    public static function unavailable()
+    {
+        return array_values(array_filter(self::all(), function ($a) { return !$a->isAvailable(); }));
     }
 
     /** Is the agent enabled in the DB (default: registry default)? */
