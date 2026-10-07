@@ -1,5 +1,5 @@
 <?php
-/** Phase 3 through Phase 7 core tests; library-backed ceremonies run separately. */
+/** Phase 3 through Phase 8 core tests; library-backed ceremonies run separately. */
 
 require_once dirname(__DIR__) . '/autoload.php';
 
@@ -9,6 +9,8 @@ use CloudHost247\Passkey\Core\Db;
 use CloudHost247\Passkey\Core\CredentialManagementRepository;
 use CloudHost247\Passkey\Core\ExternalIdentityLinkService;
 use CloudHost247\Passkey\Core\ExternalIdentityRepository;
+use CloudHost247\Passkey\Core\PasskeyNotificationService;
+use CloudHost247\Passkey\Core\UserPreferencesRepository;
 use CloudHost247\Passkey\Core\Migrator;
 use CloudHost247\Passkey\Core\PasskeyAssertionVerifierInterface;
 use CloudHost247\Passkey\Core\PasskeyCredentialManagementService;
@@ -31,6 +33,7 @@ use CloudHost247\Passkey\Core\WebAuthnService;
 use CloudHost247\Passkey\Integration\CallbackWhmcsAuthBridge;
 use CloudHost247\Passkey\Integration\CallbackWhmcsIdentityProvider;
 use CloudHost247\Passkey\Integration\ExternalIdentityClaims;
+use CloudHost247\Passkey\Integration\SecurityNotification;
 use CloudHost247\Passkey\Integration\PasskeyLoginContext;
 use CloudHost247\Passkey\Integration\PasskeyRegistrationContext;
 use CloudHost247\Passkey\Integration\WhmcsAuthHandoff;
@@ -1016,6 +1019,87 @@ $throws('Phase 7 confirmation challenges are one-use even for an idempotent link
 });
 $assert('Phase 7 link lifecycle is auditable without external subject or token metadata', Db::count('events', ['event_type' => 'entra.linked']) === 3 && Db::count('events', ['event_type' => 'entra.unlinked']) === 1 && strpos(json_encode(Db::query('SELECT `metadata_json` FROM `' . Db::table('events') . '` WHERE `event_type` LIKE \'entra.%\'')), 'subject-phase7') === false);
 
+// Phase 8 notification preferences and host-delivery boundary.
+$phase8IdentityId = 9040;
+$phase8Identity = new WhmcsIdentity('client', $phase8IdentityId);
+$phase8Provider = new CallbackWhmcsIdentityProvider(function ($resolvedType, $resolvedId) use ($phase8IdentityId) {
+    return $resolvedType === 'client' && $resolvedId === $phase8IdentityId
+        ? ['user_type' => $resolvedType, 'user_id' => $resolvedId, 'loginable' => true]
+        : null;
+});
+$phase8Preferences = new UserPreferencesRepository();
+$phase8Notifications = new PasskeyNotificationService($phase8Provider, $phase6Resolver, $phase8Preferences);
+$phase8Defaults = $phase8Notifications->preferences($phase8Identity);
+$assert('Phase 8 defaults security notifications to opt-out without loading contact data', $phase8Defaults === ['login_notification_enabled' => 0, 'security_event_notification_enabled' => 0]);
+$phase8Updated = $phase8Notifications->updatePreferences($phase8Identity, [
+    'login_notification_enabled' => 1,
+    'security_event_notification_enabled' => 0,
+]);
+$phase8PreferenceRow = Db::firstQuery('SELECT * FROM `' . Db::table('user_preferences') . '` WHERE `user_type` = ? AND `user_id` = ?', ['client', $phase8IdentityId]);
+$assert('Phase 8 updates only the two scoped boolean notification preferences', $phase8Updated === ['login_notification_enabled' => 1, 'security_event_notification_enabled' => 0] && $phase8PreferenceRow !== null && !array_key_exists('email', $phase8PreferenceRow) && !array_key_exists('session_id', $phase8PreferenceRow));
+$phase8Delivered = [];
+$phase8Login = $phase8Notifications->dispatch(
+    $phase8Identity,
+    SecurityNotification::LOGIN,
+    'authentication.succeeded',
+    function (SecurityNotification $notification) use (&$phase8Delivered) {
+        $phase8Delivered[] = $notification->toArray();
+    },
+    ['origin' => 'https://example.test', 'arbitrary' => 'dropped']
+);
+$assert('Phase 8 delivers an opted-in login notification only through the explicit host sink', $phase8Login['status'] === 'delivered' && count($phase8Delivered) === 1 && $phase8Delivered[0]['user_type'] === 'client' && $phase8Delivered[0]['user_id'] === $phase8IdentityId && $phase8Delivered[0]['metadata'] === ['origin' => 'https://example.test'] && !isset($phase8Delivered[0]['email']) && !isset($phase8Delivered[0]['session_id']));
+$phase8Suppressed = $phase8Notifications->dispatch(
+    $phase8Identity,
+    SecurityNotification::SECURITY_EVENT,
+    'authentication.failed',
+    function () use (&$phase8Delivered) {
+        $phase8Delivered[] = ['unexpected' => true];
+    },
+    ['error_code' => 'invalid_signature']
+);
+$assert('Phase 8 suppresses security-event delivery when the identity has not opted in', $phase8Suppressed === ['status' => 'suppressed', 'reason' => 'preference_disabled'] && count($phase8Delivered) === 1);
+$phase8Notifications->updatePreferences($phase8Identity, [
+    'login_notification_enabled' => 1,
+    'security_event_notification_enabled' => 1,
+]);
+$phase8Security = $phase8Notifications->dispatch(
+    $phase8Identity,
+    SecurityNotification::SECURITY_EVENT,
+    'authentication.failed',
+    function (SecurityNotification $notification) use (&$phase8Delivered) {
+        $phase8Delivered[] = $notification->toArray();
+    },
+    ['error_code' => 'invalid_signature', 'action_code' => 'auth.verify']
+);
+$assert('Phase 8 delivers an opted-in redacted security event envelope', $phase8Security['status'] === 'delivered' && count($phase8Delivered) === 2 && $phase8Delivered[1]['event_type'] === 'authentication.failed' && $phase8Delivered[1]['metadata'] === ['error_code' => 'invalid_signature', 'action_code' => 'auth.verify']);
+$throws('Phase 8 refuses raw signature metadata before host delivery', InvalidArgumentException::class, function () use ($phase8Notifications, $phase8Identity) {
+    $phase8Notifications->dispatch(
+        $phase8Identity,
+        SecurityNotification::SECURITY_EVENT,
+        'authentication.failed',
+        function () {
+        },
+        ['signature' => 'raw-signature']
+    );
+});
+$throws('Phase 8 refuses unsupported notification preference fields', InvalidArgumentException::class, function () use ($phase8Notifications, $phase8Identity) {
+    $phase8Notifications->updatePreferences($phase8Identity, [
+        'login_notification_enabled' => 1,
+        'security_event_notification_enabled' => 1,
+        'email' => 'client@example.invalid',
+    ]);
+});
+$throws('Phase 8 refuses unsupported notification event types', InvalidArgumentException::class, function () use ($phase8Notifications, $phase8Identity) {
+    $phase8Notifications->dispatch(
+        $phase8Identity,
+        SecurityNotification::SECURITY_EVENT,
+        'notification.sent',
+        function () {
+        }
+    );
+});
+$assert('Phase 8 notification envelopes contain no parallel session or contact architecture', !isset($_SESSION['uid']) && !isset($phase8Delivered[0]['email']) && !isset($phase8Delivered[0]['session_id']));
+
 $composerManifest = json_decode(file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 $assert('Composer manifest pins the audited WebAuthn library and an explicit PSR-7 adapter', isset($composerManifest['require']['web-auth/webauthn-lib'], $composerManifest['require']['nyholm/psr7']) && $composerManifest['require']['web-auth/webauthn-lib'] === '3.3.12' && $composerManifest['require']['nyholm/psr7'] === '^1.8');
 $assert('WebAuthn ceremony service is present but does not alter the WHMCS authentication flow', class_exists(WebAuthnService::class) && method_exists(WebAuthnService::class, 'finishRegistration') && method_exists(WebAuthnService::class, 'finishAuthentication'));
@@ -1039,6 +1123,7 @@ if ($failures === 0) {
     echo "PASSKEY_PHASE5_MANAGEMENT_OK\n";
     echo "PASSKEY_PHASE6_SECURITY_OK\n";
     echo "PASSKEY_PHASE7_EXTERNAL_IDENTITY_OK\n";
+    echo "PASSKEY_PHASE8_NOTIFICATIONS_OK\n";
 } else {
     echo "PASSKEY_PHASE3_CORE_FAILED\n";
     echo "PASSKEY_PHASE4_INTEGRATION_FAILED\n";
