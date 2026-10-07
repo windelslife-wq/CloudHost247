@@ -1,0 +1,111 @@
+# CloudHost247 App Cloud manifest — Redis (managed cache/queue)
+#
+# kind: infrastructure. Used directly by customers that need a cache or queue,
+# and provisioned automatically as an isolated dependency for applications that
+# declare one (Nextcloud, Immich, …).
+schema: 1
+id: redis
+name: Redis
+slug: redis
+category: database
+kind: infrastructure
+vendor: Redis Ltd / Valkey contributors
+license: RSALv2 / SSPLv1 (see upstream)
+summary: Managed in-memory cache, queue and key-value store.
+description: A dedicated Redis 7 instance with append-only persistence, an enforced authentication password, memory ceiling from the customer's plan and automatic backups. Internal-only by default: it is reachable from the customer's own project network and never published to the internet.
+website: https://redis.io
+repository: https://github.com/redis/redis
+documentation: https://redis.io/docs
+logo_url: https://cdn.cloudhost247.test/apps/redis.svg
+tags: [database, cache, queue, redis, infrastructure]
+version: 7.4.1
+channel: stable
+featured: false
+
+deployment:
+  engine: docker-compose
+  supported_hosting_types: [vps, dedicated, docker, kubernetes]
+  update_strategy: recreate
+
+requirements:
+  cpu_min: 1
+  cpu_recommended: 2
+  memory_min_mb: 512
+  memory_recommended_mb: 2048
+  storage_min_mb: 2048
+  storage_recommended_mb: 10240
+  gpu: false
+
+services:
+  app:
+    image: redis:7.4.1-alpine
+    port: 6379
+    primary: true
+    internal: true
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes", "--maxmemory", "${MAXMEMORY}", "--maxmemory-policy", "allkeys-lru"]
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - name: data
+        mount: /data
+        size_mb: 8192
+        backup: true
+
+environment:
+  optional:
+    - key: MAXMEMORY
+      description: Memory ceiling applied to the instance.
+      default: 512mb
+    - key: TZ
+      description: Server timezone.
+      default: UTC
+  generated:
+    - key: REDIS_PASSWORD
+      generate: password
+      secret: true
+
+databases:
+  - name: cache
+    engine: redis
+    version: "7"
+    isolated: true
+    service: app
+
+volumes:
+  - name: data
+    service: app
+    mount: /data
+    size_mb: 8192
+
+ports: [6379]
+
+healthcheck:
+  type: tcp
+  port: 6379
+  interval: 30s
+  timeout: 5s
+  retries: 3
+
+domain:
+  enabled: false
+  required: false
+
+ssl:
+  enabled: false
+  force_https: false
+  min_tls: VersionTLS12
+
+backup:
+  enabled: true
+  schedule: daily
+  retention_days: 7
+  include_volumes: [data]
+  pre_update: true
+
+update:
+  strategy: recreate
+  backup_before: true
+  health_check_after: true
+  rollback_on_failure: true
+  auto_update_allowed: true

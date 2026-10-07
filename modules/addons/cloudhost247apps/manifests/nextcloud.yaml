@@ -1,0 +1,185 @@
+# CloudHost247 App Cloud manifest — Nextcloud Hub
+schema: 1
+id: nextcloud
+name: Nextcloud Hub
+slug: nextcloud
+category: storage
+kind: application
+vendor: Nextcloud GmbH
+license: AGPL-3.0-or-later
+summary: Self-hosted file sync, share and collaboration platform.
+description: Nextcloud Hub with a private Postgres database, Redis cache, persistent data volume and automatic HTTPS. File sync, sharing, calendars, contacts and collaborative document editing in one isolated installation per customer.
+website: https://nextcloud.com
+repository: https://github.com/nextcloud/server
+documentation: https://docs.nextcloud.com
+logo_url: https://cdn.cloudhost247.test/apps/nextcloud.svg
+tags: [storage, files, sync, collaboration, photos]
+version: 30.0.2
+channel: stable
+featured: true
+
+deployment:
+  engine: docker-compose
+  supported_hosting_types: [vps, dedicated, docker, kubernetes]
+  update_strategy: recreate
+
+requirements:
+  cpu_min: 2
+  cpu_recommended: 4
+  memory_min_mb: 2048
+  memory_recommended_mb: 8192
+  storage_min_mb: 20480
+  storage_recommended_mb: 102400
+  gpu: false
+
+services:
+  app:
+    image: nextcloud:30.0.2-apache
+    port: 8080
+    primary: true
+    restart: unless-stopped
+    depends_on: [db, redis]
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      NEXTCLOUD_TRUSTED_DOMAINS: ${PRIMARY_DOMAIN}
+      NEXTCLOUD_ADMIN_USER: ${ADMIN_USERNAME}
+      NEXTCLOUD_ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      OVERWRITEPROTOCOL: https
+      PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT}
+      PHP_UPLOAD_LIMIT: ${PHP_UPLOAD_LIMIT}
+    volumes:
+      - name: html
+        mount: /var/www/html
+        size_mb: 10240
+        backup: true
+      - name: data
+        mount: /var/www/html/data
+        size_mb: 92160
+        backup: true
+  db:
+    image: postgres:16-alpine
+    internal: true
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - name: dbdata
+        mount: /var/lib/postgresql/data
+        size_mb: 10240
+        backup: true
+  redis:
+    image: redis:7-alpine
+    internal: true
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+
+environment:
+  required:
+    - key: ADMIN_USERNAME
+      description: Nextcloud administrator account name.
+      validation: username
+    - key: ADMIN_EMAIL
+      description: Administrator email for notifications and recovery.
+      validation: email
+  optional:
+    - key: PHP_MEMORY_LIMIT
+      description: PHP memory limit for large uploads.
+      default: 512M
+    - key: PHP_UPLOAD_LIMIT
+      description: Maximum upload size.
+      default: 512M
+    - key: TZ
+      description: Server timezone.
+      default: UTC
+  generated:
+    - key: DB_NAME
+      generate: uuid
+    - key: DB_USER
+      generate: uuid
+    - key: DB_PASSWORD
+      generate: password
+      secret: true
+    - key: REDIS_PASSWORD
+      generate: password
+      secret: true
+    - key: ADMIN_PASSWORD
+      generate: password
+      secret: true
+
+databases:
+  - name: nextcloud
+    engine: postgres
+    version: "16"
+    isolated: true
+    service: db
+  - name: cache
+    engine: redis
+    version: "7"
+    isolated: true
+    service: redis
+
+volumes:
+  - name: html
+    service: app
+    mount: /var/www/html
+    size_mb: 10240
+  - name: data
+    service: app
+    mount: /var/www/html/data
+    size_mb: 92160
+  - name: dbdata
+    service: db
+    mount: /var/lib/postgresql/data
+    size_mb: 10240
+
+dependencies:
+  - id: postgresql
+    type: database
+    requirement: required
+    isolation: isolated
+  - id: redis
+    type: cache
+    requirement: required
+    isolation: isolated
+
+ports: [8080]
+
+healthcheck:
+  type: http
+  path: /status.php
+  port: 8080
+  interval: 60s
+  timeout: 10s
+  retries: 5
+  expected_status: [200]
+
+domain:
+  enabled: true
+  required: true
+  path: /
+
+ssl:
+  enabled: true
+  force_https: true
+  min_tls: VersionTLS12
+
+backup:
+  enabled: true
+  schedule: daily
+  retention_days: 14
+  include_volumes: [html, data, dbdata]
+  include_databases: [nextcloud]
+  pre_update: true
+
+update:
+  strategy: recreate
+  backup_before: true
+  health_check_after: true
+  rollback_on_failure: true
+  auto_update_allowed: false

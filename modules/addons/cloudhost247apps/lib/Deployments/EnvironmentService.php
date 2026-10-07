@@ -1,0 +1,525 @@
+<?php
+/**
+ * CloudHost247 App Cloud — installation environment.
+ *
+ * Owns the per-installation environment: what the customer typed, what the
+ * platform generated for them, and what the manifest locked.
+ *
+ * Values are sealed with AES-256-GCM under a context bound to the installation
+ * and the key, so one installation's ciphertext cannot be replayed into another.
+ * Secrets are never returned by any read path — listing shows a mask, and only
+ * the deployment worker (a machine actor) can decrypt.
+ *
+ * @package Ch247Apps
+ */
+
+namespace Ch247Apps\Deployments;
+
+use Ch247Apps\Adapters\DeploymentContext;
+use Ch247Apps\Catalog\Manifest;
+use Ch247Apps\Core\Actor;
+use Ch247Apps\Core\Audit;
+use Ch247Apps\Core\AuthorizationException;
+use Ch247Apps\Core\Clock;
+use Ch247Apps\Core\ConfigurationException;
+use Ch247Apps\Core\Crypto;
+use Ch247Apps\Core\Db;
+use Ch247Apps\Core\Logger;
+use Ch247Apps\Core\NotFoundException;
+use Ch247Apps\Core\Rbac;
+use Ch247Apps\Core\Str;
+use Ch247Apps\Core\ValidationException;
+
+class EnvironmentService
+{
+    const SOURCE_CUSTOMER  = 'customer';
+    const SOURCE_GENERATED = 'generated';
+    const SOURCE_MANIFEST  = 'manifest';
+    const SOURCE_PLATFORM  = 'platform';
+
+    /** @var Actor */
+    private $actor;
+
+    /** @var array<int,string[]> installation id => declared keys (manifest cache) */
+    private $declaredCache = [];
+
+    public function __construct(Actor $actor = null)
+    {
+        $this->actor = $actor ?: Actor::system('EnvironmentService');
+    }
+
+    /* ------------------------------------------------------------- generate */
+
+    /**
+     * Build and store the environment for a new installation.
+     *
+     * @param array $customerInput key => value from the install wizard
+     * @return array{stored: int, generated: array<string>, missing: array<string>, invalid: array}
+     */
+    public function provision($installationId, Manifest $manifest, array $customerInput = [])
+    {
+        if (!Crypto::isConfigured()) {
+            throw new ConfigurationException(
+                'The installation environment cannot be stored until CH247APPS_ENCRYPTION_KEY is configured.'
+            );
+        }
+        $installation = Db::first('installations', ['id' => (int) $installationId]);
+        if (!$installation) {
+            throw new NotFoundException('That installation does not exist.');
+        }
+
+        $environment = $manifest->environment();
+        $errors = [];
+        $missing = [];
+        $generated = [];
+        $stored = 0;
+
+        // Required, customer-supplied values.
+        foreach ($environment['required'] as $key => $entry) {
+            $value = array_key_exists($key, $customerInput) ? $customerInput[$key] : null;
+            if ($value === null || $value === '') {
+                if (!empty($entry['default'])) {
+                    $value = $entry['default'];
+                } else {
+                    $missing[] = $key;
+                    continue;
+                }
+            }
+            $problem = $this->validateValue($key, (string) $value, $entry);
+            if ($problem !== null) {
+                $errors[$key] = $problem;
+                continue;
+            }
+            $this->write((int) $installationId, $key, (string) $value, [
+                'is_secret' => !empty($entry['secret']),
+                'source' => self::SOURCE_CUSTOMER,
+                'description' => isset($entry['description']) ? $entry['description'] : null,
+                'locked' => false,
+            ]);
+            $stored++;
+        }
+
+        // Optional values the customer chose to set.
+        foreach ($environment['optional'] as $key => $entry) {
+            if (!array_key_exists($key, $customerInput) || $customerInput[$key] === '') {
+                continue;
+            }
+            $problem = $this->validateValue($key, (string) $customerInput[$key], $entry);
+            if ($problem !== null) {
+                $errors[$key] = $problem;
+                continue;
+            }
+            $this->write((int) $installationId, $key, (string) $customerInput[$key], [
+                'is_secret' => !empty($entry['secret']),
+                'source' => self::SOURCE_CUSTOMER,
+                'description' => isset($entry['description']) ? $entry['description'] : null,
+                'locked' => false,
+            ]);
+            $stored++;
+        }
+
+        // Platform-generated secrets. The customer never sees or types these.
+        foreach ($environment['generated'] as $key => $entry) {
+            $strategy = isset($entry['generate']) ? (string) $entry['generate'] : 'secret';
+            $value = self::generateValue($strategy, $key);
+            $this->write((int) $installationId, $key, $value, [
+                'is_secret' => true,
+                'source' => self::SOURCE_GENERATED,
+                'description' => isset($entry['description']) ? $entry['description'] : 'Generated by the platform.',
+                'locked' => true,
+            ]);
+            $generated[] = $key;
+            $stored++;
+        }
+
+        // Anything else the caller supplied that the manifest declares nowhere is
+        // rejected: an installation must not become a dumping ground for arbitrary
+        // variables that could override an image's own configuration.
+        $declared = array_merge(array_keys($environment['required']), array_keys($environment['optional']),
+            array_keys($environment['generated']));
+        foreach ($customerInput as $key => $value) {
+            if (!in_array((string) $key, $declared, true) && $value !== null && $value !== '') {
+                $errors[(string) $key] = 'This application does not accept a variable named ' . $key . '.';
+            }
+        }
+
+        if ($missing !== [] || $errors !== []) {
+            // Roll back what was written: a half-configured installation would
+            // deploy with defaults nobody chose.
+            Db::delete('environment', ['installation_id' => (int) $installationId]);
+            throw new ValidationException(
+                $missing !== [] ? 'Required configuration is missing: ' . implode(', ', $missing) . '.'
+                    : 'The configuration for this application is not valid.',
+                ['errors' => $errors, 'missing' => $missing]
+            );
+        }
+
+        Audit::record($this->actor, Audit::ENVIRONMENT_CHANGED, [
+            'resource_type' => 'installation', 'resource_id' => (int) $installationId,
+            'client_id' => (int) $installation['customer_id'], 'installation_id' => (int) $installationId,
+            // Keys only — values are never written to the audit log.
+            'metadata' => ['action' => 'provision', 'keys' => array_keys($this->keys((int) $installationId)),
+                'generated' => $generated],
+        ]);
+
+        return ['stored' => $stored, 'generated' => $generated, 'missing' => [], 'invalid' => []];
+    }
+
+    /**
+     * Generate a value for a manifest-declared strategy.
+     *
+     * @param string $strategy secret|password|token|uuid|reference
+     */
+    public static function generateValue($strategy, $key = '')
+    {
+        switch (strtolower((string) $strategy)) {
+            case 'password':
+                return self::password(24);
+            case 'token':
+                return Str::base64Url(random_bytes(32));
+            case 'uuid':
+                return Str::uuid4();
+            case 'reference':
+                return Str::reference('KEY');
+            case 'number':
+            case 'pin':
+                return (string) random_int(100000, 999999);
+            case 'none':
+            case '':
+                return '';
+            case 'secret':
+            default:
+                return Crypto::randomToken(32);
+        }
+    }
+
+    /** An alphanumeric password with no shell- or URL-hostile characters. */
+    public static function password($length = 24)
+    {
+        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+        $max = strlen($alphabet) - 1;
+        $out = '';
+        for ($i = 0; $i < max(8, (int) $length); $i++) {
+            $out .= $alphabet[random_int(0, $max)];
+        }
+        return $out;
+    }
+
+    /* ----------------------------------------------------------------- write */
+
+    /** Seal and store one value. */
+    public function write($installationId, $key, $value, array $meta = [])
+    {
+        $key = strtoupper(trim((string) $key));
+        if (!preg_match('/^[A-Z_][A-Z0-9_]*$/', $key)) {
+            throw new ValidationException('"' . $key . '" is not a valid environment variable name.', [
+                'errors' => [$key => 'Use letters, numbers and underscores, starting with a letter.'],
+            ]);
+        }
+        if (strpos((string) $value, "\n") !== false || strpos((string) $value, "\r") !== false) {
+            throw new ValidationException('The value for ' . $key . ' must be a single line.', [
+                'errors' => [$key => 'Line breaks are not allowed'],
+            ]);
+        }
+        if (empty($meta['platform'])) {
+            $this->assertDeclared((int) $installationId, $key);
+        }
+        $sealed = Crypto::seal((string) $value, DeploymentContext::envContext((int) $installationId, $key));
+        $now = Clock::now();
+        $fields = [
+            'installation_id' => (int) $installationId,
+            'env_key' => Str::clip($key, 128),
+            'encrypted_value' => $sealed['ciphertext'],
+            'key_version' => (int) $sealed['key_version'],
+            'is_secret' => !empty($meta['is_secret']) ? 1 : 0,
+            'source' => isset($meta['source']) ? Str::clip((string) $meta['source'], 20) : self::SOURCE_CUSTOMER,
+            'description' => isset($meta['description']) ? Str::clip((string) $meta['description'], 255) : null,
+            'locked' => !empty($meta['locked']) ? 1 : 0,
+            'updated_by' => $this->actor->actorId() ?: null,
+            'updated_at' => $now,
+        ];
+        $existing = Db::first('environment', ['installation_id' => (int) $installationId, 'env_key' => $fields['env_key']]);
+        if ($existing) {
+            Db::update('environment', $fields, ['id' => (int) $existing['id']]);
+            return (int) $existing['id'];
+        }
+        $fields['created_at'] = $now;
+        return Db::insert('environment', $fields);
+    }
+
+    /**
+     * A variable the manifest does not declare never reaches a container.
+     *
+     * Without this an installation would become a dumping ground for arbitrary
+     * variables that could override an image's own configuration.
+     *
+     * @throws ValidationException
+     */
+    private function assertDeclared($installationId, $key)
+    {
+        $installationId = (int) $installationId;
+        if (!isset($this->declaredCache[$installationId])) {
+            $installation = Db::first('installations', ['id' => $installationId]);
+            if (!$installation) {
+                throw new NotFoundException('That installation does not exist.');
+            }
+            $environment = $this->manifestFor($installation)->environment();
+            $this->declaredCache[$installationId] = array_merge(
+                array_keys($environment['required']),
+                array_keys($environment['optional']),
+                array_keys($environment['generated'])
+            );
+        }
+        if (!in_array((string) $key, $this->declaredCache[$installationId], true)) {
+            throw new ValidationException(
+                'This application does not accept a variable named ' . $key . '.',
+                ['errors' => [$key => 'Not declared by the application manifest'],
+                    'error_code' => 'ENVIRONMENT_KEY_NOT_DECLARED']
+            );
+        }
+        return true;
+    }
+
+    /**
+     * Change values on an existing installation.
+     *
+     * @return array{changed: array<string>, requires_restart: bool}
+     */
+    public function update($installationId, array $values)
+    {
+        Rbac::assert($this->actor, Rbac::INSTALL_ENV_WRITE);
+        $installation = $this->assertOwns($installationId);
+        $manifest = $this->manifestFor($installation);
+        $environment = $manifest->environment();
+        $declared = array_merge(array_keys($environment['required']), array_keys($environment['optional']));
+
+        $changed = [];
+        $errors = [];
+        foreach ($values as $key => $value) {
+            $key = strtoupper(trim((string) $key));
+            $row = Db::first('environment', ['installation_id' => (int) $installationId, 'env_key' => $key]);
+            if ($row && (int) $row['locked'] === 1) {
+                $errors[$key] = 'This value is managed by the platform and cannot be changed here.';
+                continue;
+            }
+            if (!in_array($key, $declared, true) && !$row) {
+                $errors[$key] = 'This application does not accept a variable named ' . $key . '.';
+                continue;
+            }
+            if ($value === null || $value === '') {
+                if ($row) {
+                    Db::delete('environment', ['id' => (int) $row['id']]);
+                    $changed[] = $key;
+                }
+                continue;
+            }
+            $entry = isset($environment['required'][$key]) ? $environment['required'][$key]
+                : (isset($environment['optional'][$key]) ? $environment['optional'][$key] : []);
+            $problem = $this->validateValue($key, (string) $value, $entry);
+            if ($problem !== null) {
+                $errors[$key] = $problem;
+                continue;
+            }
+            $this->write((int) $installationId, $key, (string) $value, [
+                'is_secret' => !empty($entry['secret']) || ($row ? (bool) $row['is_secret'] : false),
+                'source' => $row ? $row['source'] : self::SOURCE_CUSTOMER,
+                'description' => $row && $row['description'] ? $row['description']
+                    : (isset($entry['description']) ? $entry['description'] : null),
+                'locked' => $row ? (bool) $row['locked'] : false,
+            ]);
+            $changed[] = $key;
+        }
+
+        if ($errors !== []) {
+            throw new ValidationException('Some configuration values are not valid.', ['errors' => $errors]);
+        }
+
+        Audit::record($this->actor, Audit::ENVIRONMENT_CHANGED, [
+            'resource_type' => 'installation', 'resource_id' => (int) $installationId,
+            'client_id' => (int) $installation['customer_id'], 'installation_id' => (int) $installationId,
+            'metadata' => ['action' => 'update', 'keys' => $changed],
+        ]);
+        Logger::info('Installation environment updated.', [
+            'installation_id' => (int) $installationId, 'keys' => $changed, 'source' => 'deployments',
+        ]);
+
+        return ['changed' => $changed, 'requires_restart' => $changed !== []];
+    }
+
+    /* ------------------------------------------------------------------ read */
+
+    /** Keys and metadata, with values masked. This is what an API may return. */
+    public function listing($installationId, $revealNonSecrets = true)
+    {
+        $this->assertOwns($installationId, Rbac::INSTALL_ENV_READ);
+        $out = [];
+        foreach ($this->keys((int) $installationId) as $key => $row) {
+            $secret = (bool) $row['is_secret'];
+            $value = null;
+            if (!$secret && $revealNonSecrets) {
+                $value = Crypto::tryDecrypt($row['encrypted_value'],
+                    DeploymentContext::envContext((int) $installationId, $key));
+            }
+            $out[] = [
+                'key' => $key,
+                'value' => $secret ? null : $value,
+                'masked' => $secret ? Str::mask('placeholder', 4) : null,
+                'is_secret' => $secret,
+                'source' => $row['source'],
+                'locked' => (bool) $row['locked'],
+                'description' => isset($row['description']) ? $row['description'] : null,
+                'key_version' => (int) $row['key_version'],
+                'updated_at' => isset($row['updated_at']) ? $row['updated_at'] : null,
+            ];
+        }
+        return $out;
+    }
+
+    /** @internal worker/adapter only — machine actors only, audited for humans. */
+    public function reveal($installationId, $key)
+    {
+        if (!$this->actor->isMachine()) {
+            throw new AuthorizationException(
+                'Secret values are never returned through the API. Change the value instead.',
+                ['permission' => 'environment.reveal']
+            );
+        }
+        $key = strtoupper(trim((string) $key));
+        $row = Db::first('environment', ['installation_id' => (int) $installationId, 'env_key' => $key]);
+        if (!$row) {
+            return null;
+        }
+        return Crypto::tryDecrypt($row['encrypted_value'], DeploymentContext::envContext((int) $installationId, $key));
+    }
+
+    /** @internal worker only: every value, decrypted, for the deployment context. */
+    public function revealAll($installationId)
+    {
+        if (!$this->actor->isMachine()) {
+            throw new AuthorizationException('Environment secrets are only available to the deployment worker.');
+        }
+        $out = [];
+        foreach ($this->keys((int) $installationId) as $key => $row) {
+            $plain = Crypto::tryDecrypt($row['encrypted_value'],
+                DeploymentContext::envContext((int) $installationId, $key));
+            if ($plain === null) {
+                throw new ConfigurationException('The stored value for ' . $key . ' could not be decrypted.');
+            }
+            $out[$key] = $plain;
+        }
+        return $out;
+    }
+
+    /** Re-seal every value with the current key version (crypto rotation). */
+    public function reencryptAll()
+    {
+        Rbac::assert($this->actor, Rbac::SETTINGS_MANAGE);
+        $rewritten = 0;
+        $failed = 0;
+        foreach (Db::fetch('environment', []) as $row) {
+            if ((int) $row['key_version'] === Crypto::CURRENT_KEY_VERSION) {
+                continue;
+            }
+            $context = DeploymentContext::envContext((int) $row['installation_id'], $row['env_key']);
+            $plain = Crypto::tryDecrypt($row['encrypted_value'], $context);
+            if ($plain === null) {
+                $failed++;
+                Logger::error('Environment value could not be decrypted during re-encryption.', [
+                    'installation_id' => (int) $row['installation_id'], 'env_key' => $row['env_key'],
+                    'source' => 'deployments',
+                ]);
+                continue;
+            }
+            $sealed = Crypto::seal($plain, $context);
+            Db::update('environment', [
+                'encrypted_value' => $sealed['ciphertext'], 'key_version' => (int) $sealed['key_version'],
+                'updated_at' => Clock::now(),
+            ], ['id' => (int) $row['id']]);
+            $rewritten++;
+        }
+        Audit::record($this->actor, Audit::ENVIRONMENT_CHANGED, [
+            'resource_type' => 'environment', 'resource_id' => 'bulk',
+            'metadata' => ['action' => 'reencrypt', 'rewritten' => $rewritten, 'failed' => $failed],
+            'severity' => $failed ? 'error' : 'info',
+        ]);
+        return ['rewritten' => $rewritten, 'failed' => $failed];
+    }
+
+    /** env_key => row, keyed for easy lookup. */
+    public function keys($installationId)
+    {
+        $out = [];
+        foreach (Db::fetch('environment', ['installation_id' => (int) $installationId], ['order' => 'env_key']) as $row) {
+            $out[(string) $row['env_key']] = $row;
+        }
+        return $out;
+    }
+
+    /* ------------------------------------------------------------ internals */
+
+    private function validateValue($key, $value, array $entry)
+    {
+        $rule = isset($entry['validation']) ? (string) $entry['validation'] : '';
+        $label = isset($entry['label']) && $entry['label'] !== '' ? $entry['label'] : $key;
+        switch ($rule) {
+            case 'email':
+                return filter_var($value, FILTER_VALIDATE_EMAIL) === false
+                    ? $label . ' must be a valid email address.' : null;
+            case 'url':
+                return filter_var($value, FILTER_VALIDATE_URL) === false
+                    ? $label . ' must be a valid URL.' : null;
+            case 'domain':
+                return preg_match('/^(?!-)[a-z0-9-]{1,63}(\.(?!-)[a-z0-9-]{1,63})+$/i', $value) === 1
+                    ? null : $label . ' must be a valid domain name.';
+            case 'integer':
+            case 'number':
+                return is_numeric($value) ? null : $label . ' must be a number.';
+            case 'boolean':
+                return in_array(strtolower($value), ['1', '0', 'true', 'false', 'yes', 'no', 'on', 'off'], true)
+                    ? null : $label . ' must be true or false.';
+            case 'json':
+                json_decode($value, true);
+                return json_last_error() === JSON_ERROR_NONE ? null : $label . ' must be valid JSON.';
+            default:
+                break;
+        }
+        if (isset($entry['options']) && is_array($entry['options']) && $entry['options'] !== []
+            && !in_array($value, array_map('strval', $entry['options']), true)) {
+            return $label . ' must be one of: ' . implode(', ', $entry['options']) . '.';
+        }
+        if (isset($entry['pattern']) && (string) $entry['pattern'] !== ''
+            && @preg_match('/' . str_replace('/', '\\/', (string) $entry['pattern']) . '/', $value) !== 1) {
+            return $label . ' is not in the required format.';
+        }
+        $min = isset($entry['min_length']) ? (int) $entry['min_length'] : 0;
+        if ($min > 0 && strlen($value) < $min) {
+            return $label . ' must be at least ' . $min . ' characters.';
+        }
+        $max = isset($entry['max_length']) ? (int) $entry['max_length'] : (int) (isset($entry['max']) ? $entry['max'] : 0);
+        if ($max > 0 && strlen($value) > $max) {
+            return $label . ' must be at most ' . $max . ' characters.';
+        }
+        return null;
+    }
+
+    private function assertOwns($installationId, $permission = Rbac::INSTALL_ENV_WRITE)
+    {
+        $installation = Db::first('installations', ['id' => (int) $installationId, 'deleted_at' => null]);
+        if (!$installation) {
+            throw new NotFoundException('That installation does not exist.');
+        }
+        if ($this->actor->isMachine() || $this->actor->can(Rbac::APP_VIEW_ALL)) {
+            return $installation;
+        }
+        Rbac::assert($this->actor, $permission);
+        if ((int) $installation['customer_id'] !== (int) $this->actor->clientId) {
+            throw new NotFoundException('That installation does not exist.');
+        }
+        return $installation;
+    }
+
+    private function manifestFor(array $installation)
+    {
+        return \Ch247Apps\Catalog\ManifestRepository::forVersion((int) $installation['application_version_id']);
+    }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "cloudhost247apps",
+  "version": "1.0.0",
+  "description": "CloudHost247 App Cloud — application marketplace and deployment platform (offline test tooling)",
+  "private": true,
+  "scripts": {
+    "lint": "node tests/lint.mjs",
+    "test": "node tests/run.mjs"
+  },
+  "dependencies": {
+    "@php-wasm/node": "^3.1.54",
+    "@php-wasm/universal": "^3.1.54"
+  }
+}

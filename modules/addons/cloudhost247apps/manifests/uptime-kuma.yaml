@@ -1,0 +1,99 @@
+# CloudHost247 App Cloud manifest — Uptime Kuma
+schema: 1
+id: uptime-kuma
+name: Uptime Kuma
+slug: uptime-kuma
+category: monitoring
+kind: application
+vendor: Louis Lam
+license: MIT
+summary: Fancy self-hosted uptime and status page monitoring.
+description: Monitor HTTP(s), TCP, DNS, Docker containers and certificates with a status page and notifications. A single container with one persistent volume — the lightest way to prove the deployment engine end to end.
+website: https://uptime.kuma.pet
+repository: https://github.com/louislam/uptime-kuma
+documentation: https://github.com/louislam/uptime-kuma/wiki
+logo_url: https://cdn.cloudhost247.test/apps/uptime-kuma.svg
+tags: [monitoring, uptime, status-page, alerts]
+version: 2.0.0-beta.1
+channel: stable
+featured: true
+
+deployment:
+  engine: docker-compose
+  supported_hosting_types: [vps, dedicated, docker, kubernetes]
+  update_strategy: recreate
+
+requirements:
+  cpu_min: 1
+  cpu_recommended: 1
+  memory_min_mb: 512
+  memory_recommended_mb: 1024
+  storage_min_mb: 1024
+  storage_recommended_mb: 5120
+  gpu: false
+
+services:
+  app:
+    image: louislam/uptime-kuma:2.0.0-beta.1
+    port: 3001
+    primary: true
+    restart: unless-stopped
+    environment:
+      UPTIME_KUMA_PORT: "3001"
+      TZ: ${TZ}
+    volumes:
+      - name: data
+        mount: /app/data
+        size_mb: 2048
+        backup: true
+
+environment:
+  optional:
+    - key: TZ
+      description: Timezone for schedules and timestamps.
+      default: UTC
+    - key: UPTIME_KUMA_HIDE_VERSION
+      description: Hide the version number from the public status page.
+      default: "1"
+      options: ["0", "1"]
+
+volumes:
+  - name: data
+    service: app
+    mount: /app/data
+    size_mb: 2048
+
+ports: [3001]
+
+healthcheck:
+  type: http
+  path: /metrics
+  port: 3001
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  expected_status: [200, 401]
+
+domain:
+  enabled: true
+  required: true
+  path: /
+
+ssl:
+  enabled: true
+  force_https: true
+  min_tls: VersionTLS12
+
+backup:
+  enabled: true
+  schedule: daily
+  retention_days: 14
+  include_volumes: [data]
+  pre_update: true
+
+update:
+  strategy: recreate
+  backup_before: true
+  health_check_after: true
+  rollback_on_failure: true
+  auto_update_allowed: true

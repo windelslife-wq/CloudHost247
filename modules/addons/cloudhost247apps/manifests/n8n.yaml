@@ -1,0 +1,162 @@
+# CloudHost247 App Cloud manifest — n8n
+#
+# One declarative document; the deployment engine, Docker adapter, health
+# checker, backup service and install wizard all read it. No per-application
+# installer code exists anywhere in the platform.
+schema: 1
+id: n8n
+name: n8n
+slug: n8n
+category: automation
+kind: application
+vendor: n8n GmbH
+license: Sustainable Use License
+summary: Fair-code workflow automation for technical people.
+description: n8n is a workflow automation platform with 400+ integrations, a visual editor and the ability to run custom code. Each CloudHost247 installation runs in its own isolated project with its own Postgres database, volume and HTTPS domain.
+website: https://n8n.io
+repository: https://github.com/n8n-io/n8n
+documentation: https://docs.n8n.io
+logo_url: https://cdn.cloudhost247.test/apps/n8n.svg
+tags: [automation, workflows, integration, no-code]
+version: 1.70.1
+channel: stable
+featured: true
+
+deployment:
+  engine: docker-compose
+  supported_hosting_types: [vps, dedicated, docker, kubernetes]
+  update_strategy: recreate
+
+requirements:
+  cpu_min: 1
+  cpu_recommended: 2
+  memory_min_mb: 1024
+  memory_recommended_mb: 4096
+  storage_min_mb: 5120
+  storage_recommended_mb: 20480
+  gpu: false
+
+services:
+  app:
+    image: n8nio/n8n:1.70.1
+    port: 5678
+    primary: true
+    restart: unless-stopped
+    user: "1000:1000"
+    depends_on: [db]
+    environment:
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: db
+      DB_POSTGRESDB_PORT: "5432"
+      DB_POSTGRESDB_DATABASE: ${DB_NAME}
+      DB_POSTGRESDB_USER: ${DB_USER}
+      DB_POSTGRESDB_PASSWORD: ${DB_PASSWORD}
+      N8N_HOST: ${PRIMARY_DOMAIN}
+      N8N_PROTOCOL: https
+      WEBHOOK_URL: https://${PRIMARY_DOMAIN}/
+      GENERIC_TIMEZONE: ${TZ}
+      N8N_PORT: "5678"
+    volumes:
+      - name: data
+        mount: /home/node/.n8n
+        size_mb: 4096
+        backup: true
+  db:
+    image: postgres:16-alpine
+    internal: true
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - name: dbdata
+        mount: /var/lib/postgresql/data
+        size_mb: 8192
+        backup: true
+
+environment:
+  required:
+    - key: N8N_ENCRYPTION_KEY
+      description: Encryption key for stored credentials. Generated for you and kept secret.
+      generate: secret
+      secret: true
+  optional:
+    - key: TZ
+      description: Timezone used for schedules and cron triggers.
+      default: UTC
+      example: Africa/Lagos
+    - key: N8N_DIAGNOSTICS_ENABLED
+      description: Allow n8n to send anonymous telemetry upstream.
+      default: "false"
+      options: ["true", "false"]
+  generated:
+    - key: DB_NAME
+      generate: uuid
+    - key: DB_USER
+      generate: uuid
+    - key: DB_PASSWORD
+      generate: password
+      secret: true
+
+databases:
+  - name: n8n
+    engine: postgres
+    version: "16"
+    isolated: true
+    service: db
+
+volumes:
+  - name: data
+    service: app
+    mount: /home/node/.n8n
+    size_mb: 4096
+    backup: true
+
+dependencies:
+  - id: postgresql
+    type: database
+    requirement: required
+    isolation: isolated
+
+ports: [5678]
+
+healthcheck:
+  type: http
+  path: /healthz
+  port: 5678
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  expected_status: [200]
+
+domain:
+  enabled: true
+  required: true
+  path: /
+
+ssl:
+  enabled: true
+  force_https: true
+  min_tls: VersionTLS12
+
+backup:
+  enabled: true
+  schedule: daily
+  retention_days: 14
+  include_volumes: [data, dbdata]
+  include_databases: [n8n]
+  pre_update: true
+
+update:
+  strategy: recreate
+  backup_before: true
+  health_check_after: true
+  rollback_on_failure: true
+  auto_update_allowed: true
+
+kubernetes:
+  replicas: 1
+  ingress_class: traefik
+  storage_class: standard
