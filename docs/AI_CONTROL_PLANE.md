@@ -130,7 +130,7 @@ hold references, redacted arguments and digests.
 
 ```
 cd modules/addons/cloudhost247ai
-node tests/lint.mjs    # load every shipped PHP file (59 files)
+node tests/lint.mjs    # load every shipped PHP file (57 files)
 node tests/run.mjs     # 992 assertions, 14 suites
 ```
 
