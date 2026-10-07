@@ -2,8 +2,9 @@
 /**
  * CloudHost247 Passkey — native WHMCS addon.
  *
- * Phase 3 provides a library-backed ceremony core and module-owned persistence.
- * Login/session integration remains disabled until a later explicitly approved phase.
+ * Phase 4 provides an opt-in, fail-closed handoff boundary to WHMCS's
+ * existing identity, session, and 2FA architecture. No native session is
+ * synthesized by this addon and the feature remains disabled by default.
  *
  * @package CloudHost247\Passkey
  */
@@ -15,15 +16,18 @@ if (!defined('WHMCS')) {
 require_once __DIR__ . '/autoload.php';
 
 use CloudHost247\Passkey\Core\Migrator;
+use CloudHost247\Passkey\Core\PasskeyIntegrationRegistry;
+use CloudHost247\Passkey\Integration\WhmcsAuthBridgeInterface;
+use CloudHost247\Passkey\Integration\WhmcsIdentityProviderInterface;
 
 function cloudhost247passkey_config()
 {
     return [
         'name' => 'CloudHost247 Passkey',
-        'description' => 'WebAuthn ceremony core is verified; Passkey login and session integration remain disabled.',
+        'description' => 'Fail-closed Passkey authentication handoff is available for an explicit WHMCS adapter; login remains disabled by default.',
         'author' => 'CloudHost247',
         'language' => 'english',
-        'version' => '0.2.0',
+        'version' => '0.3.0',
         'fields' => [],
     ];
 }
@@ -69,9 +73,31 @@ function cloudhost247passkey_upgrade($vars)
     }
 }
 
-/** Honest phase status; this is not a credential-management or login UI. */
+/**
+ * Register host-owned adapters for the Phase 4 handoff.
+ *
+ * The host integration must resolve current WHMCS account status and delegate
+ * the final session/2FA transition to WHMCS. This addon never accepts a raw
+ * session ID/token and never writes a synthetic login session.
+ */
+function cloudhost247passkey_register_auth_integration($identityProvider, $authBridge)
+{
+    if (!$identityProvider instanceof WhmcsIdentityProviderInterface
+        || !$authBridge instanceof WhmcsAuthBridgeInterface) {
+        throw new \InvalidArgumentException('Passkey integration requires explicit WHMCS identity and auth bridge adapters.');
+    }
+    PasskeyIntegrationRegistry::configure($identityProvider, $authBridge);
+}
+
+function cloudhost247passkey_auth_integration_configured()
+{
+    return PasskeyIntegrationRegistry::isConfigured();
+}
+
+/** Honest Phase 4 status; the adapter boundary is present but login stays opt-in. */
 function cloudhost247passkey_output($vars)
 {
-    echo '<div class="alert alert-info"><strong>Passkey authentication is currently disabled.</strong> '
-        . 'The WebAuthn core is not exposed through login or management endpoints and does not provide session creation. No registration UI is enabled; existing WHMCS authentication remains unchanged.</div>';
+    echo '<div class="alert alert-info"><strong>Passkey authentication is currently disabled by default.</strong> '
+        . 'Phase 4 adds a fail-closed handoff boundary for an explicitly registered WHMCS identity/session adapter. '
+        . 'This module does not perform session creation, bypass existing 2FA, or replace password recovery; no login endpoint is enabled until the deployment owner supplies and verifies that adapter.</div>';
 }

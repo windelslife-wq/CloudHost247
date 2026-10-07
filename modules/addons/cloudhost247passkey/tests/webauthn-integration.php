@@ -15,9 +15,16 @@ use CBOR\UnsignedIntegerObject;
 use CloudHost247\Passkey\Core\Base64Url;
 use CloudHost247\Passkey\Core\Db;
 use CloudHost247\Passkey\Core\Migrator;
+use CloudHost247\Passkey\Core\PasskeyLoginCoordinator;
+use CloudHost247\Passkey\Core\PasskeyLoginPolicy;
 use CloudHost247\Passkey\Core\UserHandleRepository;
 use CloudHost247\Passkey\Core\WebAuthnConfig;
 use CloudHost247\Passkey\Core\WebAuthnService;
+use CloudHost247\Passkey\Integration\CallbackWhmcsAuthBridge;
+use CloudHost247\Passkey\Integration\CallbackWhmcsIdentityProvider;
+use CloudHost247\Passkey\Integration\PasskeyLoginContext;
+use CloudHost247\Passkey\Integration\WhmcsAuthHandoff;
+use CloudHost247\Passkey\Integration\WhmcsIdentity;
 use CloudHost247\Passkey\Model\IdentityScope;
 
 $checks = 0;
@@ -250,6 +257,45 @@ try {
         $discoverableAuthentication['user_type'] === $userType && $discoverableAuthentication['user_id'] === $userId
         && $credentialRow !== null && (int) $credentialRow['sign_count'] === 2);
 
+    $coordinatorOptions = $service->beginAuthentication($config, $userType, null);
+    $coordinatorChallenge = $coordinatorOptions['publicKey']['challenge'] ?? null;
+    if (!is_string($coordinatorChallenge)) {
+        throw new RuntimeException('Library did not return a coordinator authentication challenge.');
+    }
+    $coordinatorResponseJson = $assertionResponse($credentialId, $privateKey, $coordinatorChallenge, $rpId, 3, $userHandle);
+    $phase4Policy = new PasskeyLoginPolicy([
+        'service_enabled' => '1',
+        'client_policy' => 'optional',
+        'admin_policy' => 'optional',
+        'password_fallback' => 'allowed',
+    ]);
+    $phase4Provider = new CallbackWhmcsIdentityProvider(function ($resolvedType, $resolvedId) use ($userType, $userId) {
+        return $resolvedType === $userType && $resolvedId === $userId
+            ? ['user_type' => $resolvedType, 'user_id' => $resolvedId, 'loginable' => true]
+            : null;
+    });
+    $phase4Bridge = new CallbackWhmcsAuthBridge(function (WhmcsIdentity $identity, PasskeyLoginContext $context) {
+        if ($identity->userType() !== IdentityScope::CLIENT || $context->source() !== 'client_login') {
+            throw new RuntimeException('Integration bridge received the wrong audience.');
+        }
+        return WhmcsAuthHandoff::twoFactorRequired();
+    });
+    $phase4Result = (new PasskeyLoginCoordinator($service, $phase4Provider, $phase4Bridge, $phase4Policy))->authenticate(
+        $config,
+        $userType,
+        null,
+        $coordinatorResponseJson,
+        ['remember_me' => true, 'request_id' => 'real-library-phase4', 'source' => 'client_login']
+    );
+    $credentialRow = Db::firstQuery(
+        'SELECT `sign_count` FROM `' . Db::table('credentials') . '` WHERE `credential_id_hash` = ?',
+        [hash('sha256', $credentialIdEncoded)]
+    );
+    $assert('Phase 4 coordinator consumes a real library assertion and preserves the existing WHMCS 2FA handoff',
+        $phase4Result->identity()->toArray() === ['user_type' => IdentityScope::CLIENT, 'user_id' => $userId]
+        && $phase4Result->handoff()->requiresTwoFactor()
+        && $credentialRow !== null && (int) $credentialRow['sign_count'] === 3);
+
     $expectFailure('a discoverable assertion cannot authenticate through the administrator scope', function () use ($service, $config, $credentialId, $privateKey, $rpId, $userHandle, $assertionResponse) {
         $adminOptions = $service->beginAuthentication($config, IdentityScope::ADMIN, null);
         $adminChallenge = $adminOptions['publicKey']['challenge'] ?? null;
@@ -274,7 +320,7 @@ try {
         [hash('sha256', $credentialIdEncoded)]
     );
     $assert('failed signature verification does not advance the stored authenticator counter',
-        $credentialRow !== null && (int) $credentialRow['sign_count'] === 2);
+        $credentialRow !== null && (int) $credentialRow['sign_count'] === 3);
 
     if (function_exists('openssl_pkey_free') && is_resource($privateKey)) {
         openssl_pkey_free($privateKey);

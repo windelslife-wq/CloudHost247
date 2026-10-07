@@ -1,5 +1,5 @@
 <?php
-/** Phase 3 WebAuthn core tests; library-backed ceremony tests run separately. */
+/** Phase 3 core and Phase 4 WHMCS handoff-boundary tests; library-backed ceremony tests run separately. */
 
 require_once dirname(__DIR__) . '/autoload.php';
 
@@ -7,12 +7,21 @@ use CloudHost247\Passkey\Core\Base64Url;
 use CloudHost247\Passkey\Core\CeremonyChallengeStore;
 use CloudHost247\Passkey\Core\Db;
 use CloudHost247\Passkey\Core\Migrator;
+use CloudHost247\Passkey\Core\PasskeyAssertionVerifierInterface;
+use CloudHost247\Passkey\Core\PasskeyIntegrationRegistry;
+use CloudHost247\Passkey\Core\PasskeyLoginCoordinator;
+use CloudHost247\Passkey\Core\PasskeyLoginPolicy;
 use CloudHost247\Passkey\Core\Schema;
 use CloudHost247\Passkey\Core\SessionBinding;
 use CloudHost247\Passkey\Core\UserHandleRepository;
 use CloudHost247\Passkey\Core\WebAuthnClientData;
 use CloudHost247\Passkey\Core\WebAuthnConfig;
 use CloudHost247\Passkey\Core\WebAuthnService;
+use CloudHost247\Passkey\Integration\CallbackWhmcsAuthBridge;
+use CloudHost247\Passkey\Integration\CallbackWhmcsIdentityProvider;
+use CloudHost247\Passkey\Integration\PasskeyLoginContext;
+use CloudHost247\Passkey\Integration\WhmcsAuthHandoff;
+use CloudHost247\Passkey\Integration\WhmcsIdentity;
 use CloudHost247\Passkey\Model\ChallengeRecord;
 use CloudHost247\Passkey\Model\CredentialRecord;
 use CloudHost247\Passkey\Model\ExternalIdentityRecord;
@@ -588,6 +597,110 @@ $assert('WHMCS addon callback exposes the Passkey module without activating logi
 $assert('WHMCS activation callback is repeatable and keeps authentication disabled', $activation['status'] === 'success' && strpos($activation['description'], 'No login') !== false && $enabledAfterActivation['setting_value'] === '0');
 $assert('admin addon status clearly says Passkey authentication is disabled', strpos($adminOutput, 'authentication is currently disabled') !== false && strpos($adminOutput, 'session creation') !== false);
 $assert('deactivation preserves credentials, audit events and policies', $deactivation['status'] === 'success' && $beforeDeactivate === $afterDeactivate);
+
+$phase4Policy = new PasskeyLoginPolicy([
+    'service_enabled' => '1',
+    'client_policy' => 'optional',
+    'admin_policy' => 'required',
+    'password_fallback' => 'allowed',
+]);
+$assert('Phase 4 policy keeps client and administrator audiences independently configurable', $phase4Policy->isEnabledFor('client') && $phase4Policy->isEnabledFor('admin') && $phase4Policy->policyFor('client') === 'optional' && $phase4Policy->policyFor('admin') === 'required' && $phase4Policy->passwordFallbackAllowed());
+$disabledPhase4Policy = new PasskeyLoginPolicy([
+    'service_enabled' => '0',
+    'client_policy' => 'optional',
+    'admin_policy' => 'optional',
+    'password_fallback' => 'allowed',
+]);
+$throws('Phase 4 login policy fails closed while the global service switch is off', RuntimeException::class, function () use ($disabledPhase4Policy) {
+    $disabledPhase4Policy->assertLoginAllowed('client');
+});
+$throws('Phase 4 policy rejects unsupported client-user login until its WHMCS handoff is separately designed', RuntimeException::class, function () use ($phase4Policy) {
+    $phase4Policy->assertLoginAllowed('client_user');
+});
+
+$phase4IdentityProvider = new CallbackWhmcsIdentityProvider(function ($userType, $userId) {
+    if (($userType === 'client' && $userId === 91) || ($userType === 'admin' && $userId === 7)) {
+        return ['user_type' => $userType, 'user_id' => $userId, 'loginable' => true];
+    }
+    return null;
+});
+$phase4Handoffs = [];
+$phase4AuthBridge = new CallbackWhmcsAuthBridge(function (WhmcsIdentity $identity, PasskeyLoginContext $context) use (&$phase4Handoffs) {
+    $phase4Handoffs[] = ['identity' => $identity->toArray(), 'context' => $context->toArray()];
+    return $identity->userType() === 'client'
+        ? WhmcsAuthHandoff::twoFactorRequired()
+        : ['status' => WhmcsAuthHandoff::SESSION_ESTABLISHED];
+});
+$phase4Verifier = new class implements PasskeyAssertionVerifierInterface {
+    public $calls = [];
+    public $verified = ['user_type' => 'client', 'user_id' => 91];
+
+    public function finishAuthentication(WebAuthnConfig $config, $userType, $userId, $credentialResponseJson)
+    {
+        $this->calls[] = [$userType, $userId, $credentialResponseJson];
+        return $this->verified;
+    }
+};
+$phase4Coordinator = new PasskeyLoginCoordinator($phase4Verifier, $phase4IdentityProvider, $phase4AuthBridge, $phase4Policy);
+$clientLoginResult = $phase4Coordinator->authenticate(
+    $webAuthnConfig,
+    'client',
+    null,
+    '{"opaque":"browser-assertion"}',
+    [
+        'remember_me' => true,
+        'request_id' => 'client-login-01',
+        'source' => 'client_login',
+        'ip_address' => '203.0.113.10',
+        'user_agent' => 'Phase4 test browser',
+    ]
+);
+$publicClientResult = $clientLoginResult->toPublicArray();
+$assert('Phase 4 discoverable client assertion resolves an existing WHMCS identity and preserves its 2FA handoff', $clientLoginResult->identity()->toArray() === ['user_type' => 'client', 'user_id' => 91] && $clientLoginResult->handoff()->requiresTwoFactor() && $publicClientResult['handoff']['next_step'] === 'two_factor' && !isset($publicClientResult['identity']) && !isset($publicClientResult['session_id']));
+$assert('Phase 4 bridge receives only non-secret context and no assertion payload', count($phase4Handoffs) === 1 && $phase4Handoffs[0]['identity'] === ['user_type' => 'client', 'user_id' => 91] && $phase4Handoffs[0]['context']['remember_me'] === true && !isset($phase4Handoffs[0]['context']['credential_response_json']) && !isset($phase4Handoffs[0]['context']['session_id']));
+$assert('Phase 4 verifier is the only component that receives the browser assertion', count($phase4Verifier->calls) === 1 && $phase4Verifier->calls[0][2] === '{"opaque":"browser-assertion"}');
+
+$phase4Verifier->verified = ['user_type' => 'admin', 'user_id' => 7];
+$throws('Phase 4 client audience rejects an assertion verified for an administrator', RuntimeException::class, function () use ($phase4Coordinator, $webAuthnConfig) {
+    $phase4Coordinator->authenticate($webAuthnConfig, 'client', null, '{"opaque":"cross-audience"}', [
+        'remember_me' => false, 'request_id' => 'client-login-02', 'source' => 'client_login',
+    ]);
+});
+$phase4Verifier->verified = ['user_type' => 'admin', 'user_id' => 7];
+$adminLoginResult = $phase4Coordinator->authenticate(
+    $adminOriginConfig,
+    'admin',
+    7,
+    '{"opaque":"admin-assertion"}',
+    ['remember_me' => false, 'request_id' => 'admin-login-01', 'source' => 'admin_login']
+);
+$assert('Phase 4 administrator credentials stay isolated and use the host handoff without creating a parallel session', $adminLoginResult->identity()->toArray() === ['user_type' => 'admin', 'user_id' => 7] && $adminLoginResult->handoff()->sessionEstablishedValue() && count($phase4Handoffs) === 2);
+$throws('Phase 4 context rejects unsupported credential or session fields', InvalidArgumentException::class, function () {
+    PasskeyLoginContext::fromArray(['remember_me' => false, 'request_id' => 'bad-context', 'source' => 'client_login', 'credential_response_json' => 'secret']);
+});
+$throws('Phase 4 callback handoff rejects a returned session token', RuntimeException::class, function () {
+    $bridge = new CallbackWhmcsAuthBridge(function () {
+        return ['status' => WhmcsAuthHandoff::SESSION_ESTABLISHED, 'session_token' => 'not-accepted'];
+    });
+    $bridge->handoff(new WhmcsIdentity('client', 91), PasskeyLoginContext::fromArray([
+        'remember_me' => false, 'request_id' => 'token-reject', 'source' => 'client_login',
+    ]));
+});
+PasskeyIntegrationRegistry::reset();
+$throws('Phase 4 registry fails closed without explicit WHMCS adapters', RuntimeException::class, function () use ($phase4Verifier, $phase4Policy) {
+    PasskeyIntegrationRegistry::coordinator($phase4Verifier, $phase4Policy);
+});
+PasskeyIntegrationRegistry::configure($phase4IdentityProvider, $phase4AuthBridge);
+$assert('Phase 4 registry accepts only explicit host adapters', PasskeyIntegrationRegistry::isConfigured() && PasskeyIntegrationRegistry::coordinator($phase4Verifier, $phase4Policy) instanceof PasskeyLoginCoordinator);
+PasskeyIntegrationRegistry::reset();
+$throws('WHMCS registration API rejects untyped authentication adapters', InvalidArgumentException::class, function () {
+    cloudhost247passkey_register_auth_integration(new stdClass(), new stdClass());
+});
+cloudhost247passkey_register_auth_integration($phase4IdentityProvider, $phase4AuthBridge);
+$assert('WHMCS registration API exposes the explicit adapter boundary without enabling a session by itself', cloudhost247passkey_auth_integration_configured());
+PasskeyIntegrationRegistry::reset();
+$assert('Phase 4 coordinator does not write a synthetic WHMCS session', !isset($_SESSION['uid']) || (int) $_SESSION['uid'] !== 91);
+
 $composerManifest = json_decode(file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 $assert('Composer manifest pins the audited WebAuthn library and an explicit PSR-7 adapter', isset($composerManifest['require']['web-auth/webauthn-lib'], $composerManifest['require']['nyholm/psr7']) && $composerManifest['require']['web-auth/webauthn-lib'] === '3.3.12' && $composerManifest['require']['nyholm/psr7'] === '^1.8');
 $assert('WebAuthn ceremony service is present but does not alter the WHMCS authentication flow', class_exists(WebAuthnService::class) && method_exists(WebAuthnService::class, 'finishRegistration') && method_exists(WebAuthnService::class, 'finishAuthentication'));
@@ -605,5 +718,11 @@ if ($sessionStarted && session_status() === PHP_SESSION_ACTIVE) {
 }
 echo 'CHECKS=' . $checks . "\n";
 echo 'FAILURES=' . $failures . "\n";
-echo $failures === 0 ? "PASSKEY_PHASE3_CORE_OK\n" : "PASSKEY_PHASE3_CORE_FAILED\n";
+if ($failures === 0) {
+    echo "PASSKEY_PHASE3_CORE_OK\n";
+    echo "PASSKEY_PHASE4_INTEGRATION_OK\n";
+} else {
+    echo "PASSKEY_PHASE3_CORE_FAILED\n";
+    echo "PASSKEY_PHASE4_INTEGRATION_FAILED\n";
+}
 exit($failures === 0 ? 0 : 1);

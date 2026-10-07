@@ -1,5 +1,5 @@
 <?php
-/** Parse and autoload gate for Passkey's shipped Phase 3 files. */
+/** Parse and autoload gate for Passkey's shipped Phase 3 and Phase 4 files. */
 
 require_once dirname(__DIR__) . '/autoload.php';
 
@@ -39,6 +39,10 @@ $classes = [
     'CloudHost247\\Passkey\\Model\\ChallengeRecord',
     'CloudHost247\\Passkey\\Model\\SecurityEventRecord',
     'CloudHost247\\Passkey\\Model\\SettingsRecord',
+    'CloudHost247\\Passkey\\Core\\PasskeyLoginCoordinator',
+    'CloudHost247\\Passkey\\Core\\PasskeyLoginPolicy',
+    'CloudHost247\\Passkey\\Integration\\WhmcsIdentity',
+    'CloudHost247\\Passkey\\Integration\\WhmcsAuthHandoff',
 ];
 foreach ($classes as $class) {
     try {

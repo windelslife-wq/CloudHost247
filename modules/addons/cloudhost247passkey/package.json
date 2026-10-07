@@ -1,9 +1,9 @@
 {
   "name": "cloudhost247-passkey",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Offline database migration, model, and PHP syntax checks for the WHMCS Passkey addon",
+  "description": "Offline WebAuthn core and WHMCS authentication handoff checks for the Passkey addon",
   "scripts": {
     "test": "node tests/run.mjs && node tests/webauthn-integration.mjs",
     "lint": "node tests/lint.mjs"
