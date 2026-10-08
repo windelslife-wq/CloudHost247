@@ -53,6 +53,7 @@ $expectedTables = [
     'deployment_steps', 'deployment_logs', 'created_resources', 'backups', 'subscriptions',
     'order_links', 'payment_events', 'notifications', 'webhook_events', 'health_probes',
     'schedules', 'migrations', 'provider_accounts', 'customer_servers', 'customer_server_events',
+    'panel_accounts', 'panel_account_events',
 ];
 $missing = [];
 foreach ($expectedTables as $table) {
@@ -98,6 +99,7 @@ $mysqlSchemaMigrationIds = [
     '0006_create_operations_tables',
     '0007_create_provider_server_tables',
     '0010_create_panel_catalog_tables',
+    '0011_create_panel_account_workflow',
 ];
 foreach ($migrator->discover() as $definition) {
     if (in_array($definition['id'], $mysqlSchemaMigrationIds, true)) {
@@ -124,13 +126,16 @@ foreach ($mysqlDdlProbe->ddl as $sql) {
         }
     }
 }
-T::is('module DDL declares all expected foreign keys', 19, $foreignKeyCount);
+T::is('module DDL declares all expected foreign keys', 21, $foreignKeyCount);
 T::is('every MySQL FK child column is unsigned', $foreignKeyCount, $unsignedForeignKeyCount);
 T::is('every referenced Blueprint id is unsigned', $foreignKeyCount, $unsignedReferencedIdCount);
 T::ok('legacy FK repair migration is applied by the SQLite harness',
     in_array('0009_align_unsigned_foreign_key_types', $migrator->appliedIds(), true));
 T::ok('the dedicated panel catalog migration is applied by the SQLite harness',
     in_array('0010_create_panel_catalog_tables', $migrator->appliedIds(), true));
+T::ok('the WHMCS-bound panel-account workflow migration is applied by the SQLite harness',
+    in_array('0011_create_panel_account_workflow', $migrator->appliedIds(), true));
+T::ok('the queue has a distinct panel-account reference', $migrator->hasColumn('jobs', 'panel_account_id'));
 
 section('Db layer is parameter bound and refuses unsafe operations');
 

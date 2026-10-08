@@ -36,7 +36,7 @@ function cloudhost247apps_config()
             . 'integrated with WHMCS services, invoices, identity and RBAC.',
         'author' => 'CloudHost247',
         'language' => 'english',
-        'version' => '1.2.0',
+        'version' => '1.3.0',
         'fields' => [
             'bootstrap_admin_id' => [
                 'FriendlyName' => 'Bootstrap administrator ID',
@@ -64,6 +64,12 @@ function cloudhost247apps_config()
                 'Default' => '',
                 'Description' => 'Keep off until a real provider adapter is installed, credentials are encrypted and verified, and staging checks pass.',
             ],
+            'panel_account_workflow_enabled' => [
+                'FriendlyName' => 'cPanel account lifecycle workflow enabled',
+                'Type' => 'yesno',
+                'Default' => '',
+                'Description' => 'Keep off until dedicated cPanel staging validates WHM API permissions and TLS. When enabled, staff may link existing accounts and queue lifecycle actions; customer account creation stays unavailable until secure password/SSO handoff is separately reviewed.',
+            ],
             'debug_logging' => [
                 'FriendlyName' => 'Verbose logging',
                 'Type' => 'yesno',
@@ -85,7 +91,7 @@ function cloudhost247apps_activate()
             'status' => 'success',
             'description' => 'CloudHost247 App Cloud installed. ' . count($result['applied'])
                 . ' migration(s) applied; RBAC seeded without overwriting operator grants.'
-                . ' Application catalog data was not modified. Customer-server provisioning remains disabled by default. Configure '
+                . ' Application catalog data was not modified. Customer-server provisioning and cPanel account workflow remain disabled by default. Configure '
                 . 'CH247APPS_ENCRYPTION_KEY and install a real provider adapter before enabling it.',
         ];
     } catch (\Throwable $e) {
@@ -104,7 +110,7 @@ function cloudhost247apps_deactivate()
 {
     return [
         'status' => 'success',
-        'description' => 'App Cloud deactivated. Queue, provider-account, customer-server, panel-catalog, billing and audit data were preserved.',
+        'description' => 'App Cloud deactivated. Queue, provider-account, customer-server, panel-catalog, panel-account, billing and audit data were preserved.',
     ];
 }
 
@@ -142,6 +148,7 @@ function cloudhost247apps_output($vars)
         }
         $apiUrl = Whmcs::systemUrl('modules/addons/cloudhost247apps/api/index.php?path=/v1');
         $enabled = Settings::bool('customer_server_provisioning_enabled', false);
+        $panelWorkflowEnabled = Settings::bool('panel_account_workflow_enabled', false);
         $keyReady = \Ch247Apps\Core\Crypto::isConfigured();
 
         echo '<div class="panel panel-default"><div class="panel-heading"><strong>CloudHost247 App Cloud</strong></div><div class="panel-body">';
@@ -153,6 +160,8 @@ function cloudhost247apps_output($vars)
             . '">Manage control-panel catalog</a></p>';
         echo '<dl class="dl-horizontal">'
             . '<dt>Customer-server provisioning</dt><dd>' . ($enabled ? 'Enabled' : 'Disabled (safe default)') . '</dd>'
+            . '<dt>cPanel account workflow</dt><dd>' . ($panelWorkflowEnabled
+                ? 'Enabled (staff-only existing accounts; customer creation unavailable)' : 'Disabled (safe default)') . '</dd>'
             . '<dt>Encryption key</dt><dd>' . ($keyReady ? 'Configured' : 'Missing — set CH247APPS_ENCRYPTION_KEY before storing provider credentials') . '</dd>'
             . '<dt>Real provider adapters</dt><dd>' . (int) $installed . ' installed of ' . count($providers) . ' catalog entries</dd>'
             . '<dt>Authenticated API</dt><dd><code>' . htmlspecialchars($apiUrl, ENT_QUOTES, 'UTF-8') . '</code></dd>'
@@ -163,7 +172,7 @@ function cloudhost247apps_output($vars)
         }
         echo '<p>Run a dedicated provisioning worker after installing an audited provider adapter:<br>'
             . '<code>php -q modules/addons/cloudhost247apps/worker/worker.php --queue=provisioning</code></p>';
-        echo '<p>See <code>docs/PHASE2_INFRASTRUCTURE_PROVISIONING.md</code> for the API contract, key handling and worker setup.</p>';
+        echo '<p>See <code>docs/PHASE2_INFRASTRUCTURE_PROVISIONING.md</code> for the API contract, key handling and worker setup. See <code>docs/PHASE4_CPANEL_WORKFLOW.md</code> for the disabled cPanel workflow gates.</p>';
         echo '</div></div>';
     } catch (\Throwable $e) {
         Logger::warning('App Cloud admin landing page was denied or unavailable.', [

@@ -1,8 +1,8 @@
-# Phase 4 — cPanel & WHM adapter (initial implementation slice)
+# Phase 4 — cPanel & WHM adapter
 
-**Status:** the separate adapter contract, registry, and WHM API 1 account-lifecycle implementation are present. This is not yet a customer-facing or production-enabled cPanel workflow.
+**Status:** the separate adapter contract, registry, WHM API 1 account-lifecycle implementation, and staff-only existing-account queue workflow are present. The workflow remains disabled by default and is not a production cPanel claim. See [`PHASE4_CPANEL_WORKFLOW.md`](PHASE4_CPANEL_WORKFLOW.md).
 **Target:** cPanel & WHM, selected for the first Phase 4 adapter.
-**Release:** WHMCS addon version `1.2.0`; upgrade reruns idempotent RBAC seeding for the new panel-account permissions.
+**Release:** WHMCS addon version `1.3.0`; upgrade runs additive panel-account schema migration `0011` and idempotent RBAC seeding.
 **Phase 2 gate:** the project owner confirmed the external Phase 2 validation passed on 2026-10-08. The WHMCS/MySQL/provider evidence is external and is not included in this checkout; the code still contains no infrastructure-provider adapter, so customer-VM provisioning remains disabled.
 
 ## Boundary
@@ -27,14 +27,15 @@ The WHM API transport uses the registered server hostname, fixed HTTPS port 2087
 
 - No cPanel software installer, license activation/renewal service, login/SSO flow, or customer credential-delivery workflow.
 - No UAPI operation is registered yet; domain, email, database, SSL, and WordPress capabilities are not advertised.
-- No WHMCS service-to-panel-account mapping, order/entitlement gate, panel-account table, public API route, admin action, or panel-account worker job is added in this slice. Mutating adapter calls are worker-only and must not be made from an HTTP handler.
+- The follow-up in [`PHASE4_CPANEL_WORKFLOW.md`](PHASE4_CPANEL_WORKFLOW.md) adds a WHMCS-service-bound mapping for **existing** accounts, paid-service validation, staff-only request routes, audit history, and a dedicated `control-panel` worker queue. It does not expose the low-level adapter to HTTP handlers; every WHM mutation still runs in the worker.
+- There is no customer account creation route/job, product-to-package entitlement mapping, customer dashboard/action, login/SSO flow, or credential-delivery method. The new workflow setting defaults off.
 - The low-level `createAccount` method requires a password from trusted caller code and intentionally does not return or persist it. Do not wire it to a queued or customer-facing workflow until account-secret storage/delivery (or a reviewed SSO flow) is designed. The cPanel API has no idempotency-key parameter; the adapter uses username/domain/package reconciliation and refuses mismatched collisions.
 - Offline transport fakes test response parsing and state reconciliation only. No live WHM server or credential was contacted, so no production cPanel integration is claimed.
 
 ## Release gates for an operational cPanel workflow
 
 1. Register a cPanel server through the existing App Cloud server registry and store its `whm_api_token` in the existing encrypted `CredentialVault`, including the WHM username. Worker code must resolve host and credentials from those trusted records; it must never accept a host/token in a job or client payload.
-2. Add a WHMCS-service-bound account model and a queued worker/service path. Re-check WHMCS ownership, service state, and payment/entitlement immediately before account creation or destructive lifecycle calls; keep customer actions disabled until those gates exist.
+2. **Existing-account service binding and queue path implemented** in `PHASE4_CPANEL_WORKFLOW.md`. It requires an active/paid service to link, rechecks owner and service state in the worker, and gates suspend/unsuspend/terminate; account creation remains unavailable. Real contract/staging checks are still required before enabling the workflow.
 3. Design the password/SSO handoff before enabling creation. The password must not be placed in generic queue payloads, audit metadata, logs, or customer-facing job results.
 4. Validate permissions and TLS against a dedicated cPanel staging host, including verify, list, create/retry, suspend, unsuspend, and terminate/absence. Keep test credentials outside source control and preserve a reversible recovery plan before testing destructive operations.
 5. Add only UAPI methods with confirmed endpoint contracts and scoped credentials; leave unsupported operations absent from the registry capability map.
@@ -48,4 +49,4 @@ npm test
 npm run lint
 ```
 
-The new offline suite is `tests/08_ControlPanelAdapterTest.php`. It uses the shared HTTP fake and asserts response verification, TLS and credential handling, no false success, safe state read-back, write-ahead auditing, and the separation from application deployment. Latest local validation: `npm test` → `TOTAL PASS=1107 FAIL=0`; `npm run lint` → `FILES=86 BAD=0`; `git diff --check` passed. These offline results do not replace real cPanel staging validation.
+Offline coverage is in `tests/08_ControlPanelAdapterTest.php` and `tests/09_PanelAccountWorkflowTest.php`. It uses fake HTTP/WHMCS boundaries and checks response verification, TLS/credential handling, service ownership and payment gates, safe read-back, write-ahead auditing, queue isolation, and the separation from application deployment. Final offline totals are recorded in [`HOSTING_CONTROL_PLANE_AUDIT.md`](HOSTING_CONTROL_PLANE_AUDIT.md); they do not replace real cPanel staging validation.

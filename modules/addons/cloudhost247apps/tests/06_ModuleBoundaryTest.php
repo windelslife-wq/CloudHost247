@@ -18,9 +18,10 @@ Harness::boot();
 section('WHMCS addon configuration matches fail-closed defaults');
 $config = cloudhost247apps_config();
 T::is('addon identity is registered with WHMCS', 'CloudHost247 App Cloud', $config['name']);
-T::is('Phase 4 panel permissions ship in a WHMCS addon upgrade', '1.2.0', $config['version']);
+T::is('Phase 4 service-bound panel workflow ships in a WHMCS addon upgrade', '1.3.0', $config['version']);
 T::is('unmapped admin default matches staff RBAC', 'staff', $config['fields']['default_admin_role']['Default']);
 T::is('customer VM provisioning is disabled in module config', '', $config['fields']['customer_server_provisioning_enabled']['Default']);
+T::is('cPanel account workflow is disabled in module config', '', $config['fields']['panel_account_workflow_enabled']['Default']);
 
 section('Activation and upgrade are additive and rerunnable');
 $account = (new ProviderAccountService(Harness::adminActor(1, Actor::ROLE_SUPER_ADMIN)))->create([
@@ -30,7 +31,8 @@ $activation = cloudhost247apps_activate();
 T::is('WHMCS activation succeeds against migrated schema', 'success', $activation['status']);
 T::ok('activation leaves provider-account data intact', Db::first('provider_accounts', ['id' => (int) $account['id']]) !== null);
 T::ok('activation preserves the distinct customer-server table', Db::tableExists('customer_servers'));
-T::ok('activation reports provisioning stays disabled', strpos($activation['description'], 'remains disabled by default') !== false);
+T::ok('activation creates the WHMCS-bound panel-account workflow table', Db::tableExists('panel_accounts'));
+T::ok('activation reports both service workflows stay disabled by default', strpos($activation['description'], 'cPanel account workflow remain disabled by default') !== false);
 T::is('staff panel-account view permission is seeded read-only', 1,
     (int) Db::first('role_permissions', ['role' => Actor::ROLE_STAFF, 'permission' => Rbac::PANEL_ACCOUNT_VIEW])['granted']);
 T::is('admin panel-account manage permission is seeded', 1,
@@ -40,7 +42,7 @@ T::is('admin termination permission stays denied', 0,
 T::is('super-admin termination permission is seeded', 1,
     (int) Db::first('role_permissions', ['role' => Actor::ROLE_SUPER_ADMIN, 'permission' => Rbac::PANEL_ACCOUNT_TERMINATE])['granted']);
 
-$upgrade = cloudhost247apps_upgrade(['version' => '1.2.0']);
+$upgrade = cloudhost247apps_upgrade(['version' => '1.3.0']);
 T::ok('WHMCS upgrade callback is rerunnable', Db::tableExists('customer_servers'));
 T::ok('upgrade preserves provider-account data', Db::first('provider_accounts', ['id' => (int) $account['id']]) !== null);
 
@@ -49,6 +51,7 @@ $deactivation = cloudhost247apps_deactivate();
 T::is('deactivation is successful', 'success', $deactivation['status']);
 T::ok('deactivation does not drop provider-account records', Db::first('provider_accounts', ['id' => (int) $account['id']]) !== null);
 T::ok('deactivation does not drop customer-server schema', Db::tableExists('customer_servers'));
+T::ok('deactivation preserves panel-account history schema', Db::tableExists('panel_account_events'));
 
 section('WHMCS admin landing page discloses actual integration readiness');
 Identity::override(Harness::adminActor(1, Actor::ROLE_SUPER_ADMIN));
@@ -60,6 +63,8 @@ T::contains('readiness page clearly warns that no adapter is installed',
     'No real infrastructure-provider adapter is registered.', $output);
 T::contains('readiness page exposes the fail-closed error code', 'PROVIDER_UNAVAILABLE', $output);
 T::contains('readiness page does not claim provisioning is enabled', 'Disabled (safe default)', $output);
+T::contains('readiness page discloses the safe cPanel workflow default',
+    'cPanel account workflow</dt><dd>Disabled (safe default)</dd>', $output);
 
 section('Customer panel catalog uses WHMCS client-area routing and remains read-only');
 Identity::override(Actor::guest());

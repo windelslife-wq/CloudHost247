@@ -10,6 +10,7 @@
  *   /usr/bin/php -q /path/to/whmcs/modules/addons/cloudhost247apps/worker/worker.php
  *   /usr/bin/php -q .../worker/worker.php --queue=deployment --batch=5 --runtime=300
  *   /usr/bin/php -q .../worker/worker.php --queue=provisioning --batch=2
+ *   /usr/bin/php -q .../worker/worker.php --queue=control-panel --batch=2
  *   /usr/bin/php -q .../worker/worker.php --once          # single pass (cron fallback)
  *
  * Options:
@@ -42,6 +43,7 @@ use Ch247Apps\Core\Clock;
 use Ch247Apps\Core\Db;
 use Ch247Apps\Core\Logger;
 use Ch247Apps\Core\Settings;
+use Ch247Apps\ControlPanels\PanelAccountWorker;
 use Ch247Apps\Deployments\JobQueue;
 use Ch247Apps\Deployments\Orchestrator;
 use Ch247Apps\Infrastructure\JobDispatcher;
@@ -97,8 +99,9 @@ $queue = new JobQueue();
 $orchestrator = new Orchestrator($actor, null, $queue);
 $serverProvisioningWorker = new ServerProvisioningWorker($actor, $queue);
 $providerAccountVerifyWorker = new ProviderAccountVerifyWorker($actor, $queue);
+$panelAccountWorker = new PanelAccountWorker($actor, $queue);
 $dispatcher = new JobDispatcher($orchestrator, $serverProvisioningWorker,
-    $providerAccountVerifyWorker, $queue);
+    $providerAccountVerifyWorker, $queue, $panelAccountWorker);
 
 $started = Clock::timestamp();
 $summary = [

@@ -24,10 +24,13 @@ platform specification maps onto it, and the phased build order.
 > **Phase numbering/status note — 2026-10-08:** This legacy App Platform plan uses
 > “Phase 3” for Billing and contains older “delivered” claims that the source audit
 > disproved. The active Hosting Control Plane sequence uses “Phase 3” for the panel
-> metadata catalog and “Phase 4” for the first cPanel/WHM adapter slice. The cPanel
-> slice is not yet a customer-facing or production-enabled workflow; details are in
-> [`PHASE3_PANEL_CATALOG.md`](PHASE3_PANEL_CATALOG.md) and
-> [`PHASE4_CPANEL_ADAPTER.md`](PHASE4_CPANEL_ADAPTER.md). Phase 2's owner-confirmed
+> metadata catalog and “Phase 4” for the cPanel/WHM adapter plus staff-only queued
+> workflow for existing accounts bound to paid WHMCS services. The workflow is
+> disabled by default, does not create accounts or deliver passwords, and does not
+> claim that WHM is available on any server. Details are in
+> [`PHASE3_PANEL_CATALOG.md`](PHASE3_PANEL_CATALOG.md),
+> [`PHASE4_CPANEL_ADAPTER.md`](PHASE4_CPANEL_ADAPTER.md), and
+> [`PHASE4_CPANEL_WORKFLOW.md`](PHASE4_CPANEL_WORKFLOW.md). Phase 2's owner-confirmed
 > external pass is not equivalent to a production provider adapter in this checkout.
 
 ---

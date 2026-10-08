@@ -111,6 +111,12 @@ $vpsServer = (new ServerService($serverAdmin))->register([
 T::throws('a VPS cannot be used as a cPanel endpoint', ConfigurationException::class, function () use ($vpsServer) {
     (new ControlPanelConnectionFactory(Actor::system('WHM adapter test worker')))->forServer((int) $vpsServer['id']);
 });
+$originalCpanelStatus = (string) Db::first('servers', ['id' => (int) $cpanelServer['id']])['status'];
+Db::update('servers', ['status' => ServerService::STATUS_DISABLED], ['id' => (int) $cpanelServer['id']]);
+T::throws('an operator-disabled WHM server cannot resolve credentials', ConfigurationException::class, function () use ($cpanelServer) {
+    (new ControlPanelConnectionFactory(Actor::system('WHM adapter test worker')))->forServer((int) $cpanelServer['id']);
+});
+Db::update('servers', ['status' => $originalCpanelStatus], ['id' => (int) $cpanelServer['id']]);
 
 section('WHM API calls use the registered host, encrypted-token contract, and verified TLS');
 

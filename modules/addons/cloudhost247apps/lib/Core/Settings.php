@@ -43,6 +43,7 @@ class Settings
         'kubernetes_enabled'          => '0',   // Phase 6: off until a cluster is registered
         'cpanel_enabled'              => '1',
         'customer_server_provisioning_enabled' => '0', // off until a real provider adapter is installed and verified
+        'panel_account_workflow_enabled' => '0', // off until WHM staging is validated; customer account creation remains separately gated
         'provider_poll_interval_seconds' => '15',
         'provider_operation_poll_limit' => '120',
         'debug_logging'               => '0',

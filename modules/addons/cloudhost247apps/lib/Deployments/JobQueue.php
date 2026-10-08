@@ -57,6 +57,10 @@ class JobQueue
     const TYPE_SERVER_RESIZE     = 'server_resize';
     const TYPE_SERVER_DELETE     = 'server_delete';
     const TYPE_PROVIDER_ACCOUNT_VERIFY = 'provider_account_verify';
+    const TYPE_PANEL_ACCOUNT_VERIFY = 'panel_account_verify';
+    const TYPE_PANEL_ACCOUNT_SUSPEND = 'panel_account_suspend';
+    const TYPE_PANEL_ACCOUNT_UNSUSPEND = 'panel_account_unsuspend';
+    const TYPE_PANEL_ACCOUNT_TERMINATE = 'panel_account_terminate';
 
     const TYPES = [
         self::TYPE_INSTALL, self::TYPE_DESTROY, self::TYPE_START, self::TYPE_STOP, self::TYPE_RESTART,
@@ -66,6 +70,8 @@ class JobQueue
         self::TYPE_SERVER_CREATE, self::TYPE_SERVER_POLL, self::TYPE_SERVER_REBOOT,
         self::TYPE_SERVER_POWER_ON, self::TYPE_SERVER_POWER_OFF, self::TYPE_SERVER_REBUILD,
         self::TYPE_SERVER_RESIZE, self::TYPE_SERVER_DELETE, self::TYPE_PROVIDER_ACCOUNT_VERIFY,
+        self::TYPE_PANEL_ACCOUNT_VERIFY, self::TYPE_PANEL_ACCOUNT_SUSPEND,
+        self::TYPE_PANEL_ACCOUNT_UNSUSPEND, self::TYPE_PANEL_ACCOUNT_TERMINATE,
     ];
 
     /** Queues are kept separate: App Cloud target jobs never provision customer VMs. */
@@ -73,6 +79,7 @@ class JobQueue
     const QUEUE_MAINTENANCE = 'maintenance';
     const QUEUE_NOTIFICATION = 'notification';
     const QUEUE_PROVISIONING = 'provisioning';
+    const QUEUE_CONTROL_PANEL = 'control-panel';
 
     const STATUS_QUEUED    = 'queued';
     const STATUS_LEASED    = 'leased';
@@ -100,7 +107,7 @@ class JobQueue
      * @param array $options queue, priority, available_at, max_attempts,
      *                       idempotency_key, installation_id, deployment_id,
      *                       server_id (App Cloud target), customer_server_id,
-     *                       provider_account_id, whmcs_service_id, client_id, requested_by
+     *                       provider_account_id, panel_account_id, whmcs_service_id, client_id, requested_by
      * @return array the job row (an existing live job when the key matches)
      */
     public function enqueue($type, array $payload = [], array $options = [])
@@ -148,6 +155,7 @@ class JobQueue
             'server_id' => isset($options['server_id']) ? (int) $options['server_id'] : null,
             'customer_server_id' => isset($options['customer_server_id']) ? (int) $options['customer_server_id'] : null,
             'provider_account_id' => isset($options['provider_account_id']) ? (int) $options['provider_account_id'] : null,
+            'panel_account_id' => isset($options['panel_account_id']) ? (int) $options['panel_account_id'] : null,
             'whmcs_service_id' => isset($options['whmcs_service_id']) ? (int) $options['whmcs_service_id'] : null,
             'client_id' => isset($options['client_id']) ? (int) $options['client_id'] : null,
             'requested_by' => isset($options['requested_by']) ? Str::clip((string) $options['requested_by'], 120) : null,
@@ -163,6 +171,7 @@ class JobQueue
             'deployment_id' => isset($options['deployment_id']) ? (int) $options['deployment_id'] : null,
             'customer_server_id' => isset($options['customer_server_id']) ? (int) $options['customer_server_id'] : null,
             'provider_account_id' => isset($options['provider_account_id']) ? (int) $options['provider_account_id'] : null,
+            'panel_account_id' => isset($options['panel_account_id']) ? (int) $options['panel_account_id'] : null,
             'whmcs_service_id' => isset($options['whmcs_service_id']) ? (int) $options['whmcs_service_id'] : null,
             'client_id' => isset($options['client_id']) ? (int) $options['client_id'] : null]);
 
@@ -213,6 +222,11 @@ class JobQueue
             // deployment-target `server_id` namespace.
             if (!empty($candidate['customer_server_id']) && $this->hasLiveSibling('customer_server_id',
                 (int) $candidate['customer_server_id'], (int) $candidate['id'])) {
+                continue;
+            }
+            // cPanel account mutations are serialised independently of customer VMs.
+            if (!empty($candidate['panel_account_id']) && $this->hasLiveSibling('panel_account_id',
+                (int) $candidate['panel_account_id'], (int) $candidate['id'])) {
                 continue;
             }
             $ok = Db::compareAndSet('jobs', [
@@ -531,6 +545,7 @@ class JobQueue
             'server_id' => $row['server_id'] ? (int) $row['server_id'] : null,
             'customer_server_id' => !empty($row['customer_server_id']) ? (int) $row['customer_server_id'] : null,
             'provider_account_id' => !empty($row['provider_account_id']) ? (int) $row['provider_account_id'] : null,
+            'panel_account_id' => !empty($row['panel_account_id']) ? (int) $row['panel_account_id'] : null,
             'whmcs_service_id' => !empty($row['whmcs_service_id']) ? (int) $row['whmcs_service_id'] : null,
             'client_id' => $row['client_id'] ? (int) $row['client_id'] : null,
             'requested_by' => isset($row['requested_by']) ? $row['requested_by'] : null,
@@ -613,6 +628,7 @@ class JobQueue
             'server_id' => $row['server_id'] ? (int) $row['server_id'] : null,
             'customer_server_id' => !empty($row['customer_server_id']) ? (int) $row['customer_server_id'] : null,
             'provider_account_id' => !empty($row['provider_account_id']) ? (int) $row['provider_account_id'] : null,
+            'panel_account_id' => !empty($row['panel_account_id']) ? (int) $row['panel_account_id'] : null,
             'whmcs_service_id' => !empty($row['whmcs_service_id']) ? (int) $row['whmcs_service_id'] : null,
             'client_id' => $row['client_id'] ? (int) $row['client_id'] : null,
         ];

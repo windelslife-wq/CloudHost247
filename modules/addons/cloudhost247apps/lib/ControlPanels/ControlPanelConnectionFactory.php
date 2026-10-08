@@ -41,7 +41,10 @@ class ControlPanelConnectionFactory
         AgentClient::assertWorkerContext();
         Rbac::assert($this->actor, Rbac::SERVER_VIEW);
         $server = $this->servers->row((int) $serverId);
-        if ((string) $server['server_type'] !== 'cpanel' || empty($server['cpanel_enabled'])) {
+        $supportedTypes = [ServerService::TYPE_CPANEL, ServerService::TYPE_SHARED];
+        if (!in_array((string) $server['server_type'], $supportedTypes, true)
+            || empty($server['cpanel_enabled'])
+            || in_array((string) $server['status'], [ServerService::STATUS_DISABLED, ServerService::STATUS_MAINTENANCE], true)) {
             throw new ConfigurationException('The selected server is not enabled for cPanel operations.', [
                 'server_id' => (int) $server['id'], 'error_code' => 'CPANEL_SERVER_DISABLED',
             ]);

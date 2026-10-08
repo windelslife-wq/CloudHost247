@@ -30,6 +30,7 @@ use Ch247Apps\Core\RateLimiter;
 use Ch247Apps\Core\Rbac;
 use Ch247Apps\Core\Str;
 use Ch247Apps\Core\ValidationException;
+use Ch247Apps\ControlPanels\PanelAccountService;
 use Ch247Apps\Deployments\JobQueue;
 use Ch247Apps\Infrastructure\CustomerServerService;
 use Ch247Apps\Infrastructure\ProviderAccountService;
@@ -151,6 +152,55 @@ class InfrastructureApi
                 'replayed' => !empty($run['replayed'])]);
         }
 
+        if ($path === '/v1/panel-accounts' && $method === 'GET') {
+            $this->authorize(Rbac::PANEL_ACCOUNT_VIEW);
+            return self::response(200, ['data' => (new PanelAccountService($this->actor))->listing()]);
+        }
+        if ($path === '/v1/panel-accounts' && $method === 'POST') {
+            $this->authorize(Rbac::PANEL_ACCOUNT_MANAGE);
+            foreach (array_keys($input) as $field) {
+                if (!in_array((string) $field, ['service_id', 'server_id', 'username', 'domain', 'package'], true)) {
+                    throw new ValidationException('Unsupported panel-account binding field.', ['field' => (string) $field]);
+                }
+            }
+            $account = [];
+            foreach (['username', 'domain', 'package'] as $field) {
+                if (array_key_exists($field, $input)) {
+                    $account[$field] = $input[$field];
+                }
+            }
+            $identifiers = [];
+            foreach (['service_id', 'server_id'] as $field) {
+                $raw = isset($input[$field]) ? $input[$field] : null;
+                if (!is_int($raw) && !is_string($raw)) {
+                    throw new ValidationException('A positive numeric identifier is required.', ['field' => $field]);
+                }
+                $raw = (string) $raw;
+                $value = filter_var($raw, FILTER_VALIDATE_INT);
+                if (!preg_match('/^[0-9]+$/D', $raw) || $value === false || (int) $value <= 0) {
+                    throw new ValidationException('A positive numeric identifier is required.', ['field' => $field]);
+                }
+                $identifiers[$field] = (int) $value;
+            }
+            $result = (new PanelAccountService($this->actor))->bindExistingAccount(
+                $identifiers['service_id'], $identifiers['server_id'],
+                $account, self::idempotencyKey($headers)
+            );
+            return self::response(202, ['data' => $result]);
+        }
+        if (preg_match('#^/v1/panel-accounts/([0-9]+)$#', $path, $match) && $method === 'GET') {
+            $this->authorize(Rbac::PANEL_ACCOUNT_VIEW);
+            return self::response(200, ['data' => (new PanelAccountService($this->actor))->get((int) $match[1])]);
+        }
+        if (preg_match('#^/v1/panel-accounts/([0-9]+)/actions$#', $path, $match) && $method === 'POST') {
+            $action = isset($input['action']) && is_scalar($input['action']) ? (string) $input['action'] : '';
+            $this->authorize(PanelAccountService::permissionForAction($action));
+            $result = (new PanelAccountService($this->actor))->requestAction(
+                (int) $match[1], $input, self::idempotencyKey($headers)
+            );
+            return self::response(202, ['data' => $result]);
+        }
+
         if ($path === '/v1/servers' && $method === 'GET') {
             $this->authorize($this->actor->isCustomer()
                 ? Rbac::CUSTOMER_SERVER_VIEW_OWN : Rbac::CUSTOMER_SERVER_VIEW_ALL);
@@ -208,14 +258,19 @@ class InfrastructureApi
             // Job client_id is a snapshot; verify the live WHMCS service owner too.
             (new CustomerServerService($this->actor))->get((int) $row['customer_server_id']);
         } else {
-            if (!empty($row['customer_server_id'])) {
+            if (!empty($row['panel_account_id'])) {
+                $this->authorize(Rbac::PANEL_ACCOUNT_VIEW);
+                (new PanelAccountService($this->actor))->get((int) $row['panel_account_id']);
+            } elseif (!empty($row['customer_server_id'])) {
                 $permission = Rbac::CUSTOMER_SERVER_VIEW_ALL;
+                $this->authorize($permission);
             } elseif (!empty($row['provider_account_id'])) {
                 $permission = Rbac::PROVIDER_ACCOUNT_VIEW;
+                $this->authorize($permission);
             } else {
                 $permission = Rbac::DEPLOYMENT_VIEW_ALL;
+                $this->authorize($permission);
             }
-            $this->authorize($permission);
         }
         $present = (new JobQueue())->present($row);
         if ($this->actor->isCustomer()) {

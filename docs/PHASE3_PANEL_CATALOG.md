@@ -32,7 +32,7 @@ Module-owned foreign keys connect categories, panels, and plans. The WHMCS produ
 - Product capability flags describe catalog metadata only. They do not advertise CloudHost247 operations as implemented.
 - License model, terms, and URLs are metadata only. No key is stored and no license provider is called.
 - A future real integration requires a separate reviewed control-panel adapter/registry and contract tests. Only then may availability be represented as deployable; it must not be inferred from catalog publication.
-- Phase 2's external validation was owner-confirmed passed, but the provider-provisioning kill switch remains disabled because this checkout has no production provider adapter. The first Phase 4 cPanel/WHM adapter slice is tracked separately in [`PHASE4_CPANEL_ADAPTER.md`](PHASE4_CPANEL_ADAPTER.md).
+- Phase 2's external validation was owner-confirmed passed, but the provider-provisioning kill switch remains disabled because this checkout has no production provider adapter. The Phase 4 cPanel/WHM adapter and WHMCS-bound existing-account workflow are tracked separately in [`PHASE4_CPANEL_ADAPTER.md`](PHASE4_CPANEL_ADAPTER.md) and [`PHASE4_CPANEL_WORKFLOW.md`](PHASE4_CPANEL_WORKFLOW.md).
 
 ## Validation
 
