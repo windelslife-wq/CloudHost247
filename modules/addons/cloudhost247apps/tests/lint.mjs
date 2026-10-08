@@ -17,6 +17,7 @@ import { fileURLToPath } from 'url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const moduleRoot = path.resolve(here, '..');
+const cloudflareRoot = path.resolve(moduleRoot, '../cloudhost247cloudflare');
 
 const alloc = new ProcessIdAllocator();
 const id = await loadNodeRuntime('8.3', {
@@ -30,6 +31,7 @@ try {
   /* already present */
 }
 await php.mount('/app', createNodeFsMountHandler(moduleRoot));
+await php.mount('/cloudflare', createNodeFsMountHandler(cloudflareRoot));
 
 let res;
 try {

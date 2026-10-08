@@ -66,7 +66,7 @@ class AccountRepository
         if (!$account || (empty($account['enabled']) && !$allowDisabled)) throw new ConfigurationException('Cloudflare account is disabled or missing.');
         if (empty($account['encrypted_api_token'])) throw new ConfigurationException();
         $token = Crypto::open($account['encrypted_api_token']);
-        $client = new CloudflareClient($account['api_base_url'], $token, (int) $account['id'], $context);
+        $client = new CloudflareClient($account['api_base_url'], $token, (int) $account['id'], $context, $this->transport);
         return [new CloudflareApi($client, $account['account_id']), $account];
     }
     public function test($id)

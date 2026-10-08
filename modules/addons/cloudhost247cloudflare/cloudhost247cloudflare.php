@@ -13,11 +13,15 @@ function cloudhost247cloudflare_config()
     return [
         'name' => 'CloudHost247 Cloudflare',
         'description' => 'Cloudflare service provisioning and customer management integrated with WHMCS products, invoices, domains, addons and hosting services.',
-        'author' => 'CloudHost247', 'language' => 'english', 'version' => '1.0.0',
+        'author' => 'CloudHost247', 'language' => 'english', 'version' => '1.0.3',
         'fields' => [
             'service_enabled' => [
                 'FriendlyName' => 'Cloudflare integration enabled', 'Type' => 'yesno', 'Default' => '',
                 'Description' => 'Master switch. Configure encrypted Cloudflare accounts and WHMCS package mappings in the module before enabling live provisioning.',
+            ],
+            'dns_inventory_adapter_enabled' => [
+                'FriendlyName' => 'Internal read-only DNS inventory adapter enabled', 'Type' => 'yesno', 'Default' => '',
+                'Description' => 'Separate default-off gate for the internal, customer-service-scoped DNS inventory adapter. This adds no customer or App Cloud route and performs no call until an authorized internal caller invokes it.',
             ],
         ],
     ];

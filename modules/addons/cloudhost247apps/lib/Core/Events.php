@@ -131,6 +131,8 @@ class Events
                     'installation_id' => isset($scope['installation_id']) ? (int) $scope['installation_id'] : null,
                     'deployment_id' => isset($scope['deployment_id']) ? (int) $scope['deployment_id'] : null,
                     'server_id' => isset($scope['server_id']) ? (int) $scope['server_id'] : null,
+                    'customer_server_id' => isset($scope['customer_server_id']) ? (int) $scope['customer_server_id'] : null,
+                    'panel_account_id' => isset($scope['panel_account_id']) ? (int) $scope['panel_account_id'] : null,
                     'client_id' => isset($scope['client_id']) ? (int) $scope['client_id'] : null,
                     'payload' => $payload ? Str::jsonEncode($payload) : null,
                     'source' => Str::clip(isset($scope['source']) ? $scope['source'] : 'platform', 40),
@@ -173,7 +175,7 @@ class Events
     public static function since($afterId, array $scope = [], $limit = 200)
     {
         $where = ['id' => ['>', (int) $afterId]];
-        foreach (['installation_id', 'deployment_id', 'server_id', 'client_id'] as $key) {
+        foreach (['installation_id', 'deployment_id', 'server_id', 'customer_server_id', 'panel_account_id', 'client_id'] as $key) {
             if (!empty($scope[$key])) {
                 $where[$key] = (int) $scope[$key];
             }

@@ -13,6 +13,7 @@ require_once __DIR__ . '/bootstrap.php';
 
 use Ch247Apps\Core\Actor;
 use Ch247Apps\Core\Audit;
+use Ch247Apps\Core\Blueprint;
 use Ch247Apps\Core\AuthorizationException;
 use Ch247Apps\Core\Clock;
 use Ch247Apps\Core\ConfigurationException;
@@ -45,12 +46,14 @@ section('Migrations create the whole schema');
 $expectedTables = [
     'settings', 'role_permissions', 'audit_logs', 'idempotency_keys', 'rate_limits',
     'events', 'logs', 'api_tokens', 'categories', 'applications', 'application_versions',
+    'panel_categories', 'control_panels', 'control_panel_plans',
     'application_compatibility', 'application_dependencies', 'plans', 'servers',
     'server_credentials', 'agents', 'agent_nonces', 'metrics', 'domains', 'installations',
     'installation_domains', 'environment', 'volumes', 'certificates', 'jobs', 'deployments',
     'deployment_steps', 'deployment_logs', 'created_resources', 'backups', 'subscriptions',
     'order_links', 'payment_events', 'notifications', 'webhook_events', 'health_probes',
-    'schedules', 'migrations',
+    'schedules', 'migrations', 'provider_accounts', 'customer_servers', 'customer_server_events',
+    'panel_accounts', 'panel_account_events',
 ];
 $missing = [];
 foreach ($expectedTables as $table) {
@@ -64,6 +67,75 @@ $migrator = new Migrator(dirname(__DIR__) . '/install/migrations');
 $second = $migrator->migrate();
 T::is('migrations are idempotent (nothing applied twice)', 0, count($second['applied']));
 T::ok('the ledger records the migrations', count($second['skipped']) >= 6);
+
+// Render the production MySQL DDL from the same historical migration callbacks
+// without needing a MySQL server, then audit every declared module FK column.
+$mysqlDdlProbe = new class extends Migrator {
+    public $ddl = [];
+
+    public function create($logicalName, callable $definition)
+    {
+        $blueprint = new Blueprint(Db::t($logicalName));
+        $definition($blueprint);
+        $this->ddl[$logicalName] = implode("\n", $blueprint->createSql('mysql'));
+        return $this;
+    }
+
+    public function addColumn($logicalName, $column, $definitionSql)
+    {
+        return $this;
+    }
+
+    public function addIndex($logicalName, array $columns, $unique = false, $name = null)
+    {
+        return $this;
+    }
+};
+$mysqlSchemaMigrationIds = [
+    '0002_create_catalog_tables',
+    '0003_create_infrastructure_tables',
+    '0004_create_installation_tables',
+    '0005_create_deployment_tables',
+    '0006_create_operations_tables',
+    '0007_create_provider_server_tables',
+    '0010_create_panel_catalog_tables',
+    '0011_create_panel_account_workflow',
+];
+foreach ($migrator->discover() as $definition) {
+    if (in_array($definition['id'], $mysqlSchemaMigrationIds, true)) {
+        call_user_func($definition['up'], $mysqlDdlProbe);
+    }
+}
+$foreignKeyCount = 0;
+$unsignedForeignKeyCount = 0;
+$unsignedReferencedIdCount = 0;
+foreach ($mysqlDdlProbe->ddl as $sql) {
+    preg_match_all('/FOREIGN KEY \\(`([A-Za-z_][A-Za-z0-9_]*)`\\) REFERENCES `([^`]+)` \\(`id`\\)/',
+        $sql, $foreignKeys, PREG_SET_ORDER);
+    foreach ($foreignKeys as $foreignKey) {
+        $foreignKeyCount++;
+        $column = preg_quote('`' . $foreignKey[1] . '`', '/');
+        if (preg_match('/^\\s*' . $column . ' BIGINT UNSIGNED\\b/m', $sql)) {
+            $unsignedForeignKeyCount++;
+        }
+        $parentLogical = substr($foreignKey[2], strlen(Db::PREFIX));
+        if (isset($mysqlDdlProbe->ddl[$parentLogical])
+            && preg_match('/^\\s*`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT\\b/m',
+                $mysqlDdlProbe->ddl[$parentLogical])) {
+            $unsignedReferencedIdCount++;
+        }
+    }
+}
+T::is('module DDL declares all expected foreign keys', 21, $foreignKeyCount);
+T::is('every MySQL FK child column is unsigned', $foreignKeyCount, $unsignedForeignKeyCount);
+T::is('every referenced Blueprint id is unsigned', $foreignKeyCount, $unsignedReferencedIdCount);
+T::ok('legacy FK repair migration is applied by the SQLite harness',
+    in_array('0009_align_unsigned_foreign_key_types', $migrator->appliedIds(), true));
+T::ok('the dedicated panel catalog migration is applied by the SQLite harness',
+    in_array('0010_create_panel_catalog_tables', $migrator->appliedIds(), true));
+T::ok('the WHMCS-bound panel-account workflow migration is applied by the SQLite harness',
+    in_array('0011_create_panel_account_workflow', $migrator->appliedIds(), true));
+T::ok('the queue has a distinct panel-account reference', $migrator->hasColumn('jobs', 'panel_account_id'));
 
 section('Db layer is parameter bound and refuses unsafe operations');
 
@@ -131,6 +203,8 @@ T::is('a documented default is returned when unset', '/opt/cloudhost247/apps', S
 T::is('int cast', 7, Settings::int('grace_period_days'));
 T::ok('bool cast', Settings::bool('install_requires_paid_order'));
 T::ok('bool cast of a false default', !Settings::bool('kubernetes_enabled'));
+T::is('default admin role fallback matches the module configuration', 'staff', Settings::get('default_admin_role'));
+T::is('unmapped WHMCS admins receive the staff role', Actor::ROLE_STAFF, Identity::adminRole(77));
 
 putenv('CH247APPS_GRACE_PERIOD_DAYS=21');
 Settings::resetOverrides();
@@ -180,6 +254,13 @@ $index = Crypto::blindIndex('Agent-Key-1', 'agents.secret');
 T::is('blind indexes are stable', $index, Crypto::blindIndex('agent-key-1', 'agents.secret'));
 T::isnt('blind indexes are context bound', $index, Crypto::blindIndex('agent-key-1', 'other.context'));
 T::is('blind indexes do not reveal the value', null, Crypto::blindIndex('', 'agents.secret'));
+$keyedFingerprint = Crypto::keyedFingerprint('low-entropy-secret', 'api-idempotency');
+T::is('keyed fingerprints are stable for idempotent retries', $keyedFingerprint,
+    Crypto::keyedFingerprint('low-entropy-secret', 'api-idempotency'));
+T::isnt('keyed fingerprints are separated by context', $keyedFingerprint,
+    Crypto::keyedFingerprint('low-entropy-secret', 'other-purpose'));
+T::isnt('keyed fingerprints distinguish different secrets', $keyedFingerprint,
+    Crypto::keyedFingerprint('different-secret', 'api-idempotency'));
 
 $signature = Crypto::signMessage('shared-secret', 'POST', '/agent/v1/docker/up', '{"a":1}', 1700000000, 'nonce-1');
 T::ok('a signature verifies', Crypto::verifySignature($signature, 'shared-secret', 'POST', '/agent/v1/docker/up', '{"a":1}', 1700000000, 'nonce-1'));
@@ -209,20 +290,26 @@ T::ok('a customer may manage their own installation', $customer->can(Rbac::INSTA
 T::ok('a customer may not register servers', !$customer->can(Rbac::SERVER_MANAGE));
 T::ok('a customer may not publish applications', !$customer->can(Rbac::APP_PUBLISH));
 T::ok('a customer may not read the audit log', !$customer->can(Rbac::AUDIT_VIEW));
+T::ok('a customer may browse panel catalog metadata', $customer->can(Rbac::PANEL_CATALOG_VIEW));
+T::ok('a customer may not manage panel catalog records', !$customer->can(Rbac::PANEL_CATALOG_MANAGE));
 
 T::ok('staff may read deployments', $staff->can(Rbac::DEPLOYMENT_VIEW_ALL));
 T::ok('staff may not manage servers', !$staff->can(Rbac::SERVER_MANAGE));
 T::ok('staff may not write server credentials', !$staff->can(Rbac::SERVER_CREDENTIAL_WRITE));
 T::ok('staff may not publish', !$staff->can(Rbac::APP_PUBLISH));
 T::ok('staff may not change settings', !$staff->can(Rbac::SETTINGS_MANAGE));
+T::ok('staff may browse panel metadata', $staff->can(Rbac::PANEL_CATALOG_VIEW));
+T::ok('staff may not edit panel metadata', !$staff->can(Rbac::PANEL_CATALOG_MANAGE));
 
 T::ok('an admin may manage servers', $admin->can(Rbac::SERVER_MANAGE));
 T::ok('an admin may publish applications', $admin->can(Rbac::APP_PUBLISH));
+T::ok('an admin may manage panel catalog records', $admin->can(Rbac::PANEL_CATALOG_MANAGE));
 T::ok('an admin may not change RBAC', !$admin->can(Rbac::RBAC_MANAGE));
 T::ok('an admin may not change platform settings', !$admin->can(Rbac::SETTINGS_MANAGE));
 
 T::ok('a super admin may change settings', $super->can(Rbac::SETTINGS_MANAGE));
 T::ok('a super admin may rotate credentials', $super->can(Rbac::SERVER_CREDENTIAL_ROTATE));
+T::ok('a super admin may manage panel catalog records', $super->can(Rbac::PANEL_CATALOG_MANAGE));
 
 T::ok('the system actor may drive deployments', $system->can(Rbac::DEPLOYMENT_RETRY));
 T::ok('the system actor may not publish', !$system->can(Rbac::APP_PUBLISH));
@@ -234,6 +321,8 @@ T::ok('an agent may not manage servers', !$agent->can(Rbac::SERVER_MANAGE));
 T::ok('an agent may not delete installations', !$agent->can(Rbac::INSTALL_DELETE));
 
 T::ok('a guest may browse the catalog', $guest->can(Rbac::APP_VIEW));
+T::ok('a guest may browse published panel metadata', $guest->can(Rbac::PANEL_CATALOG_VIEW));
+T::ok('a guest may not manage the panel catalog', !$guest->can(Rbac::PANEL_CATALOG_MANAGE));
 T::ok('a guest may not install', !$guest->can(Rbac::APP_INSTALL));
 T::ok('a guest may not view anything else', !$guest->can(Rbac::DEPLOYMENT_VIEW_ALL));
 

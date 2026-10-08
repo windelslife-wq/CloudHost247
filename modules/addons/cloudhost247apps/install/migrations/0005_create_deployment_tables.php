@@ -60,7 +60,7 @@ return [
             $t->id();
             $t->string('uuid', 36);
             $t->string('reference', 40);                       // DEP-XXXXXXXX
-            $t->bigInteger('installation_id', false, 0);
+            $t->unsignedBigInteger('installation_id', false, 0);
             $t->bigInteger('server_id', true);
             $t->bigInteger('job_id', true);
             // install|start|stop|restart|update|backup|restore|reinstall|uninstall|
@@ -101,7 +101,7 @@ return [
         /* --------------------------------------------- deployment steps -- */
         $m->create('deployment_steps', function (Blueprint $t) {
             $t->id();
-            $t->bigInteger('deployment_id', false, 0);
+            $t->unsignedBigInteger('deployment_id', false, 0);
             $t->integer('step_order', false, 0);
             $t->string('name', 120);                           // "Pull image", "Configure Traefik", …
             $t->string('key', 80);                             // stable machine key, e.g. pull_image
@@ -129,7 +129,7 @@ return [
         // because it is high-volume and short-lived.
         $m->create('deployment_logs', function (Blueprint $t) {
             $t->id();
-            $t->bigInteger('deployment_id', false, 0);
+            $t->unsignedBigInteger('deployment_id', false, 0);
             $t->bigInteger('step_id', true);
             $t->string('level', 10, false, 'info');
             $t->string('source', 30, false, 'worker');         // worker|agent|adapter|docker|traefik|cpanel|kubernetes
@@ -145,7 +145,7 @@ return [
         // left behind unrecorded (specification §14).
         $m->create('created_resources', function (Blueprint $t) {
             $t->id();
-            $t->bigInteger('deployment_id', false, 0);
+            $t->unsignedBigInteger('deployment_id', false, 0);
             $t->bigInteger('installation_id', true);
             $t->bigInteger('server_id', true);
             // container|compose_project|network|volume|database|database_user|

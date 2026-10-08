@@ -208,11 +208,62 @@ class PaymentException extends AppsException
     protected $status = 402;
 }
 
-/** cPanel/WHM/UAPI failures. */
+/** No real adapter is installed for a provider or requested operation. */
+class ProviderUnavailableException extends AppsException
+{
+    protected $code_name = 'PROVIDER_UNAVAILABLE';
+    protected $status = 503;
+}
+
+/** A requested control-panel adapter or individual operation is not implemented. */
+class PanelAdapterUnavailableException extends AppsException
+{
+    protected $code_name = 'PANEL_ADAPTER_UNAVAILABLE';
+    protected $status = 503;
+}
+
+/** Provider account, encryption key, or provisioning switch is not ready. */
+class ProviderConfigurationException extends AppsException
+{
+    protected $code_name = 'CONFIGURATION_REQUIRED';
+    protected $status = 503;
+}
+
+/** Provider rejected credentials; credentials are never included in the message/context. */
+class ProviderAuthenticationException extends AppsException
+{
+    protected $code_name = 'AUTHENTICATION_FAILED';
+    protected $status = 502;
+}
+
+/** Provider operation failed; retryability is decided by a concrete subclass. */
+class ProviderOperationException extends AppsException
+{
+    protected $code_name = 'PROVISIONING_FAILED';
+    protected $status = 502;
+}
+
+class RetryableProviderException extends ProviderOperationException
+{
+    protected $code_name = 'SERVICE_UNAVAILABLE';
+
+    public function isRetryable()
+    {
+        return true;
+    }
+}
+
+/** cPanel/WHM/UAPI failures; permanent API rejections do not retry by default. */
 class CpanelException extends AppsException
 {
     protected $code_name = 'CPANEL_PROVISIONING_FAILED';
     protected $status = 502;
+}
+
+/** Transport/server failures that can safely be retried after state reconciliation. */
+class RetryableCpanelException extends CpanelException
+{
+    protected $code_name = 'CPANEL_TEMPORARILY_UNAVAILABLE';
 
     public function isRetryable()
     {

@@ -26,6 +26,12 @@ class Rbac
     // Catalog (customer + public)
     const APP_VIEW                = 'app.view';
     const APP_INSTALL             = 'app.install';
+    const PANEL_CATALOG_VIEW      = 'panel_catalog.view';
+    const PANEL_CATALOG_MANAGE    = 'panel_catalog.manage';
+    const PANEL_ACCOUNT_VIEW      = 'panel_account.view';
+    const PANEL_ACCOUNT_MANAGE    = 'panel_account.manage';
+    const PANEL_ACCOUNT_TERMINATE = 'panel_account.terminate';
+    const PANEL_ACCOUNT_VERIFY   = 'panel_account.verify';
 
     // Installation management (own resources)
     const INSTALL_VIEW_OWN        = 'installation.view.own';
@@ -75,6 +81,17 @@ class Rbac
     const AGENT_VIEW              = 'agent.view';
     const AGENT_MANAGE            = 'agent.manage';
 
+    // Customer-owned infrastructure VMs and provider accounts (separate from
+    // App Cloud deployment targets and their agents).
+    const CUSTOMER_SERVER_VIEW_OWN = 'customer_server.view.own';
+    const CUSTOMER_SERVER_VIEW_ALL = 'customer_server.view.all';
+    const CUSTOMER_SERVER_MANAGE   = 'customer_server.manage';
+    const PROVIDER_ACCOUNT_VIEW     = 'provider_account.view';
+    const PROVIDER_ACCOUNT_MANAGE   = 'provider_account.manage';
+    const PROVIDER_CREDENTIAL_WRITE = 'provider_account.credential.write';
+    const PROVIDER_CREDENTIAL_ROTATE= 'provider_account.credential.rotate';
+    const PROVIDER_ACCOUNT_VERIFY  = 'provider_account.verify';
+
     // Admin: customers, billing, domains, backups, monitoring, audit, settings
     const CUSTOMER_VIEW           = 'customer.view';
     const CUSTOMER_SUSPEND        = 'customer.suspend';
@@ -94,7 +111,7 @@ class Rbac
     /** Shipped role → permission matrix. */
     const MATRIX = [
         Actor::ROLE_CUSTOMER => [
-            self::APP_VIEW, self::APP_INSTALL,
+            self::APP_VIEW, self::APP_INSTALL, self::PANEL_CATALOG_VIEW,
             self::INSTALL_VIEW_OWN, self::INSTALL_START, self::INSTALL_STOP, self::INSTALL_RESTART,
             self::INSTALL_UPDATE, self::INSTALL_DELETE, self::INSTALL_BACKUP, self::INSTALL_RESTORE,
             self::INSTALL_ENV_WRITE, self::INSTALL_ENV_READ, self::INSTALL_LOGS_VIEW,
@@ -102,23 +119,30 @@ class Rbac
             self::INSTALL_SETTINGS_WRITE,
             self::DOMAIN_VIEW_OWN, self::DOMAIN_MANAGE_OWN,
             self::BILLING_VIEW_OWN, self::BILLING_CHECKOUT,
+            self::CUSTOMER_SERVER_VIEW_OWN,
         ],
         // Read-only operations staff: can look at everything, change nothing.
         Actor::ROLE_STAFF => [
-            self::APP_VIEW, self::APP_VIEW_ALL, self::DEPLOYMENT_VIEW_ALL, self::SERVER_VIEW,
+            self::APP_VIEW, self::PANEL_CATALOG_VIEW, self::PANEL_ACCOUNT_VIEW,
+            self::APP_VIEW_ALL, self::DEPLOYMENT_VIEW_ALL, self::SERVER_VIEW,
+            self::CUSTOMER_SERVER_VIEW_ALL, self::PROVIDER_ACCOUNT_VIEW,
             self::AGENT_VIEW, self::CUSTOMER_VIEW, self::BILLING_VIEW_ALL, self::DOMAIN_VIEW_ALL,
             self::BACKUP_VIEW_ALL, self::MONITORING_VIEW, self::AUDIT_VIEW, self::INSTALL_LOGS_VIEW,
             self::INSTALL_METRICS_VIEW, self::MANIFEST_VALIDATE,
         ],
         // Day-to-day administrators: catalog, deployments, servers, customers.
         Actor::ROLE_ADMIN => [
-            self::APP_VIEW, self::APP_VIEW_ALL, self::APP_MANAGE, self::APP_VERSION_MANAGE,
+            self::APP_VIEW, self::PANEL_CATALOG_VIEW, self::PANEL_CATALOG_MANAGE,
+            self::PANEL_ACCOUNT_VIEW, self::PANEL_ACCOUNT_MANAGE, self::PANEL_ACCOUNT_VERIFY,
+            self::APP_VIEW_ALL, self::APP_MANAGE, self::APP_VERSION_MANAGE,
             self::MANIFEST_UPLOAD, self::MANIFEST_VALIDATE, self::APP_TEST_DEPLOY, self::APP_APPROVE,
             self::APP_PUBLISH, self::APP_SUSPEND,
             self::DEPLOYMENT_VIEW_ALL, self::DEPLOYMENT_CANCEL, self::DEPLOYMENT_RETRY,
             self::DEPLOYMENT_ROLLBACK,
             self::SERVER_VIEW, self::SERVER_MANAGE, self::SERVER_CREDENTIAL_WRITE,
             self::SERVER_CREDENTIAL_ROTATE, self::AGENT_VIEW, self::AGENT_MANAGE,
+            self::CUSTOMER_SERVER_VIEW_ALL, self::CUSTOMER_SERVER_MANAGE,
+            self::PROVIDER_ACCOUNT_VIEW, self::PROVIDER_ACCOUNT_MANAGE,
             self::CUSTOMER_VIEW, self::CUSTOMER_SUSPEND, self::BILLING_VIEW_ALL, self::PLAN_MANAGE,
             self::DOMAIN_VIEW_ALL, self::DOMAIN_MANAGE_ALL, self::BACKUP_VIEW_ALL, self::BACKUP_MANAGE,
             self::MONITORING_VIEW, self::AUDIT_VIEW,
@@ -127,13 +151,19 @@ class Rbac
         ],
         // Service owner: everything, including RBAC and platform settings.
         Actor::ROLE_SUPER_ADMIN => [
-            self::APP_VIEW, self::APP_VIEW_ALL, self::APP_MANAGE, self::APP_VERSION_MANAGE,
+            self::APP_VIEW, self::PANEL_CATALOG_VIEW, self::PANEL_CATALOG_MANAGE,
+            self::PANEL_ACCOUNT_VIEW, self::PANEL_ACCOUNT_MANAGE,
+            self::PANEL_ACCOUNT_TERMINATE, self::PANEL_ACCOUNT_VERIFY,
+            self::APP_VIEW_ALL, self::APP_MANAGE, self::APP_VERSION_MANAGE,
             self::MANIFEST_UPLOAD, self::MANIFEST_VALIDATE, self::APP_TEST_DEPLOY, self::APP_APPROVE,
             self::APP_PUBLISH, self::APP_SUSPEND,
             self::DEPLOYMENT_VIEW_ALL, self::DEPLOYMENT_CANCEL, self::DEPLOYMENT_RETRY,
             self::DEPLOYMENT_ROLLBACK,
             self::SERVER_VIEW, self::SERVER_MANAGE, self::SERVER_CREDENTIAL_WRITE,
             self::SERVER_CREDENTIAL_ROTATE, self::AGENT_VIEW, self::AGENT_MANAGE,
+            self::CUSTOMER_SERVER_VIEW_ALL, self::CUSTOMER_SERVER_MANAGE,
+            self::PROVIDER_ACCOUNT_VIEW, self::PROVIDER_ACCOUNT_MANAGE,
+            self::PROVIDER_CREDENTIAL_WRITE, self::PROVIDER_CREDENTIAL_ROTATE, self::PROVIDER_ACCOUNT_VERIFY,
             self::CUSTOMER_VIEW, self::CUSTOMER_SUSPEND, self::CUSTOMER_MANAGE,
             self::BILLING_VIEW_ALL, self::PLAN_MANAGE,
             self::DOMAIN_VIEW_ALL, self::DOMAIN_MANAGE_ALL, self::BACKUP_VIEW_ALL, self::BACKUP_MANAGE,
@@ -149,7 +179,7 @@ class Rbac
         Actor::ROLE_SYSTEM => [],
         // Server agent: reports state, executes dispatched operations only.
         Actor::ROLE_AGENT => [],
-        Actor::ROLE_GUEST => [self::APP_VIEW],
+        Actor::ROLE_GUEST => [self::APP_VIEW, self::PANEL_CATALOG_VIEW],
     ];
 
     /** @var array|null role => permission[] loaded from the database */
@@ -221,7 +251,7 @@ class Rbac
 
     public static function allows(Actor $actor, $permission)
     {
-        if (!$actor->isAuthenticated() && $permission !== self::APP_VIEW) {
+        if (!$actor->isAuthenticated() && !in_array($permission, [self::APP_VIEW, self::PANEL_CATALOG_VIEW], true)) {
             return false;
         }
         $role = $actor->role;
@@ -234,9 +264,9 @@ class Rbac
         if ($actor->isAgent()) {
             return in_array($permission, self::agentGrants(), true);
         }
-        if ($permission === self::APP_VIEW) {
-            // The catalog is public marketing content; a signed-out visitor may
-            // browse it but never install or manage anything.
+        if (in_array($permission, [self::APP_VIEW, self::PANEL_CATALOG_VIEW], true)) {
+            // Published catalogs are public read-only marketing content; a
+            // signed-out visitor may browse but never install or manage records.
             return true;
         }
         return in_array($permission, self::grants($role), true);
@@ -267,6 +297,10 @@ class Rbac
             self::INSTALL_LOGS_VIEW, self::INSTALL_METRICS_VIEW, self::INSTALL_SSL_MANAGE,
             self::INSTALL_DOMAIN_MANAGE, self::DEPLOYMENT_VIEW_ALL, self::DEPLOYMENT_RETRY,
             self::DEPLOYMENT_ROLLBACK, self::SERVER_VIEW, self::AGENT_VIEW, self::MONITORING_VIEW,
+            self::PANEL_ACCOUNT_VIEW, self::PANEL_ACCOUNT_MANAGE,
+            self::PANEL_ACCOUNT_TERMINATE, self::PANEL_ACCOUNT_VERIFY,
+            self::CUSTOMER_SERVER_VIEW_ALL, self::CUSTOMER_SERVER_MANAGE,
+            self::PROVIDER_ACCOUNT_VIEW, self::PROVIDER_ACCOUNT_VERIFY,
             self::BACKUP_VIEW_ALL, self::DOMAIN_VIEW_ALL, self::BILLING_VIEW_ALL, self::APP_VIEW_ALL,
             self::MANIFEST_VALIDATE,
         ];

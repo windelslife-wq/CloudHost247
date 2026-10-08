@@ -20,7 +20,7 @@ if (!defined('CH247APPS_ROOT')) {
     define('CH247APPS_ROOT', __DIR__);
 }
 if (!defined('CH247APPS_VERSION')) {
-    define('CH247APPS_VERSION', '1.0.0');
+    define('CH247APPS_VERSION', '1.9.2');
 }
 if (!defined('CH247APPS_MANIFEST_PATH')) {
     define('CH247APPS_MANIFEST_PATH', __DIR__ . '/manifests');

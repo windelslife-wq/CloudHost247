@@ -209,6 +209,15 @@ class FakeGateway implements GatewayInterface
         return $this;
     }
 
+    /** Change the WHMCS service owner to exercise ownership-transfer gates. */
+    public function setServiceOwner($serviceId, $clientId)
+    {
+        if (isset($this->fixtures['services'][(int) $serviceId])) {
+            $this->fixtures['services'][(int) $serviceId]['userid'] = (int) $clientId;
+        }
+        return $this;
+    }
+
     public function addDomain(array $domain)
     {
         $domain += [
@@ -340,6 +349,7 @@ class FakeGateway implements GatewayInterface
             'userid' => isset($params['clientid']) ? (int) $params['clientid'] : 0,
             'packageid' => isset($params['pid']) ? (int) $params['pid'] : 0,
             'domain' => isset($params['domain']) ? (string) $params['domain'] : '',
+            'orderid' => $orderId,
             'domainstatus' => 'Pending',
         ]);
         $this->fixtures['orders'][$orderId] = [

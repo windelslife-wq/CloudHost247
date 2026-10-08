@@ -213,6 +213,17 @@ class Crypto
         return hash_hmac('sha256', $context . "\0" . $normalised, self::key());
     }
 
+    /** Keyed digest for sensitive idempotency material without an offline verifier. */
+    public static function keyedFingerprint($value, $context)
+    {
+        $context = trim((string) $context);
+        if ($context === '') {
+            throw new ConfigurationException('A context is required for a keyed fingerprint.');
+        }
+        $key = hash_hkdf('sha256', self::key(), 32, 'ch247apps.fingerprint.v1|' . $context);
+        return hash_hmac('sha256', (string) $value, $key);
+    }
+
     /* ------------------------------------------------------- agent signing -- */
 
     /**

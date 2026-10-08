@@ -8,6 +8,27 @@
 
 require_once dirname(__DIR__) . '/autoload.php';
 
+// Phases 11–13 reuse the legacy Cloudflare API boundary and add the App Cloud DNS bridge.
+if (is_file('/cloudflare/autoload.php')) {
+    require_once '/cloudflare/autoload.php';
+    foreach ([
+        'CloudHost247\\Cloudflare\\Provider\\CloudflareClient',
+        'CloudHost247\\Cloudflare\\Provider\\CloudflareApi',
+        'CloudHost247\\Cloudflare\\Repository\\AccountRepository',
+        'CloudHost247\\Cloudflare\\Service\\IntegrationStatus',
+        'CloudHost247\\Cloudflare\\Service\\DnsInventoryService',
+        'Ch247Apps\\Domains\\DnsInventoryProviderRegistry',
+        'Ch247Apps\\Domains\\CloudflareDnsInventoryAdapter',
+    ] as $cloudflareClass) {
+        if (!class_exists($cloudflareClass)) {
+            throw new RuntimeException('The compatibility class did not autoload: ' . $cloudflareClass);
+        }
+    }
+    if (!interface_exists('Ch247Apps\\Domains\\DnsInventoryProviderInterface')) {
+        throw new RuntimeException('The DNS inventory provider contract did not autoload.');
+    }
+}
+
 $moduleRoot = dirname(__DIR__);
 
 $files = [];

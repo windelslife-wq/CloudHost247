@@ -55,8 +55,8 @@ return [
             $t->string('reference', 40);                     // APP-XXXXXXXX shown to customers
             $t->string('uuid', 36);
             $t->bigInteger('customer_id', false, 0);         // tblclients.id
-            $t->bigInteger('application_id', false, 0);
-            $t->bigInteger('application_version_id', false, 0);
+            $t->unsignedBigInteger('application_id', false, 0);
+            $t->unsignedBigInteger('application_version_id', false, 0);
             $t->bigInteger('server_id', true);
             $t->bigInteger('plan_id', true);
             $t->string('name', 160);                         // customer chosen label
@@ -118,8 +118,8 @@ return [
         /* ---------------------------------------------- installation ↔ domain -- */
         $m->create('installation_domains', function (Blueprint $t) {
             $t->id();
-            $t->bigInteger('installation_id', false, 0);
-            $t->bigInteger('domain_id', false, 0);
+            $t->unsignedBigInteger('installation_id', false, 0);
+            $t->unsignedBigInteger('domain_id', false, 0);
             $t->boolean('primary_domain', 0);
             $t->string('path_prefix', 100, true);            // for path-based routing
             $t->string('status', 20, false, 'pending');      // pending|active|failed|removed
@@ -134,7 +134,7 @@ return [
         // rows are never returned in plaintext by any API or portal response.
         $m->create('environment', function (Blueprint $t) {
             $t->id();
-            $t->bigInteger('installation_id', false, 0);
+            $t->unsignedBigInteger('installation_id', false, 0);
             $t->string('env_key', 128);
             $t->longText('encrypted_value');
             $t->integer('key_version', false, 1);
@@ -152,7 +152,7 @@ return [
         /* -------------------------------------------------------------- volumes -- */
         $m->create('volumes', function (Blueprint $t) {
             $t->id();
-            $t->bigInteger('installation_id', false, 0);
+            $t->unsignedBigInteger('installation_id', false, 0);
             $t->string('name', 160);
             $t->string('service', 80, true);                 // compose service the volume belongs to
             $t->string('mount_path', 255);

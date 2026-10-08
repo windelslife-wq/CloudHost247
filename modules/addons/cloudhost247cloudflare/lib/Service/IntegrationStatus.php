@@ -19,4 +19,22 @@ class IntegrationStatus
     {
         if (!self::enabled()) throw new \CloudHost247\Cloudflare\Core\ConfigurationException('Cloudflare integration is disabled or not configured.');
     }
+    public static function dnsInventoryAdapterEnabled()
+    {
+        try {
+            $row = Db::firstQuery('SELECT value FROM tbladdonmodules WHERE module=? AND setting=? LIMIT 1',
+                ['cloudhost247cloudflare', 'dns_inventory_adapter_enabled']);
+        } catch (\Throwable $e) {
+            return false;
+        }
+        return $row !== null && in_array(strtolower((string) $row['value']), ['1', 'yes', 'on', 'true'], true);
+    }
+    public static function requireDnsInventoryAdapterEnabled()
+    {
+        if (!self::dnsInventoryAdapterEnabled()) {
+            throw new \CloudHost247\Cloudflare\Core\ConfigurationException(
+                'The Cloudflare DNS inventory adapter is disabled.'
+            );
+        }
+    }
 }
