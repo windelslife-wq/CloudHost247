@@ -2,7 +2,7 @@
 
 **Status:** the service-bound existing-account workflow and dedicated queue/worker path are implemented. The workflow is **disabled by default** and is not a production cPanel integration claim.
 **Release:** WHMCS addon version `1.3.0`; migration `0011_create_panel_account_workflow` is additive.
-**Safety gate:** no live cPanel server or credential was used. Keep `panel_account_workflow_enabled` off until the dedicated WHM staging checks in [`PHASE4_CPANEL_ADAPTER.md`](PHASE4_CPANEL_ADAPTER.md) pass.
+**Safety gate:** no live cPanel server or credential was used. Keep `panel_account_workflow_enabled` off until the dedicated WHM staging checks in [`PHASE4_CPANEL_STAGING.md`](PHASE4_CPANEL_STAGING.md) pass.
 
 ## Scope and source-of-truth rules
 

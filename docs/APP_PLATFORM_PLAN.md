@@ -30,7 +30,9 @@ platform specification maps onto it, and the phased build order.
 > claim that WHM is available on any server. Details are in
 > [`PHASE3_PANEL_CATALOG.md`](PHASE3_PANEL_CATALOG.md),
 > [`PHASE4_CPANEL_ADAPTER.md`](PHASE4_CPANEL_ADAPTER.md), and
-> [`PHASE4_CPANEL_WORKFLOW.md`](PHASE4_CPANEL_WORKFLOW.md). Phase 2's owner-confirmed
+> [`PHASE4_CPANEL_WORKFLOW.md`](PHASE4_CPANEL_WORKFLOW.md). The staging procedure in
+> [`PHASE4_CPANEL_STAGING.md`](PHASE4_CPANEL_STAGING.md) is prepared but unexecuted.
+> Phase 2's owner-confirmed
 > external pass is not equivalent to a production provider adapter in this checkout.
 
 ---
