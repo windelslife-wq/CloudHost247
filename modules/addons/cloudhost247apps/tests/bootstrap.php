@@ -216,6 +216,8 @@ class Harness
         Whmcs::reset();
         // A fake adapter from a previous scenario must never leak into this one.
         \Ch247Apps\Adapters\AdapterFactory::reset();
+        \Ch247Apps\Infrastructure\ProviderRegistry::reset();
+        \Ch247Apps\Infrastructure\ProviderBootstrap::reset();
         $_SESSION = [];
         $_SERVER = ['REMOTE_ADDR' => '203.0.113.7', 'REQUEST_METHOD' => 'GET'];
         $_REQUEST = [];

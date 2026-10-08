@@ -1,9 +1,11 @@
 # CloudHost247 — module inventory
 
-All **20** modules below were delivered as ZIP archives in the repository root.
-The archives have been extracted into their proper WHMCS locations and the
-archives themselves removed. One further addon, `domainbroker`, was written
-for this repository rather than imported — see `docs/DOMAIN_BROKER.md`.
+The table below inventories addon module directories in this checkout. Some
+were imported from source archives; others were written or substantially
+extended in-repo. This repository is a WHMCS overlay, and a module's presence
+does not by itself mean that it is configured or live in production. The
+source-verified status of the App Cloud control-plane foundation is in
+[`HOSTING_CONTROL_PLANE_AUDIT.md`](HOSTING_CONTROL_PLANE_AUDIT.md).
 
 ## Addon modules — `modules/addons/`
 
@@ -20,6 +22,9 @@ for this repository rather than imported — see `docs/DOMAIN_BROKER.md`.
 | `xtreme_currency_rates` | `xtreme_currency_rates_6.0.zip` | Automatic currency exchange rates. ionCube-encoded; requires the ionCube Loader. |
 | `domainbroker` | *written in-repo* | **Domain Broker Service** — brokered domain acquisition: negotiation, escrowed payment, transfer tracking, verification, disputes, fees, reporting, REST API. Customer portal, broker desk and admin console. Activate to run its migrations. Full write-up in `docs/DOMAIN_BROKER.md`. |
 | `cloudhost247ai` | *written in-repo* | **CloudHost247 AI control plane** — one shared AI operating layer: 9 Tier-A agents, read-only grounded tools over live WHMCS data + the real platform diagnostics, dual-RBAC permissions, approval engine (dormant in Phase 1), hash-chained audit, INSERT-only event capture with cron drain, RAG knowledge base, deterministic daily briefings, fail-closed model router (self-hosted vLLM/Ollama supported), plus the embedded AI Support Operator (deterministic guest-capable chat grounded on public knowledge + the live catalog, escalating into real WHMCS tickets with transcript, presence-driven handoff, newsletter bridge with local fallback). Runbook: `docs/AI_CONTROL_PLANE.md`; architecture: `docs/AI_PLATFORM_PLAN.md`. |
+| `cloudhost247apps` | *written in-repo; Phase 2 boundary + Phase 3 catalog + Phase 4 cPanel adapter slice* | App Cloud catalog/deployment core plus a WHMCS addon entry point, authenticated REST API, RBAC, encrypted provider-account credentials, separate WHMCS-service-bound customer VM model, additive migrations and provisioning-queue worker dispatch. Phase 3 adds separate panel-category/catalog/plan records, an admin catalog manager, and a record-driven client-area marketplace; published panels/plans remain metadata-only, with no checkout, installer, or license integration. Phase 4 adds a separate cPanel/WHM account-adapter contract and worker-only WHM API implementation; it is not an application deployer or customer-facing production workflow, and UAPI, panel installation, and licensing are not implemented. No real infrastructure-provider adapter is registered, so customer VM provisioning remains disabled and fails with `PROVIDER_UNAVAILABLE` rather than simulating success. The owner confirmed Phase 2 live WHMCS/MySQL and provider validation passed, but evidence is not in this repo and no production provider adapter is registered here; provisioning remains disabled. The earlier waiver authorized Phase 3 only; the owner separately confirmed the gate before Phase 4. See [`PHASE2_INFRASTRUCTURE_PROVISIONING.md`](PHASE2_INFRASTRUCTURE_PROVISIONING.md), [`PHASE3_PANEL_CATALOG.md`](PHASE3_PANEL_CATALOG.md), [`PHASE4_CPANEL_ADAPTER.md`](PHASE4_CPANEL_ADAPTER.md), and the [`Phase 1 audit`](HOSTING_CONTROL_PLANE_AUDIT.md). |
+| `cloudhost247cloudflare` | *written in-repo* | Cloudflare-specific WHMCS services: encrypted Cloudflare accounts, product mappings, linked customer services, zone/DNS record operations, provider job queue, audit/logs, and admin/customer surfaces. It is not a generic DNS-provider abstraction. |
+| `cloudhost247services` | *written in-repo* | WHMCS platform-services addon covering domain valuation/auctions, Discount Domain Club, TLD catalog, WHOIS, service requests, Logo Studio, AI website-builder shell, unified inbox, staff dashboards, consent and HostX menu/sitemap integration. See its addon README and `docs/OPERATIONS.md`. |
 | `cloudhost247marketing` | *written in-repo* | **CloudHost247 Email Marketing** — campaign builder and sender: subscribers, lists, tags, CSV import and dynamic WHMCS segments; 14 content blocks and 14 seeded templates rendered to Outlook-safe HTML; merge-tag personalisation validated before send; queue + cron delivery with retries, backoff, rate limits, leases and a kill switch; SMTP / HTTP-provider / WHMCS / dry-run transports; open, click, bounce, unsubscribe and complaint tracking with a click map and per-recipient reports; suppression list, one-click unsubscribe and a hash-chained audit trail; event-triggered automations including abandoned-cart recovery. Runbook: `docs/EMAIL_MARKETING.md`. |
 | `soyoustart` | `WGS-OVH-v8.0.8-Sourcecode.zip` | WGS OVH / SoYouStart **admin** addon: API consumer setup, product & price settings, order management, existing-server import, server status, email templates. |
 | `cloudhost247passkey` | *written in-repo* | **CloudHost247 Passkey** — native WebAuthn/FIDO2 passwordless login for clients and administrators: registration, multi-device management, enforcement policies, step-up sensitive-action confirmation, Passkey-assisted password reset, activity logs, login notifications, admin dashboard, and optional Entra ID settings. Disabled by default; password login and 2FA remain. Full write-up in `docs/PASSKEY.md`. |
@@ -29,6 +34,7 @@ for this repository rather than imported — see `docs/DOMAIN_BROKER.md`.
 
 | Directory | Source archive | Notes |
 |---|---|---|
+| `cloudhost247cloudflare` | *written in-repo* | WHMCS provisioning module for the Cloudflare service addon; product/server lifecycle calls are implemented under `modules/servers/cloudhost247cloudflare/`. |
 | `RDP` | `RDP.zip` | RDP/VPS reseller provisioning (`WHMCS\Module\Server\RDP\Helper`). |
 | `hostx_email` | `WHMCS Email Hosting Module.zip` | Email hosting provisioning + webhook endpoint. |
 | `cloudhost247_lteproxy` | `cloudhost247_lteproxy.zip` | CloudHost247 LTE proxy reseller provisioning, with AJAX endpoints under `ajax/`. |

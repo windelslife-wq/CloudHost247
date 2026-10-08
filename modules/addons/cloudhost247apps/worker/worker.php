@@ -9,6 +9,7 @@
  *
  *   /usr/bin/php -q /path/to/whmcs/modules/addons/cloudhost247apps/worker/worker.php
  *   /usr/bin/php -q .../worker/worker.php --queue=deployment --batch=5 --runtime=300
+ *   /usr/bin/php -q .../worker/worker.php --queue=provisioning --batch=2
  *   /usr/bin/php -q .../worker/worker.php --once          # single pass (cron fallback)
  *
  * Options:
@@ -43,6 +44,10 @@ use Ch247Apps\Core\Logger;
 use Ch247Apps\Core\Settings;
 use Ch247Apps\Deployments\JobQueue;
 use Ch247Apps\Deployments\Orchestrator;
+use Ch247Apps\Infrastructure\JobDispatcher;
+use Ch247Apps\Infrastructure\ProviderBootstrap;
+use Ch247Apps\Infrastructure\ProviderAccountVerifyWorker;
+use Ch247Apps\Infrastructure\ServerProvisioningWorker;
 use Ch247Apps\Servers\AgentAuthenticator;
 
 if (PHP_SAPI !== 'cli' && !defined('WHMCS')) {
@@ -86,9 +91,14 @@ if (!Settings::bool('worker_enabled', true)) {
     exit(1);
 }
 
+ProviderBootstrap::boot();
 $actor = Actor::system('Worker ' . $options['worker-id']);
 $queue = new JobQueue();
 $orchestrator = new Orchestrator($actor, null, $queue);
+$serverProvisioningWorker = new ServerProvisioningWorker($actor, $queue);
+$providerAccountVerifyWorker = new ProviderAccountVerifyWorker($actor, $queue);
+$dispatcher = new JobDispatcher($orchestrator, $serverProvisioningWorker,
+    $providerAccountVerifyWorker, $queue);
 
 $started = Clock::timestamp();
 $summary = [
@@ -159,7 +169,7 @@ while (!$stop && (Clock::timestamp() - $started) < $options['runtime']) {
         $jobId = (int) $job['id'];
         $say('Job #' . $jobId . ' (' . $job['job_type'] . ') attempt ' . ((int) $job['attempts'] + 1) . '.');
         try {
-            $result = $orchestrator->runJob($job);
+            $result = $dispatcher->runJob($job);
             if (isset($result['status']) && $result['status'] === 'completed') {
                 $summary['completed']++;
                 $say('Job #' . $jobId . ' completed.');

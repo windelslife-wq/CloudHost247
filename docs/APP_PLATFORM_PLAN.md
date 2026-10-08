@@ -4,6 +4,32 @@ This is the plan required before any code was written. It records what the
 repository actually is, what already exists and must be reused, where the
 platform specification maps onto it, and the phased build order.
 
+> **Source audit notice — 2026-10-07:** The “delivered” labels and component
+> inventory below do not match the source tree audited on that date. In particular,
+> the addon entry point, API, agent ingress/daemon, admin/customer portals,
+> cPanel/Kubernetes adapters, and several paths in the proposed file layout were
+> absent. Treat those sections as an earlier plan, not proof of shipped or
+> deployable functionality. The baseline status is documented in
+> [`HOSTING_CONTROL_PLANE_AUDIT.md`](HOSTING_CONTROL_PLANE_AUDIT.md).
+>
+> **Phase 2 update — 2026-10-08:** The WHMCS addon lifecycle and authenticated
+> provider/server API boundary, encrypted provider-account model, separate
+> customer-owned VM schema, and provisioning queue dispatch are now present.
+> The project owner confirmed the external Phase 2 WHMCS/MySQL and provider-validation
+> gate passed on 2026-10-08, but the evidence is not in this repository. No production
+> provider adapter is registered here, so customer VM provisioning stays disabled
+> and fails clearly rather than returning simulated success. See
+> [`PHASE2_INFRASTRUCTURE_PROVISIONING.md`](PHASE2_INFRASTRUCTURE_PROVISIONING.md).
+>
+> **Phase numbering/status note — 2026-10-08:** This legacy App Platform plan uses
+> “Phase 3” for Billing and contains older “delivered” claims that the source audit
+> disproved. The active Hosting Control Plane sequence uses “Phase 3” for the panel
+> metadata catalog and “Phase 4” for the first cPanel/WHM adapter slice. The cPanel
+> slice is not yet a customer-facing or production-enabled workflow; details are in
+> [`PHASE3_PANEL_CATALOG.md`](PHASE3_PANEL_CATALOG.md) and
+> [`PHASE4_CPANEL_ADAPTER.md`](PHASE4_CPANEL_ADAPTER.md). Phase 2's owner-confirmed
+> external pass is not equivalent to a production provider adapter in this checkout.
+
 ---
 
 ## 1. What the repository actually is
@@ -216,7 +242,12 @@ and idempotent processing), subscription lifecycle with configurable grace
 period, suspension/termination automation, provisioning strictly gated on
 verified payment. Tests `06`.
 
-### Phase 4 — cPanel (delivered)
+### Legacy Phase 4 — cPanel application adapter (planned; not source-verified)
+
+> This is earlier planning material, not proof that a cPanel application deployment
+> adapter shipped. The source tree does not contain `Ch247Apps\\Adapters\\CpanelAdapter`.
+> The active Hosting Control Plane Phase 4 is the separate cPanel/WHM account adapter
+> slice documented in [`PHASE4_CPANEL_ADAPTER.md`](PHASE4_CPANEL_ADAPTER.md).
 `CpanelAdapter` using **WHM API** (`createacct`, `suspendacct`, `unsuspendacct`,
 `removeacct`, `wwwadd`, `adddns`, `modifyacct`, `setresellerlimits`, package
 management) and **UAPI** (`DomainInfo`, `Email::add_pop`, `Mysql::create_database`

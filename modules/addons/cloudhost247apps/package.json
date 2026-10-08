@@ -1,7 +1,7 @@
 {
   "name": "cloudhost247apps",
-  "version": "1.0.0",
-  "description": "CloudHost247 App Cloud — application marketplace and deployment platform (offline test tooling)",
+  "version": "1.2.0",
+  "description": "CloudHost247 App Cloud — catalog, deployment and panel-marketplace platform (offline test tooling)",
   "private": true,
   "scripts": {
     "lint": "node tests/lint.mjs",

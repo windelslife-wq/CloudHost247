@@ -48,18 +48,31 @@ class JobQueue
     const TYPE_SUSPEND           = 'suspend';
     const TYPE_TERMINATE         = 'terminate';
     const TYPE_CLEANUP           = 'cleanup';
+    const TYPE_SERVER_CREATE     = 'server_create';
+    const TYPE_SERVER_POLL       = 'server_poll';
+    const TYPE_SERVER_REBOOT     = 'server_reboot';
+    const TYPE_SERVER_POWER_ON   = 'server_power_on';
+    const TYPE_SERVER_POWER_OFF  = 'server_power_off';
+    const TYPE_SERVER_REBUILD    = 'server_rebuild';
+    const TYPE_SERVER_RESIZE     = 'server_resize';
+    const TYPE_SERVER_DELETE     = 'server_delete';
+    const TYPE_PROVIDER_ACCOUNT_VERIFY = 'provider_account_verify';
 
     const TYPES = [
         self::TYPE_INSTALL, self::TYPE_DESTROY, self::TYPE_START, self::TYPE_STOP, self::TYPE_RESTART,
         self::TYPE_UPDATE, self::TYPE_BACKUP, self::TYPE_RESTORE, self::TYPE_SSL,
         self::TYPE_DOMAIN_CONFIGURE, self::TYPE_HEALTHCHECK, self::TYPE_PROVISION_RESOURCE,
         self::TYPE_SUSPEND, self::TYPE_TERMINATE, self::TYPE_CLEANUP,
+        self::TYPE_SERVER_CREATE, self::TYPE_SERVER_POLL, self::TYPE_SERVER_REBOOT,
+        self::TYPE_SERVER_POWER_ON, self::TYPE_SERVER_POWER_OFF, self::TYPE_SERVER_REBUILD,
+        self::TYPE_SERVER_RESIZE, self::TYPE_SERVER_DELETE, self::TYPE_PROVIDER_ACCOUNT_VERIFY,
     ];
 
-    /** Queue names: deployments are serialised per installation by the worker. */
+    /** Queues are kept separate: App Cloud target jobs never provision customer VMs. */
     const QUEUE_DEPLOYMENT = 'deployment';
     const QUEUE_MAINTENANCE = 'maintenance';
     const QUEUE_NOTIFICATION = 'notification';
+    const QUEUE_PROVISIONING = 'provisioning';
 
     const STATUS_QUEUED    = 'queued';
     const STATUS_LEASED    = 'leased';
@@ -86,7 +99,8 @@ class JobQueue
      *
      * @param array $options queue, priority, available_at, max_attempts,
      *                       idempotency_key, installation_id, deployment_id,
-     *                       server_id, client_id, requested_by
+     *                       server_id (App Cloud target), customer_server_id,
+     *                       provider_account_id, whmcs_service_id, client_id, requested_by
      * @return array the job row (an existing live job when the key matches)
      */
     public function enqueue($type, array $payload = [], array $options = [])
@@ -132,6 +146,9 @@ class JobQueue
             'installation_id' => isset($options['installation_id']) ? (int) $options['installation_id'] : null,
             'deployment_id' => isset($options['deployment_id']) ? (int) $options['deployment_id'] : null,
             'server_id' => isset($options['server_id']) ? (int) $options['server_id'] : null,
+            'customer_server_id' => isset($options['customer_server_id']) ? (int) $options['customer_server_id'] : null,
+            'provider_account_id' => isset($options['provider_account_id']) ? (int) $options['provider_account_id'] : null,
+            'whmcs_service_id' => isset($options['whmcs_service_id']) ? (int) $options['whmcs_service_id'] : null,
             'client_id' => isset($options['client_id']) ? (int) $options['client_id'] : null,
             'requested_by' => isset($options['requested_by']) ? Str::clip((string) $options['requested_by'], 120) : null,
             'created_at' => $now,
@@ -143,7 +160,11 @@ class JobQueue
             'priority' => isset($options['priority']) ? (int) $options['priority'] : self::PRIORITY_NORMAL,
         ], ['job_id' => $jobId,
             'installation_id' => isset($options['installation_id']) ? (int) $options['installation_id'] : null,
-            'deployment_id' => isset($options['deployment_id']) ? (int) $options['deployment_id'] : null]);
+            'deployment_id' => isset($options['deployment_id']) ? (int) $options['deployment_id'] : null,
+            'customer_server_id' => isset($options['customer_server_id']) ? (int) $options['customer_server_id'] : null,
+            'provider_account_id' => isset($options['provider_account_id']) ? (int) $options['provider_account_id'] : null,
+            'whmcs_service_id' => isset($options['whmcs_service_id']) ? (int) $options['whmcs_service_id'] : null,
+            'client_id' => isset($options['client_id']) ? (int) $options['client_id'] : null]);
 
         return $this->present($this->row($jobId));
     }
@@ -169,6 +190,7 @@ class JobQueue
         // Due: queued and available, plus leases that expired (worker died).
         $candidates = Db::fetch('jobs', [
             'queue' => (string) $queue,
+            'status' => ['in', [self::STATUS_QUEUED, self::STATUS_LEASED, self::STATUS_RUNNING]],
             'available_at' => ['<=', $now],
         ], ['order' => 'priority', 'dir' => 'asc', 'order2' => 'available_at', 'limit' => $limit * 3]);
 
@@ -183,8 +205,14 @@ class JobQueue
             }
             // Serialise work per installation: never run two jobs for the same
             // installation at once, even if both are due.
-            if (!empty($candidate['installation_id']) && $this->hasLiveSibling((int) $candidate['installation_id'],
-                (int) $candidate['id'], $workerId)) {
+            if (!empty($candidate['installation_id']) && $this->hasLiveSibling('installation_id',
+                (int) $candidate['installation_id'], (int) $candidate['id'])) {
+                continue;
+            }
+            // A customer-owned VM is serialized independently of App Cloud's
+            // deployment-target `server_id` namespace.
+            if (!empty($candidate['customer_server_id']) && $this->hasLiveSibling('customer_server_id',
+                (int) $candidate['customer_server_id'], (int) $candidate['id'])) {
                 continue;
             }
             $ok = Db::compareAndSet('jobs', [
@@ -204,12 +232,12 @@ class JobQueue
         return $claimed;
     }
 
-    /** Is another job for this installation already being worked on? */
-    private function hasLiveSibling($installationId, $jobId, $workerId)
+    /** Is another job for the same lifecycle resource already being worked on? */
+    private function hasLiveSibling($resourceColumn, $resourceId, $jobId)
     {
         $now = Clock::now();
         foreach (Db::fetch('jobs', [
-            'installation_id' => (int) $installationId,
+            $resourceColumn => (int) $resourceId,
             'status' => ['in', [self::STATUS_LEASED, self::STATUS_RUNNING]],
         ]) as $row) {
             if ((int) $row['id'] === (int) $jobId) {
@@ -501,6 +529,9 @@ class JobQueue
             'installation_id' => $row['installation_id'] ? (int) $row['installation_id'] : null,
             'deployment_id' => $row['deployment_id'] ? (int) $row['deployment_id'] : null,
             'server_id' => $row['server_id'] ? (int) $row['server_id'] : null,
+            'customer_server_id' => !empty($row['customer_server_id']) ? (int) $row['customer_server_id'] : null,
+            'provider_account_id' => !empty($row['provider_account_id']) ? (int) $row['provider_account_id'] : null,
+            'whmcs_service_id' => !empty($row['whmcs_service_id']) ? (int) $row['whmcs_service_id'] : null,
             'client_id' => $row['client_id'] ? (int) $row['client_id'] : null,
             'requested_by' => isset($row['requested_by']) ? $row['requested_by'] : null,
             'retryable' => $this->isRetryable($row),
@@ -580,6 +611,10 @@ class JobQueue
             'installation_id' => $row['installation_id'] ? (int) $row['installation_id'] : null,
             'deployment_id' => $row['deployment_id'] ? (int) $row['deployment_id'] : null,
             'server_id' => $row['server_id'] ? (int) $row['server_id'] : null,
+            'customer_server_id' => !empty($row['customer_server_id']) ? (int) $row['customer_server_id'] : null,
+            'provider_account_id' => !empty($row['provider_account_id']) ? (int) $row['provider_account_id'] : null,
+            'whmcs_service_id' => !empty($row['whmcs_service_id']) ? (int) $row['whmcs_service_id'] : null,
+            'client_id' => $row['client_id'] ? (int) $row['client_id'] : null,
         ];
     }
 }

@@ -72,7 +72,7 @@ return [
         // log (Logger::redact strips the key names as a second line of defence).
         $m->create('server_credentials', function (Blueprint $t) {
             $t->id();
-            $t->bigInteger('server_id', false, 0);
+            $t->unsignedBigInteger('server_id', false, 0);
             $t->string('name', 120, false, 'primary');
             // ssh_key|ssh_password|agent_secret|whm_api_token|cpanel_uapi_token|
             // kube_token|kube_config|dns_api_token|registry_token|storage_key

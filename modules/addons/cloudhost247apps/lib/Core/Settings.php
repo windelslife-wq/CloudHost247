@@ -42,6 +42,9 @@ class Settings
         'job_retention_days'          => '30',
         'kubernetes_enabled'          => '0',   // Phase 6: off until a cluster is registered
         'cpanel_enabled'              => '1',
+        'customer_server_provisioning_enabled' => '0', // off until a real provider adapter is installed and verified
+        'provider_poll_interval_seconds' => '15',
+        'provider_operation_poll_limit' => '120',
         'debug_logging'               => '0',
         'log_level'                   => 'info',
         'log_warnings_to_activity'    => '0',
@@ -134,7 +137,7 @@ class Settings
 
         // RBAC bootstrap
         'bootstrap_admin_id'          => '1',
-        'default_admin_role'          => 'apps_viewer',
+        'default_admin_role'          => 'staff',
 
         // Secrets (environment only — never stored in the database)
         'encryption_key'              => '',

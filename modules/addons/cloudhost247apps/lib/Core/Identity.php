@@ -173,7 +173,10 @@ class Identity
             return null;
         }
 
-        $row = Db::first('api_tokens', ['token_hash' => hash('sha256', $plaintext), 'active' => 1]);
+        $row = Db::first('api_tokens', [
+            'token_hash' => hash('sha256', $plaintext), 'active' => 1,
+            'revoked_at' => null, 'deleted_at' => null,
+        ]);
         if (!$row) {
             return null;
         }
@@ -218,8 +221,14 @@ class Identity
         if ($actor->authMethod !== 'api_token' || empty($actor->meta['token_id'])) {
             return null;
         }
-        $row = Db::first('api_tokens', ['id' => (int) $actor->meta['token_id']]);
-        if (!$row || empty($row['scopes'])) {
+        $row = Db::first('api_tokens', [
+            'id' => (int) $actor->meta['token_id'], 'active' => 1,
+            'revoked_at' => null, 'deleted_at' => null,
+        ]);
+        if (!$row || (!empty($row['expires_at']) && Clock::isPast($row['expires_at']))) {
+            throw new AuthenticationException('The bearer token is invalid or expired.');
+        }
+        if (empty($row['scopes'])) {
             return null;
         }
         $scopes = Str::jsonDecode($row['scopes'], []);

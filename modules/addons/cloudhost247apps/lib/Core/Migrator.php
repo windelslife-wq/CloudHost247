@@ -158,6 +158,43 @@ class Migrator
         return count(Db::select('SHOW COLUMNS FROM ' . Db::quoteIdentifier($real) . ' LIKE ?', [$column])) > 0;
     }
 
+    /** Add an index when absent; safe to re-run if an earlier migration was interrupted. */
+    public function addIndex($logicalName, array $columns, $unique = false, $name = null)
+    {
+        if (!$columns) {
+            throw new AppsException('An index must contain at least one column.');
+        }
+        foreach ($columns as $column) {
+            if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $column)) {
+                throw new AppsException('Illegal index column.');
+            }
+        }
+        $name = $name ?: 'idx_' . $logicalName . '_' . implode('_', $columns);
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $name)) {
+            throw new AppsException('Illegal index name.');
+        }
+        $table = Db::t($logicalName);
+        $exists = false;
+        if (Db::isSqlite()) {
+            foreach (Db::select('PRAGMA index_list(' . Db::quoteIdentifier($table) . ')') as $row) {
+                if (isset($row['name']) && (string) $row['name'] === (string) $name) {
+                    $exists = true;
+                    break;
+                }
+            }
+        } else {
+            $exists = Db::selectOne('SHOW INDEX FROM ' . Db::quoteIdentifier($table) . ' WHERE Key_name = ?', [$name]) !== null;
+        }
+        if ($exists) {
+            return $this;
+        }
+        $quotedColumns = array_map([Db::class, 'quoteIdentifier'], $columns);
+        Db::exec('CREATE ' . ($unique ? 'UNIQUE ' : '') . 'INDEX ' . Db::quoteIdentifier($name)
+            . ' ON ' . Db::quoteIdentifier($table) . ' (' . implode(', ', $quotedColumns) . ')');
+        $this->log[] = 'add index ' . $name . ' on ' . $table;
+        return $this;
+    }
+
     /** Insert a row only when the where-map matches nothing (idempotent seeds). */
     public function seed($logicalName, array $where, array $values)
     {

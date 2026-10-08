@@ -223,7 +223,10 @@ class Http
             $response = call_user_func(self::$clientFake, $method, (string) $url, $options);
             $response = is_array($response) ? $response : ['status' => 200, 'body' => (string) $response, 'headers' => []];
             $response += ['status' => 200, 'headers' => [], 'body' => '', 'error' => null];
-            $call['response'] = ['status' => $response['status'], 'body' => Str::clip($response['body'], 500)];
+            $call['response'] = [
+                'status' => $response['status'],
+                'body' => !empty($options['redact_response']) ? '[redacted]' : Str::clip($response['body'], 500),
+            ];
             self::$clientCalls[] = $call;
             return $response;
         }

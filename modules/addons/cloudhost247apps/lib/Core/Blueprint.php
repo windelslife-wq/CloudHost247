@@ -58,6 +58,13 @@ class Blueprint
         return $this;
     }
 
+    /** Unsigned IDs used where a module foreign key targets an auto-increment primary key. */
+    public function unsignedBigInteger($name, $null = false, $default = null)
+    {
+        $this->columns[] = ['name' => $name, 'type' => 'unsigned_bigint', 'null' => $null, 'default' => $default];
+        return $this;
+    }
+
     public function integer($name, $null = false, $default = null)
     {
         $this->columns[] = ['name' => $name, 'type' => 'int', 'null' => $null, 'default' => $default];
@@ -172,6 +179,12 @@ class Blueprint
         return $this;
     }
 
+    /** Stable FK name used by both fresh DDL and corrective migrations. */
+    public function foreignKeyName($column)
+    {
+        return $this->indexName('fk', [(string) $column]);
+    }
+
     protected function indexName($kind, array $columns)
     {
         $base = $kind . '_' . $this->table . '_' . implode('_', $columns);
@@ -204,6 +217,9 @@ class Blueprint
         switch ($c['type']) {
             case 'bigint':
                 $sql .= $driver === 'sqlite' ? 'INTEGER' : 'BIGINT';
+                break;
+            case 'unsigned_bigint':
+                $sql .= $driver === 'sqlite' ? 'INTEGER' : 'BIGINT UNSIGNED';
                 break;
             case 'int':
                 $sql .= $driver === 'sqlite' ? 'INTEGER' : 'INT';
@@ -260,7 +276,7 @@ class Blueprint
             $lines[] = '  KEY `' . $i['name'] . '` (`' . implode('`, `', $i['columns']) . '`)';
         }
         foreach ($this->foreign as $f) {
-            $lines[] = '  CONSTRAINT `' . $this->indexName('fk', [$f['column']]) . '` FOREIGN KEY (`'
+            $lines[] = '  CONSTRAINT `' . $this->foreignKeyName($f['column']) . '` FOREIGN KEY (`'
                 . $f['column'] . '`) REFERENCES `' . $f['table'] . '` (`' . $f['ref'] . '`) ON DELETE '
                 . $f['onDelete'];
         }

@@ -91,7 +91,7 @@ return [
         /* ---------------------------------------------------------- versions -- */
         $m->create('application_versions', function (Blueprint $t) {
             $t->id();
-            $t->bigInteger('application_id', false, 0);
+            $t->unsignedBigInteger('application_id', false, 0);
             $t->string('version', 60);                   // 1.2.3, latest, 2024.11
             $t->string('channel', 20, false, 'stable');   // stable|lts|beta
             $t->string('docker_image', 255, true);        // repository:tag
@@ -129,7 +129,7 @@ return [
         // The install wizard hides or disables anything not listed here.
         $m->create('application_compatibility', function (Blueprint $t) {
             $t->id();
-            $t->bigInteger('application_id', false, 0);
+            $t->unsignedBigInteger('application_id', false, 0);
             // shared|cpanel|vps|dedicated|docker|kubernetes
             $t->string('hosting_type', 30);
             $t->boolean('supported', 1);
@@ -146,7 +146,7 @@ return [
         // engine resolves to a shared managed service or an isolated container.
         $m->create('application_dependencies', function (Blueprint $t) {
             $t->id();
-            $t->bigInteger('application_id', false, 0);
+            $t->unsignedBigInteger('application_id', false, 0);
             $t->bigInteger('depends_on_application_id', true);
             $t->string('dependency_type', 30, false, 'service'); // service|database|cache|storage
             $t->string('requirement', 20, false, 'required');    // required|optional

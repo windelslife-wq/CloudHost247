@@ -24,7 +24,7 @@ return [
         $m->create('backups', function (Blueprint $t) {
             $t->id();
             $t->string('uuid', 36);
-            $t->bigInteger('installation_id', false, 0);
+            $t->unsignedBigInteger('installation_id', false, 0);
             $t->bigInteger('server_id', true);
             // local|s3|r2|remote|ftp
             $t->string('storage_provider', 20, false, 'local');
