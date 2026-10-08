@@ -1,6 +1,6 @@
 <?php
 /**
- * App Cloud provider/server REST API.
+ * App Cloud provider, server, and read-only domain-inventory REST API.
  *
  * Paths work with URL rewriting or the explicit `path` query parameter:
  *   /modules/addons/cloudhost247apps/api/index.php?path=/v1/servers

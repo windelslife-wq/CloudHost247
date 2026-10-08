@@ -1,6 +1,6 @@
 {
   "name": "cloudhost247apps",
-  "version": "1.3.0",
+  "version": "1.9.2",
   "description": "CloudHost247 App Cloud — catalog, deployment and panel-marketplace platform (offline test tooling)",
   "private": true,
   "scripts": {

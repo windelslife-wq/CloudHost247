@@ -29,16 +29,17 @@ class CloudflareApi
 
     public function listZones($name = null)
     {
-        $out = []; $page = 1;
-        do {
+        $out = [];
+        for ($page = 1; $page <= 20; $page++) {
             $query = ['account.id' => $this->accountId, 'per_page' => 50, 'page' => $page];
             if ($name !== null && $name !== '') $query['name'] = $name;
             $result = $this->client->call('GET', '/zones', $query, null, 'zone.list');
-            if (!is_array($result)) return $out;
-            foreach ($result as $zone) if (is_array($zone)) $out[] = $zone;
-            $page++;
-        } while (count($result) === 50 && $page <= 20);
-        return $out;
+            $this->assertListResult($result, 'zone');
+            foreach ($result as $zone) $out[] = $zone;
+            if (count($result) < 50) return $out;
+        }
+        throw new CloudflareException('CLOUDFLARE_API_ERROR',
+            'Cloudflare zone inventory exceeded the supported page bound; no partial list was returned.');
     }
     public function findZone($domain)
     {
@@ -62,14 +63,16 @@ class CloudflareApi
 
     public function listDnsRecords($zoneId)
     {
-        $out = []; $page = 1;
-        do {
-            $result = $this->client->call('GET', $this->zonePath($zoneId) . '/dns_records', ['per_page' => 100, 'page' => $page], null, 'dns.list');
-            if (!is_array($result)) return $out;
-            foreach ($result as $record) if (is_array($record)) $out[] = $record;
-            $page++;
-        } while (count($result) === 100 && $page <= 50);
-        return $out;
+        $out = [];
+        for ($page = 1; $page <= 50; $page++) {
+            $result = $this->client->call('GET', $this->zonePath($zoneId) . '/dns_records',
+                ['per_page' => 100, 'page' => $page], null, 'dns.list');
+            $this->assertListResult($result, 'DNS-record');
+            foreach ($result as $record) $out[] = $record;
+            if (count($result) < 100) return $out;
+        }
+        throw new CloudflareException('CLOUDFLARE_API_ERROR',
+            'Cloudflare DNS inventory exceeded the supported page bound; no partial list was returned.');
     }
     public function getDnsRecord($zoneId, $recordId) { return $this->client->call('GET', $this->zonePath($zoneId) . '/dns_records/' . $this->idPath($recordId), [], null, 'dns.get'); }
     public function createDnsRecord($zoneId, array $record) { return $this->client->call('POST', $this->zonePath($zoneId) . '/dns_records', [], $record, 'dns.create'); }
@@ -140,6 +143,23 @@ class CloudflareApi
     {
         if (trim((string) $providerPlanId) === '') throw new ValidationException('The target Cloudflare plan mapping is incomplete.');
         return $this->client->call('PATCH', $this->zonePath($zoneId) . '/subscription', [], ['plan' => ['id' => (string) $providerPlanId]], 'plan.change');
+    }
+
+    /** Refuse malformed pages instead of treating them as empty or partial inventories. */
+    private function assertListResult($result, $kind)
+    {
+        if (!is_array($result)) {
+            throw new CloudflareException('CLOUDFLARE_API_ERROR',
+                'Cloudflare returned an invalid ' . $kind . ' list.');
+        }
+        $expectedKey = 0;
+        foreach ($result as $key => $item) {
+            if ($key !== $expectedKey || !is_array($item)) {
+                throw new CloudflareException('CLOUDFLARE_API_ERROR',
+                    'Cloudflare returned an invalid ' . $kind . ' list.');
+            }
+            $expectedKey++;
+        }
     }
 
     private function zonePath($id) { return '/zones/' . $this->idPath($id); }

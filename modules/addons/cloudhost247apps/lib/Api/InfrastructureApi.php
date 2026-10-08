@@ -1,6 +1,6 @@
 <?php
 /**
- * Authenticated, same-origin REST surface for provider accounts and customer VMs.
+ * Authenticated, same-origin REST surface for provider accounts, customer VMs, and read-only domain inventory.
  *
  * The router is deliberately small and transport-independent so the route,
  * permission, CSRF, and idempotency behavior can be exercised offline.
@@ -12,6 +12,8 @@ namespace Ch247Apps\Api;
 
 use Ch247Apps\Core\Actor;
 use Ch247Apps\Core\AppsException;
+use Ch247Apps\Core\Audit;
+use Ch247Apps\Core\Db;
 use Ch247Apps\Core\AuthenticationException;
 use Ch247Apps\Core\AuthorizationException;
 use Ch247Apps\Core\ConflictException;
@@ -28,10 +30,15 @@ use Ch247Apps\Core\ProviderOperationException;
 use Ch247Apps\Core\ProviderUnavailableException;
 use Ch247Apps\Core\RateLimiter;
 use Ch247Apps\Core\Rbac;
+use Ch247Apps\Core\Settings;
+use Ch247Apps\Core\StateException;
 use Ch247Apps\Core\Str;
 use Ch247Apps\Core\ValidationException;
 use Ch247Apps\ControlPanels\PanelAccountService;
 use Ch247Apps\Deployments\JobQueue;
+use Ch247Apps\Domains\CloudflareDnsInventoryAdapter;
+use Ch247Apps\Domains\DnsInventoryProviderRegistry;
+use Ch247Apps\Domains\DomainService;
 use Ch247Apps\Infrastructure\CustomerServerService;
 use Ch247Apps\Infrastructure\ProviderAccountService;
 use Ch247Apps\Infrastructure\ProviderRegistry;
@@ -91,6 +98,13 @@ class InfrastructureApi
         if (($path === '/v1/providers' || $path === '/v1/providers/adapters') && $method === 'GET') {
             $this->authorize(Rbac::PROVIDER_ACCOUNT_VIEW);
             return self::response(200, ['data' => ProviderRegistry::catalog()]);
+        }
+
+        if (preg_match('#^/v1/domains/([0-9]+)/dns-inventory$#', $path, $match) && $method === 'GET') {
+            if ($input) {
+                throw new ValidationException('DNS inventory requests do not accept request fields.');
+            }
+            return $this->dnsInventory((int) $match[1]);
         }
 
         if ($path === '/v1/provider-accounts' && $method === 'GET') {
@@ -192,6 +206,46 @@ class InfrastructureApi
             $this->authorize(Rbac::PANEL_ACCOUNT_VIEW);
             return self::response(200, ['data' => (new PanelAccountService($this->actor))->get((int) $match[1])]);
         }
+        if (preg_match('#^/v1/panel-accounts/([0-9]+)/domains$#', $path, $match) && $method === 'POST') {
+            $this->authorize(Rbac::PANEL_ACCOUNT_VIEW);
+            if ($input) {
+                throw new ValidationException('The read-only domain inventory request does not accept fields.');
+            }
+            $result = (new PanelAccountService($this->actor))->requestDomainInventory(
+                (int) $match[1], self::idempotencyKey($headers)
+            );
+            return self::response(202, ['data' => $result]);
+        }
+        if (preg_match('#^/v1/panel-accounts/([0-9]+)/domain-aliases$#', $path, $match) && $method === 'POST') {
+            $this->authorize(Rbac::PANEL_ACCOUNT_VIEW);
+            if ($input) {
+                throw new ValidationException('The read-only built-in alias request does not accept fields.');
+            }
+            $result = (new PanelAccountService($this->actor))->requestDomainAliases(
+                (int) $match[1], self::idempotencyKey($headers)
+            );
+            return self::response(202, ['data' => $result]);
+        }
+        if (preg_match('#^/v1/panel-accounts/([0-9]+)/quota-usage$#', $path, $match) && $method === 'POST') {
+            $this->authorize(Rbac::PANEL_ACCOUNT_VIEW);
+            if ($input) {
+                throw new ValidationException('The read-only quota-usage request does not accept fields.');
+            }
+            $result = (new PanelAccountService($this->actor))->requestQuotaUsage(
+                (int) $match[1], self::idempotencyKey($headers)
+            );
+            return self::response(202, ['data' => $result]);
+        }
+        if (preg_match('#^/v1/panel-accounts/([0-9]+)/bandwidth-usage$#', $path, $match) && $method === 'POST') {
+            $this->authorize(Rbac::PANEL_ACCOUNT_VIEW);
+            if ($input) {
+                throw new ValidationException('The read-only bandwidth-usage request does not accept fields.');
+            }
+            $result = (new PanelAccountService($this->actor))->requestBandwidthUsage(
+                (int) $match[1], self::idempotencyKey($headers)
+            );
+            return self::response(202, ['data' => $result]);
+        }
         if (preg_match('#^/v1/panel-accounts/([0-9]+)/actions$#', $path, $match) && $method === 'POST') {
             $action = isset($input['action']) && is_scalar($input['action']) ? (string) $input['action'] : '';
             $this->authorize(PanelAccountService::permissionForAction($action));
@@ -242,6 +296,111 @@ class InfrastructureApi
             return self::response(404, ['error' => ['code' => 'NOT_FOUND', 'message' => 'API route not found.']]);
         }
         return self::response(405, ['error' => ['code' => 'METHOD_NOT_ALLOWED', 'message' => 'HTTP method not allowed.']]);
+    }
+
+    /** Default-off, owner-scoped read-only DNS inventory API endpoint. */
+    private function dnsInventory($domainId)
+    {
+        $permission = $this->actor->isCustomer() ? Rbac::DOMAIN_VIEW_OWN : Rbac::DOMAIN_VIEW_ALL;
+        $this->authorize($permission);
+
+        // This App Cloud gate is deliberately checked before even registering or
+        // resolving the Cloudflare bridge. The bridge itself retains Phase 12's
+        // independent master and DNS-inventory gates.
+        if (!Settings::bool('dns_inventory_api_enabled', false)) {
+            throw new ProviderUnavailableException('The App Cloud DNS inventory API is disabled.', [
+                'provider_code' => 'cloudflare', 'error_code' => 'DNS_INVENTORY_API_DISABLED',
+            ]);
+        }
+
+        $where = ['id' => (int) $domainId, 'deleted_at' => null];
+        if ($this->actor->isCustomer()) {
+            // Scope in SQL, rather than loading another customer's row and
+            // relying only on a later in-memory check. A miss is always a 404.
+            $where['customer_id'] = (int) $this->actor->clientId;
+        }
+        $domainRow = Db::first('domains', $where);
+        if (!$domainRow) {
+            throw new NotFoundException('That domain does not exist.');
+        }
+        if (!isset($domainRow['domain_type']) || $domainRow['domain_type'] !== DomainService::TYPE_CUSTOMER) {
+            throw new NotFoundException('That domain does not exist.');
+        }
+        if (!isset($domainRow['verification_status'])
+            || $domainRow['verification_status'] !== DomainService::VERIFICATION_VERIFIED) {
+            throw new StateException('Verify this domain before reading its DNS inventory.', [
+                'error_code' => 'DOMAIN_NOT_VERIFIED',
+            ]);
+        }
+
+        if (!DnsInventoryProviderRegistry::hasProvider('cloudflare')) {
+            DnsInventoryProviderRegistry::register(new CloudflareDnsInventoryAdapter());
+        }
+        $inventory = DnsInventoryProviderRegistry::forProvider('cloudflare')->listForDomain(
+            (int) $domainRow['customer_id'], (string) $domainRow['domain']
+        );
+
+        $expectedDomain = strtolower(rtrim(trim((string) $domainRow['domain']), '.'));
+        $actualDomain = is_array($inventory) && isset($inventory['domain']) && is_string($inventory['domain'])
+            ? strtolower(rtrim(trim($inventory['domain']), '.')) : '';
+        if (!is_array($inventory) || !isset($inventory['provider'], $inventory['records'])
+            || $inventory['provider'] !== 'cloudflare' || !is_array($inventory['records'])
+            || $expectedDomain === '' || $actualDomain !== $expectedDomain
+            || array_values($inventory['records']) !== $inventory['records']) {
+            throw new ProviderUnavailableException('The DNS inventory provider returned an invalid response.', [
+                'provider_code' => 'cloudflare', 'error_code' => 'DNS_INVENTORY_INVALID',
+            ]);
+        }
+
+        // Re-project at the HTTP boundary too, so an adapter's internal fields
+        // can never leak if its contract grows in a later release.
+        $publicRecords = [];
+        $recordTypes = [];
+        $recordFields = ['id', 'type', 'name', 'content', 'ttl', 'proxied', 'priority', 'comment'];
+        foreach ($inventory['records'] as $record) {
+            if (!is_array($record)) {
+                throw new ProviderUnavailableException('The DNS inventory provider returned an invalid record.', [
+                    'provider_code' => 'cloudflare', 'error_code' => 'DNS_INVENTORY_INVALID',
+                ]);
+            }
+            foreach ($recordFields as $field) {
+                if (!array_key_exists($field, $record)) {
+                    throw new ProviderUnavailableException('The DNS inventory provider returned an incomplete record.', [
+                        'provider_code' => 'cloudflare', 'error_code' => 'DNS_INVENTORY_INVALID',
+                    ]);
+                }
+            }
+            if (!is_string($record['type']) || !preg_match('/^[A-Za-z0-9]{1,16}$/D', $record['type'])) {
+                throw new ProviderUnavailableException('The DNS inventory provider returned an invalid record type.', [
+                    'provider_code' => 'cloudflare', 'error_code' => 'DNS_INVENTORY_INVALID',
+                ]);
+            }
+            $publicRecord = [];
+            foreach ($recordFields as $field) {
+                $publicRecord[$field] = $record[$field];
+            }
+            $publicRecords[] = $publicRecord;
+            $type = strtoupper($record['type']);
+            $recordTypes[$type] = isset($recordTypes[$type]) ? $recordTypes[$type] + 1 : 1;
+        }
+        ksort($recordTypes, SORT_STRING);
+
+        Audit::record($this->actor, Audit::DNS_INVENTORY_READ, [
+            'resource_type' => 'domain',
+            'resource_id' => (int) $domainRow['id'],
+            'client_id' => (int) $domainRow['customer_id'],
+            'metadata' => [
+                'provider' => 'cloudflare',
+                'record_count' => count($publicRecords),
+                'record_types' => $recordTypes,
+            ],
+        ]);
+
+        return self::response(200, ['data' => [
+            'provider' => 'cloudflare',
+            'domain' => $expectedDomain,
+            'records' => $publicRecords,
+        ]]);
     }
 
     private function job($jobId)

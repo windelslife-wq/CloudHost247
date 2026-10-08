@@ -26,6 +26,10 @@ class ControlPanelAdapterRegistry
     const CAPABILITY_KEYS = [
         'account.verify',
         'account.get',
+        'account.domains.list',
+        'account.domains.aliases.list',
+        'account.usage.quota.read',
+        'account.usage.bandwidth.read',
         'account.create',
         'account.suspend',
         'account.unsuspend',

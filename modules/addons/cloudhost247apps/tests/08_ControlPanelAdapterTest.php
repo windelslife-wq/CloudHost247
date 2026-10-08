@@ -6,6 +6,7 @@ require_once __DIR__ . '/bootstrap.php';
 use Ch247Apps\Adapters\AdapterFactory;
 use Ch247Apps\ControlPanels\ControlPanelAdapterRegistry;
 use Ch247Apps\ControlPanels\ControlPanelConnectionFactory;
+use Ch247Apps\ControlPanels\CpanelWhmClient;
 use Ch247Apps\ControlPanels\ControlPanelService;
 use Ch247Apps\Core\Actor;
 use Ch247Apps\Core\AuthorizationException;
@@ -69,6 +70,14 @@ T::notContains('registry does not claim license activation', 'license.activate',
 $adapter = ControlPanelAdapterRegistry::forPanel('cpanel_whm');
 T::is('the cPanel adapter has its own stable key', 'cpanel_whm', $adapter->key());
 T::ok('WHM account lookup is implemented', !empty($adapter->capabilities()['account.get']));
+T::ok('read-only UAPI domain inventory is an explicit cPanel capability',
+    !empty($adapter->capabilities()['account.domains.list']));
+T::ok('built-in primary-domain aliases are a separate cPanel capability',
+    !empty($adapter->capabilities()['account.domains.aliases.list']));
+T::ok('quota usage is a separate read-only cPanel capability',
+    !empty($adapter->capabilities()['account.usage.quota.read']));
+T::ok('bandwidth usage is a separate read-only cPanel capability',
+    !empty($adapter->capabilities()['account.usage.bandwidth.read']));
 T::ok('WHM account creation is implemented', !empty($adapter->capabilities()['account.create']));
 T::throws('license activation is not an implemented capability', PanelAdapterUnavailableException::class, function () use ($adapter) {
     ControlPanelAdapterRegistry::assertSupports($adapter, ['license.activate']);
@@ -231,6 +240,341 @@ $badList = T::throws('a malformed account list is not interpreted as absence', C
         $adapter->getAccount($connection, 'missinguser');
     });
 T::is('malformed lists have a stable code', 'CPANEL_ACCOUNT_RESPONSE_INVALID', $badList->errorCode());
+
+section('UAPI domain inventory is read-only, account-scoped and fail-closed');
+$uapiOptions = null;
+Http::setClientFake(function ($method, $url, $options) use (&$uapiOptions) {
+    $uapiOptions = $options;
+    if (basename((string) parse_url($url, PHP_URL_PATH)) !== 'uapi_cpanel') {
+        return ['status' => 404, 'body' => 'unexpected endpoint'];
+    }
+    return whmResponse(['uapi' => [
+        'status' => 1,
+        'data' => [
+            'main_domain' => 'hosting.example.test',
+            'addon_domains' => ['addon.example.test'],
+            'parked_domains' => [],
+            'sub_domains' => ['mail.hosting.example.test'],
+            'is_temporary' => [],
+        ],
+        'errors' => null,
+        'warnings' => null,
+        'messages' => null,
+    ]]);
+});
+$domainInventory = $adapter->listDomains($connection, 'acctuser', 'hosting.example.test');
+T::is('the account main domain is bound to the existing mapping', 'hosting.example.test', $domainInventory['main_domain']);
+T::is('the domain inventory includes only normalized allowlisted fields', [
+    ['domain' => 'hosting.example.test', 'type' => 'main'],
+    ['domain' => 'addon.example.test', 'type' => 'addon'],
+    ['domain' => 'mail.hosting.example.test', 'type' => 'sub'],
+], $domainInventory['domains']);
+T::is('temporary domains are explicitly excluded', true, $domainInventory['temporary_domains_excluded']);
+T::is('the official WHM UAPI proxy uses GET', 'GET', Http::clientCalls()[0]['method']);
+T::ok('the fixed WHM API proxy endpoint is used', strpos(Http::clientCalls()[0]['url'], 'https://whm.example.test:2087/json-api/uapi_cpanel?') === 0);
+$uapiQuery = parse_url(Http::clientCalls()[0]['url'], PHP_URL_QUERY);
+T::contains('UAPI runs as the bound cPanel username in the query', 'cpanel.user=acctuser', $uapiQuery);
+T::contains('the module and function are fixed by the adapter', 'cpanel.module=DomainInfo&cpanel.function=list_domains', $uapiQuery);
+T::contains('temporary-domain records are excluded explicitly', 'hide_temporary_domains=1', $uapiQuery);
+T::ok('the read-only proxy call has no request body', !isset($uapiOptions['form']) && !isset($uapiOptions['body']));
+T::is('the WHM token stays in the Authorization header',
+    'whm root:' . $whmToken, $uapiOptions['headers']['Authorization']);
+T::notContains('the WHM token is not present in the UAPI URL', $whmToken, Http::clientCalls()[0]['url']);
+T::is('the raw UAPI response is not retained in the shared HTTP recorder', '[redacted]', Http::clientCalls()[0]['response']['body']);
+T::throws('the UAPI proxy cannot be repurposed for arbitrary modules or functions', CpanelException::class, function () use ($connection) {
+    (new CpanelWhmClient())->call($connection, 'uapi_domain_list', 'GET', [
+        'cpanel.user' => 'acctuser', 'cpanel.module' => 'Email',
+        'cpanel.function' => 'list_pops', 'hide_temporary_domains' => 1,
+    ]);
+});
+
+section('Built-in aliases use the separate allowlisted UAPI operation');
+Http::setClientFake(function ($method, $url, $options) {
+    if (basename((string) parse_url($url, PHP_URL_PATH)) !== 'uapi_cpanel') {
+        return ['status' => 404, 'body' => 'unexpected endpoint'];
+    }
+    return whmResponse(['uapi' => [
+        'status' => 1,
+        'data' => ['mail', 'www'],
+        'errors' => null,
+        'warnings' => null,
+        'messages' => null,
+    ]]);
+});
+$builtInAliases = $adapter->listBuiltinDomainAliases($connection, 'acctuser', 'hosting.example.test');
+T::is('the cPanel adapter scopes reported alias labels to the mapped primary domain', [
+    ['alias' => 'mail', 'domain' => 'mail.hosting.example.test'],
+    ['alias' => 'www', 'domain' => 'www.hosting.example.test'],
+], $builtInAliases['aliases']);
+T::is('alias result completeness is explicitly vendor-reported', 'vendor_reported', $builtInAliases['completeness']);
+T::is('an empty UAPI alias array is retained as vendor-reported rather than promoted to complete DNS data', [],
+    (function () use ($adapter, $connection) {
+        Http::setClientFake(function () {
+            return whmResponse(['uapi' => [
+                'status' => 1, 'data' => [], 'errors' => null, 'warnings' => null,
+            ]]);
+        });
+        return $adapter->listBuiltinDomainAliases($connection, 'acctuser', 'hosting.example.test')['aliases'];
+    })());
+$aliasQuery = parse_url(Http::clientCalls()[0]['url'], PHP_URL_QUERY);
+T::contains('the alias endpoint calls only the fixed DomainInfo function',
+    'cpanel.module=DomainInfo&cpanel.function=main_domain_builtin_subdomain_aliases', $aliasQuery);
+T::contains('the alias call requests temporary-domain filtering', 'hide_temporary_domains=1', $aliasQuery);
+T::is('alias inventory remains a GET without a request body', 'GET', Http::clientCalls()[0]['method']);
+T::throws('the alias bridge rejects any other UAPI function', CpanelException::class, function () use ($connection) {
+    (new CpanelWhmClient())->call($connection, 'uapi_domain_aliases', 'GET', [
+        'cpanel.user' => 'acctuser', 'cpanel.module' => 'DomainInfo',
+        'cpanel.function' => 'list_domains', 'hide_temporary_domains' => 1,
+    ]);
+});
+Http::setClientFake(function () {
+    return whmResponse(['uapi' => ['status' => 1, 'data' => null, 'errors' => null, 'warnings' => null]]);
+});
+T::throws('omitted UAPI alias returns are not treated as an empty list', CpanelException::class, function () use ($adapter, $connection) {
+    $adapter->listBuiltinDomainAliases($connection, 'acctuser', 'hosting.example.test');
+});
+Http::setClientFake(function () {
+    return whmResponse(['uapi' => [
+        'status' => 1, 'data' => ['elsewhere.example.test'], 'errors' => null, 'warnings' => null,
+    ]]);
+});
+$wrongAliasScope = T::throws('aliases outside the primary-domain binding are refused', CpanelException::class,
+    function () use ($adapter, $connection) {
+        $adapter->listBuiltinDomainAliases($connection, 'acctuser', 'hosting.example.test');
+    });
+T::is('out-of-scope aliases have a reconciliation error code', 'CPANEL_ACCOUNT_BINDING_MISMATCH',
+    $wrongAliasScope->errorCode());
+Http::setClientFake(function () {
+    return whmResponse(['uapi' => [
+        'status' => 1, 'data' => [], 'errors' => null, 'warnings' => ['partial result'],
+    ]]);
+});
+$aliasWarning = T::throws('a UAPI warning does not become an authoritative alias list', CpanelException::class,
+    function () use ($adapter, $connection) {
+        $adapter->listBuiltinDomainAliases($connection, 'acctuser', 'hosting.example.test');
+    });
+T::is('UAPI alias warnings have their own safe error code', 'CPANEL_UAPI_WARNING', $aliasWarning->errorCode());
+
+section('Quota usage uses a fixed, read-only UAPI call and preserves vendor-reported values');
+$quotaData = [
+    'megabyte_limit' => '0',
+    'megabytes_remain' => '0',
+    'megabytes_used' => 12.75,
+    'inode_limit' => 50000,
+    'inodes_remain' => '49900',
+    'inodes_used' => '100',
+    'under_inode_limit' => 1,
+    'under_megabyte_limit' => '1',
+    'under_quota_overall' => true,
+    'unrecognized_vendor_field' => 'QUOTA-RESPONSE-PRIVATE-DATA',
+];
+Http::setClientFake(function ($method, $url, $options) use ($quotaData) {
+    if (basename((string) parse_url($url, PHP_URL_PATH)) !== 'uapi_cpanel') {
+        return ['status' => 404, 'body' => 'unexpected endpoint'];
+    }
+    return whmResponse(['uapi' => [
+        'status' => 1, 'data' => $quotaData, 'errors' => null, 'warnings' => null, 'messages' => null,
+    ]]);
+});
+$quotaUsage = $adapter->getQuotaUsage($connection, 'acctuser', 'hosting.example.test');
+T::is('quota response preserves zero, decimal and integer metrics as safe decimal strings', [
+    'megabyte_limit' => '0', 'megabytes_remain' => '0', 'megabytes_used' => '12.75',
+    'inode_limit' => '50000', 'inodes_remain' => '49900', 'inodes_used' => '100',
+    'under_inode_limit' => true, 'under_megabyte_limit' => true, 'under_quota_overall' => true,
+], $quotaUsage['usage']);
+T::is('quota snapshots remain explicitly vendor-reported', 'vendor_reported', $quotaUsage['completeness']);
+T::is('quota snapshots are bound to the requested main domain', 'hosting.example.test', $quotaUsage['main_domain']);
+T::notContains('unrecognized quota response fields are never surfaced', 'unrecognized_vendor_field',
+    json_encode($quotaUsage));
+T::notContains('unrecognized quota response values are never surfaced', 'QUOTA-RESPONSE-PRIVATE-DATA',
+    json_encode($quotaUsage));
+T::is('quota UAPI uses GET', 'GET', Http::clientCalls()[0]['method']);
+T::ok('quota uses the fixed WHM UAPI proxy endpoint',
+    strpos(Http::clientCalls()[0]['url'], 'https://whm.example.test:2087/json-api/uapi_cpanel?') === 0);
+$quotaQuery = parse_url(Http::clientCalls()[0]['url'], PHP_URL_QUERY);
+T::contains('the request is account-scoped to the trusted cPanel username', 'cpanel.user=acctuser', $quotaQuery);
+T::contains('quota uses only Quota::get_quota_info',
+    'cpanel.module=Quota&cpanel.function=get_quota_info', $quotaQuery);
+T::ok('the quota read has no request body',
+    !isset(Http::clientCalls()[0]['options']['form']) && !isset(Http::clientCalls()[0]['options']['body']));
+T::notContains('the WHM token is not exposed in the quota request URL', $whmToken,
+    Http::clientCalls()[0]['url']);
+T::throws('the quota allowlist rejects additional UAPI parameters', CpanelException::class, function () use ($connection) {
+    (new CpanelWhmClient())->call($connection, 'uapi_quota_info', 'GET', [
+        'cpanel.user' => 'acctuser', 'cpanel.module' => 'Quota',
+        'cpanel.function' => 'get_quota_info', 'unknown' => 'injected',
+    ]);
+});
+T::throws('the quota allowlist rejects a different function', CpanelException::class, function () use ($connection) {
+    (new CpanelWhmClient())->call($connection, 'uapi_quota_info', 'GET', [
+        'cpanel.user' => 'acctuser', 'cpanel.module' => 'Quota', 'cpanel.function' => 'anything_else',
+    ]);
+});
+Http::setClientFake(function () {
+    return whmResponse(['uapi' => [
+        'status' => 1, 'data' => [], 'errors' => null, 'warnings' => ['partial quota data'],
+    ]]);
+});
+$quotaWarning = T::throws('quota warnings cannot produce a successful snapshot', CpanelException::class,
+    function () use ($adapter, $connection) {
+        $adapter->getQuotaUsage($connection, 'acctuser', 'hosting.example.test');
+    });
+T::is('quota warnings have a stable fail-closed code', 'CPANEL_UAPI_WARNING', $quotaWarning->errorCode());
+Http::setClientFake(function () {
+    return whmResponse(['uapi' => [
+        'status' => 1,
+        'data' => [
+            'megabyte_limit' => 'unlimited', 'megabytes_remain' => '0', 'megabytes_used' => '12',
+            'inode_limit' => '10', 'inodes_remain' => '9', 'inodes_used' => '1',
+        ],
+        'errors' => null, 'warnings' => null,
+    ]]);
+});
+$badQuotaValue = T::throws('non-numeric quota values are rejected rather than interpreted', CpanelException::class,
+    function () use ($adapter, $connection) {
+        $adapter->getQuotaUsage($connection, 'acctuser', 'hosting.example.test');
+    });
+T::is('malformed quota data has a stable response error code', 'CPANEL_UAPI_RESPONSE_INVALID',
+    $badQuotaValue->errorCode());
+Http::setClientFake(function () {
+    return whmResponse(['uapi' => [
+        'status' => 1, 'data' => ['megabyte_limit' => '10'], 'errors' => null, 'warnings' => null,
+    ]]);
+});
+T::throws('incomplete disk/inode quota data is not promoted to a snapshot', CpanelException::class,
+    function () use ($adapter, $connection) {
+        $adapter->getQuotaUsage($connection, 'acctuser', 'hosting.example.test');
+    });
+
+section('Phase 8 StatsBar bandwidth usage uses one fixed display and a strict projection');
+$bandwidthRow = [
+    'id' => 'bandwidthusage', 'name' => 'UNTRUSTED-VENDOR-PHRASE', 'feature' => 'bandwidth', 'module' => 'Stats',
+    '_count' => 123.45, '_max' => 1000, 'percent' => '12%', 'units' => 'MB',
+    'zeroisunlimited' => 1, 'is_maxed' => '0', 'normalized' => true,
+    'count' => 'UNPROJECTED-COUNT', 'phrase' => 'UNTRUSTED-VENDOR-PHRASE',
+    'private_extra' => 'UNPROJECTED-PRIVATE-DATA',
+];
+Http::setClientFake(function ($method, $url, $options) use ($bandwidthRow) {
+    if (basename((string) parse_url($url, PHP_URL_PATH)) !== 'uapi_cpanel') {
+        return ['status' => 404, 'body' => 'unexpected endpoint'];
+    }
+    return whmResponse(['uapi' => [
+        'status' => 1, 'data' => [$bandwidthRow], 'errors' => null, 'warnings' => null, 'messages' => null,
+    ]]);
+});
+$bandwidthUsage = $adapter->getBandwidthUsage($connection, 'acctuser', 'hosting.example.test');
+T::is('StatsBar values preserve numbers, units and status flags without inference', [
+    'used' => '123.45', 'limit' => '1000', 'percent' => 12, 'units' => 'MB',
+    'zero_is_unlimited' => true, 'is_maxed' => false, 'normalized' => true,
+], $bandwidthUsage['usage']);
+T::is('bandwidth response is bound to the expected cPanel account and domain', [
+    'acctuser', 'hosting.example.test', 'vendor_reported',
+], [$bandwidthUsage['username'], $bandwidthUsage['main_domain'], $bandwidthUsage['completeness']]);
+T::is('bandwidth response reports the fixed field allowlist', [
+    'used', 'limit', 'percent', 'units', 'zero_is_unlimited', 'is_maxed', 'normalized',
+], $bandwidthUsage['fields_reported']);
+T::notContains('StatsBar vendor-supplied phrases are never returned', 'UNTRUSTED-VENDOR-PHRASE',
+    json_encode($bandwidthUsage));
+T::notContains('unprojected StatsBar fields are never returned', 'UNPROJECTED-PRIVATE-DATA',
+    json_encode($bandwidthUsage));
+T::notContains('unprojected count values are never returned', 'UNPROJECTED-COUNT',
+    json_encode($bandwidthUsage));
+T::is('StatsBar UAPI uses GET', 'GET', Http::clientCalls()[0]['method']);
+T::ok('StatsBar uses the fixed WHM UAPI proxy endpoint',
+    strpos(Http::clientCalls()[0]['url'], 'https://whm.example.test:2087/json-api/uapi_cpanel?') === 0);
+$bandwidthQuery = parse_url(Http::clientCalls()[0]['url'], PHP_URL_QUERY);
+T::contains('StatsBar is account-scoped to the linked cPanel username', 'cpanel.user=acctuser', $bandwidthQuery);
+T::contains('StatsBar calls only StatsBar::get_stats with bandwidthusage',
+    'cpanel.module=StatsBar&cpanel.function=get_stats&display=bandwidthusage', $bandwidthQuery);
+T::ok('StatsBar read has no request body',
+    !isset(Http::clientCalls()[0]['options']['form']) && !isset(Http::clientCalls()[0]['options']['body']));
+T::notContains('the WHM token is not exposed in the StatsBar request URL', $whmToken,
+    Http::clientCalls()[0]['url']);
+T::throws('the fixed StatsBar call rejects additional UAPI parameters', CpanelException::class, function () use ($connection) {
+    (new CpanelWhmClient())->call($connection, 'uapi_bandwidth_stats', 'GET', [
+        'cpanel.user' => 'acctuser', 'cpanel.module' => 'StatsBar',
+        'cpanel.function' => 'get_stats', 'display' => 'bandwidthusage', 'unknown' => 'injected',
+    ]);
+});
+T::throws('the fixed StatsBar call rejects arbitrary display selections', CpanelException::class, function () use ($connection) {
+    (new CpanelWhmClient())->call($connection, 'uapi_bandwidth_stats', 'GET', [
+        'cpanel.user' => 'acctuser', 'cpanel.module' => 'StatsBar',
+        'cpanel.function' => 'get_stats', 'display' => 'bandwidthusage|diskusage',
+    ]);
+});
+T::throws('the fixed StatsBar call rejects other UAPI functions', CpanelException::class, function () use ($connection) {
+    (new CpanelWhmClient())->call($connection, 'uapi_bandwidth_stats', 'GET', [
+        'cpanel.user' => 'acctuser', 'cpanel.module' => 'StatsBar',
+        'cpanel.function' => 'anything_else', 'display' => 'bandwidthusage',
+    ]);
+});
+Http::setClientFake(function () {
+    return whmResponse(['uapi' => [
+        'status' => 1, 'data' => [], 'errors' => null, 'warnings' => ['partial bandwidth data'],
+    ]]);
+});
+$bandwidthWarning = T::throws('StatsBar warnings fail closed rather than becoming snapshots', CpanelException::class,
+    function () use ($adapter, $connection) {
+        $adapter->getBandwidthUsage($connection, 'acctuser', 'hosting.example.test');
+    });
+T::is('StatsBar warnings have a stable fail-closed code', 'CPANEL_UAPI_WARNING', $bandwidthWarning->errorCode());
+Http::setClientFake(function () use ($bandwidthRow) {
+    return whmResponse(['uapi' => [
+        'status' => 1, 'data' => [$bandwidthRow, $bandwidthRow], 'errors' => null, 'warnings' => null,
+    ]]);
+});
+T::throws('multiple StatsBar rows are rejected instead of selecting an arbitrary item', CpanelException::class,
+    function () use ($adapter, $connection) {
+        $adapter->getBandwidthUsage($connection, 'acctuser', 'hosting.example.test');
+    });
+Http::setClientFake(function () use ($bandwidthRow) {
+    $badRow = $bandwidthRow;
+    $badRow['id'] = 'diskusage';
+    return whmResponse(['uapi' => [
+        'status' => 1, 'data' => [$badRow], 'errors' => null, 'warnings' => null,
+    ]]);
+});
+T::throws('a different StatsBar identifier is rejected', CpanelException::class, function () use ($adapter, $connection) {
+    $adapter->getBandwidthUsage($connection, 'acctuser', 'hosting.example.test');
+});
+
+Http::setClientFake(function () {
+    return whmResponse(['uapi' => [
+        'status' => 0, 'data' => [], 'errors' => ['permission denied'], 'warnings' => null,
+    ]]);
+});
+$uapiRejected = T::throws('an inner UAPI failure is not mistaken for a successful WHM proxy call', CpanelException::class,
+    function () use ($adapter, $connection) {
+        $adapter->listDomains($connection, 'acctuser', 'hosting.example.test');
+    });
+T::is('inner UAPI failure has a stable error code', 'CPANEL_UAPI_API_REJECTED', $uapiRejected->errorCode());
+T::notContains('UAPI error bodies are not copied into exception messages', 'permission denied', $uapiRejected->getMessage());
+
+Http::setClientFake(function () {
+    return whmResponse(['uapi' => [
+        'status' => 1,
+        'data' => ['main_domain' => null, 'addon_domains' => [], 'parked_domains' => [], 'sub_domains' => []],
+        'errors' => null, 'warnings' => null,
+    ]]);
+});
+$permissionBlank = T::throws('blank UAPI fields cannot masquerade as an empty inventory', CpanelException::class,
+    function () use ($adapter, $connection) {
+        $adapter->listDomains($connection, 'acctuser', 'hosting.example.test');
+    });
+T::is('blank permissions output is not accepted', 'CPANEL_UAPI_INVENTORY_UNVERIFIED', $permissionBlank->errorCode());
+
+Http::setClientFake(function () {
+    return whmResponse(['uapi' => [
+        'status' => 1,
+        'data' => ['main_domain' => 'other.example.test', 'addon_domains' => [], 'parked_domains' => [], 'sub_domains' => []],
+        'errors' => null, 'warnings' => null,
+    ]]);
+});
+$wrongMainDomain = T::throws('UAPI cannot return domains for a different account binding', CpanelException::class,
+    function () use ($adapter, $connection) {
+        $adapter->listDomains($connection, 'acctuser', 'hosting.example.test');
+    });
+T::is('a primary-domain mismatch is marked for reconciliation', 'CPANEL_ACCOUNT_BINDING_MISMATCH', $wrongMainDomain->errorCode());
 
 section('WHM account creation reconciles retries and never leaks the password');
 

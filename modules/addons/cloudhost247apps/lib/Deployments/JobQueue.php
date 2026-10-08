@@ -58,6 +58,10 @@ class JobQueue
     const TYPE_SERVER_DELETE     = 'server_delete';
     const TYPE_PROVIDER_ACCOUNT_VERIFY = 'provider_account_verify';
     const TYPE_PANEL_ACCOUNT_VERIFY = 'panel_account_verify';
+    const TYPE_PANEL_ACCOUNT_DOMAINS = 'panel_account_domains_list';
+    const TYPE_PANEL_ACCOUNT_ALIASES = 'panel_account_domain_aliases_list';
+    const TYPE_PANEL_ACCOUNT_QUOTA_USAGE = 'panel_account_quota_usage_read';
+    const TYPE_PANEL_ACCOUNT_BANDWIDTH_USAGE = 'panel_account_bandwidth_usage_read';
     const TYPE_PANEL_ACCOUNT_SUSPEND = 'panel_account_suspend';
     const TYPE_PANEL_ACCOUNT_UNSUSPEND = 'panel_account_unsuspend';
     const TYPE_PANEL_ACCOUNT_TERMINATE = 'panel_account_terminate';
@@ -70,8 +74,9 @@ class JobQueue
         self::TYPE_SERVER_CREATE, self::TYPE_SERVER_POLL, self::TYPE_SERVER_REBOOT,
         self::TYPE_SERVER_POWER_ON, self::TYPE_SERVER_POWER_OFF, self::TYPE_SERVER_REBUILD,
         self::TYPE_SERVER_RESIZE, self::TYPE_SERVER_DELETE, self::TYPE_PROVIDER_ACCOUNT_VERIFY,
-        self::TYPE_PANEL_ACCOUNT_VERIFY, self::TYPE_PANEL_ACCOUNT_SUSPEND,
-        self::TYPE_PANEL_ACCOUNT_UNSUSPEND, self::TYPE_PANEL_ACCOUNT_TERMINATE,
+        self::TYPE_PANEL_ACCOUNT_VERIFY, self::TYPE_PANEL_ACCOUNT_DOMAINS, self::TYPE_PANEL_ACCOUNT_ALIASES,
+        self::TYPE_PANEL_ACCOUNT_QUOTA_USAGE, self::TYPE_PANEL_ACCOUNT_BANDWIDTH_USAGE,
+        self::TYPE_PANEL_ACCOUNT_SUSPEND, self::TYPE_PANEL_ACCOUNT_UNSUSPEND, self::TYPE_PANEL_ACCOUNT_TERMINATE,
     ];
 
     /** Queues are kept separate: App Cloud target jobs never provision customer VMs. */

@@ -21,6 +21,10 @@ class PanelAccountWorker
 {
     const JOB_TYPES = [
         JobQueue::TYPE_PANEL_ACCOUNT_VERIFY,
+        JobQueue::TYPE_PANEL_ACCOUNT_DOMAINS,
+        JobQueue::TYPE_PANEL_ACCOUNT_ALIASES,
+        JobQueue::TYPE_PANEL_ACCOUNT_QUOTA_USAGE,
+        JobQueue::TYPE_PANEL_ACCOUNT_BANDWIDTH_USAGE,
         JobQueue::TYPE_PANEL_ACCOUNT_SUSPEND,
         JobQueue::TYPE_PANEL_ACCOUNT_UNSUSPEND,
         JobQueue::TYPE_PANEL_ACCOUNT_TERMINATE,
@@ -91,7 +95,7 @@ class PanelAccountWorker
             $this->ensureCredentialVerified((int) $account['server_id']);
             // Credential verification may itself make a WHM request. Recheck
             // WHMCS ownership, eligibility and mapping immediately before any
-            // lifecycle call so a status/owner change cannot race the mutation.
+            // external operation so an owner, status, or mapping change cannot race it.
             $account = $this->recheckActionScope($job, $account, $jobId, $action);
             $result = $this->execute($account, $job, $jobId, $action);
             Db::transaction(function () use ($accountId, $jobId, $result) {
@@ -129,7 +133,7 @@ class PanelAccountWorker
     private function assertNotCancelled($jobId)
     {
         if ($this->queue->cancelRequested((int) $jobId)) {
-            throw new StateException('The control-panel job was cancelled before its external mutation.');
+            throw new StateException('The control-panel job was cancelled before its next external operation.');
         }
     }
 
@@ -169,6 +173,224 @@ class PanelAccountWorker
                 'job_result' => [
                     'panel_account_id' => (int) $account['id'], 'status' => $status,
                     'exists' => true, 'confirmed' => true,
+                ],
+            ];
+        }
+
+        if ($action === PanelAccountService::ACTION_DOMAINS) {
+            $this->assertNotCancelled($jobId);
+            $remote = $this->panels->getAccount($serverId, $username);
+            if ($remote === null) {
+                throw new ConflictException('A missing cPanel account cannot have its domains inspected.');
+            }
+            $currentStatus = $this->statusForAccount($account, $remote);
+            $account = $this->recheckActionScope($job, $account, $jobId, $action);
+            $this->assertNotCancelled($jobId);
+            $inventory = $this->panels->listDomains($serverId, $username, (string) $account['domain']);
+            if (!isset($inventory['main_domain'])
+                || strtolower((string) $inventory['main_domain']) !== strtolower((string) $account['domain'])
+                || !isset($inventory['domains']) || !is_array($inventory['domains'])
+                || !isset($inventory['count']) || (int) $inventory['count'] !== count($inventory['domains'])) {
+                throw new CpanelException('cPanel UAPI returned a domain inventory that does not match the linked account.', [
+                    'error_code' => 'CPANEL_ACCOUNT_BINDING_MISMATCH',
+                ]);
+            }
+            return [
+                'status' => $currentStatus,
+                'metadata' => [
+                    'username' => $username,
+                    'main_domain' => (string) $inventory['main_domain'],
+                    'domain_count' => (int) $inventory['count'],
+                    'temporary_domains_excluded' => !empty($inventory['temporary_domains_excluded']),
+                ],
+                'job_result' => [
+                    'panel_account_id' => (int) $account['id'],
+                    'status' => $currentStatus,
+                    'main_domain' => (string) $inventory['main_domain'],
+                    'domain_count' => (int) $inventory['count'],
+                    'domains' => $inventory['domains'],
+                    'temporary_domains_excluded' => !empty($inventory['temporary_domains_excluded']),
+                    'confirmed' => true,
+                ],
+            ];
+        }
+
+        if ($action === PanelAccountService::ACTION_ALIASES) {
+            $this->assertNotCancelled($jobId);
+            $remote = $this->panels->getAccount($serverId, $username);
+            if ($remote === null) {
+                throw new ConflictException('A missing cPanel account cannot have its built-in aliases inspected.');
+            }
+            $currentStatus = $this->statusForAccount($account, $remote);
+            $account = $this->recheckActionScope($job, $account, $jobId, $action);
+            $this->assertNotCancelled($jobId);
+            $aliasInventory = $this->panels->listBuiltinDomainAliases(
+                $serverId, $username, (string) $account['domain']
+            );
+            if (!isset($aliasInventory['main_domain'])
+                || strtolower((string) $aliasInventory['main_domain']) !== strtolower((string) $account['domain'])
+                || !isset($aliasInventory['aliases']) || !is_array($aliasInventory['aliases'])
+                || !isset($aliasInventory['count']) || (int) $aliasInventory['count'] !== count($aliasInventory['aliases'])
+                || !isset($aliasInventory['completeness']) || $aliasInventory['completeness'] !== 'vendor_reported'
+                || count($aliasInventory['aliases']) > 1000) {
+                throw new CpanelException('cPanel UAPI returned built-in aliases that do not match the linked account.', [
+                    'error_code' => 'CPANEL_ACCOUNT_BINDING_MISMATCH',
+                ]);
+            }
+            $aliases = [];
+            $seenAliases = [];
+            $mainDomain = strtolower(trim((string) $account['domain']));
+            foreach ($aliasInventory['aliases'] as $alias) {
+                if (!is_array($alias) || !isset($alias['alias'], $alias['domain'])
+                    || !is_string($alias['alias']) || !is_string($alias['domain'])) {
+                    throw new CpanelException('cPanel UAPI returned malformed built-in aliases.', [
+                        'error_code' => 'CPANEL_UAPI_RESPONSE_INVALID',
+                    ]);
+                }
+                $label = strtolower(trim($alias['alias']));
+                $domain = strtolower(trim($alias['domain']));
+                if ($label === '' || strlen($label) > 253 || $domain !== $label . '.' . $mainDomain
+                    || filter_var($label, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false
+                    || filter_var($domain, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false
+                    || isset($seenAliases[$domain])) {
+                    throw new CpanelException('cPanel UAPI returned aliases outside the linked primary domain.', [
+                        'error_code' => 'CPANEL_ACCOUNT_BINDING_MISMATCH',
+                    ]);
+                }
+                $seenAliases[$domain] = true;
+                $aliases[] = ['alias' => $label, 'domain' => $domain];
+            }
+            return [
+                'status' => $currentStatus,
+                'metadata' => [
+                    'username' => $username,
+                    'main_domain' => (string) $aliasInventory['main_domain'],
+                    'alias_count' => (int) $aliasInventory['count'],
+                    'completeness' => 'vendor_reported',
+                ],
+                'job_result' => [
+                    'panel_account_id' => (int) $account['id'],
+                    'status' => $currentStatus,
+                    'main_domain' => (string) $aliasInventory['main_domain'],
+                    'alias_count' => (int) $aliasInventory['count'],
+                    'aliases' => $aliases,
+                    'completeness' => 'vendor_reported',
+                    'temporary_domains_excluded' => !empty($aliasInventory['temporary_domains_excluded']),
+                    'confirmed' => true,
+                ],
+            ];
+        }
+
+        if ($action === PanelAccountService::ACTION_QUOTA_USAGE) {
+            $this->assertNotCancelled($jobId);
+            $remote = $this->panels->getAccount($serverId, $username);
+            if ($remote === null) {
+                throw new ConflictException('A missing cPanel account cannot have quota usage inspected.');
+            }
+            $currentStatus = $this->statusForAccount($account, $remote);
+            $account = $this->recheckActionScope($job, $account, $jobId, $action);
+            $this->assertNotCancelled($jobId);
+            $quota = $this->panels->getQuotaUsage($serverId, $username, (string) $account['domain']);
+            $requiredFields = [
+                'megabyte_limit', 'megabytes_remain', 'megabytes_used',
+                'inode_limit', 'inodes_remain', 'inodes_used',
+            ];
+            if (!isset($quota['username'], $quota['main_domain'], $quota['usage'], $quota['fields_reported'],
+                $quota['completeness'])
+                || strtolower((string) $quota['username']) !== strtolower($username)
+                || strtolower((string) $quota['main_domain']) !== strtolower((string) $account['domain'])
+                || !is_array($quota['usage']) || !is_array($quota['fields_reported'])
+                || array_diff($requiredFields, array_keys($quota['usage']))
+                || count($quota['usage']) !== count($quota['fields_reported'])
+                || array_diff(array_keys($quota['usage']), $quota['fields_reported'])
+                || array_diff($quota['fields_reported'], array_keys($quota['usage']))
+                || $quota['completeness'] !== 'vendor_reported'
+                || count($quota['usage']) > 9) {
+                throw new CpanelException('cPanel UAPI returned quota data outside the linked account or expected schema.', [
+                    'error_code' => 'CPANEL_ACCOUNT_BINDING_MISMATCH',
+                ]);
+            }
+            return [
+                'status' => $currentStatus,
+                'metadata' => [
+                    'username' => $username,
+                    'main_domain' => (string) $quota['main_domain'],
+                    'field_count' => count($quota['usage']),
+                    'fields_reported' => array_values($quota['fields_reported']),
+                    'completeness' => 'vendor_reported',
+                ],
+                'job_result' => [
+                    'panel_account_id' => (int) $account['id'],
+                    'status' => $currentStatus,
+                    'username' => $username,
+                    'main_domain' => (string) $quota['main_domain'],
+                    'usage' => $quota['usage'],
+                    'fields_reported' => array_values($quota['fields_reported']),
+                    'field_count' => count($quota['usage']),
+                    'completeness' => 'vendor_reported',
+                    'confirmed' => true,
+                ],
+            ];
+        }
+
+        if ($action === PanelAccountService::ACTION_BANDWIDTH_USAGE) {
+            $this->assertNotCancelled($jobId);
+            $remote = $this->panels->getAccount($serverId, $username);
+            if ($remote === null) {
+                throw new ConflictException('A missing cPanel account cannot have bandwidth usage inspected.');
+            }
+            $currentStatus = $this->statusForAccount($account, $remote);
+            $account = $this->recheckActionScope($job, $account, $jobId, $action);
+            $this->assertNotCancelled($jobId);
+            $bandwidth = $this->panels->getBandwidthUsage($serverId, $username, (string) $account['domain']);
+            $fields = ['used', 'limit', 'percent', 'units', 'zero_is_unlimited', 'is_maxed', 'normalized'];
+            if (!is_array($bandwidth) || !isset($bandwidth['username'], $bandwidth['main_domain'],
+                $bandwidth['usage'], $bandwidth['fields_reported'], $bandwidth['completeness'])
+                || !is_string($bandwidth['username']) || !is_string($bandwidth['main_domain'])
+                || !is_array($bandwidth['usage']) || !is_array($bandwidth['fields_reported'])
+                || $bandwidth['completeness'] !== 'vendor_reported'
+                || array_keys($bandwidth['usage']) !== $fields
+                || array_values($bandwidth['fields_reported']) !== $fields) {
+                throw new CpanelException('cPanel UAPI returned bandwidth data outside the expected schema.', [
+                    'error_code' => 'CPANEL_UAPI_RESPONSE_INVALID',
+                ]);
+            }
+            if (strtolower($bandwidth['username']) !== strtolower($username)
+                || strtolower($bandwidth['main_domain']) !== strtolower((string) $account['domain'])) {
+                throw new CpanelException('cPanel UAPI returned bandwidth data outside the linked account.', [
+                    'error_code' => 'CPANEL_ACCOUNT_BINDING_MISMATCH',
+                ]);
+            }
+            $usage = $bandwidth['usage'];
+            if (!is_string($usage['used']) || !preg_match('/^[0-9]{1,32}(?:\\.[0-9]{1,12})?$/D', $usage['used'])
+                || !is_string($usage['limit']) || !preg_match('/^[0-9]{1,32}(?:\\.[0-9]{1,12})?$/D', $usage['limit'])
+                || !is_int($usage['percent']) || $usage['percent'] < 0 || $usage['percent'] > 100
+                || !is_string($usage['units']) || !preg_match('/^[A-Za-z0-9 ._-]{1,16}$/D', $usage['units'])
+                || !is_bool($usage['zero_is_unlimited']) || !is_bool($usage['is_maxed'])
+                || !is_bool($usage['normalized'])) {
+                throw new CpanelException('cPanel UAPI returned malformed bandwidth field values.', [
+                    'error_code' => 'CPANEL_UAPI_RESPONSE_INVALID',
+                ]);
+            }
+            return [
+                'status' => $currentStatus,
+                'metadata' => [
+                    'username' => $username,
+                    'main_domain' => (string) $bandwidth['main_domain'],
+                    'field_count' => count($bandwidth['usage']),
+                    'fields_reported' => array_values($bandwidth['fields_reported']),
+                    'completeness' => 'vendor_reported',
+                ],
+                'job_result' => [
+                    'panel_account_id' => (int) $account['id'],
+                    'status' => $currentStatus,
+                    'username' => $username,
+                    'main_domain' => (string) $bandwidth['main_domain'],
+                    'usage' => $bandwidth['usage'],
+                    'fields_reported' => array_values($bandwidth['fields_reported']),
+                    'field_count' => count($bandwidth['usage']),
+                    'completeness' => 'vendor_reported',
+                    'confirmed' => true,
                 ],
             ];
         }
@@ -331,6 +553,10 @@ class PanelAccountWorker
     {
         $map = [
             JobQueue::TYPE_PANEL_ACCOUNT_VERIFY => PanelAccountService::ACTION_VERIFY,
+            JobQueue::TYPE_PANEL_ACCOUNT_DOMAINS => PanelAccountService::ACTION_DOMAINS,
+            JobQueue::TYPE_PANEL_ACCOUNT_ALIASES => PanelAccountService::ACTION_ALIASES,
+            JobQueue::TYPE_PANEL_ACCOUNT_QUOTA_USAGE => PanelAccountService::ACTION_QUOTA_USAGE,
+            JobQueue::TYPE_PANEL_ACCOUNT_BANDWIDTH_USAGE => PanelAccountService::ACTION_BANDWIDTH_USAGE,
             JobQueue::TYPE_PANEL_ACCOUNT_SUSPEND => PanelAccountService::ACTION_SUSPEND,
             JobQueue::TYPE_PANEL_ACCOUNT_UNSUSPEND => PanelAccountService::ACTION_UNSUSPEND,
             JobQueue::TYPE_PANEL_ACCOUNT_TERMINATE => PanelAccountService::ACTION_TERMINATE,

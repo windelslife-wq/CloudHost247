@@ -46,6 +46,10 @@ class PanelAccountService
     const STATUS_ERROR = 'error';
 
     const ACTION_VERIFY = 'verify';
+    const ACTION_DOMAINS = 'domains';
+    const ACTION_ALIASES = 'aliases';
+    const ACTION_QUOTA_USAGE = 'quota_usage';
+    const ACTION_BANDWIDTH_USAGE = 'bandwidth_usage';
     const ACTION_SUSPEND = 'suspend';
     const ACTION_UNSUSPEND = 'unsuspend';
     const ACTION_TERMINATE = 'terminate';
@@ -300,6 +304,277 @@ class PanelAccountService
         return $this->responseFor((int) $result['account_id'], (int) $result['job_id'], !empty($run['replayed']));
     }
 
+    /**
+     * Queue a read-only UAPI domain inventory for an already verified account.
+     * The result is available only through the staff-authorized job endpoint.
+     */
+    public function requestDomainInventory($accountId, $idempotencyKey)
+    {
+        $this->assertHumanAdmin(Rbac::PANEL_ACCOUNT_VIEW);
+        self::assertUapiDomainsEnabled();
+        $accountId = (int) $accountId;
+        if ($accountId <= 0) {
+            throw new ValidationException('A linked panel-account id is required.');
+        }
+        $key = self::requireIdempotencyKey($idempotencyKey);
+        $fingerprintPayload = ['panel_account_id' => $accountId, 'action' => self::ACTION_DOMAINS];
+        $run = Idempotency::run('panel-account.domains', $key, $fingerprintPayload, function () use (
+            $accountId, $key
+        ) {
+            return Db::transaction(function () use ($accountId, $key) {
+                $current = $this->internalRow($accountId);
+                if ((string) $current['panel_key'] !== self::PANEL_KEY) {
+                    throw new ConflictException('Domain inventory is not available for this panel type.');
+                }
+                $this->assertCpanelServer((int) $current['server_id']);
+                $context = $this->serviceContext((int) $current['whmcs_service_id'],
+                    (int) $current['client_id'], false, false);
+                $this->assertActionAllowed($current, self::ACTION_DOMAINS, $context['status']);
+                $this->assertNoPendingAction($current);
+
+                if (!Db::compareAndSet('panel_accounts', [
+                    'pending_action' => self::ACTION_DOMAINS, 'updated_at' => Clock::now(),
+                ], ['id' => $accountId, 'pending_job_id' => null, 'pending_action' => null])) {
+                    throw new ConflictException('Another control-panel action is already being queued for this account.');
+                }
+                $this->requireAudit(Audit::PANEL_ACCOUNT_ACTION_QUEUED, $accountId,
+                    (int) $current['server_id'], (int) $current['client_id'], [
+                        'whmcs_service_id' => (int) $current['whmcs_service_id'],
+                        'action' => self::ACTION_DOMAINS,
+                        'whmcs_status' => $context['status'],
+                    ]);
+
+                $job = $this->queue->enqueue(JobQueue::TYPE_PANEL_ACCOUNT_DOMAINS, [
+                    'panel_account_id' => $accountId,
+                    'action' => self::ACTION_DOMAINS,
+                ], [
+                    'queue' => JobQueue::QUEUE_CONTROL_PANEL,
+                    'idempotency_key' => self::queueKey($accountId, self::ACTION_DOMAINS, $key),
+                    'panel_account_id' => $accountId,
+                    'whmcs_service_id' => (int) $current['whmcs_service_id'],
+                    'client_id' => (int) $current['client_id'],
+                    'requested_by' => $this->actor->identity(),
+                ]);
+                $attached = Db::update('panel_accounts', [
+                    'pending_job_id' => (int) $job['id'], 'updated_at' => Clock::now(),
+                ], ['id' => $accountId, 'pending_action' => self::ACTION_DOMAINS, 'pending_job_id' => null]);
+                if ($attached <= 0) {
+                    throw new ConflictException('The queued cPanel domain inventory could not be attached to its account record.');
+                }
+                $this->recordHistory($accountId, (int) $job['id'], 'domains_inventory_queued',
+                    (string) $current['status'], (string) $current['status'], [
+                        'action' => self::ACTION_DOMAINS,
+                        'whmcs_service_id' => (int) $current['whmcs_service_id'],
+                    ], $this->actor);
+                return ['account_id' => $accountId, 'job_id' => (int) $job['id']];
+            });
+        });
+
+        $result = isset($run['result']) ? $run['result'] : [];
+        return $this->responseFor((int) $result['account_id'], (int) $result['job_id'], !empty($run['replayed']));
+    }
+
+    /** Queue a staff-only read of the vendor-reported built-in primary-domain aliases. */
+    public function requestDomainAliases($accountId, $idempotencyKey)
+    {
+        $this->assertHumanAdmin(Rbac::PANEL_ACCOUNT_VIEW);
+        self::assertUapiAliasesEnabled();
+        $accountId = (int) $accountId;
+        if ($accountId <= 0) {
+            throw new ValidationException('A linked panel-account id is required.');
+        }
+        $key = self::requireIdempotencyKey($idempotencyKey);
+        $fingerprintPayload = ['panel_account_id' => $accountId, 'action' => self::ACTION_ALIASES];
+        $run = Idempotency::run('panel-account.aliases', $key, $fingerprintPayload, function () use (
+            $accountId, $key
+        ) {
+            return Db::transaction(function () use ($accountId, $key) {
+                $current = $this->internalRow($accountId);
+                if ((string) $current['panel_key'] !== self::PANEL_KEY) {
+                    throw new ConflictException('Built-in domain aliases are not available for this panel type.');
+                }
+                $this->assertCpanelServer((int) $current['server_id']);
+                $context = $this->serviceContext((int) $current['whmcs_service_id'],
+                    (int) $current['client_id'], false, false);
+                $this->assertActionAllowed($current, self::ACTION_ALIASES, $context['status']);
+                $this->assertNoPendingAction($current);
+
+                if (!Db::compareAndSet('panel_accounts', [
+                    'pending_action' => self::ACTION_ALIASES, 'updated_at' => Clock::now(),
+                ], ['id' => $accountId, 'pending_job_id' => null, 'pending_action' => null])) {
+                    throw new ConflictException('Another control-panel action is already being queued for this account.');
+                }
+                $this->requireAudit(Audit::PANEL_ACCOUNT_ACTION_QUEUED, $accountId,
+                    (int) $current['server_id'], (int) $current['client_id'], [
+                        'whmcs_service_id' => (int) $current['whmcs_service_id'],
+                        'action' => self::ACTION_ALIASES,
+                        'whmcs_status' => $context['status'],
+                    ]);
+
+                $job = $this->queue->enqueue(JobQueue::TYPE_PANEL_ACCOUNT_ALIASES, [
+                    'panel_account_id' => $accountId,
+                    'action' => self::ACTION_ALIASES,
+                ], [
+                    'queue' => JobQueue::QUEUE_CONTROL_PANEL,
+                    'idempotency_key' => self::queueKey($accountId, self::ACTION_ALIASES, $key),
+                    'panel_account_id' => $accountId,
+                    'whmcs_service_id' => (int) $current['whmcs_service_id'],
+                    'client_id' => (int) $current['client_id'],
+                    'requested_by' => $this->actor->identity(),
+                ]);
+                $attached = Db::update('panel_accounts', [
+                    'pending_job_id' => (int) $job['id'], 'updated_at' => Clock::now(),
+                ], ['id' => $accountId, 'pending_action' => self::ACTION_ALIASES, 'pending_job_id' => null]);
+                if ($attached <= 0) {
+                    throw new ConflictException('The queued cPanel alias read could not be attached to its account record.');
+                }
+                $this->recordHistory($accountId, (int) $job['id'], 'domain_aliases_queued',
+                    (string) $current['status'], (string) $current['status'], [
+                        'action' => self::ACTION_ALIASES,
+                        'whmcs_service_id' => (int) $current['whmcs_service_id'],
+                    ], $this->actor);
+                return ['account_id' => $accountId, 'job_id' => (int) $job['id']];
+            });
+        });
+
+        $result = isset($run['result']) ? $run['result'] : [];
+        return $this->responseFor((int) $result['account_id'], (int) $result['job_id'], !empty($run['replayed']));
+    }
+
+    /** Queue a staff-only, account-scoped disk/inode quota snapshot. */
+    public function requestQuotaUsage($accountId, $idempotencyKey)
+    {
+        $this->assertHumanAdmin(Rbac::PANEL_ACCOUNT_VIEW);
+        self::assertUapiQuotaUsageEnabled();
+        $accountId = (int) $accountId;
+        if ($accountId <= 0) {
+            throw new ValidationException('A linked panel-account id is required.');
+        }
+        $key = self::requireIdempotencyKey($idempotencyKey);
+        $fingerprintPayload = ['panel_account_id' => $accountId, 'action' => self::ACTION_QUOTA_USAGE];
+        $run = Idempotency::run('panel-account.quota-usage', $key, $fingerprintPayload, function () use (
+            $accountId, $key
+        ) {
+            return Db::transaction(function () use ($accountId, $key) {
+                $current = $this->internalRow($accountId);
+                if ((string) $current['panel_key'] !== self::PANEL_KEY) {
+                    throw new ConflictException('Quota usage is not available for this panel type.');
+                }
+                $this->assertCpanelServer((int) $current['server_id']);
+                $context = $this->serviceContext((int) $current['whmcs_service_id'],
+                    (int) $current['client_id'], false, false);
+                $this->assertActionAllowed($current, self::ACTION_QUOTA_USAGE, $context['status']);
+                $this->assertNoPendingAction($current);
+
+                if (!Db::compareAndSet('panel_accounts', [
+                    'pending_action' => self::ACTION_QUOTA_USAGE, 'updated_at' => Clock::now(),
+                ], ['id' => $accountId, 'pending_job_id' => null, 'pending_action' => null])) {
+                    throw new ConflictException('Another control-panel action is already being queued for this account.');
+                }
+                $this->requireAudit(Audit::PANEL_ACCOUNT_ACTION_QUEUED, $accountId,
+                    (int) $current['server_id'], (int) $current['client_id'], [
+                        'whmcs_service_id' => (int) $current['whmcs_service_id'],
+                        'action' => self::ACTION_QUOTA_USAGE,
+                        'whmcs_status' => $context['status'],
+                    ]);
+
+                $job = $this->queue->enqueue(JobQueue::TYPE_PANEL_ACCOUNT_QUOTA_USAGE, [
+                    'panel_account_id' => $accountId,
+                    'action' => self::ACTION_QUOTA_USAGE,
+                ], [
+                    'queue' => JobQueue::QUEUE_CONTROL_PANEL,
+                    'idempotency_key' => self::queueKey($accountId, self::ACTION_QUOTA_USAGE, $key),
+                    'panel_account_id' => $accountId,
+                    'whmcs_service_id' => (int) $current['whmcs_service_id'],
+                    'client_id' => (int) $current['client_id'],
+                    'requested_by' => $this->actor->identity(),
+                ]);
+                $attached = Db::update('panel_accounts', [
+                    'pending_job_id' => (int) $job['id'], 'updated_at' => Clock::now(),
+                ], ['id' => $accountId, 'pending_action' => self::ACTION_QUOTA_USAGE, 'pending_job_id' => null]);
+                if ($attached <= 0) {
+                    throw new ConflictException('The queued cPanel quota snapshot could not be attached to its account record.');
+                }
+                $this->recordHistory($accountId, (int) $job['id'], 'quota_usage_snapshot_queued',
+                    (string) $current['status'], (string) $current['status'], [
+                        'action' => self::ACTION_QUOTA_USAGE,
+                        'whmcs_service_id' => (int) $current['whmcs_service_id'],
+                    ], $this->actor);
+                return ['account_id' => $accountId, 'job_id' => (int) $job['id']];
+            });
+        });
+
+        $result = isset($run['result']) ? $run['result'] : [];
+        return $this->responseFor((int) $result['account_id'], (int) $result['job_id'], !empty($run['replayed']));
+    }
+
+    /** Queue a staff-only, account-scoped bandwidth snapshot. */
+    public function requestBandwidthUsage($accountId, $idempotencyKey)
+    {
+        $this->assertHumanAdmin(Rbac::PANEL_ACCOUNT_VIEW);
+        self::assertUapiBandwidthUsageEnabled();
+        $accountId = (int) $accountId;
+        if ($accountId <= 0) {
+            throw new ValidationException('A linked panel-account id is required.');
+        }
+        $key = self::requireIdempotencyKey($idempotencyKey);
+        $fingerprintPayload = ['panel_account_id' => $accountId, 'action' => self::ACTION_BANDWIDTH_USAGE];
+        $run = Idempotency::run('panel-account.bandwidth-usage', $key, $fingerprintPayload, function () use (
+            $accountId, $key
+        ) {
+            return Db::transaction(function () use ($accountId, $key) {
+                $current = $this->internalRow($accountId);
+                if ((string) $current['panel_key'] !== self::PANEL_KEY) {
+                    throw new ConflictException('Bandwidth usage is not available for this panel type.');
+                }
+                $this->assertCpanelServer((int) $current['server_id']);
+                $context = $this->serviceContext((int) $current['whmcs_service_id'],
+                    (int) $current['client_id'], false, false);
+                $this->assertActionAllowed($current, self::ACTION_BANDWIDTH_USAGE, $context['status']);
+                $this->assertNoPendingAction($current);
+
+                if (!Db::compareAndSet('panel_accounts', [
+                    'pending_action' => self::ACTION_BANDWIDTH_USAGE, 'updated_at' => Clock::now(),
+                ], ['id' => $accountId, 'pending_job_id' => null, 'pending_action' => null])) {
+                    throw new ConflictException('Another control-panel action is already being queued for this account.');
+                }
+                $this->requireAudit(Audit::PANEL_ACCOUNT_ACTION_QUEUED, $accountId,
+                    (int) $current['server_id'], (int) $current['client_id'], [
+                        'whmcs_service_id' => (int) $current['whmcs_service_id'],
+                        'action' => self::ACTION_BANDWIDTH_USAGE,
+                        'whmcs_status' => $context['status'],
+                    ]);
+
+                $job = $this->queue->enqueue(JobQueue::TYPE_PANEL_ACCOUNT_BANDWIDTH_USAGE, [
+                    'panel_account_id' => $accountId,
+                    'action' => self::ACTION_BANDWIDTH_USAGE,
+                ], [
+                    'queue' => JobQueue::QUEUE_CONTROL_PANEL,
+                    'idempotency_key' => self::queueKey($accountId, self::ACTION_BANDWIDTH_USAGE, $key),
+                    'panel_account_id' => $accountId,
+                    'whmcs_service_id' => (int) $current['whmcs_service_id'],
+                    'client_id' => (int) $current['client_id'],
+                    'requested_by' => $this->actor->identity(),
+                ]);
+                $attached = Db::update('panel_accounts', [
+                    'pending_job_id' => (int) $job['id'], 'updated_at' => Clock::now(),
+                ], ['id' => $accountId, 'pending_action' => self::ACTION_BANDWIDTH_USAGE, 'pending_job_id' => null]);
+                if ($attached <= 0) {
+                    throw new ConflictException('The queued cPanel bandwidth snapshot could not be attached to its account record.');
+                }
+                $this->recordHistory($accountId, (int) $job['id'], 'bandwidth_usage_snapshot_queued',
+                    (string) $current['status'], (string) $current['status'], [
+                        'action' => self::ACTION_BANDWIDTH_USAGE,
+                        'whmcs_service_id' => (int) $current['whmcs_service_id'],
+                    ], $this->actor);
+                return ['account_id' => $accountId, 'job_id' => (int) $job['id']];
+            });
+        });
+
+        $result = isset($run['result']) ? $run['result'] : [];
+        return $this->responseFor((int) $result['account_id'], (int) $result['job_id'], !empty($run['replayed']));
+    }
+
     /** Admin list; customer-facing panel-account access is deliberately absent. */
     public function listing($limit = 200)
     {
@@ -332,7 +607,17 @@ class PanelAccountService
     public function workerAssertActionAllowed($accountId, $jobId, $action)
     {
         $this->assertWorker();
-        self::assertWorkflowEnabled();
+        if ((string) $action === self::ACTION_DOMAINS) {
+            self::assertUapiDomainsEnabled();
+        } elseif ((string) $action === self::ACTION_ALIASES) {
+            self::assertUapiAliasesEnabled();
+        } elseif ((string) $action === self::ACTION_QUOTA_USAGE) {
+            self::assertUapiQuotaUsageEnabled();
+        } elseif ((string) $action === self::ACTION_BANDWIDTH_USAGE) {
+            self::assertUapiBandwidthUsageEnabled();
+        } else {
+            self::assertWorkflowEnabled();
+        }
         $row = $this->internalRow($accountId);
         if ((string) $row['panel_key'] !== self::PANEL_KEY
             || (int) $row['pending_job_id'] !== (int) $jobId
@@ -373,35 +658,105 @@ class PanelAccountService
             throw new ConflictException('The linked panel account changed before the worker could record completion.');
         }
         $action = (string) $row['pending_action'];
-        $event = $status === self::STATUS_MISSING ? 'account_missing'
-            : ($status === self::STATUS_TERMINATED ? 'account_terminated'
-                : ($status === self::STATUS_SUSPENDED ? 'account_suspended'
-                    : ($action === self::ACTION_VERIFY ? 'account_verified' : 'account_unsuspended')));
+        if ($action === self::ACTION_DOMAINS) {
+            $event = 'domains_inventory_listed';
+        } elseif ($action === self::ACTION_ALIASES) {
+            $event = 'domain_aliases_listed';
+        } elseif ($action === self::ACTION_QUOTA_USAGE) {
+            $event = 'quota_usage_snapshot_read';
+        } elseif ($action === self::ACTION_BANDWIDTH_USAGE) {
+            $event = 'bandwidth_usage_snapshot_read';
+        } elseif ($status === self::STATUS_MISSING) {
+            $event = 'account_missing';
+        } elseif ($status === self::STATUS_TERMINATED) {
+            $event = 'account_terminated';
+        } elseif ($status === self::STATUS_SUSPENDED) {
+            $event = 'account_suspended';
+        } else {
+            $event = $action === self::ACTION_VERIFY ? 'account_verified' : 'account_unsuspended';
+        }
         $safeMetadata = ['action' => $action, 'status' => (string) $status] + $metadata;
         $this->recordHistory($accountId, $jobId, $event, (string) $row['status'], (string) $status,
             $safeMetadata, $this->actor);
-        $auditId = Audit::transition($this->actor, Audit::PANEL_ACCOUNT_STATE_CHANGED,
-            'panel_account', (int) $accountId, (string) $row['status'], (string) $status, [
+        if ($action === self::ACTION_DOMAINS) {
+            $auditId = Audit::record($this->actor, Audit::PANEL_ACCOUNT_DOMAINS_LISTED, [
+                'resource_type' => 'panel_account', 'resource_id' => (int) $accountId,
                 'server_id' => (int) $row['server_id'], 'client_id' => (int) $row['client_id'],
                 'metadata' => ['job_id' => (int) $jobId, 'whmcs_service_id' => (int) $row['whmcs_service_id']]
                     + $safeMetadata,
-                'severity' => $status === self::STATUS_TERMINATED ? 'warning' : 'info',
+                'severity' => 'info',
             ]);
+        } elseif ($action === self::ACTION_ALIASES) {
+            $auditId = Audit::record($this->actor, Audit::PANEL_ACCOUNT_ALIASES_LISTED, [
+                'resource_type' => 'panel_account', 'resource_id' => (int) $accountId,
+                'server_id' => (int) $row['server_id'], 'client_id' => (int) $row['client_id'],
+                'metadata' => ['job_id' => (int) $jobId, 'whmcs_service_id' => (int) $row['whmcs_service_id']]
+                    + $safeMetadata,
+                'severity' => 'info',
+            ]);
+        } elseif ($action === self::ACTION_QUOTA_USAGE) {
+            $auditId = Audit::record($this->actor, Audit::PANEL_ACCOUNT_QUOTA_USAGE_READ, [
+                'resource_type' => 'panel_account', 'resource_id' => (int) $accountId,
+                'server_id' => (int) $row['server_id'], 'client_id' => (int) $row['client_id'],
+                'metadata' => ['job_id' => (int) $jobId, 'whmcs_service_id' => (int) $row['whmcs_service_id']]
+                    + $safeMetadata,
+                'severity' => 'info',
+            ]);
+        } elseif ($action === self::ACTION_BANDWIDTH_USAGE) {
+            $auditId = Audit::record($this->actor, Audit::PANEL_ACCOUNT_BANDWIDTH_USAGE_READ, [
+                'resource_type' => 'panel_account', 'resource_id' => (int) $accountId,
+                'server_id' => (int) $row['server_id'], 'client_id' => (int) $row['client_id'],
+                'metadata' => ['job_id' => (int) $jobId, 'whmcs_service_id' => (int) $row['whmcs_service_id']]
+                    + $safeMetadata,
+                'severity' => 'info',
+            ]);
+        } else {
+            $auditId = Audit::transition($this->actor, Audit::PANEL_ACCOUNT_STATE_CHANGED,
+                'panel_account', (int) $accountId, (string) $row['status'], (string) $status, [
+                    'server_id' => (int) $row['server_id'], 'client_id' => (int) $row['client_id'],
+                    'metadata' => ['job_id' => (int) $jobId, 'whmcs_service_id' => (int) $row['whmcs_service_id']]
+                        + $safeMetadata,
+                    'severity' => $status === self::STATUS_TERMINATED ? 'warning' : 'info',
+                ]);
+        }
         if (!(int) $auditId) {
             throw new StateException('Panel-account completion cannot be recorded without a writable audit log.', [
                 'error_code' => 'PANEL_ACCOUNT_AUDIT_UNAVAILABLE',
             ]);
         }
-        Events::emit('panel_account.state_changed', [
+        $eventPayload = [
             'panel_account_id' => (int) $accountId,
             'job_id' => (int) $jobId,
             'action' => $action,
             'status' => (string) $status,
-        ], [
-            'panel_account_id' => (int) $accountId,
-            'client_id' => (int) $row['client_id'],
-            'source' => 'control_panel',
-        ]);
+        ];
+        if ($action === self::ACTION_DOMAINS) {
+            $eventPayload['domain_count'] = isset($safeMetadata['domain_count'])
+                ? (int) $safeMetadata['domain_count'] : 0;
+            $eventName = 'panel_account.domains_listed';
+        } elseif ($action === self::ACTION_ALIASES) {
+            $eventPayload['alias_count'] = isset($safeMetadata['alias_count'])
+                ? (int) $safeMetadata['alias_count'] : 0;
+            $eventPayload['completeness'] = 'vendor_reported';
+            $eventName = 'panel_account.domain_aliases_listed';
+        } elseif ($action === self::ACTION_QUOTA_USAGE) {
+            $eventPayload['field_count'] = isset($safeMetadata['field_count'])
+                ? (int) $safeMetadata['field_count'] : 0;
+            $eventPayload['completeness'] = 'vendor_reported';
+            $eventName = 'panel_account.quota_usage_read';
+        } elseif ($action === self::ACTION_BANDWIDTH_USAGE) {
+            $eventPayload['field_count'] = isset($safeMetadata['field_count'])
+                ? (int) $safeMetadata['field_count'] : 0;
+            $eventPayload['completeness'] = 'vendor_reported';
+            $eventName = 'panel_account.bandwidth_usage_read';
+        } else {
+            $eventName = 'panel_account.state_changed';
+        }
+        Events::emit($eventName, $eventPayload, [
+                'panel_account_id' => (int) $accountId,
+                'client_id' => (int) $row['client_id'],
+                'source' => 'control_panel',
+            ]);
         return $this->present($this->internalRow($accountId));
     }
 
@@ -448,6 +803,46 @@ class PanelAccountService
         if (!Settings::bool('panel_account_workflow_enabled', false)) {
             throw new StateException('The cPanel account workflow is disabled until WHM staging and operational readiness checks pass. Customer account creation remains unavailable pending a separate password/SSO review.', [
                 'error_code' => 'PANEL_ACCOUNT_WORKFLOW_DISABLED',
+            ]);
+        }
+        return true;
+    }
+
+    public static function assertUapiDomainsEnabled()
+    {
+        if (!Settings::bool('cpanel_uapi_domains_enabled', false)) {
+            throw new StateException('The cPanel UAPI domain inventory is disabled until its dedicated staging and permission checks pass.', [
+                'error_code' => 'CPANEL_UAPI_DOMAINS_DISABLED',
+            ]);
+        }
+        return true;
+    }
+
+    public static function assertUapiAliasesEnabled()
+    {
+        if (!Settings::bool('cpanel_uapi_aliases_enabled', false)) {
+            throw new StateException('The cPanel UAPI built-in alias inventory is disabled until its dedicated staging and permission checks pass.', [
+                'error_code' => 'CPANEL_UAPI_ALIASES_DISABLED',
+            ]);
+        }
+        return true;
+    }
+
+    public static function assertUapiQuotaUsageEnabled()
+    {
+        if (!Settings::bool('cpanel_uapi_quota_usage_enabled', false)) {
+            throw new StateException('The cPanel UAPI quota-usage snapshot is disabled until its dedicated staging and permission checks pass.', [
+                'error_code' => 'CPANEL_UAPI_QUOTA_USAGE_DISABLED',
+            ]);
+        }
+        return true;
+    }
+
+    public static function assertUapiBandwidthUsageEnabled()
+    {
+        if (!Settings::bool('cpanel_uapi_bandwidth_usage_enabled', false)) {
+            throw new StateException('The cPanel StatsBar bandwidth snapshot is disabled until its dedicated staging and permission checks pass.', [
+                'error_code' => 'CPANEL_UAPI_BANDWIDTH_USAGE_DISABLED',
             ]);
         }
         return true;
@@ -524,6 +919,15 @@ class PanelAccountService
     {
         $status = strtolower(trim((string) $whmcsStatus));
         if ($action === self::ACTION_VERIFY) {
+            return true;
+        }
+        if (in_array($action, [self::ACTION_DOMAINS, self::ACTION_ALIASES, self::ACTION_QUOTA_USAGE, self::ACTION_BANDWIDTH_USAGE], true)) {
+            if (!in_array($status, ['active', 'suspended'], true)) {
+                throw new ConflictException('The WHMCS service must be active or suspended to inspect read-only cPanel account data.');
+            }
+            if (!in_array((string) $account['status'], [self::STATUS_ACTIVE, self::STATUS_SUSPENDED], true)) {
+                throw new ConflictException('Verify an active or suspended cPanel account before reading its UAPI data.');
+            }
             return true;
         }
         if ($action === self::ACTION_SUSPEND) {
@@ -722,6 +1126,9 @@ class PanelAccountService
         }
         if ($action === self::ACTION_VERIFY) {
             return Rbac::PANEL_ACCOUNT_VERIFY;
+        }
+        if (in_array($action, [self::ACTION_DOMAINS, self::ACTION_ALIASES, self::ACTION_QUOTA_USAGE, self::ACTION_BANDWIDTH_USAGE], true)) {
+            return Rbac::PANEL_ACCOUNT_VIEW;
         }
         return Rbac::PANEL_ACCOUNT_MANAGE;
     }

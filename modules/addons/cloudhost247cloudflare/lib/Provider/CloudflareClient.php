@@ -59,6 +59,9 @@ class CloudflareClient
                 $status = (int) ($response['status'] ?? 0);
                 $decoded = json_decode((string) ($response['body'] ?? ''), true);
                 if ($status >= 200 && $status < 300 && is_array($decoded) && !empty($decoded['success'])) {
+                    if (in_array($operation, ['zone.list', 'dns.list', 'connection.zone_read'], true)) {
+                        $this->assertListPayload((string) ($response['body'] ?? ''));
+                    }
                     $this->markSuccess();
                     $this->log($requestId, $operation, $method, $path, $status, (int) round((microtime(true) - $started) * 1000), 'success', null);
                     return $decoded['result'] ?? null;
@@ -87,6 +90,20 @@ class CloudflareClient
         }
         if ($lastError instanceof CloudflareException) throw $lastError;
         throw new CloudflareException('SERVICE_UNAVAILABLE', 'Cloudflare is temporarily unavailable.');
+    }
+
+    /** Preserve the distinction between a JSON list and an empty JSON object. */
+    private function assertListPayload($body)
+    {
+        $payload = json_decode((string) $body);
+        if (!is_object($payload) || !property_exists($payload, 'result') || !is_array($payload->result)) {
+            throw new CloudflareException('CLOUDFLARE_API_ERROR', 'Cloudflare returned an invalid list response.');
+        }
+        foreach ($payload->result as $item) {
+            if (!is_object($item)) {
+                throw new CloudflareException('CLOUDFLARE_API_ERROR', 'Cloudflare returned an invalid list response.');
+            }
+        }
     }
 
     private function normalizeError($status, $payload, $path, array $headers)

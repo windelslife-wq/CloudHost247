@@ -24,16 +24,55 @@ platform specification maps onto it, and the phased build order.
 > **Phase numbering/status note — 2026-10-08:** This legacy App Platform plan uses
 > “Phase 3” for Billing and contains older “delivered” claims that the source audit
 > disproved. The active Hosting Control Plane sequence uses “Phase 3” for the panel
-> metadata catalog and “Phase 4” for the cPanel/WHM adapter plus staff-only queued
-> workflow for existing accounts bound to paid WHMCS services. The workflow is
-> disabled by default, does not create accounts or deliver passwords, and does not
-> claim that WHM is available on any server. Details are in
+> metadata catalog, “Phase 4” for the cPanel/WHM adapter plus staff-only queued
+> workflow for existing accounts bound to paid WHMCS services, “Phase 5” for a
+> staff-only queued, read-only cPanel UAPI domain inventory, and “Phase 6” for a
+> separately gated, staff-only read of cPanel-reported built-in primary-domain
+> aliases, “Phase 7” for a staff-only queued `Quota::get_quota_info` disk/inode
+> snapshot, “Phase 8” for a staff-only queued, fixed `StatsBar::get_stats`
+> `bandwidthusage` snapshot, “Phase 9” for a staff-only view of retained
+> quota/bandwidth snapshot job references, and “Phase 10” for a staff-only
+> overview of the latest retained, validated quota/bandwidth snapshots,
+> “Phase 11” for offline compatibility tests of the existing Cloudflare API
+> transport seam, and “Phase 12” for a bounded, read-only DNS inventory service
+> using the same Cloudflare addon. Phase 12 is customer-service-scoped, checks
+> existing service ownership and DNS entitlement, is guarded by a separate
+> default-off setting, validates the provider zone and every returned record,
+> and audits only record counts/type totals. It does not add an App Cloud route
+> or adapter registration and has not been enabled or called against a live
+> Cloudflare account. “Phase 13” extends this with an App Cloud read-only DNS
+> inventory provider contract, an explicit empty-by-default registry and a
+> Cloudflare bridge. It does not auto-register the provider, add a route, or
+> remove the Phase 12 gates. “Phase 14” adds a default-off authenticated,
+> read-only GET API for verified customer domains: customers require
+> `DOMAIN_VIEW_OWN`, staff require `DOMAIN_VIEW_ALL`, and bearer-token scopes
+> must include the same permission. Customer domain ownership is enforced in
+> the database query. Cloudflare is registered lazily only after the App Cloud
+> gate passes; Phase 12's independent master and inventory gates remain
+> required. The Phase 14 API is covered by fake-provider offline tests only;
+> no live call, staging run, or production enablement occurred. Phase 9 and
+> Phase 10 add no cPanel calls or continuous monitoring; Phase 11 adds no App
+> Cloud adapter or live calls.
+> The Phase 4 workflow and Phase 5/6/7/8 UAPI capabilities are disabled by
+> default; Phase 4 does not create accounts or deliver passwords, and no phase
+> claims that WHM is live on any server. Details are in
 > [`PHASE3_PANEL_CATALOG.md`](PHASE3_PANEL_CATALOG.md),
-> [`PHASE4_CPANEL_ADAPTER.md`](PHASE4_CPANEL_ADAPTER.md), and
-> [`PHASE4_CPANEL_WORKFLOW.md`](PHASE4_CPANEL_WORKFLOW.md). The staging procedure in
-> [`PHASE4_CPANEL_STAGING.md`](PHASE4_CPANEL_STAGING.md) is prepared but unexecuted.
-> Phase 2's owner-confirmed
-> external pass is not equivalent to a production provider adapter in this checkout.
+> [`PHASE4_CPANEL_ADAPTER.md`](PHASE4_CPANEL_ADAPTER.md),
+> [`PHASE4_CPANEL_WORKFLOW.md`](PHASE4_CPANEL_WORKFLOW.md),
+> [`PHASE5_CPANEL_UAPI_DOMAINS.md`](PHASE5_CPANEL_UAPI_DOMAINS.md),
+> [`PHASE6_CPANEL_BUILTIN_ALIASES.md`](PHASE6_CPANEL_BUILTIN_ALIASES.md),
+> [`PHASE7_CPANEL_QUOTA_USAGE.md`](PHASE7_CPANEL_QUOTA_USAGE.md),
+> [`PHASE8_CPANEL_BANDWIDTH_USAGE.md`](PHASE8_CPANEL_BANDWIDTH_USAGE.md),
+> [`PHASE9_CPANEL_USAGE_HISTORY.md`](PHASE9_CPANEL_USAGE_HISTORY.md),
+> [`PHASE10_CPANEL_USAGE_OVERVIEW.md`](PHASE10_CPANEL_USAGE_OVERVIEW.md),
+> [`PHASE11_CLOUDFLARE_COMPATIBILITY.md`](PHASE11_CLOUDFLARE_COMPATIBILITY.md),
+> [`PHASE12_CLOUDFLARE_DNS_INVENTORY.md`](PHASE12_CLOUDFLARE_DNS_INVENTORY.md),
+> [`PHASE13_CLOUDFLARE_DNS_BRIDGE.md`](PHASE13_CLOUDFLARE_DNS_BRIDGE.md), and
+> [`PHASE14_CLOUDFLARE_DNS_API.md`](PHASE14_CLOUDFLARE_DNS_API.md). The
+> Phase 4 staging procedure in [`PHASE4_CPANEL_STAGING.md`](PHASE4_CPANEL_STAGING.md)
+> is prepared but unexecuted; no live Phase 5/6/7/8 UAPI staging was performed.
+> Phase 2's owner-confirmed external pass is not equivalent to a production
+> provider adapter in this checkout.
 
 ---
 

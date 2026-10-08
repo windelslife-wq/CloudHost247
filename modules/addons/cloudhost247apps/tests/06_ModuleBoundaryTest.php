@@ -18,10 +18,14 @@ Harness::boot();
 section('WHMCS addon configuration matches fail-closed defaults');
 $config = cloudhost247apps_config();
 T::is('addon identity is registered with WHMCS', 'CloudHost247 App Cloud', $config['name']);
-T::is('Phase 4 service-bound panel workflow ships in a WHMCS addon upgrade', '1.3.0', $config['version']);
+T::is('Phase 14 DNS inventory API ships in the WHMCS addon patch release', '1.9.2', $config['version']);
 T::is('unmapped admin default matches staff RBAC', 'staff', $config['fields']['default_admin_role']['Default']);
 T::is('customer VM provisioning is disabled in module config', '', $config['fields']['customer_server_provisioning_enabled']['Default']);
 T::is('cPanel account workflow is disabled in module config', '', $config['fields']['panel_account_workflow_enabled']['Default']);
+T::is('cPanel UAPI domain inventory is disabled in module config', '', $config['fields']['cpanel_uapi_domains_enabled']['Default']);
+T::is('cPanel UAPI built-in alias inventory is disabled in module config', '', $config['fields']['cpanel_uapi_aliases_enabled']['Default']);
+T::is('cPanel quota-usage snapshots are disabled in module config', '', $config['fields']['cpanel_uapi_quota_usage_enabled']['Default']);
+T::is('Cloudflare DNS inventory API is disabled in module config', '', $config['fields']['dns_inventory_api_enabled']['Default']);
 
 section('Activation and upgrade are additive and rerunnable');
 $account = (new ProviderAccountService(Harness::adminActor(1, Actor::ROLE_SUPER_ADMIN)))->create([
@@ -65,6 +69,19 @@ T::contains('readiness page exposes the fail-closed error code', 'PROVIDER_UNAVA
 T::contains('readiness page does not claim provisioning is enabled', 'Disabled (safe default)', $output);
 T::contains('readiness page discloses the safe cPanel workflow default',
     'cPanel account workflow</dt><dd>Disabled (safe default)</dd>', $output);
+T::contains('readiness page discloses the safe UAPI domain-inventory default',
+    'cPanel UAPI domain inventory</dt><dd>Disabled (safe default)</dd>', $output);
+T::contains('readiness page discloses the safe built-in alias-inventory default',
+    'cPanel built-in alias inventory</dt><dd>Disabled (safe default)</dd>', $output);
+T::contains('staff can reach the linked-account domain inventory page', 'Linked cPanel accounts', $output);
+Identity::override(Harness::adminActor(1, Actor::ROLE_SUPER_ADMIN));
+$_GET['action'] = 'panel_accounts';
+ob_start();
+cloudhost247apps_output(['modulelink' => 'addonmodules.php?module=cloudhost247apps']);
+$panelAccountAdminOutput = ob_get_clean();
+T::contains('linked cPanel account admin route renders', 'Linked cPanel accounts', $panelAccountAdminOutput);
+T::contains('admin page keeps UAPI inventory disabled by default', 'cPanel UAPI domain inventory is disabled', $panelAccountAdminOutput);
+unset($_GET['action']);
 
 section('Customer panel catalog uses WHMCS client-area routing and remains read-only');
 Identity::override(Actor::guest());

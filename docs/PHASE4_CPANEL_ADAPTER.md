@@ -26,7 +26,7 @@ The WHM API transport uses the registered server hostname, fixed HTTPS port 2087
 ## Explicitly not implemented
 
 - No cPanel software installer, license activation/renewal service, login/SSO flow, or customer credential-delivery workflow.
-- No UAPI operation is registered yet; domain, email, database, SSL, and WordPress capabilities are not advertised.
+- Phase 5 adds one read-only UAPI capability: `DomainInfo::list_domains`, queued for staff and disabled by default. Email, database, SSL, and WordPress UAPI capabilities remain absent. See [`PHASE5_CPANEL_UAPI_DOMAINS.md`](PHASE5_CPANEL_UAPI_DOMAINS.md).
 - The follow-up in [`PHASE4_CPANEL_WORKFLOW.md`](PHASE4_CPANEL_WORKFLOW.md) adds a WHMCS-service-bound mapping for **existing** accounts, paid-service validation, staff-only request routes, audit history, and a dedicated `control-panel` worker queue. It does not expose the low-level adapter to HTTP handlers; every WHM mutation still runs in the worker.
 - There is no customer account creation route/job, product-to-package entitlement mapping, customer dashboard/action, login/SSO flow, or credential-delivery method. The new workflow setting defaults off.
 - The low-level `createAccount` method requires a password from trusted caller code and intentionally does not return or persist it. Do not wire it to a queued or customer-facing workflow until account-secret storage/delivery (or a reviewed SSO flow) is designed. The cPanel API has no idempotency-key parameter; the adapter uses username/domain/package reconciliation and refuses mismatched collisions.
@@ -38,7 +38,7 @@ The WHM API transport uses the registered server hostname, fixed HTTPS port 2087
 2. **Existing-account service binding and queue path implemented** in `PHASE4_CPANEL_WORKFLOW.md`. It requires an active/paid service to link, rechecks owner and service state in the worker, and gates suspend/unsuspend/terminate; account creation remains unavailable. Real contract/staging checks are still required before enabling the workflow.
 3. Design the password/SSO handoff before enabling creation. The password must not be placed in generic queue payloads, audit metadata, logs, or customer-facing job results.
 4. Follow [`PHASE4_CPANEL_STAGING.md`](PHASE4_CPANEL_STAGING.md) to validate permissions and TLS against a dedicated cPanel staging host, including account verification/read, suspend, unsuspend, and approved disposable-account termination/absence. Test low-level create/retry only under a separately approved staging plan. Keep credentials outside source control and preserve a reversible recovery plan before destructive tests.
-5. Add only UAPI methods with confirmed endpoint contracts and scoped credentials; leave unsupported operations absent from the registry capability map.
+5. Phase 5 implements only the documented `DomainInfo::list_domains` read operation behind its own staff-only queue and disabled-by-default switch. Any additional UAPI operation still requires a separately confirmed contract, scoped authorization, tests, and staging evidence.
 
 ## Validation
 

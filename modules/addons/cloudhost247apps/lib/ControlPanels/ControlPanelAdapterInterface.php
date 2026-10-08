@@ -33,6 +33,18 @@ interface ControlPanelAdapterInterface
     /** Read one account by its panel username, or return null only when confirmed absent. */
     public function getAccount(array $connection, $username);
 
+    /** Read an account's UAPI domain inventory and verify its primary domain binding. */
+    public function listDomains(array $connection, $username, $expectedMainDomain);
+
+    /** Read cPanel-reported built-in aliases for the mapped account's primary domain. */
+    public function listBuiltinDomainAliases(array $connection, $username, $expectedMainDomain);
+
+    /** Read a bounded cPanel-reported quota-usage snapshot for the mapped account. */
+    public function getQuotaUsage(array $connection, $username, $expectedMainDomain);
+
+    /** Read a bounded cPanel-reported bandwidth-usage snapshot for the mapped account. */
+    public function getBandwidthUsage(array $connection, $username, $expectedMainDomain);
+
     /** Create or recover the account identified by username/domain/package. */
     public function createAccount(array $connection, array $account, $idempotencyKey);
 

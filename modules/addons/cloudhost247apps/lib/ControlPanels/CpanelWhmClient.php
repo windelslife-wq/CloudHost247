@@ -23,6 +23,12 @@ class CpanelWhmClient
     const ENDPOINTS = [
         'version' => 'version',
         'list_accounts' => 'listaccts',
+        // Fixed UAPI bridge operation. The module/function are validated below;
+        // callers cannot use this proxy to invoke arbitrary UAPI methods.
+        'uapi_domain_list' => 'uapi_cpanel',
+        'uapi_domain_aliases' => 'uapi_cpanel',
+        'uapi_quota_info' => 'uapi_cpanel',
+        'uapi_bandwidth_stats' => 'uapi_cpanel',
         'create_account' => 'createacct',
         'suspend_account' => 'suspendacct',
         'unsuspend_account' => 'unsuspendacct',
@@ -49,7 +55,8 @@ class CpanelWhmClient
         }
 
         $method = strtoupper((string) $method);
-        $expectedMethod = in_array($operation, ['version', 'list_accounts'], true) ? 'GET' : 'POST';
+        $expectedMethod = in_array($operation, ['version', 'list_accounts', 'uapi_domain_list',
+            'uapi_domain_aliases', 'uapi_quota_info', 'uapi_bandwidth_stats'], true) ? 'GET' : 'POST';
         if ($method !== $expectedMethod) {
             throw new CpanelException('The WHM operation was requested with an invalid HTTP method.', [
                 'operation' => $operation, 'error_code' => 'CPANEL_METHOD_INVALID',
@@ -59,6 +66,15 @@ class CpanelWhmClient
         $username = $this->username($connection);
         $token = $this->token($connection);
         $parameters = $this->parameters($parameters);
+        if ($operation === 'uapi_domain_list') {
+            $parameters = $this->uapiDomainInfoParameters($parameters, 'list_domains');
+        } elseif ($operation === 'uapi_domain_aliases') {
+            $parameters = $this->uapiDomainInfoParameters($parameters, 'main_domain_builtin_subdomain_aliases');
+        } elseif ($operation === 'uapi_quota_info') {
+            $parameters = $this->uapiQuotaInfoParameters($parameters);
+        } elseif ($operation === 'uapi_bandwidth_stats') {
+            $parameters = $this->uapiBandwidthStatsParameters($parameters);
+        }
 
         $query = ['api.version' => 1];
         if ($method === 'GET') {
@@ -103,7 +119,8 @@ class CpanelWhmClient
         }
 
         $body = isset($response['body']) ? (string) $response['body'] : '';
-        $decoded = json_decode($body, true);
+        // Preserve large integer quota counters instead of coercing them to floats.
+        $decoded = json_decode($body, true, 512, JSON_BIGINT_AS_STRING);
         if (!is_array($decoded) || json_last_error() !== JSON_ERROR_NONE) {
             throw new CpanelException('The WHM API returned an invalid JSON response.', [
                 'operation' => $operation, 'error_code' => 'CPANEL_RESPONSE_INVALID',
@@ -184,6 +201,104 @@ class CpanelWhmClient
     private function isEnabled($value)
     {
         return in_array($value, [true, 1, '1', 'true', 'yes', 'on'], true);
+    }
+
+    /** Validate the one fixed bandwidth statistics query; never expose generic StatsBar controls. */
+    private function uapiBandwidthStatsParameters(array $parameters)
+    {
+        $allowed = ['cpanel.user', 'cpanel.module', 'cpanel.function', 'display'];
+        if (count($parameters) !== count($allowed)) {
+            throw new CpanelException('The requested cPanel UAPI bandwidth operation is not implemented.', [
+                'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+            ]);
+        }
+        foreach ($allowed as $key) {
+            if (!array_key_exists($key, $parameters)) {
+                throw new CpanelException('The requested cPanel UAPI bandwidth operation is not implemented.', [
+                    'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+                ]);
+            }
+        }
+        $username = strtolower(trim((string) $parameters['cpanel.user']));
+        if (!preg_match('/^[a-z][a-z0-9]{0,15}$/', $username)
+            || (string) $parameters['cpanel.module'] !== 'StatsBar'
+            || (string) $parameters['cpanel.function'] !== 'get_stats'
+            || (string) $parameters['display'] !== 'bandwidthusage') {
+            throw new CpanelException('The requested cPanel UAPI bandwidth operation is not implemented.', [
+                'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+            ]);
+        }
+        return [
+            'cpanel.user' => $username,
+            'cpanel.module' => 'StatsBar',
+            'cpanel.function' => 'get_stats',
+            'display' => 'bandwidthusage',
+        ];
+    }
+
+    /** Validate the one fixed Quota call; never expose a generic UAPI tunnel. */
+    private function uapiQuotaInfoParameters(array $parameters)
+    {
+        $allowed = ['cpanel.user', 'cpanel.module', 'cpanel.function'];
+        if (count($parameters) !== count($allowed)) {
+            throw new CpanelException('The requested cPanel UAPI quota operation is not implemented.', [
+                'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+            ]);
+        }
+        foreach ($allowed as $key) {
+            if (!array_key_exists($key, $parameters)) {
+                throw new CpanelException('The requested cPanel UAPI quota operation is not implemented.', [
+                    'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+                ]);
+            }
+        }
+        $username = strtolower(trim((string) $parameters['cpanel.user']));
+        if (!preg_match('/^[a-z][a-z0-9]{0,15}$/', $username)
+            || (string) $parameters['cpanel.module'] !== 'Quota'
+            || (string) $parameters['cpanel.function'] !== 'get_quota_info') {
+            throw new CpanelException('The requested cPanel UAPI quota operation is not implemented.', [
+                'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+            ]);
+        }
+        return [
+            'cpanel.user' => $username,
+            'cpanel.module' => 'Quota',
+            'cpanel.function' => 'get_quota_info',
+        ];
+    }
+
+    /** Validate the explicitly allowlisted DomainInfo proxy calls; never expose a generic UAPI tunnel. */
+    private function uapiDomainInfoParameters(array $parameters, $expectedFunction)
+    {
+        $allowed = ['cpanel.user', 'cpanel.module', 'cpanel.function', 'hide_temporary_domains'];
+        if (count($parameters) !== count($allowed)) {
+            throw new CpanelException('The requested cPanel UAPI operation is not implemented.', [
+                'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+            ]);
+        }
+        foreach ($allowed as $key) {
+            if (!array_key_exists($key, $parameters)) {
+                throw new CpanelException('The requested cPanel UAPI operation is not implemented.', [
+                    'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+                ]);
+            }
+        }
+        $username = strtolower(trim((string) $parameters['cpanel.user']));
+        if (!preg_match('/^[a-z][a-z0-9]{0,15}$/', $username)
+            || (string) $parameters['cpanel.module'] !== 'DomainInfo'
+            || (string) $parameters['cpanel.function'] !== (string) $expectedFunction
+            || !in_array($expectedFunction, ['list_domains', 'main_domain_builtin_subdomain_aliases'], true)
+            || !in_array($parameters['hide_temporary_domains'], [1, '1', true], true)) {
+            throw new CpanelException('The requested cPanel UAPI operation is not implemented.', [
+                'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+            ]);
+        }
+        return [
+            'cpanel.user' => $username,
+            'cpanel.module' => 'DomainInfo',
+            'cpanel.function' => (string) $expectedFunction,
+            'hide_temporary_domains' => 1,
+        ];
     }
 
     private function parameters(array $parameters)

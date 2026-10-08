@@ -44,6 +44,11 @@ class Settings
         'cpanel_enabled'              => '1',
         'customer_server_provisioning_enabled' => '0', // off until a real provider adapter is installed and verified
         'panel_account_workflow_enabled' => '0', // off until WHM staging is validated; customer account creation remains separately gated
+        'cpanel_uapi_domains_enabled' => '0', // read-only Phase 5 capability; off until UAPI permissions and staging are validated
+        'cpanel_uapi_aliases_enabled' => '0', // read-only Phase 6 capability; off until UAPI permissions and staging are validated
+        'cpanel_uapi_quota_usage_enabled' => '0', // read-only Phase 7 snapshot; off until quota UAPI permissions and staging are validated
+        'cpanel_uapi_bandwidth_usage_enabled' => '0', // read-only Phase 8 snapshot; off until StatsBar UAPI permissions and staging are validated
+        'dns_inventory_api_enabled'     => '0', // Phase 14 authenticated read-only API; Phase 12 Cloudflare gates remain independent
         'provider_poll_interval_seconds' => '15',
         'provider_operation_poll_limit' => '120',
         'debug_logging'               => '0',
