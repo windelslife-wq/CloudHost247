@@ -362,7 +362,7 @@ T::throws('same key with a changed spec conflicts', ConflictException::class, fu
     $servers->requestProvision($serviceId, $accountId, $changed, 'paid-service-request');
 });
 
-section('Worker dispatch is asynchronous, serialized, and never claims customer activation');
+section('Worker dispatch is asynchronous, serialized, and gates customer activation');
 $serverId = (int) $created['server']['id'];
 $createJob = $queue->lease('customer-vm-worker', JobQueue::QUEUE_PROVISIONING, 1);
 T::is('worker leases the queued create job', 1, count($createJob));
@@ -382,11 +382,21 @@ $pollJobs = $queue->lease('customer-vm-poller', JobQueue::QUEUE_PROVISIONING, 1)
 T::is('delayed provider poll becomes leaseable', 1, count($pollJobs));
 $pollResult = $dispatcher->runJob($pollJobs[0]);
 T::is('provider poll completes', 'completed', $pollResult['status']);
+T::is('readiness gates pass and activate the server', 'active', $pollResult['result']['customer_status']);
+T::ok('gate report records missing metrics capability as unsupported, never faked',
+    $pollResult['result']['gates']['metrics']['provider_reported'] === false);
+T::ok('gate report verifies the deployed spec', $pollResult['result']['gates']['security']['spec_verified'] === true);
 $ready = $servers->get($serverId);
-T::is('ready provider response remains customer provisioning', CustomerServerService::STATUS_PROVISIONING, $ready['status']);
-T::is('provider ready is explicit, not active', CustomerServerService::STATE_SERVER_READY, $ready['provisioning_state']);
+T::is('gated activation marks the server customer-active', CustomerServerService::STATUS_ACTIVE, $ready['status']);
+T::is('activation keeps the explicit server_ready state', CustomerServerService::STATE_SERVER_READY, $ready['provisioning_state']);
 T::is('IP address comes from provider response', '198.51.100.44', $ready['ipv4']);
 T::is('provider get call occurred in worker', 1, $adapter->getCalls);
+$activationEvent = Db::first('customer_server_events', [
+    'customer_server_id' => $serverId, 'event' => 'server_activated',
+]);
+T::ok('activation is recorded in the lifecycle history', (bool) $activationEvent);
+T::ok('activation event carries the gate report',
+    strpos((string) $activationEvent['metadata'], 'spec_verified') !== false);
 T::throws('delete requires a strict boolean confirmation', ValidationException::class, function () use ($servers, $serverId) {
     $servers->requestAction($serverId, 'delete', ['confirm' => 'false'], 'delete-with-string-confirm');
 });
@@ -422,6 +432,8 @@ T::is('resize poll completes after provider confirmation', 'completed',
     $dispatcher->runJob($resizePollJobs[0])['status']);
 $appliedResize = $servers->get($serverId);
 T::is('applied size changes only after provider confirmation', 4, $appliedResize['cpu_cores']);
+T::is('resize completion re-passes the gates and re-activates the server',
+    CustomerServerService::STATUS_ACTIVE, $appliedResize['status']);
 T::is('completed resize clears pending specification', null, $appliedResize['pending_spec']);
 $completedResizeReplay = $servers->requestAction($serverId, 'resize',
     ['spec' => ['cpu_cores' => 4, 'memory_mb' => 4096]], 'resize-service-request');

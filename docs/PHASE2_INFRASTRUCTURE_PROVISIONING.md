@@ -20,7 +20,7 @@
 - Customer-server requests validate the WHMCS service → order → invoice relationship, require explicit matching client-owner IDs on the service/order/invoice records, and require WHMCS to confirm the linked invoice is paid before creating a local row or queue job. The worker rechecks the current service/order/invoice linkage and paid state immediately before provider create.
 - Customer VM reads and job lookups check the live WHMCS service owner against the stored customer binding. If a service is transferred and the local binding is stale, customer access fails closed until an operator reconciles it.
 - A distinct `provisioning` queue and worker dispatch path for provider account verification and customer-server create/poll/reboot/power/rebuild/resize/delete work. Long-running operations are not executed in HTTP requests; asynchronous provider operations are polled by later leased jobs. A queued create also rechecks the provisioning kill switch before making a provider call. Ongoing lifecycle jobs recheck WHMCS service state; suspended/cancelled services cannot be powered on, rebooted, rebuilt or resized, while `power_off` and eligible deletion remain available for cleanup.
-- Lifecycle history, stable error codes, operation idempotency, per-customer-server job serialization, and sanitized API presentations. A provider-ready VM remains `provisioning`/`server_ready`; this phase never marks it `active` without later health/security gates.
+- Lifecycle history, stable error codes, operation idempotency, per-customer-server job serialization, and sanitized API presentations. A provider-ready VM is recorded as `provisioning`/`server_ready`; it becomes customer-visible `active` only after the readiness gates below pass.
 
 - MySQL DDL for module foreign keys uses unsigned `BIGINT` to match `Blueprint::id()`. Migration `0009_align_unsigned_foreign_key_types` is an additive, restartable repair for already-created legacy tables; it checks both column types and refuses missing schema or negative/orphaned references rather than coercing data. The offline suite renders and audits the actual MySQL DDL, but does not replace staging verification on the target MySQL/InnoDB version.
 
@@ -35,6 +35,16 @@ There are **no real infrastructure-provider adapters registered in this checkout
 - Test-only fake adapters validate queueing/dispatch/state behavior but are not part of the provider catalog at runtime.
 
 A production provider adapter must use the provider's real API, validate TLS and responses, advertise only implemented capabilities, ensure create/delete operations are idempotent for the supplied key, avoid credentials in logs/errors, and return normalized provider resource IDs/states. Register it in `modules/addons/cloudhost247apps/providers/bootstrap.php`; the same reviewed bootstrap is loaded by the API, WHMCS readiness page, and worker before provisioning is enabled. Do not place secrets in that file.
+
+## Readiness gates — `server_ready` to `active`
+
+`ServerProvisioningWorker` runs explicit health/security gates after the provider reports a VM ready (create, rebuild, or resize) and before `CustomerServerService::workerActivate()` marks it customer-visible `active`. Every gate input is provider-sourced or already persisted on the server row; nothing is guessed or synthesized, and a failed gate never activates.
+
+- **Health — address:** the provider-confirmed resource must have an IPv4 or IPv6 address. A ready state without an address fails the gate transiently (`HEALTH_CHECK_FAILED`): the server stays `provisioning`/`server_ready`, the machine-readable error is recorded, and polling continues.
+- **Health — metrics:** when the adapter declares `server.metrics`, the worker requires a successful, non-empty provider-sourced metrics response. A failing metrics endpoint is a transient `HEALTH_CHECK_FAILED` (polling continues). Adapters without the capability are recorded as `adapter_declares_no_server_metrics` in the gate report — unsupported is recorded honestly, never faked.
+- **Security — deployed-spec integrity:** the persisted server row must still match the approved `requested_spec` exactly (name, hostname, region, image, CPU, memory, storage). Drift or a missing spec is terminal (`SPEC_DRIFT` / `SPEC_MISSING`): the server is failed honestly and never activated. Guest-OS hardening remains the guest's responsibility; the control plane does not claim to verify it.
+
+Transient gate failures keep the server `provisioning` and schedule the next poll (bounded by `provider_operation_poll_limit`), exactly like a slow provider. The gate report is persisted in the `server_activated` lifecycle event. Activation is worker-only (`workerActivate`), idempotent, and guarded to the `provisioning`/`server_ready` milestone; a duplicate poll never demotes an already-activated server. Rebuild and resize re-run the gates against the newly approved spec before re-activating.
 
 ## Configuration and worker
 
