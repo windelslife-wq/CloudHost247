@@ -130,11 +130,16 @@ function chs_fixture_tables(PDO $pdo)
         "CREATE TABLE tblinvoices (id INTEGER PRIMARY KEY, userid INTEGER, status TEXT DEFAULT 'Unpaid', total TEXT DEFAULT '0.00')",
         "CREATE TABLE tbldomainpricing (id INTEGER PRIMARY KEY, extension TEXT, autoreg TEXT DEFAULT '', dnsmanagement INTEGER DEFAULT 0, emailforwarding INTEGER DEFAULT 0, idprotection INTEGER DEFAULT 0, eppcode INTEGER DEFAULT 0)",
         "CREATE TABLE tblpricing (id INTEGER PRIMARY KEY, type TEXT, currency INTEGER, relid INTEGER, msetupfee TEXT, qsetupfee TEXT, ssetupfee TEXT, asetupfee TEXT, bsetupfee TEXT, monthly TEXT, quarterly TEXT, semiannually TEXT, annually TEXT, biennially TEXT, triennially TEXT)",
-        "CREATE TABLE tbldomains (id INTEGER PRIMARY KEY, userid INTEGER, domain TEXT, status TEXT DEFAULT 'Active', nextduedate TEXT, expirydate TEXT, registrar TEXT DEFAULT '')",
+        "CREATE TABLE tbldomains (id INTEGER PRIMARY KEY, userid INTEGER, domain TEXT, status TEXT DEFAULT 'Active', nextduedate TEXT, expirydate TEXT, registrar TEXT DEFAULT '', autorenew INTEGER DEFAULT 0, donotrenew INTEGER DEFAULT 0)",
         "CREATE TABLE tbltickets (id INTEGER PRIMARY KEY, tid TEXT, userid INTEGER, name TEXT, email TEXT, subject TEXT, message TEXT, status TEXT DEFAULT 'Open', urgency TEXT DEFAULT 'Medium', date TEXT, lastreply TEXT, flag INTEGER DEFAULT 0, admin TEXT DEFAULT '')",
         "CREATE TABLE tblticketreplies (id INTEGER PRIMARY KEY, tid INTEGER, userid INTEGER DEFAULT 0, admin TEXT DEFAULT '', name TEXT DEFAULT '', message TEXT, date TEXT)",
         "CREATE TABLE tbladmins (id INTEGER PRIMARY KEY, username TEXT, firstname TEXT, lastname TEXT)",
         "CREATE TABLE tblconfiguration (setting TEXT PRIMARY KEY, value TEXT)",
+        "CREATE TABLE tblproductgroups (id INTEGER PRIMARY KEY, name TEXT, order_value INTEGER DEFAULT 0)",
+        "CREATE TABLE tblproducts (id INTEGER PRIMARY KEY, gid INTEGER DEFAULT 0, type TEXT DEFAULT '', name TEXT, description TEXT, paytype TEXT DEFAULT 'recurring', servertype TEXT DEFAULT '', hidden TEXT DEFAULT '', `order` INTEGER DEFAULT 0)",
+        "CREATE TABLE tblhosting (id INTEGER PRIMARY KEY, userid INTEGER, orderid INTEGER DEFAULT 0, packageid INTEGER DEFAULT 0, regdate TEXT, domain TEXT DEFAULT '', server INTEGER DEFAULT 0, status TEXT DEFAULT 'Pending', nextduedate TEXT)",
+        "CREATE TABLE tblorders (id INTEGER PRIMARY KEY, userid INTEGER, invoiceid INTEGER DEFAULT 0)",
+        "CREATE TABLE tblservers (id INTEGER PRIMARY KEY, name TEXT DEFAULT '', ipaddress TEXT DEFAULT '', hostname TEXT DEFAULT '', username TEXT DEFAULT '', password TEXT DEFAULT '', type TEXT DEFAULT '', assignedips TEXT DEFAULT '', ns1 TEXT DEFAULT '', ns2 TEXT DEFAULT '')",
     ];
     foreach ($ddl as $sql) {
         $pdo->exec($sql);
@@ -151,6 +156,27 @@ function chs_fixture_tables(PDO $pdo)
 
     // Admin fixture
     $pdo->exec("INSERT INTO tbladmins (id, username, firstname, lastname) VALUES (1, 'root', 'Root', 'Admin'), (2, 'sam', 'Sam', 'Support')");
+
+    // Server-product fixtures (mirrored in FakeGateway for seam-based tests)
+    $pdo->exec("INSERT INTO tblproductgroups (id, name, order_value) VALUES (1, 'Cloud Servers', 1)");
+    $pdo->exec("INSERT INTO tblproducts (id, gid, type, name, description, paytype, servertype, hidden) VALUES
+        (101, 1, 'server', 'Cloud VPS', 'Managed cloud VPS', 'recurring', '', ''),
+        (102, 1, 'server', 'Dedicated Server', 'Bare-metal dedicated', 'recurring', '', ''),
+        (103, 1, 'hosting', 'Web Hosting', 'Shared hosting (not a server product)', 'recurring', '', '')");
+}
+
+/** Seed the recording FakeGateway with server products + pricing. */
+function chs_seed_server_products(FakeGateway $gateway)
+{
+    $gateway->products = [
+        101 => ['id' => 101, 'gid' => 1, 'type' => 'server', 'name' => 'Cloud VPS', 'description' => 'Managed cloud VPS', 'paytype' => 'recurring', 'servertype' => '', 'hidden' => '', 'group_name' => 'Cloud Servers'],
+        102 => ['id' => 102, 'gid' => 1, 'type' => 'server', 'name' => 'Dedicated Server', 'description' => 'Bare-metal dedicated', 'paytype' => 'recurring', 'servertype' => '', 'hidden' => '', 'group_name' => 'Cloud Servers'],
+        103 => ['id' => 103, 'gid' => 1, 'type' => 'hosting', 'name' => 'Web Hosting', 'description' => 'Shared hosting (not a server product)', 'paytype' => 'recurring', 'servertype' => '', 'hidden' => '', 'group_name' => 'Cloud Servers'],
+    ];
+    $gateway->productPricing = [
+        101 => ['monthly' => 999, 'quarterly' => 2699, 'annually' => 9999],
+        102 => ['monthly' => 8900, 'annually' => 89000],
+    ];
 }
 
 /** Populate FakeGateway clients to match the SQL fixtures. */
@@ -191,4 +217,65 @@ function chs_freeze($datetime = '2026-10-06 12:00:00')
         return;
     }
     Clock::freeze(strtotime($datetime . ' UTC'));
+}
+
+/**
+ * Infrastructure fixtures: one enabled provider, one active region, and one
+ * ACTIVE image mapping Ubuntu 24.04 (x86_64) in that region.
+ *
+ * @return array{provider_id:int, region_id:int, os_id:int, version_id:int, image_id:int}
+ */
+function chs_seed_infra()
+{
+    $now = Clock::now();
+    $providerId = Db::insert('infrastructure_providers', [
+        'name' => 'Fake Cloud', 'slug' => 'fake-cloud', 'type' => 'http',
+        'base_url' => 'https://infra.example.test', 'endpoints' => '{}',
+        'capabilities' => json_encode(array_fill_keys(\Chs\Providers\Infrastructure\InfraProviderRegistry::CAPABILITY_KEYS, true)),
+        'is_enabled' => 1, 'is_default' => 1, 'health_status' => 'unknown',
+        'credentials_enc' => '', 'created_at' => $now, 'updated_at' => $now,
+    ]);
+    $regionId = Db::insert('infrastructure_regions', [
+        'provider_id' => $providerId, 'code' => 'fra', 'name' => 'Frankfurt',
+        'datacenter' => 'DC-1', 'is_active' => 1, 'sort_order' => 0,
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
+    $ubuntu = Db::first('operating_systems', ['slug' => 'ubuntu']);
+    $version = Db::first('operating_system_versions', [
+        'operating_system_id' => (int) $ubuntu['id'], 'version' => '24.04',
+    ]);
+    $imageId = Db::insert('server_os_images', [
+        'provider_id' => $providerId,
+        'operating_system_version_id' => (int) $version['id'],
+        'provider_image_id' => 'img-ubuntu-2404',
+        'provider_template_id' => '',
+        'architecture' => 'x86_64',
+        'region_id' => $regionId,
+        'status' => 'active',
+        'metadata' => '{}',
+        'test_result' => 'ok',
+        'last_tested_at' => $now,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+    return [
+        'provider_id' => $providerId,
+        'region_id'   => $regionId,
+        'os_id'       => (int) $ubuntu['id'],
+        'version_id'  => (int) $version['id'],
+        'image_id'    => $imageId,
+    ];
+}
+
+/**
+ * Wire a FakeInfrastructureProvider into the registry seam (call after
+ * requiring tests/FakeInfrastructureProvider.php).
+ *
+ * @return FakeInfrastructureProvider
+ */
+function chs_fake_infra_provider($providerId)
+{
+    $fake = new FakeInfrastructureProvider($providerId, 'Fake Cloud');
+    \Chs\Providers\Infrastructure\InfraProviderRegistry::$instanceOverride = [$providerId => $fake];
+    return $fake;
 }

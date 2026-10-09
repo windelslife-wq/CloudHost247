@@ -4,8 +4,12 @@
  *
  * Provider calls occur only here, never in a WHMCS/API request. Asynchronous
  * create/rebuild/resize/delete results become separate delayed polling jobs.
- * A provider resource being ready is recorded as `server_ready`; this class never
- * marks it `active` because the later health/security gates are not implemented.
+ * A provider resource being ready is recorded as `server_ready`; the server
+ * becomes customer-visible `active` only after the health/security readiness
+ * gates below pass (provider-confirmed address + provider-sourced metrics when
+ * the adapter supports them, plus a deployed-spec integrity check). A failed
+ * gate never activates: transient gate failures keep the server provisioning
+ * and keep polling, permanent ones fail the server honestly.
  *
  * @package Ch247Apps
  */
@@ -15,10 +19,13 @@ namespace Ch247Apps\Infrastructure;
 use Ch247Apps\Core\Actor;
 use Ch247Apps\Core\AppsException;
 use Ch247Apps\Core\AuthorizationException;
+use Ch247Apps\Core\Clock;
 use Ch247Apps\Core\ConflictException;
+use Ch247Apps\Core\HealthCheckException;
 use Ch247Apps\Core\ProviderOperationException;
 use Ch247Apps\Core\RetryableProviderException;
 use Ch247Apps\Core\StateException;
+use Ch247Apps\Core\Str;
 use Ch247Apps\Deployments\JobQueue;
 
 class ServerProvisioningWorker
@@ -180,12 +187,14 @@ class ServerProvisioningWorker
         if ($type === JobQueue::TYPE_SERVER_REBUILD) {
             $spec = isset($payload['spec']) && is_array($payload['spec']) ? $payload['spec'] : [];
             $raw = $adapter->rebuildServer($credentials, $config, $providerServerId, $spec, $idempotencyKey);
-            return $this->applyMutationResource($raw, $serverId, $providerServerId, 'rebuild', $jobId);
+            return $this->applyMutationResource($raw, $serverId, $providerServerId, 'rebuild', $jobId,
+                $context, JobQueue::TYPE_SERVER_REBUILD);
         }
         if ($type === JobQueue::TYPE_SERVER_RESIZE) {
             $spec = isset($payload['spec']) && is_array($payload['spec']) ? $payload['spec'] : [];
             $raw = $adapter->resizeServer($credentials, $config, $providerServerId, $spec, $idempotencyKey);
-            return $this->applyMutationResource($raw, $serverId, $providerServerId, 'resize', $jobId);
+            return $this->applyMutationResource($raw, $serverId, $providerServerId, 'resize', $jobId,
+                $context, JobQueue::TYPE_SERVER_RESIZE);
         }
 
         if ($type === JobQueue::TYPE_SERVER_REBOOT) {
@@ -235,9 +244,8 @@ class ServerProvisioningWorker
                 'provider_state' => $resource['status'], 'provisioning_state' => 'server_creating',
                 'poll_job_id' => (int) $poll['id']];
         }
-        return ['customer_server_id' => $serverId, 'provider_server_id' => $resource['id'],
-            'provider_state' => $resource['status'], 'provisioning_state' => 'server_ready',
-            'customer_status' => 'provisioning'];
+        return $this->activateReadyServer($context, $resource, $serverId, 'create',
+            (int) $job['id'], JobQueue::TYPE_SERVER_CREATE);
     }
 
     private function poll(array $job, array $row, $serverId, $accountId)
@@ -263,6 +271,15 @@ class ServerProvisioningWorker
                 'provider_state' => $resource['status'], 'operation' => $operation,
             ]);
         }
+        $current = $this->servers->internalRow($serverId);
+        if ($operation !== 'delete' && ProviderResource::isReady($resource)
+            && (string) $current['status'] === CustomerServerService::STATUS_ACTIVE
+            && (string) $current['provisioning_state'] === CustomerServerService::STATE_SERVER_READY) {
+            // A duplicate poll must never demote an already-activated server.
+            return ['customer_server_id' => $serverId, 'provider_state' => $resource['status'],
+                'provisioning_state' => 'server_ready', 'customer_status' => 'active',
+                'idempotent' => true];
+        }
         $this->servers->workerApplyResource($serverId, $resource, $operation);
         if ($operation === 'delete') {
             $next = $this->servers->workerQueuePoll($serverId, (int) $job['id']);
@@ -275,11 +292,12 @@ class ServerProvisioningWorker
             return ['customer_server_id' => $serverId, 'provider_state' => $resource['status'],
                 'provisioning_state' => $row['provisioning_state'], 'poll_job_id' => (int) $next['id']];
         }
-        return ['customer_server_id' => $serverId, 'provider_state' => $resource['status'],
-            'provisioning_state' => 'server_ready', 'customer_status' => 'provisioning'];
+        return $this->activateReadyServer($context, $resource, $serverId, $operation,
+            (int) $job['id'], JobQueue::TYPE_SERVER_POLL);
     }
 
-    private function applyMutationResource($raw, $serverId, $providerServerId, $operation, $jobId)
+    private function applyMutationResource($raw, $serverId, $providerServerId, $operation, $jobId,
+        array $context, $jobType)
     {
         if (!is_array($raw)) {
             throw new ProviderOperationException('The provider returned an invalid server-operation response.');
@@ -296,8 +314,132 @@ class ServerProvisioningWorker
             return ['customer_server_id' => $serverId, 'operation' => $operation,
                 'provider_state' => $resource['status'], 'poll_job_id' => (int) $poll['id']];
         }
+        return $this->activateReadyServer($context, $resource, $serverId, $operation, $jobId, $jobType);
+    }
+
+    /**
+     * Run the health/security readiness gates for a provider-ready server and,
+     * only when every gate passes, mark it customer-active. Transient gate
+     * failures keep the server provisioning and keep polling; permanent gate
+     * failures propagate and fail the server.
+     */
+    private function activateReadyServer(array $context, array $resource, $serverId, $operation,
+        $jobId, $jobType)
+    {
+        try {
+            $gates = $this->readinessGates($context, $resource, $this->servers->internalRow($serverId));
+        } catch (HealthCheckException $e) {
+            // Transient gate failure (address not yet assigned, provider metrics
+            // endpoint unavailable): record the machine-readable error, keep the
+            // server provisioning, and keep polling like a slow provider.
+            $this->servers->workerFailure($serverId, $e->errorCode(), $e->getMessage(), false, $jobType);
+            $next = $this->servers->workerQueuePoll($serverId, $jobId);
+            return ['customer_server_id' => $serverId, 'operation' => $operation,
+                'provider_state' => $resource['status'], 'provisioning_state' => 'server_ready',
+                'customer_status' => 'provisioning', 'gates_passed' => false,
+                'gate_error_code' => $e->errorCode(),
+                'gate_error_message' => Str::clip($e->getMessage(), 200),
+                'poll_job_id' => (int) $next['id']];
+        }
+        $this->servers->workerActivate($serverId, $gates);
         return ['customer_server_id' => $serverId, 'operation' => $operation,
-            'provider_state' => $resource['status'], 'provisioning_state' => 'server_ready'];
+            'provider_state' => $resource['status'], 'provisioning_state' => 'server_ready',
+            'customer_status' => 'active', 'gates_passed' => true, 'gates' => $gates];
+    }
+
+    /**
+     * Health/security gates that must pass before a provider-ready server
+     * becomes customer-visible ACTIVE. Every input is provider-sourced or
+     * already persisted on the server row; nothing is guessed or synthesized.
+     *
+     * Health: the provider confirms the ordered resource is ready and has a
+     * routable address, and — when the adapter declares `server.metrics` —
+     * returns provider-sourced liveness metrics for it. Adapters without the
+     * capability are recorded as unsupported, never faked.
+     *
+     * Security: the running server must be the server that was ordered — the
+     * persisted row still matches the approved requested specification exactly.
+     * Guest-OS hardening is the guest's responsibility; the control plane does
+     * not claim to verify it.
+     */
+    private function readinessGates(array $context, array $resource, array $row)
+    {
+        $report = ['checked_at' => Clock::now()];
+
+        $ipv4 = isset($resource['ipv4']) ? $resource['ipv4'] : null;
+        $ipv6 = isset($resource['ipv6']) ? $resource['ipv6'] : null;
+        if ($ipv4 === null && $ipv6 === null) {
+            throw new HealthCheckException(
+                'The provider reports the server ready without an IP address.',
+                ['provider_state' => (string) $resource['status']]
+            );
+        }
+        $report['health'] = [
+            'provider_state' => (string) $resource['status'],
+            'ipv4_assigned' => $ipv4 !== null,
+            'ipv6_assigned' => $ipv6 !== null,
+        ];
+
+        $capabilities = ProviderRegistry::normaliseCapabilities($context['adapter']->capabilities());
+        if (!empty($capabilities['server.metrics'])) {
+            try {
+                $metrics = $context['adapter']->getMetrics($context['credentials'], $context['config'],
+                    (string) $resource['id']);
+            } catch (\Throwable $e) {
+                // A failing metrics endpoint means the health gate cannot be
+                // confirmed; that is transient, never a reason to activate.
+                throw new HealthCheckException(
+                    'The provider metrics endpoint failed for a server it reports ready.',
+                    ['provider_state' => (string) $resource['status']],
+                    $e
+                );
+            }
+            if (!is_array($metrics) || $metrics === []) {
+                throw new HealthCheckException(
+                    'The provider returned no metrics for a server it reports ready.',
+                    ['provider_state' => (string) $resource['status']]
+                );
+            }
+            $report['metrics'] = ['provider_reported' => true, 'fields' => count($metrics)];
+        } else {
+            $report['metrics'] = [
+                'provider_reported' => false,
+                'reason' => 'adapter_declares_no_server_metrics',
+            ];
+        }
+
+        $spec = Str::jsonDecode(isset($row['requested_spec']) ? $row['requested_spec'] : null, null);
+        if (!is_array($spec)) {
+            throw new ProviderOperationException(
+                'The approved server specification is missing; activation is refused.',
+                ['error_code' => 'SPEC_MISSING', 'customer_server_id' => (int) $row['id']]
+            );
+        }
+        $spec = ServerSpec::normalise($spec);
+        $drift = [];
+        foreach (['name', 'hostname', 'region', 'image'] as $field) {
+            if ((string) $row[$field] !== (string) $spec[$field]) {
+                $drift[] = $field;
+            }
+        }
+        foreach (['cpu_cores', 'memory_mb', 'storage_gb'] as $field) {
+            if ((int) $row[$field] !== (int) $spec[$field]) {
+                $drift[] = $field;
+            }
+        }
+        if ($drift !== []) {
+            throw new ProviderOperationException(
+                'The deployed server does not match the approved specification; activation is refused.',
+                ['error_code' => 'SPEC_DRIFT', 'fields' => $drift, 'customer_server_id' => (int) $row['id']]
+            );
+        }
+        $report['security'] = [
+            'spec_verified' => true,
+            'image' => $spec['image'],
+            'region' => $spec['region'],
+        ];
+        $report['passed'] = true;
+        return $report;
     }
 
     private function operationForType($type)

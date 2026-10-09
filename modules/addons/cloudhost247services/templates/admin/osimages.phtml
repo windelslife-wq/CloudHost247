@@ -1,0 +1,102 @@
+<?php
+/**
+ * Admin → OS Images: provider image mappings (OS version → provider image id /
+ * template id, architecture, region) with test/enable/disable/delete.
+ *
+ * An image is never deployable merely because the OS exists: it must be
+ * tested against the provider and enabled explicitly.
+ *
+ * @var array $images @var array|null $editing @var array $providers @var array $oses @var array $archs @var string $baseLink
+ */
+$versionsByOs = [];
+$catalog = new \Chs\Services\OsCatalogService();
+foreach ($oses as $os) {
+    $versionsByOs[(int) $os['id']] = $catalog->versions((int) $os['id']);
+}
+$regionsByProvider = [];
+$registry = new \Chs\Providers\Infrastructure\InfraProviderRegistry();
+foreach ($providers as $p) {
+    $regionsByProvider[(int) $p['id']] = $registry->regions((int) $p['id']);
+}
+?>
+<div class="chs-panel">
+  <h3><?= $editing ? 'Edit image mapping' : 'Add image mapping' ?></h3>
+  <form method="post" action="<?= chs_h($baseLink . '&action=osimages') ?>" class="form-horizontal">
+    <?= $tokenField ?><input type="hidden" name="do" value="image_save"><input type="hidden" name="image_id" value="<?= (int) ($editing['id'] ?? 0) ?>">
+    <table class="table">
+      <tr><td style="width:22%">Provider</td><td><select class="form-control" name="provider_id" required>
+        <option value="">Provider…</option>
+        <?php foreach ($providers as $p): ?><option value="<?= (int) $p['id'] ?>"<?= ($editing['provider_id'] ?? 0) == $p['id'] ? ' selected' : '' ?>><?= chs_h($p['name']) ?><?= empty($p['is_enabled']) ? ' (disabled)' : '' ?></option><?php endforeach; ?>
+      </select></td></tr>
+      <tr><td>OS version</td><td><select class="form-control" name="operating_system_version_id" required>
+        <option value="">OS version…</option>
+        <?php foreach ($oses as $os): foreach ($versionsByOs[(int) $os['id']] as $v): ?>
+          <option value="<?= (int) $v['id'] ?>"<?= ($editing['operating_system_version_id'] ?? 0) == $v['id'] ? ' selected' : '' ?>><?= chs_h($os['name']) ?> — <?= chs_h($v['display_name']) ?></option>
+        <?php endforeach; endforeach; ?>
+      </select></td></tr>
+      <tr><td>Architecture</td><td><select class="form-control" name="architecture">
+        <?php foreach ($archs as $a): ?><option value="<?= $a ?>"<?= ($editing['architecture'] ?? 'x86_64') === $a ? ' selected' : '' ?>><?= $a ?></option><?php endforeach; ?>
+      </select></td></tr>
+      <tr><td>Provider image ID</td><td><input class="form-control" name="provider_image_id" value="<?= chs_h($editing['provider_image_id'] ?? '') ?>" placeholder="OVH image identifier"> <span class="chs-muted small">or template ID below</span></td></tr>
+      <tr><td>Provider template ID</td><td><input class="form-control" name="provider_template_id" value="<?= chs_h($editing['provider_template_id'] ?? '') ?>" placeholder="local:vztmpl/ubuntu-24.04.tar.zst"></td></tr>
+      <tr><td>Region</td><td><select class="form-control" name="region_id">
+        <option value="0">All regions of the provider</option>
+        <?php foreach ($providers as $p): foreach (($regionsByProvider[(int) $p['id']] ?? []) as $r): ?>
+          <option value="<?= (int) $r['id'] ?>"<?= ($editing['region_id'] ?? 0) == $r['id'] ? ' selected' : '' ?>><?= chs_h($p['name']) ?> — <?= chs_h($r['name']) ?></option>
+        <?php endforeach; endforeach; ?>
+      </select></td></tr>
+      <tr><td>Notes</td><td><input class="form-control" name="notes" value="<?= chs_h($editing['metadata']['notes'] ?? '') ?>"></td></tr>
+    </table>
+    <button class="btn btn-primary">Save mapping</button>
+    <span class="chs-muted small">New/edited mappings save as <strong>disabled</strong> — test, then enable.</span>
+    <?php if ($editing): ?><a class="btn btn-default" href="<?= chs_h($baseLink . '&action=osimages') ?>">Cancel</a><?php endif; ?>
+  </form>
+</div>
+
+<div class="chs-panel">
+  <h3>Provider image mappings</h3>
+  <table class="table table-striped">
+    <thead><tr><th>OS</th><th>Version</th><th>Provider</th><th>Image / template</th><th>Arch</th><th>Region</th><th>Status</th><th>Test</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($images as $img): ?>
+      <tr>
+        <td><?= chs_h($img['os_name']) ?></td>
+        <td><?= chs_h($img['version_name']) ?></td>
+        <td><?= chs_h($img['provider_name']) ?><?= empty($img['provider_enabled']) ? ' <span class="label label-default">provider disabled</span>' : '' ?></td>
+        <td><code><?= chs_h($img['provider_image_id'] !== '' ? $img['provider_image_id'] : $img['provider_template_id']) ?></code></td>
+        <td><?= chs_h($img['architecture']) ?></td>
+        <td><?= chs_h($img['region_name'] ?: 'all regions') ?></td>
+        <td><?= chs_status_pill($img['status']) ?></td>
+        <td class="small">
+          <?php if ($img['test_result'] === 'ok'): ?><span class="label label-success">ok</span>
+          <?php elseif ($img['test_result'] === 'failed'): ?><span class="label label-danger">failed</span>
+          <?php else: ?><span class="text-muted">not tested</span><?php endif; ?>
+          <?= $img['last_tested_at'] ? '<div class="chs-muted">' . chs_h($img['last_tested_at']) . '</div>' : '' ?>
+        </td>
+        <td class="text-nowrap">
+          <a class="btn btn-xs btn-default" href="<?= chs_h($baseLink . '&action=osimages&edit=' . (int) $img['id']) ?>">Edit</a>
+          <form method="post" action="<?= chs_h($baseLink . '&action=osimages') ?>" style="display:inline">
+            <?= $tokenField ?><input type="hidden" name="do" value="image_test"><input type="hidden" name="id" value="<?= (int) $img['id'] ?>">
+            <button class="btn btn-xs btn-default">Test image</button>
+          </form>
+          <?php if ($img['status'] === 'active'): ?>
+          <form method="post" action="<?= chs_h($baseLink . '&action=osimages') ?>" style="display:inline">
+            <?= $tokenField ?><input type="hidden" name="do" value="image_disable"><input type="hidden" name="id" value="<?= (int) $img['id'] ?>">
+            <button class="btn btn-xs btn-warning">Disable</button>
+          </form>
+          <?php else: ?>
+          <form method="post" action="<?= chs_h($baseLink . '&action=osimages') ?>" style="display:inline">
+            <?= $tokenField ?><input type="hidden" name="do" value="image_enable"><input type="hidden" name="id" value="<?= (int) $img['id'] ?>">
+            <button class="btn btn-xs btn-success">Enable</button>
+          </form>
+          <?php endif; ?>
+          <form method="post" action="<?= chs_h($baseLink . '&action=osimages') ?>" style="display:inline" onsubmit="return confirm('Delete this mapping?');">
+            <?= $tokenField ?><input type="hidden" name="do" value="image_delete"><input type="hidden" name="id" value="<?= (int) $img['id'] ?>">
+            <button class="btn btn-xs btn-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+</div>

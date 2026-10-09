@@ -27,6 +27,7 @@ use Ch247Apps\Core\ProviderConfigurationException;
 use Ch247Apps\Core\ProviderOperationException;
 use Ch247Apps\Core\Rbac;
 use Ch247Apps\Core\Settings;
+use Ch247Apps\Core\StateException;
 use Ch247Apps\Core\Str;
 use Ch247Apps\Core\ValidationException;
 use Ch247Apps\Deployments\JobQueue;
@@ -517,7 +518,8 @@ class CustomerServerService
             $state = self::STATE_TERMINATING;
         } elseif (ProviderResource::isReady($resource)) {
             // `server_ready` is an infrastructure milestone, not customer-visible
-            // ACTIVE. Health/security gates are deliberately a later phase.
+            // ACTIVE. The worker runs the health/security gates after this and
+            // only then calls workerActivate().
             $status = self::STATUS_PROVISIONING;
             $state = self::STATE_SERVER_READY;
         } elseif ($operation === 'rebuild') {
@@ -564,6 +566,32 @@ class CustomerServerService
             'provider_state' => $resource['status'],
             'provider_server_id' => $resource['id'],
         ], $this->actor, $changes);
+        return $this->internalRow($serverId);
+    }
+
+    /**
+     * Mark a provider-ready server customer-active once the health/security
+     * gates have passed. Only the worker may activate, and only from the
+     * server_ready milestone; a single provider response alone never activates.
+     */
+    public function workerActivate($serverId, array $gateReport)
+    {
+        $this->assertWorker();
+        $row = $this->internalRow($serverId);
+        if ((string) $row['status'] === self::STATUS_ACTIVE
+            && (string) $row['provisioning_state'] === self::STATE_SERVER_READY) {
+            return $this->internalRow($serverId);
+        }
+        if ((string) $row['status'] !== self::STATUS_PROVISIONING
+            || (string) $row['provisioning_state'] !== self::STATE_SERVER_READY) {
+            throw new StateException('Only a provider-ready server can be activated.', [
+                'status' => (string) $row['status'],
+                'provisioning_state' => (string) $row['provisioning_state'],
+            ]);
+        }
+        $this->setState($row, self::STATUS_ACTIVE, self::STATE_SERVER_READY, 'server_activated', [
+            'gates' => $gateReport,
+        ], $this->actor);
         return $this->internalRow($serverId);
     }
 

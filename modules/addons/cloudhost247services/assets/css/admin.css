@@ -30,3 +30,6 @@
 .chs-pill-bad { background:#fee2e2; color:#991b1b; }
 .chs-pill-muted { background:#e2e8f0; color:#475569; }
 @media (max-width: 991px) { .chs-grid-2 { grid-template-columns:1fr; } }
+
+/* Infrastructure admin (OS catalog / images / providers / provisioning) */
+.chs-admin .chs-os-card img { max-height:24px; }

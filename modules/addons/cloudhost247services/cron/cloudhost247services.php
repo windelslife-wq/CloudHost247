@@ -26,6 +26,10 @@ use Chs\Core\Clock;
 use Chs\Core\Logger;
 use Chs\Services\AuctionService;
 use Chs\Services\ClubService;
+use Chs\Workflow\DomainJobTypes;
+use Chs\Workflow\InfraJobTypes;
+use Chs\Workflow\Worker;
+use Chs\Workflow\JobQueue;
 
 if (php_sapi_name() !== 'cli' && !defined('WHMCS')) {
     die('This file cannot be accessed directly');
@@ -53,6 +57,48 @@ $task('auction_invoice_lapse', function () {
 
 $task('club_expiry', function () {
     return (new ClubService())->expireDue();
+});
+
+// Domain platform: enqueue the periodic domain jobs (idempotent per cron
+// window, so overlapping cron runs cannot double-enqueue), then drain the
+// queue through the worker — long-running domain work never runs inline.
+$task('domain_periodic_jobs', function () {
+    $queue = new JobQueue();
+    $window = 'cron:' . gmdate('YmdHi');
+    $queue->enqueue(DomainJobTypes::EXPIRATION_CHECK, [], [
+        'idempotency_key' => $window . ':expiration',
+        'correlation_id'  => $window,
+    ]);
+    $queue->enqueue(DomainJobTypes::PROVIDER_SYNC, [], [
+        'idempotency_key' => $window . ':provider-sync',
+        'correlation_id'  => $window,
+    ]);
+    $queue->enqueue(DomainJobTypes::RECONCILIATION, [], [
+        'idempotency_key' => $window . ':reconciliation',
+        'correlation_id'  => $window,
+    ]);
+    return 'enqueued';
+});
+
+// Infrastructure: reconcile module server states with provider truth and
+// health-check every enabled provider (idempotent per cron window).
+$task('infra_periodic_jobs', function () {
+    $queue = new JobQueue();
+    $window = 'cron:' . gmdate('YmdHi');
+    $queue->enqueue(InfraJobTypes::PROVIDER_SYNC, [], [
+        'idempotency_key' => $window . ':infra-provider-sync',
+        'correlation_id'  => $window,
+    ]);
+    return 'enqueued';
+});
+
+// One combined drain: domain jobs + provisioning jobs share the queue.
+$task('worker', function () {
+    return Worker::run();
+});
+
+$task('job_housekeeping', function () {
+    return (new JobQueue())->purgeOlderThan(\Chs\Core\Settings::int('jobs_retention_days', 30));
 });
 
 $task('sitemap', function () {

@@ -1,0 +1,141 @@
+<?php
+/**
+ * Admin → Domain Providers: registrar provider registry + per-TLD mappings.
+ *
+ * Credentials are written sealed (AES-256-GCM via CHS_CREDENTIALS_KEY) and
+ * are never rendered back. Without CHS_CREDENTIALS_KEY the save fails closed.
+ *
+ * @var array $providers @var array $mappings @var array|null $editing
+ * @var array $tld_choices @var string $baseLink
+ */
+?>
+<div class="chs-panel">
+  <h3><?= $editing ? 'Edit provider #' . (int) $editing['id'] : 'Add a registrar provider' ?></h3>
+  <form method="post" action="<?= chs_h($baseLink . '&action=providers') ?>">
+    <?= $tokenField ?><input type="hidden" name="do" value="save">
+    <input type="hidden" name="provider_id" value="<?= $editing ? (int) $editing['id'] : 0 ?>">
+    <table class="table">
+      <tr><td style="width:24%">Name</td><td><input class="form-control" name="name" value="<?= chs_h($editing ? $editing['name'] : '') ?>" required maxlength="96"></td></tr>
+      <tr><td>Type</td><td>
+        <select class="form-control" name="type">
+          <option value="http"<?= $editing && $editing['type'] === 'http' ? ' selected' : '' ?>>HTTP registrar API (generic JSON)</option>
+          <option value="whmcs"<?= $editing && $editing['type'] === 'whmcs' ? ' selected' : '' ?>>WHMCS registrar chain (platform)</option>
+        </select>
+      </td></tr>
+      <tr><td>Base URL</td><td><input class="form-control" name="base_url" value="<?= chs_h($editing && isset($editing['config']['base_url']) ? $editing['config']['base_url'] : '') ?>" placeholder="https://registrar.example/api"></td></tr>
+      <tr><td>Auth header</td><td>
+        <input class="form-control" name="auth_header" value="<?= chs_h($editing && isset($editing['config']['auth_header']) ? $editing['config']['auth_header'] : 'Authorization') ?>" style="width:200px;display:inline-block">
+        prefix <input class="form-control" name="auth_prefix" value="<?= chs_h($editing && isset($editing['config']['auth_prefix']) ? $editing['config']['auth_prefix'] : 'Bearer ') ?>" style="width:120px;display:inline-block">
+        token field <input class="form-control" name="token_field" value="<?= chs_h($editing && isset($editing['config']['token_field']) ? $editing['config']['token_field'] : 'api_key') ?>" style="width:140px;display:inline-block">
+      </td></tr>
+      <tr><td>Endpoint map (JSON)</td><td>
+        <textarea class="form-control" name="endpoints" rows="7" spellcheck="false"><?= chs_h($editing && isset($editing['config']['endpoints']) ? json_encode($editing['config']['endpoints'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) : '{
+  "check_availability": "GET /domains/{domain}/availability",
+  "get_pricing": "GET /pricing/{tld}",
+  "register": "POST /domains/{domain}/register",
+  "transfer": "POST /domains/{domain}/transfer",
+  "renew": "POST /domains/{domain}/renew",
+  "get_domain": "GET /domains/{domain}",
+  "update_domain": "PATCH /domains/{domain}",
+  "get_nameservers": "GET /domains/{domain}/nameservers",
+  "update_nameservers": "PUT /domains/{domain}/nameservers",
+  "list_dns_records": "GET /domains/{domain}/dns",
+  "create_dns_record": "POST /domains/{domain}/dns",
+  "update_dns_record": "PATCH /domains/{domain}/dns/{record_id}",
+  "delete_dns_record": "DELETE /domains/{domain}/dns/{record_id}",
+  "whois": "GET /whois/{domain}",
+  "transfer_status": "GET /domains/{domain}/transfer",
+  "cancel_transfer": "POST /domains/{domain}/transfer/cancel"
+}') ?></textarea>
+        <div class="chs-muted small">operation → <code>"METHOD /path/{placeholder}"</code>. Only the operations you map are enabled — everything else fails closed with <code>PROVIDER_OPERATION_UNSUPPORTED</code>.</div>
+      </td></tr>
+      <tr><td>Credentials (JSON)</td><td>
+        <textarea class="form-control" name="credentials" rows="3" spellcheck="false" placeholder='{"api_key": "…"}'></textarea>
+        <div class="chs-muted small">Sealed with AES-256-GCM before storage (needs the <code>CHS_CREDENTIALS_KEY</code> environment variable). Leave blank to keep the stored credentials. Never rendered back.</div>
+      </td></tr>
+      <tr><td>Flags</td><td>
+        <label><input type="checkbox" name="is_enabled" <?= !$editing || !empty($editing['is_enabled']) ? 'checked' : '' ?>> Enabled</label>
+        &nbsp; <label><input type="checkbox" name="is_default" <?= !empty($editing['is_default']) ? 'checked' : '' ?>> Default provider (TLDs without a mapping)</label>
+      </td></tr>
+    </table>
+    <button class="btn btn-primary">Save provider</button>
+    <?php if ($editing): ?><a class="btn btn-default" href="<?= chs_h($baseLink . '&action=providers') ?>">Cancel</a><?php endif; ?>
+  </form>
+</div>
+
+<div class="chs-panel">
+  <h3>Configured providers</h3>
+  <?php if (!$providers): ?>
+    <p class="chs-muted">No providers configured. Every TLD currently resolves through the WHMCS registrar chain — the platform's own lookup pipeline (availability, WHOIS, domain records). Add an HTTP provider above to drive a real registrar API.</p>
+  <?php else: ?>
+  <table class="table table-striped">
+    <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Default</th><th>Health</th><th>Credentials</th><th>Actions</th></tr></thead>
+    <tbody>
+    <?php foreach ($providers as $p): ?>
+      <tr>
+        <td><?= (int) $p['id'] ?></td>
+        <td><?= chs_h($p['name']) ?></td>
+        <td><code><?= chs_h($p['type']) ?></code></td>
+        <td><?= !empty($p['is_default']) ? 'yes' : '—' ?></td>
+        <td>
+          <?php if ($p['health_status'] === 'ok'): ?><span class="label label-success">ok</span>
+          <?php elseif ($p['health_status'] === 'not_configured'): ?><span class="label label-warning">not configured</span>
+          <?php else: ?><span class="label label-default"><?= chs_h($p['health_status']) ?></span><?php endif; ?>
+        </td>
+        <td><?= !empty($p['has_credentials']) ? '<span class="label label-success">sealed &amp; stored</span>' : '<span class="label label-default">none</span>' ?></td>
+        <td>
+          <a class="btn btn-xs btn-default" href="<?= chs_h($baseLink . '&action=providers&edit=' . (int) $p['id']) ?>">Edit</a>
+          <form method="post" action="<?= chs_h($baseLink . '&action=providers') ?>" style="display:inline">
+            <?= $tokenField ?><input type="hidden" name="do" value="health"><input type="hidden" name="id" value="<?= (int) $p['id'] ?>">
+            <button class="btn btn-xs btn-default">Health check</button>
+          </form>
+          <form method="post" action="<?= chs_h($baseLink . '&action=providers') ?>" style="display:inline" onsubmit="return confirm('Delete this provider and its TLD mappings?')">
+            <?= $tokenField ?><input type="hidden" name="do" value="delete"><input type="hidden" name="id" value="<?= (int) $p['id'] ?>">
+            <button class="btn btn-xs btn-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  <?php endif; ?>
+</div>
+
+<div class="chs-panel">
+  <h3>TLD → provider mappings</h3>
+  <form method="post" action="<?= chs_h($baseLink . '&action=providers') ?>" class="form-inline">
+    <?= $tokenField ?><input type="hidden" name="do" value="map">
+    <select class="form-control" name="tld">
+      <?php foreach ($tld_choices as $tld): ?>
+        <option value="<?= chs_h($tld) ?>">.<?= chs_h($tld) ?></option>
+      <?php endforeach; ?>
+    </select>
+    <select class="form-control" name="provider_id">
+      <?php foreach ($providers as $p): ?>
+        <option value="<?= (int) $p['id'] ?>"><?= chs_h($p['name']) ?></option>
+      <?php endforeach; ?>
+    </select>
+    <button class="btn btn-primary btn-sm">Map TLD</button>
+  </form>
+  <?php if ($mappings): ?>
+  <table class="table table-striped" style="margin-top:10px">
+    <thead><tr><th>TLD</th><th>Provider</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($mappings as $tld => $providerId): ?>
+      <tr>
+        <td>.<?= chs_h($tld) ?></td>
+        <td>#<?= (int) $providerId ?> <?= chs_h(isset($providers[array_search((int) $providerId, array_column($providers, 'id'), true)]['name']) ? $providers[array_search((int) $providerId, array_column($providers, 'id'), true)]['name'] : '') ?></td>
+        <td>
+          <form method="post" action="<?= chs_h($baseLink . '&action=providers') ?>" style="display:inline">
+            <?= $tokenField ?><input type="hidden" name="do" value="unmap"><input type="hidden" name="tld" value="<?= chs_h($tld) ?>">
+            <button class="btn btn-xs btn-default">Remove</button>
+          </form>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  <?php else: ?>
+    <p class="chs-muted small" style="margin-top:10px">No per-TLD mappings — all TLDs use the default provider (or the WHMCS registrar chain when none is configured).</p>
+  <?php endif; ?>
+</div>

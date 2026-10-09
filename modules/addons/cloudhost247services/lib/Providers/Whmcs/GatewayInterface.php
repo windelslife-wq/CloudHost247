@@ -82,4 +82,55 @@ interface GatewayInterface
     public function inboxAssign($ticketId, $adminId);
 
     public function inboxSetStatus($ticketId, $status);
+
+    /* ------------------------------------------- servers, products, orders -- */
+
+    /**
+     * Visible WHMCS server products (type = server).
+     * @return array[] rows: id, name, description, paytype, servertype, group_name,
+     *                 price_minor (monthly or onetime in the default currency)
+     */
+    public function serverProducts();
+
+    /** @return array|null tblproducts row (id, name, type, paytype, servertype, hidden…) */
+    public function productDetail($productId);
+
+    /**
+     * Price map for one product in one currency.
+     * @return array{setup_minor:int, cycles:array<string,int>} cycle => amount_minor
+     */
+    public function productPricing($productId, $currency);
+
+    /**
+     * Place a real WHMCS order (AddOrder): order + invoice + pending service.
+     * @return array{order_id:int, invoice_id:int}
+     */
+    public function createOrder($clientId, $productId, $billingCycle, $hostname, $paymentMethod = '');
+
+    /** @return array|null the tblhosting service attached to an invoice */
+    public function serviceForInvoice($invoiceId);
+
+    /** @return array|null hosting row + product_name + product_type */
+    public function hostingDetail($hostingId);
+
+    /** @return array[] the client's services (hosting rows + product_name) */
+    public function clientServices($clientId);
+
+    /**
+     * Guarded service update (whitelisted columns only: domain, server,
+     * status, nextduedate).
+     */
+    public function updateService($hostingId, array $fields);
+
+    /**
+     * Create a WHMCS server record (tblservers) — the provider connection
+     * record for a provisioned server. @return int new server id
+     */
+    public function createServerRecord(array $fields);
+
+    /** Guarded tblservers update (whitelisted columns only). */
+    public function updateServerRecord($serverId, array $fields);
+
+    /** @return array|null tblservers row */
+    public function serverRecord($serverId);
 }

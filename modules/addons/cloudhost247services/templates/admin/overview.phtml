@@ -34,3 +34,43 @@
       module-specific credentials are required until you install an external valuation or AI engine.</p>
   </div>
 </div>
+
+<div class="chs-panel">
+  <h3>Domain platform</h3>
+  <div class="chs-grid-3">
+    <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['active_domains'] ?></div><div class="chs-kpi-label">Active domains (tracked)</div></div>
+    <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['expiring_30d'] ?></div><div class="chs-kpi-label">Expiring ≤ 30 days</div></div>
+    <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['open_transfers'] ?></div><div class="chs-kpi-label">Open transfers</div></div>
+    <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['failed_jobs'] ?></div><div class="chs-kpi-label">Failed jobs</div></div>
+    <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['searches_24h'] ?></div><div class="chs-kpi-label">Domain searches (24h)</div></div>
+  </div>
+  <table class="table table-striped" style="margin-top:10px">
+    <tr><td>Registrar providers</td><td>
+      <?php if (!$providers): ?>
+        <span class="label label-default">WHMCS registrar chain (platform)</span>
+      <?php else: foreach ($providers as $p): ?>
+        <span class="label <?= $p['health_status'] === 'ok' ? 'label-success' : 'label-warning' ?>"><?= chs_h($p['name']) ?> (<?= chs_h($p['health_status']) ?>)</span>
+      <?php endforeach; endif; ?>
+    </td></tr>
+  </table>
+  <p><a class="btn btn-default btn-sm" href="<?= chs_h($baseLink . '&action=domains') ?>">Domain control center</a>
+     <a class="btn btn-default btn-sm" href="<?= chs_h($baseLink . '&action=providers') ?>">Providers</a>
+     <a class="btn btn-default btn-sm" href="<?= chs_h($baseLink . '&action=transfers') ?>">Transfers</a>
+     <a class="btn btn-default btn-sm" href="<?= chs_h($baseLink . '&action=operations') ?>">Job operations</a></p>
+</div>
+
+<div class="chs-panel">
+  <h3>Infrastructure</h3>
+  <div class="chs-grid-3">
+    <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['active_oses'] ?></div><div class="chs-kpi-label">Active operating systems</div></div>
+    <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['active_os_images'] ?></div><div class="chs-kpi-label">Active OS images</div></div>
+    <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['infra_providers'] ?></div><div class="chs-kpi-label">Enabled providers</div></div>
+    <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['active_servers'] ?></div><div class="chs-kpi-label">Active servers</div></div>
+    <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['provisioning_active'] ?></div><div class="chs-kpi-label">Provisioning in flight</div></div>
+    <div class="chs-card"><div class="chs-kpi"><?= (int) $counts['provisioning_failed'] ?></div><div class="chs-kpi-label">Failed provisioning jobs</div></div>
+  </div>
+  <p style="margin-top:10px"><a class="btn btn-default btn-sm" href="<?= chs_h($baseLink . '&action=oses') ?>">OS catalog</a>
+     <a class="btn btn-default btn-sm" href="<?= chs_h($baseLink . '&action=osimages') ?>">OS images</a>
+     <a class="btn btn-default btn-sm" href="<?= chs_h($baseLink . '&action=infraproviders') ?>">Infra providers</a>
+     <a class="btn btn-default btn-sm" href="<?= chs_h($baseLink . '&action=provisioning') ?>">Provisioning jobs</a></p>
+</div>

@@ -29,7 +29,7 @@ add_hook('ClientAreaHeadOutput', 1, function ($vars) {
     $template = isset($vars['templatefile']) ? (string) $vars['templatefile'] : '';
 
     static $suiteTemplates = [
-        'chs-domain-search', 'chs-bulk-search', 'chs-domain-transfer', 'chs-tld-directory',
+        'chs-domains', 'chs-domain-search', 'chs-bulk-search', 'chs-domain-transfer', 'chs-tld-directory',
         'chs-valuation', 'chs-auctions', 'chs-discount-club', 'chs-whois',
         'chs-website-builder', 'chs-ai-builder', 'chs-online-store', 'chs-hire-expert',
         'chs-marketing', 'chs-logo-maker', 'chs-unified-inbox',
@@ -68,6 +68,34 @@ add_hook('ClientAreaPrimaryNavbar', 1, function ($navbar) {
     // "Domains" exists in stock WHMCS; add our investing/tooling entries beside it.
     $domains = $navbar->getChild('Domains');
     if ($domains) {
+        if (!$domains->getChild('chs-search')) {
+            $domains->addChild('chs-search', [
+                'label' => 'Domain Search',
+                'uri'   => 'domain-search.php',
+                'order' => 36,
+            ]);
+        }
+        if (!$domains->getChild('chs-bulk')) {
+            $domains->addChild('chs-bulk', [
+                'label' => 'Bulk Domain Search',
+                'uri'   => 'bulk-domain-search.php',
+                'order' => 37,
+            ]);
+        }
+        if (!$domains->getChild('chs-transfer')) {
+            $domains->addChild('chs-transfer', [
+                'label' => 'Transfer a Domain',
+                'uri'   => 'domain-transfer.php',
+                'order' => 38,
+            ]);
+        }
+        if (!$domains->getChild('chs-whois')) {
+            $domains->addChild('chs-whois', [
+                'label' => 'WHOIS Lookup',
+                'uri'   => 'whois-lookup.php',
+                'order' => 39,
+            ]);
+        }
         if (!$domains->getChild('chs-valuation')) {
             $domains->addChild('chs-valuation', [
                 'label' => 'Domain Valuation',
@@ -119,6 +147,8 @@ add_hook('ClientAreaPrimaryNavbar', 1, function ($navbar) {
             ['marketing', 'Digital Marketing', 'digital-marketing.php', 40],
             ['inbox', 'Unified Inbox', 'index.php?m=cloudhost247services&action=inbox', 50],
             ['dashboard', 'My Services Dashboard', 'index.php?m=cloudhost247services', 60],
+            ['my-domains', 'My Domains', 'index.php?m=cloudhost247services&action=domains', 70],
+            ['my-transfers', 'My Transfers', 'index.php?m=cloudhost247services&action=transfers', 80],
         ];
         foreach ($entries as $entry) {
             $suite->addChild('chs-' . $entry[0], [
@@ -192,6 +222,13 @@ add_hook('InvoicePaid', 1, function ($vars) {
     try {
         (new ClubService())->invoicePaid($invoiceId);
         (new AuctionService())->invoicePaid($invoiceId);
+        // Domain platform: transfers + auto-renewals settle through the
+        // module's tracked records and the job queue.
+        (new \Chs\Services\TransferService())->invoicePaid($invoiceId);
+        (new \Chs\Services\RenewalService())->invoicePaid($invoiceId);
+        // Infrastructure: a paid server order enqueues its provisioning job
+        // (the service verifies the payment state itself — never trusts the hook).
+        (new \Chs\Services\ServerOrderService())->onInvoicePaid($invoiceId);
     } catch (\Throwable $e) {
         Logger::error('InvoicePaid handling failed', ['invoice' => $invoiceId, 'message' => $e->getMessage()]);
     }
