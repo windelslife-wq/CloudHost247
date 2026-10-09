@@ -42,7 +42,7 @@ function cloudhost247apps_config()
             . 'integrated with WHMCS services, invoices, identity and RBAC.',
         'author' => 'CloudHost247',
         'language' => 'english',
-        'version' => '1.11.0',
+        'version' => '1.11.1',
         'fields' => [
             'bootstrap_admin_id' => [
                 'FriendlyName' => 'Bootstrap administrator ID',
@@ -87,6 +87,31 @@ function cloudhost247apps_config()
                 'Type' => 'yesno',
                 'Default' => '',
                 'Description' => 'Staff-only WHMCS custom-field snapshot for active paid legacy VPS services. No OVH API call, adoption, purchase or customer VM. Keep off until WHMCS custom-field staging is validated.',
+            ],
+            'agent_heartbeat_ingress_enabled' => [
+                'FriendlyName' => 'Agent heartbeat ingress enabled',
+                'Type' => 'yesno',
+                'Default' => '',
+                'Description' => 'Accept only HMAC-signed, replay-protected liveness reports from the currently assigned agent. Keep off until WHMCS/agent staging validates the signed protocol. Does not provide a command-listening daemon or deployment operations.',
+            ],
+            'agent_uptime_ingress_enabled' => [
+                'FriendlyName' => 'Linux agent uptime samples enabled',
+                'Type' => 'yesno',
+                'Default' => '',
+                'Description' => 'Separately gated, bounded /proc/uptime samples from an assigned signed agent on a monitoring-enabled server. Requires heartbeat ingress; never implies healthy status or enables CPU, RAM, disk, commands or deployments. Keep off until isolated Linux/WHMCS staging and metrics retention review.',
+            ],
+            'agent_uptime_retention_enabled' => [
+                'FriendlyName' => 'Prune expired node uptime samples',
+                'Type' => 'yesno',
+                'Default' => '',
+                'Description' => 'Default off. Cron removes at most 200 source-tagged node uptime rows per run after the approved retention period. No other metric rows are eligible; verify backup/export and schema migration first.',
+            ],
+            'agent_uptime_retention_days' => [
+                'FriendlyName' => 'Node uptime retention days',
+                'Type' => 'text',
+                'Size' => '6',
+                'Default' => '30',
+                'Description' => '1–3650 days after an operator enables the separate cleanup switch. Rows exactly on the cutoff are retained.',
             ],
             'panel_account_workflow_enabled' => [
                 'FriendlyName' => 'cPanel account lifecycle workflow enabled',

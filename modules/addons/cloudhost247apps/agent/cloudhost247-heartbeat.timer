@@ -1,0 +1,12 @@
+[Unit]
+Description=CloudHost247 App Cloud heartbeat every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+Persistent=false
+Unit=cloudhost247-heartbeat.service
+
+[Install]
+WantedBy=timers.target
