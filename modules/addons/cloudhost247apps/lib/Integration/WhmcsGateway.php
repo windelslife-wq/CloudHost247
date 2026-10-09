@@ -222,6 +222,25 @@ class WhmcsGateway implements GatewayInterface
         return Whmcs::rows('tblhosting', $where);
     }
 
+    public function getServiceCustomFields($serviceId, $productId)
+    {
+        // WHMCS stores product custom-field definitions separately from each
+        // service's values. Never read fields belonging to another product.
+        $definitions = Whmcs::rows('tblcustomfields', ['type' => 'product', 'relid' => (int) $productId]);
+        $names = [];
+        foreach ($definitions as $field) {
+            $names[(int) $field['id']] = (string) $field['fieldname'];
+        }
+        $out = [];
+        foreach (Whmcs::rows('tblcustomfieldsvalues', ['relid' => (int) $serviceId]) as $value) {
+            $fieldId = isset($value['fieldid']) ? (int) $value['fieldid'] : 0;
+            if (isset($names[$fieldId])) {
+                $out[] = ['fieldname' => $names[$fieldId], 'value' => (string) $value['value']];
+            }
+        }
+        return $out;
+    }
+
     public function suspendService($serviceId, $reason = '')
     {
         return Whmcs::api('ModuleSuspend', [

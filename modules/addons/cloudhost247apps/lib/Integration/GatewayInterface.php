@@ -76,6 +76,9 @@ interface GatewayInterface
     /** @return array[] services for a client, optionally filtered by status */
     public function getClientServices($clientId, $status = null);
 
+    /** Product-scoped WHMCS custom fields for one hosting service: fieldname/value pairs. */
+    public function getServiceCustomFields($serviceId, $productId);
+
     public function suspendService($serviceId, $reason = '');
 
     public function unsuspendService($serviceId);

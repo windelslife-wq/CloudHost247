@@ -82,6 +82,12 @@ function cloudhost247apps_config()
                 'Default' => '',
                 'Description' => 'Staff-only read-back of an existing paid Contabo instance, never provider ordering or cancellation. Keep off until Contabo/WHMCS identity and billing staging passes.',
             ],
+            'ovh_legacy_inspection_enabled' => [
+                'FriendlyName' => 'Legacy SoYouStart VPS inspection enabled',
+                'Type' => 'yesno',
+                'Default' => '',
+                'Description' => 'Staff-only WHMCS custom-field snapshot for active paid legacy VPS services. No OVH API call, adoption, purchase or customer VM. Keep off until WHMCS custom-field staging is validated.',
+            ],
             'panel_account_workflow_enabled' => [
                 'FriendlyName' => 'cPanel account lifecycle workflow enabled',
                 'Type' => 'yesno',

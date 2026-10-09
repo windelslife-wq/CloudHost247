@@ -1,6 +1,6 @@
 # OVHcloud / SoYouStart — App Cloud integration readiness
 
-**Status:** legacy transport hardened; **no App Cloud `ovhcloud` infrastructure adapter is registered**. `ProviderRegistry` continues to report OVHcloud as catalog-only (`adapter_available: false`). App Cloud customer provisioning must not be enabled on the basis of the legacy module alone. This is an integration prerequisite, not a claim of completed OVH VPS provisioning.
+**Status:** legacy transport hardened; **no App Cloud `ovhcloud` infrastructure adapter is registered**. The owner selected **read-only existing-service integration**: the SoYouStart WHMCS module retains ordering, renewal and cancellation authority. `ProviderRegistry` continues to report OVHcloud as catalog-only (`adapter_available: false`). App Cloud customer provisioning must not be enabled on the basis of the legacy module alone. This is an integration prerequisite, not a claim of completed OVH VPS provisioning.
 
 ## Existing authority
 
@@ -16,6 +16,12 @@ The existing OVH `ApiCall` transport and its public catalog fetch now require a 
 The legacy **third-party** product-availability feed no longer uses a checked-in shared HMAC key. Its fixed HTTPS request now requires a deployment-provided `SOYOUSTART_AVAILABILITY_FEED_SECRET` (at least 32 characters), validates TLS/hostname, refuses redirects, uses timeouts, bounds response bytes, and rejects non-200, malformed, missing, or empty regional plan lists. With no secret, the legacy admin product-selection view fails closed rather than silently assuming every VPS plan is available. Provision the feed secret **outside Git** only after confirming the third-party feed's ownership and trust model; rotate the old hardcoded key with its operator. An authenticated request does not independently authenticate the feed's stock assertions, so this is advisory, **not** proof of purchasability; OVH and WHMCS staging remain required.
 
 The legacy OVH request-log insert, server provisioning exception logs, existing-server AddOrder log, and additional-IP payment hook now record status/safe service IDs rather than raw request bodies, signed headers, payment responses, WHMCS `$params`, or exception traces. This is a **bounded** log cleanup, not an audit of every legacy module surface; review other error messages and historical logs separately before production use. These changes do not register an OVH App Cloud adapter or change who places or pays for OVH orders.
+
+## First read-only step: legacy WHMCS inspection (not adoption)
+
+`ovh_legacy_inspection_enabled` defaults **off**. When explicitly enabled after WHMCS schema staging, a staff administrator with customer-server view-all **and** manage permission can call `GET /v1/ovh/legacy-services/{whmcsServiceId}`. It checks the live service/order/invoice owner and paid state, requires an active recurring server product with module `soyoustart_vps`, then reads only that product's WHMCS service custom fields. The response exposes the legacy OVH order ID and server name with `source: whmcs_legacy_custom_fields`, `provider_verified: false`, `binding_created: false`. Account names, passwords, other custom fields, and credential material are not returned. Missing or duplicate identifiers fail closed. Customers cannot call it.
+
+This is a **live WHMCS snapshot, not an OVH provider read-back, persistent adoption, or proof of an existing server**. It performs no OVH request, creates no App Cloud VM/queue job, does not modify legacy billing, and cannot purchase or cancel. Verify the actual WHMCS custom-field schema and authoritative OVH instance ownership in isolated staging before enabling the switch. A future binding must have its own reconciliation and unique-identity gate; do not surface a customer-active VM based on a custom field alone.
 
 ## Still blocking an App Cloud provider adapter
 

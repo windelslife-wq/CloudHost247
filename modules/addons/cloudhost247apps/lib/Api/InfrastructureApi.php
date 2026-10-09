@@ -41,6 +41,7 @@ use Ch247Apps\Domains\DnsInventoryProviderRegistry;
 use Ch247Apps\Domains\DomainService;
 use Ch247Apps\Infrastructure\CustomerServerService;
 use Ch247Apps\Infrastructure\ContaboAdoptionService;
+use Ch247Apps\Infrastructure\OvhLegacyInspectionService;
 use Ch247Apps\Infrastructure\ProviderAccountService;
 use Ch247Apps\Infrastructure\ProviderRegistry;
 use Ch247Apps\Infrastructure\ServerProductMappingService;
@@ -255,6 +256,13 @@ class InfrastructureApi
                 (int) $match[1], $input, self::idempotencyKey($headers)
             );
             return self::response(202, ['data' => $result]);
+        }
+
+        // Staff-only WHMCS legacy snapshot: no OVH request, reservation or VM.
+        if (preg_match('#^/v1/ovh/legacy-services/([0-9]+)$#', $path, $match) && $method === 'GET') {
+            $this->authorize(Rbac::CUSTOMER_SERVER_VIEW_ALL);
+            $this->authorize(Rbac::CUSTOMER_SERVER_MANAGE);
+            return self::response(200, ['data' => (new OvhLegacyInspectionService($this->actor))->inspect($match[1])]);
         }
 
         // Operator-only Contabo adoption: no customer-provided provider ID, no
