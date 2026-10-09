@@ -184,6 +184,8 @@ smtp_test('Regression: every fully-qualified global catch type in module source 
 
 require __DIR__ . DIRECTORY_SEPARATOR . 'usage_proxy_tests.php';
 
+require __DIR__ . DIRECTORY_SEPARATOR . 'hardening_tests.php';
+
 /* ------------------------------------------------------------------------ *
  * Runner
  * ------------------------------------------------------------------------ */

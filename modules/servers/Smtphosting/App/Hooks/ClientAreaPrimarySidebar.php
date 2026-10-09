@@ -13,7 +13,12 @@ $hookManager->register(
         {
             return;
         }
-        $pid = Hosting::find($request->get('id'))->packageid;
+        $hosting = Hosting::find($request->get('id'));
+        if(!$hosting)
+        {
+            return;
+        }
+        $pid = $hosting->packageid;
         if(!\ModulesGarden\ProductsReseller\Server\Smtphosting\App\Helpers\ResellerModuleChecker::isProperProduct($pid))
         {
             return;

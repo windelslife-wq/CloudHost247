@@ -18,7 +18,7 @@ php-wasm. Commands and results are in
 |---|---|
 | Module | `modules/servers/Smtphosting` (ModulesGarden "Products Reseller" framework, v1.5.0 per `composer.json`) |
 | Specification | None in the repository for the API, cron, or AppController hooks. No `docs/` entry or Build.txt for Smtphosting. The `Core/Api` framework expects `App/Config/api/routes.php`, `api/config.php`, `AltoRouter` and `App\Http\Api\*`, none of which exist. |
-| Status | **Code fixed; not closed.** Stub-level defects (S-1, S-2, S-5) and the S-6 server-side fix are implemented and tested. Closure needs owner action: rotate the upstream secrets, configure them, and run the live check (see Remaining issues). Module 2 stays on hold until then. |
+| Status | **Code fixed; not closed.** Stub-level defects (S-1, S-2, S-5), the S-6 server-side fix, and the low-severity items S-4, S-7, S-8, S-9 are implemented and tested (S-7 to S-9 by static checks only). Closure needs owner action: rotate the upstream secrets, configure them, and run the live check (see Remaining issues). Module 2 stays on hold until then. |
 
 ### Findings (verified by executing the code, not only by reading it)
 
@@ -27,14 +27,24 @@ php-wasm. Commands and results are in
 | S-1 | `AppControllers/Api.php`, `Cron.php`, `Hooks.php` do not extend the abstract `AppController`. `runController()` is undefined, so `Application::run()` would raise an uncaught `Error`. `getControllerInstanceClass()` silently returned `null`. | Baseline run: `Call to undefined method ...::runController()` | High (latent) |
 | S-2 | `Instances/Api/ApiController.php` is a fatal error on load: `DefaultController` is not imported, and `runExecuteProcess()` is missing. | Baseline run: `Interface ...\Instances\Api\DefaultController not found` | High (latent) |
 | S-3 | Nothing in the module reaches `Api`, `Cron`, or `Hooks` except `Application` mapping the `api` caller. No WHMCS function named `Smtphosting_api` exists. The cron queue framework (`Core/CommandLine`) has no registered jobs. | Repository search; `Smtphosting.php` lists all WHMCS functions | Info |
-| S-4 | No scheduled jobs exist. `App/UI/Admin/ProductConfig/Pages/CronInfo.php` tells the admin to run `<module>/cron/cron.php queue`, but that file does not exist, and `CronInfo` is never instantiated. | `find` for `cron.php`; `grep` for `CronInfo` | Medium (misleading UI, dead) |
+| S-4 | No scheduled jobs exist. `App/UI/Admin/ProductConfig/Pages/CronInfo.php` told the admin to run `<module>/cron/cron.php queue`, a file that does not exist. The page was never instantiated. | Repository search; `grep` for `CronInfo` | Medium (misleading, dead) → **fixed**: dead page removed; no references remain. |
 | S-5 | `Instances/Addon/ConfigOptions.php` had `catch (\Excpetion $exc)`. The misspelled class never matches, so installer exceptions escaped the JSON error path. | Baseline regression test failure | Medium (real defect, fixed) |
 | S-6 | **CRITICAL (fixed in code, secrets still need rotation): shared upstream secrets were exposed to every customer.** The original `smtp-api.php` hardcoded two upstream secrets. `clientarea.tpl` put them in client-area JavaScript together with `user_name` and `main_domain` from the browser, so any customer could read another customer's mail usage and logs. The secrets are also in git history. Secret comparison used `!==`, and `CURLOPT_FOLLOWLOCATION` could forward the secret on redirect. | Original lines 49-54 (secrets), 65 (`!==`), 90 (`FOLLOWLOCATION`); `clientarea.tpl` lines 422 and 493 (before the fix). | **Critical** → mitigated in code; open until the owner rotates the secrets |
-| S-7 | `Synchronize` (admin button) swallows exceptions and returns a generic error without logging. | `App/Http/Actions/Synchronize.php` | Low |
-| S-8 | `App/UI` `ClientAreaPrimarySidebar` hook dereferences `Hosting::find(...)->packageid` without a null check. This emits a PHP warning for an unknown service ID but is not fatal. | Code review only (not executed against WHMCS) | Low |
-| S-9 | `App/Hooks/AdminProductConfigFieldsSave.php` catches all exceptions and does nothing ("do nothing on save"), so save failures are silent. | Code review only | Low |
+| S-7 | `Synchronize` (admin button) swallows exceptions and returns a generic error without logging. | `App/Http/Actions/Synchronize.php` | Low → **fixed**: the failure is logged via `Core\HandlerError\Logger`; the generic return value is unchanged. |
+| S-8 | `App/Hooks/ClientAreaPrimarySidebar.php` dereferenced `Hosting::find(...)->packageid` without a null check. It emits a PHP warning for an unknown service ID but is not fatal. | Code review | Low → **fixed**: null check added; the hook returns early. |
+| S-9 | `App/Hooks/AdminProductConfigFieldsSave.php` caught all exceptions and did nothing, so save failures were silent. | Code review | Low → **fixed**: the failure is logged; the save still does not break. |
 
 ### Changes made
+
+Hardening change set (third, S-4/S-7/S-8/S-9):
+
+| File | Change |
+|---|---|
+| `App/Http/Actions/Synchronize.php` | Logs the exception message via `Core\HandlerError\Logger` before returning the unchanged generic error. Logging failures are caught. |
+| `App/Hooks/ClientAreaPrimarySidebar.php` | Null check on `Hosting::find()` before reading `packageid`. |
+| `App/Hooks/AdminProductConfigFieldsSave.php` | Logs the exception instead of swallowing it. The save still does not break. |
+| `App/UI/Admin/ProductConfig/Pages/CronInfo.php` | Deleted. Dead page that pointed at a missing script; nothing referenced it. |
+| `tests/hardening_tests.php` (new) | 4 static checks, one per finding. Each fails on the pre-fix code. |
 
 S-6 fix (second change set, on top of commit 2baeebe):
 
@@ -61,7 +71,7 @@ Earlier change set (commit 2baeebe):
 | `Core/App/Controllers/AppControllers/Hooks.php` | Same pattern. Points to `App/Hooks/*.php` as the real hook mechanism. |
 | `Core/App/Controllers/Instances/Api/ApiController.php` | Imports `DefaultController`. Implements `execute()` and `runExecuteProcess()`, both throwing `RuntimeException`. |
 | `Core/App/Controllers/Instances/Addon/ConfigOptions.php` | `\Excpetion` → `\Exception` (one token). |
-| `tests/` (new) | `run.php` (15 tests now 39 with the S-6 suite), `bootstrap.php`, `run-php-wasm.mjs`, `README.md`. |
+| `tests/` (new) | `run.php` (15 general tests, plus 24 S-6 and 4 hardening tests), `bootstrap.php`, `run-php-wasm.mjs`, `README.md`. |
 | `docs/MODULE_COMPLETION_TRACKER.md` (new) | This tracker. |
 
 No behaviour was invented. Nothing that previously worked changed. The routing
@@ -72,8 +82,9 @@ and Addon controller paths are covered by regression tests.
 | Command | Result |
 |---|---|
 | Suite before the S-6 fix, on the S-6 tests (8.3) | 15/39 passed; 24 failed, all in the new S-6 tests (expected: the classes and fixes did not exist yet) |
-| Suite after the S-6 fix, PHP 8.3.33 (php-wasm) | **39/39 passed**, 0 failed |
-| Suite after the S-6 fix, PHP 7.4.33 (php-wasm) | **39/39 passed**, 0 failed |
+| Hardening checks against pre-fix code (8.3) | 39/43 passed; the 4 hardening checks (S-4, S-7, S-8, S-9) fail, as intended |
+| Suite after the hardening fixes, PHP 8.3.33 (php-wasm) | **43/43 passed**, 0 failed |
+| Suite after the hardening fixes, PHP 7.4.33 (php-wasm) | **43/43 passed**, 0 failed |
 | Lint after the S-6 fix, PHP 8.3.33 and 7.4.33 | 643 files, 0 syntax errors on both |
 | Endpoint smoke test (stub WHMCS `init.php` and `Capsule`, PHP 8.3, php-wasm) | 7 scenarios: not logged in → 401; POST → 405; not owned → 404; no username → 404; bad `fn` → 400; owned usage and logs with request-supplied `user_name`/`secret` ignored → generic 502 (no outbound transport in php-wasm). No secret in any output. |
 | Live upstream call, live WHMCS database | **Not run.** No WHMCS install and no access to the Smtphosting API from the sandbox. |
@@ -97,15 +108,14 @@ and Addon controller paths are covered by regression tests.
    - Run the live check on a WHMCS install as a client who owns a service: expect JSON with no `secret` key, 404 for another client's service ID, and 401 without a session.
    - Optional: rewrite git history to remove the old values. Not required once they are revoked. Not done.
 2. **D-2 (owner decision): what to do with the stub API/cron/hook classes.** Keep them as fail-closed placeholders (current state, user decision), delete them, or write a specification and implement them as new scope.
-3. S-4: remove or fix the `CronInfo` instruction, which points to a missing script (cosmetic and dead today).
-4. S-7 to S-9: low-severity hardening, not started.
+3. S-4, S-7, S-8, S-9: fixed in this change set. The hooks and the Synchronize action need WHMCS to run, so they are checked by static tests here, not executed. A live check is part of item 1.
 5. WHMCS-level integration tests are not possible in this sandbox. They need a WHMCS install.
 6. Limitations of the S-6 test evidence: php-wasm has no working outbound cURL, so `curlTransport()` is covered by static checks and not by a live request. The `tblhosting` query runs under a stub.
 
 ### Completion evidence
 
 - Source: the files in *Changes made*, both change sets.
-- Executed suite: `modules/servers/Smtphosting/tests/run.php`, 39/39 on PHP 8.3.33 and 7.4.33 (php-wasm), run after the S-6 fix.
+- Executed suite: `modules/servers/Smtphosting/tests/run.php`, 43/43 on PHP 8.3.33 and 7.4.33 (php-wasm), run after the hardening fixes.
 - Lint: 643 non-vendor PHP files, 0 syntax errors on PHP 7.4 and 8.3.
 - Endpoint smoke test: 7 scenarios, no secret in output (see Tests).
 - Not yet evidence: live upstream call, live WHMCS run, owner rotation. Module 1 is not marked verified until these are done.
