@@ -2,8 +2,11 @@
 
 namespace WGSModule\Soyoustart\classes;
 
+require_once __DIR__ . "/../lib/TrustedEndpoint.php";
+
 use WHMCS\Database\Capsule;
 use WHMCS\Module\Addon\Soyoustart\Helper;
+use WHMCS\Module\Addon\Soyoustart\TrustedEndpoint;
 
 class ApiCall extends Helper
 {
@@ -11,72 +14,9 @@ class ApiCall extends Helper
 
     public $url = '';
 
-    // public function __curlCall($method, $data = null, $apiUrl =null, $header =[], $action ='')
-    // {
-    //     $curl = curl_init();
-    //     switch ($method) {
-    //         case 'POST':
-    //             curl_setopt($curl, CURLOPT_POST, 1);
-    //             if (is_string($data)) {
-    //                 curl_setopt($curl, CURLOPT_POSTFIELDS, (strlen($data) ? $data : ""));
-    //             } else {
-    //                 curl_setopt($curl, CURLOPT_POSTFIELDS, (count($data) ? json_encode($data) : ""));
-    //             }
-    //             break;
-    //         case 'PUT':
-
-    //             curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'PUT');
-    //             if (is_string($data)) {
-    //                 curl_setopt($curl, CURLOPT_POSTFIELDS, (strlen($data) ? $data : ""));
-    //             } else {
-    //                 curl_setopt($curl, CURLOPT_POSTFIELDS, (count($data) ? json_encode($data) : ""));
-    //             }
-    //             break;
-
-    //         case 'DELETE':
-
-    //             curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'DELETE');
-    //             if (is_string($data)) {
-    //                 curl_setopt($curl, CURLOPT_POSTFIELDS, (strlen($data) ? $data : ""));
-    //             } else {
-    //                 curl_setopt($curl, CURLOPT_POSTFIELDS, (count($data) ? json_encode($data) : ""));
-    //             }
-    //             break;
-
-    //         default:
-    //             curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'GET');
-    //     }
-
-    //     curl_setopt($curl, CURLOPT_URL, $apiUrl);
-    //     curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-    //     curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, 0);
-    //     curl_setopt($curl, CURLOPT_MAXREDIRS, 10);
-    //     curl_setopt($curl, CURLOPT_FOLLOWLOCATION, 1);
-    //     curl_setopt($curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
-
-    //     curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
-    //     curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, false);
-
-    //     curl_setopt($curl, CURLOPT_HTTPHEADER, $header);
-    //     $response = curl_exec($curl);
-    //     $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-    //     if (curl_errno($curl)) {
-    //         throw new \Exception(curl_error($curl));
-    //     }
-    //     curl_close($curl);
-
-    //     $isLogEnable = Capsule::table("mod_acl_settings")->where(["key" => "generalaclSettings"])->first();
-    //     $isLogEnable = (isset($isLogEnable->id) ? json_decode($isLogEnable->value, true) : []);
-
-    //     if (isset($isLogEnable["moduleLogstatus"]) && $isLogEnable["moduleLogstatus"] == "on" && !in_array($action, ["Get Info for vps server", "Get Info for eco server", "Get info for baremetal server"])) {
-    //         $postData = ["datetime" => date("Y/m/d h:i"), "action" => $action, "type" => $method, "request" => (empty($data) || is_null($data) ? $apiUrl : json_encode($data)), "response" => json_encode(['httpcode' => $httpCode, 'result' => json_decode($response)])];
-    //         Capsule::table("mod_soyoustart_log")->insertGetId($postData);
-    //     }
-    //     return ['httpcode' => $httpCode, 'result' => json_decode($response)];
-    // }
-
     public function __curlCall($method, $data = null, $apiUrl = null, $header = [], $action = '')
     {
+        TrustedEndpoint::assertOvhUrl($apiUrl, $header);
         $curl = curl_init();
         $method = strtoupper($method);
         $body = "";
@@ -106,10 +46,11 @@ class ApiCall extends Helper
         curl_setopt($curl, CURLOPT_TIMEOUT, 60);
         curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, 20);
 
-        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, false);
-
-        curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
+        // OVH request signatures cover the exact URL; never follow a redirect
+        // or send signed credentials without verified TLS/hostname checks.
+        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, 2);
+        curl_setopt($curl, CURLOPT_FOLLOWLOCATION, false);
         curl_setopt($curl, CURLOPT_MAXREDIRS, 10);
 
         $finalHeader = array_merge($header, [
@@ -169,13 +110,10 @@ class ApiCall extends Helper
         ) {
             Capsule::table("mod_soyoustart_log")->insert([
                 "datetime" => date("Y-m-d H:i"),
-                "action"   => $action,
+                "action"   => 'OVH request',
                 "type"     => $method,
-                "request"  => empty($body) ? $apiUrl : $body,
-                "response" => json_encode([
-                    "httpcode" => $httpCode,
-                    "result"   => $finalResponse
-                ])
+                "request"  => '[redacted]',
+                "response" => json_encode(['httpcode' => (int) $httpCode])
             ]);
         }
 
@@ -433,9 +371,9 @@ class ApiCall extends Helper
     {
         try {
             $authData = Capsule::table("mod_soyoustart")->where(["id" => $ovhAccountId])->first();
-            $signature = self::generateSignature(trim($authData->secret_key), trim($authData->consumer_key), $method, $url, $data);
-
-            $time = time() + 0;
+            // Signature and transmitted timestamp must be the same second.
+            $time = time();
+            $signature = self::generateSignature(trim($authData->secret_key), trim($authData->consumer_key), $method, $url, $data, $time);
             return [
                 'content-type:application/json',
                 'accept:application/json',
@@ -457,19 +395,54 @@ class ApiCall extends Helper
         @return string in sha1 formate.
 
     */
-    private function generateSignature($secretKey, $consumerKey, $method, $url, $data = null)
+    private function generateSignature($secretKey, $consumerKey, $method, $url, $data = null, $time = null)
     {
         try {
             if (!is_null($data)) {
                 $data = json_encode($data);
             }
-            $time = time() + 0;
+            $time = $time === null ? time() : (int) $time;
             $toSign = $secretKey . '+' . $consumerKey . '+' . $method . '+' . $url . '+' . $data . '+' . $time;
             $signature = '$1$' . sha1($toSign);
             return $signature;
         } catch (\Exception $e) {
             throw new \Exception('Error while generating signature: ' . $e->getMessage());
         }
+    }
+
+    /** Strictly read one existing VPS via the legacy account's signed GET. */
+    public function getVpsIdentity($location, $ovhServerName, $accountId)
+    {
+        if (!is_string($ovhServerName)
+            || !preg_match('/^[a-zA-Z0-9][a-zA-Z0-9.-]{0,254}$/D', $ovhServerName)
+            || !is_string($location)
+            || !in_array(strtolower($location), ['europe', 'canada', 'us', 'uk', 'singapore', 'world'], true)
+            || (!is_int($accountId) && !is_string($accountId))
+            || !preg_match('/^[1-9][0-9]{0,18}$/D', (string) $accountId)
+            || (string) (int) $accountId !== (string) $accountId) {
+            throw new \InvalidArgumentException('A trusted legacy OVH account and VPS name are required.');
+        }
+        try {
+            $response = $this->get('/vps/' . rawurlencode($ovhServerName), (int) $accountId,
+                $location, 'Read existing VPS identity', true);
+        } catch (\Throwable $e) {
+            // Never forward signed URL, provider response or legacy credentials.
+            throw new \RuntimeException('Legacy OVH VPS read-back failed.');
+        }
+        if (!is_array($response) || !isset($response['httpcode']) || (int) $response['httpcode'] !== 200
+            || !isset($response['result']) || !is_object($response['result'])) {
+            throw new \RuntimeException('Legacy OVH VPS read-back failed.');
+        }
+        $resource = $response['result'];
+        if (!isset($resource->name, $resource->state)
+            || !is_string($resource->name) || $resource->name !== $ovhServerName
+            || !is_string($resource->state)
+            || !preg_match('/^[a-z][a-z-]{0,39}$/D', $resource->state)) {
+            throw new \RuntimeException('Legacy OVH VPS identity does not match the WHMCS claim.');
+        }
+        // This confirms an accessible resource in the configured legacy account;
+        // it does not prove its WHMCS billing association or create a binding.
+        return ['name' => $resource->name, 'state' => $resource->state];
     }
 
     public function getServerInfo($location, $servertype, $ovhServerName, $accountId)

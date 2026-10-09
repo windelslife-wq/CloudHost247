@@ -31,6 +31,7 @@ class FakeGateway implements GatewayInterface
         'transactions' => [],
         'orders' => [],
         'services' => [],
+        'service_custom_fields' => [],
         'domains' => [],
         'currencies' => [],
         'servers' => [],
@@ -425,6 +426,19 @@ class FakeGateway implements GatewayInterface
             $out[] = $service;
         }
         return $out;
+    }
+
+    public function setServiceCustomFields($serviceId, array $fields)
+    {
+        $this->fixtures['service_custom_fields'][(int) $serviceId] = $fields;
+        return $this;
+    }
+
+    public function getServiceCustomFields($serviceId, $productId)
+    {
+        $this->record('getServiceCustomFields', ['serviceId' => (int) $serviceId, 'productId' => (int) $productId]);
+        return isset($this->fixtures['service_custom_fields'][(int) $serviceId])
+            ? $this->fixtures['service_custom_fields'][(int) $serviceId] : [];
     }
 
     public function suspendService($serviceId, $reason = '')

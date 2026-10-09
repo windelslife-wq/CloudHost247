@@ -43,6 +43,9 @@ class Settings
         'kubernetes_enabled'          => '0',   // Phase 6: off until a cluster is registered
         'cpanel_enabled'              => '1',
         'customer_server_provisioning_enabled' => '0', // off until a real provider adapter is installed and verified
+        'customer_server_self_service_enabled' => '0', // independent gate; operator-approved product mappings only
+        'contabo_adoption_enabled' => '0', // read-only verified adoption, never provider create/cancel
+        'ovh_legacy_inspection_enabled' => '0', // WHMCS-only read; not OVH verification or adoption
         'panel_account_workflow_enabled' => '0', // off until WHM staging is validated; customer account creation remains separately gated
         'cpanel_uapi_domains_enabled' => '0', // read-only Phase 5 capability; off until UAPI permissions and staging are validated
         'cpanel_uapi_aliases_enabled' => '0', // read-only Phase 6 capability; off until UAPI permissions and staging are validated

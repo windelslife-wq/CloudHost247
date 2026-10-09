@@ -2,8 +2,11 @@
 /**
  * Contract for a real infrastructure-provider integration.
  *
- * Implementations must make createServer/deleteServer idempotent for a supplied
+ * Implementations must recover repeated create/delete calls for a supplied
  * idempotency key, validate every response, enforce TLS, and never log credentials.
+ * Without a provider-enforced atomic create-idempotency primitive, an ambiguous
+ * POST must fail terminally for manual reconciliation, not automatically retry
+ * a billable create based solely on a possibly stale lookup.
  * A provider must be explicitly registered with ProviderRegistry; there is no
  * default/fake adapter in production.
  *

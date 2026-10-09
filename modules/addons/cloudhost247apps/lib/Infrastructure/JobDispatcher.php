@@ -14,6 +14,7 @@ class JobDispatcher
     private $providerWorker;
     private $accountWorker;
     private $panelWorker;
+    private $contaboWorker;
     private $queue;
 
     public function __construct(Orchestrator $orchestrator, ServerProvisioningWorker $providerWorker,
@@ -24,12 +25,14 @@ class JobDispatcher
         $this->accountWorker = $accountWorker;
         $this->queue = $queue ?: new JobQueue();
         $this->panelWorker = $panelWorker ?: new PanelAccountWorker(Actor::system('Control-panel worker'), $this->queue);
+        $this->contaboWorker = new ContaboAdoptionWorker(Actor::system('Contabo adoption worker'), $this->queue);
     }
 
     public function runJob(array $job)
     {
         $type = isset($job['job_type']) ? (string) $job['job_type'] : '';
-        $isInfrastructureJob = $type === JobQueue::TYPE_PROVIDER_ACCOUNT_VERIFY
+        $isInfrastructureJob = $type === JobQueue::TYPE_CONTABO_ADOPT
+            || $type === JobQueue::TYPE_PROVIDER_ACCOUNT_VERIFY
             || ServerProvisioningWorker::handles($type);
         if ($isInfrastructureJob && (string) (isset($job['queue']) ? $job['queue'] : '') !== JobQueue::QUEUE_PROVISIONING) {
             $this->queue->fail((int) $job['id'], 'Infrastructure jobs must be leased from the provisioning queue.',
@@ -41,6 +44,9 @@ class JobDispatcher
             // The worker owns mismatch failure cleanup so the panel-account
             // reservation is cleared together with the rejected queue job.
             return $this->panelWorker->runJob($job);
+        }
+        if ($type === JobQueue::TYPE_CONTABO_ADOPT) {
+            return $this->contaboWorker->runJob($job);
         }
         if ($type === JobQueue::TYPE_PROVIDER_ACCOUNT_VERIFY) {
             return $this->accountWorker->runJob($job);

@@ -232,8 +232,11 @@ section('providers/bootstrap.php registers the reviewed adapter');
 $bootstrapFile = dirname(__DIR__) . '/providers/bootstrap.php';
 T::ok('providers/bootstrap.php ships with the module', is_file($bootstrapFile));
 $returned = require $bootstrapFile;
-T::ok('bootstrap returns adapter instances', is_array($returned) && count($returned) === 1
-    && $returned[0] instanceof InfrastructureProviderInterface);
+T::ok('bootstrap returns adapter instances', is_array($returned) && count($returned) === 4
+    && $returned[0] instanceof InfrastructureProviderInterface
+    && $returned[1] instanceof InfrastructureProviderInterface
+    && $returned[2] instanceof InfrastructureProviderInterface
+    && $returned[3] instanceof InfrastructureProviderInterface);
 T::notContains('bootstrap file contains no secrets', $token, (string) file_get_contents($bootstrapFile));
 ProviderRegistry::reset();
 ProviderBootstrap::reset();

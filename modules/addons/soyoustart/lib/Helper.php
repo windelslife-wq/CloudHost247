@@ -1,6 +1,8 @@
 <?php
 namespace WHMCS\Module\Addon\Soyoustart;
 
+require_once __DIR__ . "/TrustedEndpoint.php";
+
 use BadFunctionCallException;
 use WHMCS\Database\Capsule;
 if (!defined("WHMCS")) {
@@ -340,8 +342,8 @@ class Helper
                         // $toltip = '<span class="form-icon"><i class="fa fa-question-circle" title="Product is already created"></i></span>';
                         $checked = '';
                     }
-                    if (!in_array($products->planCode, $availableProducts)) {
-                        $toltip .= '<small style="color: red; margin-left: 13px;font-size: 13px;">This plan has been deprecated at OVH.</small>';
+                    if (!in_array($products->planCode, $availableProducts, true)) {
+                        $toltip .= '<small style="color: red; margin-left: 13px;font-size: 13px;">Plan not listed by the configured availability feed; verify with OVH.</small>';
                         $disabled = 'disabled';
                         $checked = '';
                     }
@@ -488,8 +490,8 @@ class Helper
                             $toltip .= '<small class="productCretaedNote" data-hideproducts="' . $products->planCode . '">Product is already created</small >';
                             $checked = '';
                         }
-                        if (!empty($availableProducts) && !in_array($products->planCode, $availableProducts)) {
-                            $toltip .= '<small style="color: red; margin-left: 13px;font-size: 13px;">This plan has been deprecated at OVH.</small>';
+                        if (!in_array($products->planCode, $availableProducts, true)) {
+                            $toltip .= '<small style="color: red; margin-left: 13px;font-size: 13px;">Plan not listed by the configured availability feed; verify with OVH.</small>';
                             $disabled = 'disabled';
                             $checked = '';
                         }
@@ -632,13 +634,14 @@ class Helper
     }
     public function getProductApiRequest($url)
     {
+        TrustedEndpoint::assertOvhUrl($url);
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_HEADER, 0);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
         $jsonData = curl_exec($ch);
         curl_close($ch);
         return json_decode($jsonData);
@@ -1281,6 +1284,7 @@ class Helper
     }
     private function __googleAuthCurlCall()
     {
+        TrustedEndpoint::assertGoogleUrl($this->url);
         $this->curl = curl_init();
         $this->postdata = ($this->data_type == "http_build_query" ?  http_build_query($this->postdata) : json_encode($this->postdata));
         switch ($this->method) {
@@ -1304,8 +1308,10 @@ class Helper
         curl_setopt($this->curl, CURLOPT_ENCODING, '');
         curl_setopt($this->curl, CURLOPT_HTTP_VERSION, 'CURL_HTTP_VERSION_1_1');
         curl_setopt($this->curl, CURLOPT_MAXREDIRS, 10);
-        curl_setopt($this->curl, CURLOPT_TIMEOUT, 0);
-        curl_setopt($this->curl, CURLOPT_FOLLOWLOCATION, 1);
+        curl_setopt($this->curl, CURLOPT_TIMEOUT, 30);
+        curl_setopt($this->curl, CURLOPT_FOLLOWLOCATION, false);
+        curl_setopt($this->curl, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($this->curl, CURLOPT_SSL_VERIFYHOST, 2);
         curl_setopt($this->curl, CURLOPT_HTTPHEADER, $this->header);
         $response = curl_exec($this->curl);
         $httpCode = curl_getinfo($this->curl, CURLINFO_HTTP_CODE);
@@ -1326,19 +1332,43 @@ class Helper
     }
     public function getAvailableProduts()
     {
-        // $url = "https://members.whmcsglobalservices.com/2fdsfsr345213-ovh/getAvailableProducts.php";
-        $url = "https://proxmox.shinedezign.pro/ovh_available_products/getAvailableProducts.php";
-        $secretKey = "9f8c2a7b4e6d1c3a9b0f5e8d7c6a2b1f4e3d2c1a0b9f8e7d6c5b4a3f2e1d0c9";
+        // Optional legacy advisory feed. Never use a checked-in shared key;
+        // fail closed rather than treating an unauthenticated reply as stock.
+        $secret = getenv('SOYOUSTART_AVAILABILITY_FEED_SECRET');
+        if (!is_string($secret) || strlen($secret) < 32) {
+            throw new \RuntimeException('OVH availability feed is not configured.');
+        }
+        $url = 'https://proxmox.shinedezign.pro/ovh_available_products/getAvailableProducts.php';
         $timestamp = time();
-        // Create secure hash
-        $signature = hash_hmac('sha256', $timestamp, $secretKey);
         $ch = curl_init($url);
+        $response = '';
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            "X-TIMESTAMP: $timestamp",
-            "X-SIGNATURE: $signature"
+            'X-TIMESTAMP: ' . $timestamp,
+            'X-SIGNATURE: ' . hash_hmac('sha256', (string) $timestamp, $secret),
         ]);
-        $response = curl_exec($ch);
-        return json_decode($response, true);
+        // Bound memory even if the server omits Content-Length.
+        curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($handle, $chunk) use (&$response) {
+            if (strlen($response) + strlen($chunk) > 1048576) { return 0; }
+            $response .= $chunk;
+            return strlen($chunk);
+        });
+        $ok = curl_exec($ch);
+        $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($ok !== true || $status !== 200) {
+            throw new \RuntimeException('OVH availability feed could not be verified.');
+        }
+        $decoded = json_decode($response, true);
+        if (!is_array($decoded) || !isset($decoded['status'], $decoded['data'])
+            || $decoded['status'] !== 'success' || !is_array($decoded['data'])) {
+            throw new \RuntimeException('OVH availability feed returned invalid data.');
+        }
+        return $decoded;
     }
 }

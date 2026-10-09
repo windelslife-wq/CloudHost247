@@ -40,8 +40,11 @@ use Ch247Apps\Domains\CloudflareDnsInventoryAdapter;
 use Ch247Apps\Domains\DnsInventoryProviderRegistry;
 use Ch247Apps\Domains\DomainService;
 use Ch247Apps\Infrastructure\CustomerServerService;
+use Ch247Apps\Infrastructure\ContaboAdoptionService;
+use Ch247Apps\Infrastructure\OvhLegacyInspectionService;
 use Ch247Apps\Infrastructure\ProviderAccountService;
 use Ch247Apps\Infrastructure\ProviderRegistry;
+use Ch247Apps\Infrastructure\ServerProductMappingService;
 
 class InfrastructureApi
 {
@@ -253,6 +256,56 @@ class InfrastructureApi
                 (int) $match[1], $input, self::idempotencyKey($headers)
             );
             return self::response(202, ['data' => $result]);
+        }
+
+        // Staff-only WHMCS legacy snapshot: no OVH request, reservation or VM.
+        if (preg_match('#^/v1/ovh/legacy-services/([0-9]+)$#', $path, $match) && $method === 'GET') {
+            $this->authorize(Rbac::CUSTOMER_SERVER_VIEW_ALL);
+            $this->authorize(Rbac::CUSTOMER_SERVER_MANAGE);
+            return self::response(200, ['data' => (new OvhLegacyInspectionService($this->actor))->inspect($match[1])]);
+        }
+
+        // Operator-only Contabo adoption: no customer-provided provider ID, no
+        // provider write, and no reuse of the customer VM lifecycle endpoints.
+        if ($path === '/v1/contabo/adoptions' && $method === 'GET') {
+            $this->authorize(Rbac::CUSTOMER_SERVER_VIEW_ALL);
+            return self::response(200, ['data' => (new ContaboAdoptionService($this->actor))->listing()]);
+        }
+        if (preg_match('#^/v1/contabo/adoptions/([0-9]+)$#', $path, $match) && $method === 'GET') {
+            $this->authorize(Rbac::CUSTOMER_SERVER_VIEW_ALL);
+            return self::response(200, ['data' => (new ContaboAdoptionService($this->actor))->get((int) $match[1])]);
+        }
+        if ($path === '/v1/contabo/adoptions' && $method === 'POST') {
+            $this->authorize(Rbac::CUSTOMER_SERVER_MANAGE);
+            $this->authorize(Rbac::PROVIDER_ACCOUNT_MANAGE);
+            $result = (new ContaboAdoptionService($this->actor))->request($input, self::idempotencyKey($headers));
+            return self::response(202, ['data' => $result]);
+        }
+
+        if ($path === '/v1/server-product-mappings' && $method === 'GET') {
+            $this->authorize(Rbac::PLAN_MANAGE);
+            $this->authorize(Rbac::PROVIDER_ACCOUNT_MANAGE);
+            return self::response(200, ['data' => (new ServerProductMappingService($this->actor))->listing()]);
+        }
+        if ($path === '/v1/server-product-mappings' && $method === 'POST') {
+            $this->authorize(Rbac::PLAN_MANAGE);
+            $this->authorize(Rbac::PROVIDER_ACCOUNT_MANAGE);
+            $key = self::idempotencyKey($headers);
+            $run = Idempotency::run('server-product-mapping.save', $key, $input, function () use ($input) {
+                return (new ServerProductMappingService($this->actor))->save($input);
+            });
+            return self::response(!empty($run['replayed']) ? 200 : 201,
+                ['data' => $run['result'], 'replayed' => !empty($run['replayed'])]);
+        }
+        if ($path === '/v1/servers/self-service' && $method === 'POST') {
+            $this->authorize(Rbac::CUSTOMER_SERVER_ORDER);
+            if (count($input) !== 1 || !isset($input['service_id'])
+                || !ctype_digit((string) $input['service_id']) || (int) $input['service_id'] <= 0) {
+                throw new ValidationException('Only a positive WHMCS service_id is accepted.');
+            }
+            return self::response(202, ['data' => (new CustomerServerService($this->actor))->requestSelfServiceProvision(
+                (int) $input['service_id'], self::idempotencyKey($headers)
+            )]);
         }
 
         if ($path === '/v1/servers' && $method === 'GET') {

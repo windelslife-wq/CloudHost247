@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../addons/soyoustart/classes/ApiCall.php';
+require_once __DIR__ . '/../../addons/soyoustart/lib/SafeLog.php';
 require_once __DIR__ . '/../../addons/soyoustart/classes/Configuration.php';
 require_once __DIR__ . '/../soyoustart/lib/SoyoustartServer.php';
 use WGSModule\Soyoustart\classes\ApiCall;
@@ -8,6 +9,7 @@ use WHMCS\Module\Server\Soyoustart\SoyoustartServer;
 use WHMCS\Module\Server\SoyoustartVps\SoyoustartServer as server;
 use WHMCS\Database\Capsule;
 use WHMCS\Module\Addon\Soyoustart\Helper;
+use WHMCS\Module\Addon\Soyoustart\SafeLog;
 if (!defined("WHMCS")) {
     die("This file cannot be accessed directly");
 }
@@ -194,7 +196,7 @@ function soyoustart_vps_CreateAccount(array $params)
         }
         return "success";
     } catch (Exception $e) {
-        logModuleCall('soyoustart_vps', __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
+        SafeLog::failure('soyoustart_vps', __FUNCTION__, $params, $e);
         return $e->getMessage();
     }
 }
@@ -219,13 +221,7 @@ function soyoustart_vps_Renew(array $params)
         // ```
     } catch (Exception $e) {
         // Record the error in WHMCS's module log.
-        logModuleCall(
-            'soyoustart_vps',
-            __FUNCTION__,
-            $params,
-            $e->getMessage(),
-            $e->getTraceAsString()
-        );
+        SafeLog::failure('soyoustart_vps', __FUNCTION__, $params, $e);
         return $e->getMessage();
     }
     return 'success';
@@ -243,7 +239,7 @@ function soyoustart_vps_SuspendAccount(array $params)
         }
         return 'success';
     } catch (Exception $e) {
-        logModuleCall('soyoustart_vps', __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
+        SafeLog::failure('soyoustart_vps', __FUNCTION__, $params, $e);
         return $e->getMessage();
     }
 }
@@ -260,7 +256,7 @@ function soyoustart_vps_UnsuspendAccount(array $params)
         }
         return 'success';
     } catch (Exception $e) {
-        logModuleCall('soyoustart_vps', __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
+        SafeLog::failure('soyoustart_vps', __FUNCTION__, $params, $e);
         return $e->getMessage();
     }
 }
@@ -287,7 +283,7 @@ function soyoustart_vps_TerminateAccount(array $params)
         }
         return 'success';
     } catch (Exception $e) {
-        logModuleCall('soyoustart_vps', __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
+        SafeLog::failure('soyoustart_vps', __FUNCTION__, $params, $e);
         return $e->getMessage();
     }
 }
@@ -435,7 +431,7 @@ function soyoustart_vps_AdminServicesTabFields(array $params)
             return $fieldsarray;
         }
     } catch (Exception $e) {
-        logModuleCall('soyoustart_vps', __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
+        SafeLog::failure('soyoustart_vps', __FUNCTION__, $params, $e);
     }
     return array();
 }
@@ -474,7 +470,7 @@ function soyoustart_vps_AdminServicesTabFieldsSave(array $params)
             }
         }
     } catch (Exception $e) {
-        logModuleCall('soyoustart_vps', __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
+        SafeLog::failure('soyoustart_vps', __FUNCTION__, $params, $e);
     }
 }
 function soyoustart_vps_AdminCustomButtonArray()
@@ -508,7 +504,7 @@ function soyoustart_vps_rescuereboot(array $params)
         }
     } catch (Exception $e) {
         /*  // Record the error in WHMCS's module log. */
-        logModuleCall('soyoustart_vps', __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
+        SafeLog::failure('soyoustart_vps', __FUNCTION__, $params, $e);
         return $e->getMessage();
     }
 }
@@ -532,7 +528,7 @@ function soyoustart_vps_rebootServer(array $params)
         }
     } catch (Exception $e) {
         /*         // Record the error in WHMCS's module log. */
-        logModuleCall('soyoustart_vps', __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
+        SafeLog::failure('soyoustart_vps', __FUNCTION__, $params, $e);
         return $e->getMessage();
     }
     return 'success';
@@ -559,7 +555,7 @@ function soyoustart_vps_console(array $params)
         return 'success';
     } catch (Exception $e) {
         // Record the error in WHMCS's module log.
-        logModuleCall('soyoustart_vps', __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
+        SafeLog::failure('soyoustart_vps', __FUNCTION__, $params, $e);
         return $e->getMessage();
     }
 }
@@ -576,7 +572,7 @@ function soyoustart_vps_poweron(array $params)
         }
         return 'success';
     } catch (Exception $e) {
-        logModuleCall('soyoustart_vps', __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
+        SafeLog::failure('soyoustart_vps', __FUNCTION__, $params, $e);
         return $e->getMessage();
     }
 }
@@ -593,7 +589,7 @@ function soyoustart_vps_poweroff(array $params)
         }
         return 'success';
     } catch (Exception $e) {
-        logModuleCall('soyoustart_vps', __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
+        SafeLog::failure('soyoustart_vps', __FUNCTION__, $params, $e);
         return $e->getMessage();
     }
 }
@@ -1168,7 +1164,7 @@ function soyoustart_vps_ClientArea(array $params)
             );
         }
     } catch (Exception $e) {
-        logModuleCall("soyoustart_vps", __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
+        SafeLog::failure('soyoustart_vps', __FUNCTION__, $params, $e);
     }
 }
 function createCustomFields($pid)
