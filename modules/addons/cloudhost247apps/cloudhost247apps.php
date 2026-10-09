@@ -223,6 +223,17 @@ function cloudhost247apps_output($vars)
         if ($installed === 0) {
             echo '<div class="alert alert-warning">No real infrastructure-provider adapter is registered. Provider operations fail with '
                 . '<code>PROVIDER_UNAVAILABLE</code>; no synthetic server or success response is generated.</div>';
+        } else {
+            $installedNames = [];
+            foreach ($providers as $provider) {
+                if (!empty($provider['adapter_available'])) {
+                    $installedNames[] = htmlspecialchars((string) $provider['name'], ENT_QUOTES, 'UTF-8');
+                }
+            }
+            echo '<div class="alert alert-info">' . count($installedNames) . ' real provider adapter(s) installed: '
+                . implode(', ', $installedNames) . '. Catalog providers without an adapter still fail closed with '
+                . '<code>PROVIDER_UNAVAILABLE</code>. Provisioning additionally requires an encrypted, verified provider '
+                . 'account and passed staging checks; this page claims no live provider verification.</div>';
         }
         echo '<p>Run a dedicated provisioning worker after installing an audited provider adapter:<br>'
             . '<code>php -q modules/addons/cloudhost247apps/worker/worker.php --queue=provisioning</code></p>';
