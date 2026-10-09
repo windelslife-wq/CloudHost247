@@ -10,10 +10,17 @@ namespace WGSModule\Soyoustart\classes {
 }
 
 namespace WHMCS\Module\Addon\Soyoustart {
-    function curl_init() { return new \stdClass(); }
+    function curl_init($url = null) { $GLOBALS['catalogCurlInitUrl'] = $url; return new \stdClass(); }
     function curl_setopt($ch, $key, $value) { $GLOBALS['catalogCurlOptions'][$key] = $value; return true; }
-    function curl_exec($ch) { return '{"plans":[]}'; }
-    function curl_getinfo($ch, $key) { return 200; }
+    function curl_exec($ch) {
+        if (strpos((string) $GLOBALS['catalogCurlInitUrl'], 'getAvailableProducts.php') !== false) {
+            $chunk = isset($GLOBALS['feedReply']) ? $GLOBALS['feedReply'] : '';
+            $writer = $GLOBALS['catalogCurlOptions'][CURLOPT_WRITEFUNCTION];
+            return $writer($ch, $chunk) === strlen($chunk);
+        }
+        return '{"plans":[]}';
+    }
+    function curl_getinfo($ch, $key) { return isset($GLOBALS['feedStatus']) ? $GLOBALS['feedStatus'] : 200; }
     function curl_errno($ch) { return 0; }
     function curl_error($ch) { return ''; }
     function curl_close($ch) {}
@@ -24,29 +31,40 @@ namespace WHMCS\Database {
         public static function table($name) {
             return new class {
                 public function where($key) { return $this; }
-                public function first() { return null; }
+                public function first() {
+                    return !empty($GLOBALS['enableLegacyModuleLog'])
+                        ? (object) ['id' => 1, 'value' => '{"moduleLogstatus":"on"}'] : null;
+                }
+                public function insert($row) { $GLOBALS['legacyLogRow'] = $row; }
             };
         }
     }
 }
 
 namespace {
+    function logModuleCall($module, $action, $request, $response) {
+        $GLOBALS['safeModuleCall'] = compact('module', 'action', 'request', 'response');
+    }
     require_once __DIR__ . '/bootstrap.php';
     // php-wasm may not load ext/curl; the namespaced shims still need its option identifiers.
     foreach (['CURLOPT_URL', 'CURLOPT_RETURNTRANSFER', 'CURLOPT_POSTFIELDS', 'CURLOPT_POST',
         'CURLOPT_CUSTOMREQUEST', 'CURLOPT_HTTPGET', 'CURLOPT_TIMEOUT', 'CURLOPT_CONNECTTIMEOUT',
         'CURLOPT_SSL_VERIFYPEER', 'CURLOPT_SSL_VERIFYHOST', 'CURLOPT_FOLLOWLOCATION',
         'CURLOPT_MAXREDIRS', 'CURLOPT_HTTPHEADER', 'CURLOPT_TCP_KEEPALIVE', 'CURLOPT_HEADER',
-        'CURLOPT_ENCODING', 'CURLOPT_HTTP_VERSION', 'CURLINFO_HTTP_CODE'] as $index => $constant) {
+        'CURLOPT_ENCODING', 'CURLOPT_HTTP_VERSION', 'CURLINFO_HTTP_CODE',
+        'CURLOPT_WRITEFUNCTION'] as $index => $constant) {
         if (!defined($constant)) define($constant, 1000 + $index);
     }
     if (!defined('WHMCS')) define('WHMCS', true);
     require_once '/soyoustart/lib/Helper.php';
     require_once '/soyoustart/classes/ApiCall.php';
+    require_once '/soyoustart/classes/Configuration.php';
+    require_once '/soyoustart/lib/SafeLog.php';
     require_once '/soyoustart/lib/Admin/apicall.php';
 
     use WHMCS\Module\Addon\Soyoustart\TrustedEndpoint;
     use WGSModule\Soyoustart\classes\ApiCall;
+    use WHMCS\Module\Addon\Soyoustart\SafeLog;
 
     section('Only trusted HTTPS OVH endpoints may receive signed headers');
     foreach (['api.ovh.com', 'eu.api.ovh.com', 'ca.api.ovh.com',
@@ -84,6 +102,16 @@ namespace {
     $result = $api->__curlCall('GET', [], 'https://api.ovh.com/1.0/vps',
         ['X-Ovh-Signature: signed']);
     T::is('valid endpoint returns provider response', 200, $result['httpcode']);
+    $GLOBALS['enableLegacyModuleLog'] = true;
+    $GLOBALS['legacyLogRow'] = null;
+    $api->__curlCall('POST', ['password' => 'private-fake-secret'],
+        'https://api.ovh.com/1.0/vps', ['X-Ovh-Signature: private-fake-signature'], 'Test action');
+    T::is('legacy module log hides the request', '[redacted]', $GLOBALS['legacyLogRow']['request']);
+    T::is('legacy module log retains only HTTP status', '{"httpcode":200}',
+        $GLOBALS['legacyLogRow']['response']);
+    T::notContains('module log never stores signed headers or secrets', 'private-fake-',
+        json_encode($GLOBALS['legacyLogRow']));
+    $GLOBALS['enableLegacyModuleLog'] = false;
     T::is('certificate chain checked', true, $GLOBALS['ovhCurlOptions'][CURLOPT_SSL_VERIFYPEER]);
     T::is('hostname checked', 2, $GLOBALS['ovhCurlOptions'][CURLOPT_SSL_VERIFYHOST]);
     T::is('redirects disabled', false, $GLOBALS['ovhCurlOptions'][CURLOPT_FOLLOWLOCATION]);
@@ -108,5 +136,64 @@ namespace {
     T::is('Google OAuth verifies TLS certificate', true, $GLOBALS['catalogCurlOptions'][CURLOPT_SSL_VERIFYPEER]);
     T::is('Google OAuth verifies TLS hostname', 2, $GLOBALS['catalogCurlOptions'][CURLOPT_SSL_VERIFYHOST]);
     T::is('Google OAuth refuses redirects', false, $GLOBALS['catalogCurlOptions'][CURLOPT_FOLLOWLOCATION]);
+    section('Legacy billing and provisioning logs contain only non-secret metadata');
+    foreach (['/soyoustart_vps/soyoustart_vps.php', '/soyoustart_vps/hooks.php',
+        '/soyoustart/classes/ExistingServer.php', '/soyoustart/lib/SafeLog.php'] as $file) {
+        T::nothrow('changed legacy PHP parses: ' . basename($file), function () use ($file) {
+            token_get_all(file_get_contents($file), TOKEN_PARSE);
+        });
+    }
+    T::notContains('server lifecycle does not log raw WHMCS params', 'logModuleCall(',
+        file_get_contents('/soyoustart_vps/soyoustart_vps.php'));
+    SafeLog::failure('soyoustart_vps', 'CreateAccount',
+        ['serviceid' => 123, 'password' => 'fake-super-secret'],
+        new \Exception('fake-secret-in-error'));
+    T::is('service ID retained for audit', 123, $GLOBALS['safeModuleCall']['request']['serviceid']);
+    T::notContains('exception message and WHMCS passwords never logged', 'fake-',
+        json_encode($GLOBALS['safeModuleCall']));
+    SafeLog::orderResult('Soyoustart', ['configoptions' => 'fake-encoded-secret'],
+        ['result' => 'success', 'secret' => 'fake-secret-result']);
+    T::is('order outcome retained', 'success', $GLOBALS['safeModuleCall']['response']['status']);
+    T::notContains('order payload and response never logged', 'fake-',
+        json_encode($GLOBALS['safeModuleCall']));
+
+    section('Legacy third-party availability feed fails closed without a deployment secret');
+    putenv('SOYOUSTART_AVAILABILITY_FEED_SECRET');
+    $helper = new \WHMCS\Module\Addon\Soyoustart\Helper();
+    $GLOBALS['catalogCurlInitUrl'] = null;
+    T::throws('missing environment secret blocks requests', \RuntimeException::class,
+        function () use ($helper) { $helper->getAvailableProduts(); });
+    T::is('no cURL handle opened for an unconfigured feed', null, $GLOBALS['catalogCurlInitUrl']);
+    putenv('SOYOUSTART_AVAILABILITY_FEED_SECRET=' . str_repeat('X', 48));
+    $GLOBALS['feedReply'] = '{"status":"success","data":{"VPS":{"US":["vps-plan"]}}}';
+    $GLOBALS['feedStatus'] = 200;
+    $GLOBALS['catalogCurlOptions'] = [];
+    T::is('configured feed parses bounded JSON', 'vps-plan',
+        $helper->getAvailableProduts()['data']['VPS']['US'][0]);
+    T::is('feed cert verified', true, $GLOBALS['catalogCurlOptions'][CURLOPT_SSL_VERIFYPEER]);
+    T::is('feed hostname verified', 2, $GLOBALS['catalogCurlOptions'][CURLOPT_SSL_VERIFYHOST]);
+    T::is('feed redirects disabled', false, $GLOBALS['catalogCurlOptions'][CURLOPT_FOLLOWLOCATION]);
+    T::ok('feed request signature does not expose the secret',
+        strpos(json_encode($GLOBALS['catalogCurlOptions'][CURLOPT_HTTPHEADER]), str_repeat('X', 48)) === false);
+    $GLOBALS['feedReply'] = str_repeat('x', 1048577);
+    T::throws('oversized reply rejected before JSON parsing', \RuntimeException::class,
+        function () use ($helper) { $helper->getAvailableProduts(); });
+    $GLOBALS['feedReply'] = '{"status":"fail","message":"untrusted response"}';
+    T::throws('feed error never becomes a trusted product list', \RuntimeException::class,
+        function () use ($helper) { $helper->getAvailableProduts(); });
+    $GLOBALS['feedReply'] = '{"status":"success","data":{"VPS":{"US":["vps-plan"]}}}';
+    $GLOBALS['feedStatus'] = 503;
+    T::throws('HTTP failure rejects the feed', \RuntimeException::class,
+        function () use ($helper) { $helper->getAvailableProduts(); });
+    $config = (new \ReflectionClass(\WGSModule\Soyoustart\classes\Configuration::class))
+        ->newInstanceWithoutConstructor();
+    $GLOBALS['feedStatus'] = 200;
+    $GLOBALS['feedReply'] = '{"status":"success","data":{"VPS":{"US":[]}}}';
+    T::throws('empty regional inventory cannot mark every plan available', \RuntimeException::class,
+        function () use ($config) { $config->getAvailableProducts('VPS', 'US'); });
+    $GLOBALS['feedReply'] = '{"status":"success","data":{"VPS":{"US":["vps-plan"]}}}';
+    T::is('configured availability only allows explicit plan codes', ['vps-plan'],
+        $config->getAvailableProducts('VPS', 'US'));
+    putenv('SOYOUSTART_AVAILABILITY_FEED_SECRET');
     exit(T::summary());
 }

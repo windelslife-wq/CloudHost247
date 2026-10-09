@@ -18,6 +18,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const moduleRoot = path.resolve(here, '..');
 const cloudflareRoot = path.resolve(moduleRoot, '../cloudhost247cloudflare');
 const soyoustartRoot = path.resolve(moduleRoot, '../soyoustart');
+const soyoustartVpsRoot = path.resolve(moduleRoot, '../../servers/soyoustart_vps');
 const filter = process.argv[2] || '';
 
 const files = fs
@@ -50,6 +51,7 @@ for (const file of files) {
   await php.mount('/app', createNodeFsMountHandler(moduleRoot));
   await php.mount('/cloudflare', createNodeFsMountHandler(cloudflareRoot));
   await php.mount('/soyoustart', createNodeFsMountHandler(soyoustartRoot));
+  await php.mount('/soyoustart_vps', createNodeFsMountHandler(soyoustartVpsRoot));
 
   // php.run() rejects when the script exits non-zero; the response is still
   // attached to the error, and a failing suite is exactly that case.

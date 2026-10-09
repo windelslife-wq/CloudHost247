@@ -110,13 +110,10 @@ class ApiCall extends Helper
         ) {
             Capsule::table("mod_soyoustart_log")->insert([
                 "datetime" => date("Y-m-d H:i"),
-                "action"   => $action,
+                "action"   => 'OVH request',
                 "type"     => $method,
-                "request"  => empty($body) ? $apiUrl : $body,
-                "response" => json_encode([
-                    "httpcode" => $httpCode,
-                    "result"   => $finalResponse
-                ])
+                "request"  => '[redacted]',
+                "response" => json_encode(['httpcode' => (int) $httpCode])
             ]);
         }
 

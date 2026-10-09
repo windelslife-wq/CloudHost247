@@ -3,10 +3,12 @@
 namespace WGSModule\Soyoustart\classes;
 
 require_once __DIR__ . DS . '/Configuration.php';
+require_once __DIR__ . '/../lib/SafeLog.php';
 
 use WGSModule\Soyoustart\classes\Configuration;
 use WHMCS\Database\Capsule;
 use WHMCS\Module\Addon\Soyoustart\Helper;
+use WHMCS\Module\Addon\Soyoustart\SafeLog;
 
 class ExistingServer extends Configuration
 {
@@ -109,7 +111,7 @@ class ExistingServer extends Configuration
                 $postData["noemail"] = true;
             }
             $results = localAPI("AddOrder", $postData);
-            logModuleCall("Soyoustart", "AddOrder", $postData, $results);
+            SafeLog::orderResult("Soyoustart", $postData, $results);
             /* inserting ovh_account and ovh_server_name values in product custom fields */
             if ($results["result"] == "success") {
                 $data = ["ovh_account" =>  explode("_", $Params["account"])["1"], "ovh_server_name" => $Params["ovhservername"], "ovh_custom_hostname" => $Params["ovhCustomHostName"]];

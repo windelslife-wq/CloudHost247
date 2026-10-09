@@ -534,12 +534,12 @@ add_hook('InvoicePaid', 1, function ($vars) {
                                 "status" => 2,
                             ]);
                         }
-                        logActivity("Payment response: " . json_encode($paymentresponse), "soyoustart");
+                        logActivity("SoYouStart additional IP payment HTTP status: " . (int) $paymentresponse["httpcode"], "soyoustart");
                     } else {
-                        logActivity("Payment response: " . json_encode($paymentresponse), "soyoustart");
+                        logActivity("SoYouStart additional IP payment HTTP status: " . (int) $paymentresponse["httpcode"], "soyoustart");
                     }
                 } else {
-                    logActivity("Payment response: " . json_encode($paymentresponse), "soyoustart");
+                    logActivity("SoYouStart additional IP payment response was unavailable", "soyoustart");
                 }
             }
         }
@@ -547,9 +547,9 @@ add_hook('InvoicePaid', 1, function ($vars) {
         logModuleCall(
             "soyoustart",
             "InvoicePaid",
-            $_GET,
-            $e->getMessage(),
-            $e->getTraceAsString()
+            [],
+            'Additional IP payment hook failed',
+            get_class($e)
         );
     }
 });

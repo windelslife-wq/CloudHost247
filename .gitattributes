@@ -1,1 +1,2 @@
 modules/addons/soyoustart/**/*.php whitespace=cr-at-eol
+modules/servers/soyoustart_vps/**/*.php whitespace=cr-at-eol

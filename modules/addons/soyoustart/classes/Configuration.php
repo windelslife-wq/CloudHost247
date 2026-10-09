@@ -47,10 +47,16 @@ class Configuration extends Helper
     public function getAvailableProducts( $productType, $subsidiary)
     {
         $availableProductData = $this->getAvailableProduts();
-        if($availableProductData["status"] != "success"){
-            throw new \Exception("Error fetching available products: " . $availableProductData["message"]);
+        $products = $availableProductData['data'][$productType][$subsidiary] ?? null;
+        if (!is_array($products) || !$products) {
+            throw new \RuntimeException('OVH availability feed has no verified plans for this selection.');
         }
-        return $availableProductData["data"][$productType][$subsidiary] ?? [];
+        foreach ($products as $code) {
+            if (!is_string($code) || !preg_match('/^[a-zA-Z0-9_-]{1,100}$/D', $code)) {
+                throw new \RuntimeException('OVH availability feed returned invalid plan codes.');
+            }
+        }
+        return $products;
     }
 
 
