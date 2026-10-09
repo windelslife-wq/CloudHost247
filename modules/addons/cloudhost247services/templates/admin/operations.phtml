@@ -1,0 +1,91 @@
+<?php
+/**
+ * Admin → Operations (Jobs): the domain platform's job queue — inspect,
+ * filter, retry failed jobs, trigger a worker run, enqueue sweeps.
+ *
+ * @var array $jobs @var int $total @var int $page @var int $pages
+ * @var array $stats @var array $types @var array $filters @var string $baseLink
+ */
+?>
+<div class="chs-grid-3">
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $stats['pending'] ?></div><div class="chs-kpi-label">Pending jobs</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $stats['running'] ?></div><div class="chs-kpi-label">Running</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $stats['failed'] ?></div><div class="chs-kpi-label">Failed</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $stats['completed'] ?></div><div class="chs-kpi-label">Completed</div></div>
+</div>
+
+<div class="chs-panel">
+  <h3>Actions</h3>
+  <form method="post" action="<?= chs_h($baseLink . '&action=operations') ?>" style="display:inline-block;margin-right:8px">
+    <?= $tokenField ?><input type="hidden" name="do" value="run">
+    <button class="btn btn-primary">Run worker now</button>
+  </form>
+  <form method="post" action="<?= chs_h($baseLink . '&action=operations') ?>" style="display:inline-block;margin-right:8px">
+    <?= $tokenField ?><input type="hidden" name="do" value="enqueue_expiration">
+    <button class="btn btn-default">Enqueue expiration check</button>
+  </form>
+  <form method="post" action="<?= chs_h($baseLink . '&action=operations') ?>" style="display:inline-block">
+    <?= $tokenField ?><input type="hidden" name="do" value="enqueue_sync">
+    <button class="btn btn-default">Enqueue sync + reconciliation</button>
+  </form>
+  <p class="chs-muted small">The cron drains this queue every 5 minutes. Failed jobs stay here with their error code until retried; idempotency keys make retries safe.</p>
+</div>
+
+<div class="chs-panel">
+  <h3>Jobs</h3>
+  <form method="get" action="addonmodules.php" class="form-inline" style="margin-bottom:10px">
+    <input type="hidden" name="module" value="cloudhost247services">
+    <input type="hidden" name="action" value="operations">
+    <select class="form-control input-sm" name="status">
+      <option value="">Any status</option>
+      <?php foreach (['pending', 'running', 'completed', 'failed'] as $s): ?>
+        <option value="<?= $s ?>"<?= $filters['status'] === $s ? ' selected' : '' ?>><?= ucfirst($s) ?></option>
+      <?php endforeach; ?>
+    </select>
+    <select class="form-control input-sm" name="type">
+      <option value="">Any type</option>
+      <?php foreach ($types as $type => $label): ?>
+        <option value="<?= chs_h($type) ?>"<?= $filters['type'] === $type ? ' selected' : '' ?>><?= chs_h($type) ?></option>
+      <?php endforeach; ?>
+    </select>
+    <input class="form-control input-sm" name="search" value="<?= chs_h($filters['search']) ?>" placeholder="job id / correlation / error">
+    <button class="btn btn-sm btn-default">Filter</button>
+  </form>
+  <table class="table table-striped">
+    <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Attempts</th><th>Entity</th><th>Correlation</th><th>Available</th><th>Error</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($jobs as $j): ?>
+      <tr>
+        <td><?= (int) $j['id'] ?><div class="chs-muted small"><?= chs_h($j['job_id']) ?></div></td>
+        <td><code><?= chs_h($j['type']) ?></code></td>
+        <td><?= chs_status_pill($j['status']) ?></td>
+        <td><?= (int) $j['attempts'] ?> / <?= (int) $j['max_attempts'] ?></td>
+        <td><?= chs_h($j['entity_type']) ?><?= $j['entity_id'] ? '#' . (int) $j['entity_id'] : '' ?></td>
+        <td><code class="small"><?= chs_h($j['correlation_id']) ?></code></td>
+        <td><?= chs_dt($j['available_at']) ?></td>
+        <td>
+          <?php if ($j['error_code'] !== ''): ?>
+            <span class="label label-danger"><?= chs_h($j['error_code']) ?></span>
+            <div class="chs-muted small"><?= chs_h($j['error_message']) ?></div>
+          <?php endif; ?>
+        </td>
+        <td>
+          <?php if (in_array($j['status'], ['failed', 'running'], true)): ?>
+          <form method="post" action="<?= chs_h($baseLink . '&action=operations') ?>" style="display:inline">
+            <?= $tokenField ?><input type="hidden" name="do" value="retry"><input type="hidden" name="id" value="<?= (int) $j['id'] ?>">
+            <button class="btn btn-xs btn-default">Retry</button>
+          </form>
+          <?php endif; ?>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  <?php if ($pages > 1): ?>
+  <ul class="pagination pagination-sm">
+    <?php for ($p = 1; $p <= $pages; $p++): ?>
+      <li<?= $p === $page ? ' class="active"' : '' ?>><a href="<?= chs_h($baseLink . '&action=operations&page=' . $p . ($filters['status'] !== '' ? '&status=' . $filters['status'] : '') . ($filters['type'] !== '' ? '&type=' . $filters['type'] : '')) ?>"><?= $p ?></a></li>
+    <?php endfor; ?>
+  </ul>
+  <?php endif; ?>
+</div>

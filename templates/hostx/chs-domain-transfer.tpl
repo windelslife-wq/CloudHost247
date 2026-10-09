@@ -28,21 +28,65 @@
                 <div class="card border-0 shadow-sm chs-card-primary">
                     <div class="card-body">
                         <h2 class="h4 text-center mb-3">Start a transfer</h2>
-                        <form method="get" action="cart.php" class="chs-lookup-form">
-                            <input type="hidden" name="a" value="add">
-                            <input type="hidden" name="domain" value="transfer">
-                            <div class="input-group input-group-lg">
-                                <label class="sr-only" for="chs-transfer-domain">Domain to transfer</label>
-                                <input type="text" class="form-control" id="chs-transfer-domain" name="query"
-                                       placeholder="yourdomain.com" autocomplete="off" spellcheck="false" maxlength="256" required>
-                                <div class="input-group-append">
-                                    <button class="btn btn-primary" type="submit">Start transfer</button>
+
+                        {if $chsErrors}
+                            <div class="alert alert-danger">{foreach $chsErrors as $err}<div>{$err|escape}</div>{/foreach}</div>
+                        {/if}
+
+                        {if $chsCreated}
+                            <div class="alert alert-success">
+                                Transfer requested for <strong>{$chsCreated.domain|escape}</strong> — invoice
+                                <strong>#{$chsCreated.invoice_id}</strong> issued. The transfer is submitted to the
+                                registry as soon as the invoice is paid.
+                                <div class="mt-2">
+                                    <a class="btn btn-success" href="{$chsCreated.url|escape}">View &amp; pay invoice</a>
+                                    <a class="btn btn-outline-secondary" href="{$chsPortalTransfersUrl|escape}&action=transfer&id={$chsCreated.transfer_id}">Track the transfer</a>
                                 </div>
                             </div>
-                            <small class="form-text text-muted text-center mt-2">
-                                We'll confirm whether it's transferable and show the exact price before
-                                any charge. No bait-and-switch on checkout.
+                        {/if}
+
+                        {if $chsEligibility}
+                            {if $chsEligibility.eligible === true}
+                                <div class="alert alert-success">
+                                    Eligible to transfer.
+                                    {if $chsQuote}Quoted price: <strong>{$chsQuote.final_fmt|escape}</strong> for 1 year
+                                    (includes the renewal year){if $chsQuote.discount} <span class="badge badge-info">{$chsQuote.discount|escape}% club discount</span>{/if}.{/if}
+                                    {if !$chsLoggedIn}<br>Sign in to create the tracked transfer here, or continue in the
+                                    <a href="{$chsSearchUrl|escape}{$chsOld.domain|escape:'url'}">standard cart flow</a>.{/if}
+                                </div>
+                            {elseif $chsEligibility.eligible === null}
+                                <div class="alert alert-warning">We could not fully verify eligibility — the registry
+                                    lookup is unavailable right now. {foreach $chsEligibility.reasons as $r}{$r|escape} {/foreach}</div>
+                            {else}
+                                <div class="alert alert-danger">Not transferable right now:
+                                    {foreach $chsEligibility.reasons as $r}<div>{$r|escape}</div>{/foreach}</div>
+                            {/if}
+                        {/if}
+
+                        <form method="post" action="domain-transfer.php" class="chs-lookup-form">
+                            {$csrf_field}
+                            <div class="form-group text-left">
+                                <label for="chs-transfer-domain">Domain to transfer</label>
+                                <input type="text" class="form-control form-control-lg" id="chs-transfer-domain"
+                                       name="chs_domain" value="{$chsOld.domain|escape}"
+                                       placeholder="yourdomain.com" autocomplete="off" spellcheck="false" maxlength="256" required>
+                            </div>
+                            <div class="form-group text-left">
+                                <label for="chs-transfer-epp">EPP / auth code <small class="text-muted">(from your current registrar)</small></label>
+                                <input type="text" class="form-control form-control-lg" id="chs-transfer-epp"
+                                       name="chs_epp" value="{$chsOld.epp|escape}"
+                                       autocomplete="off" spellcheck="false" maxlength="64">
+                            </div>
+                            <small class="form-text text-muted text-center d-block mb-2">
+                                We check transferability and quote the exact price before any charge. The EPP code
+                                is stored encrypted and is only used to submit the transfer after payment.
+                                No bait-and-switch on checkout.
                             </small>
+                            <div class="text-center">
+                                <button class="btn btn-primary btn-lg" type="submit">
+                                    {if $chsLoggedIn}Request transfer{else}Check eligibility &amp; price{/if}
+                                </button>
+                            </div>
                         </form>
                         <p class="text-center mt-3 mb-0">
                             <a href="{$chsWhoisUrl}">Check the current WHOIS first</a> — unlock status and the

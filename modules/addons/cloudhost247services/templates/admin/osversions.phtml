@@ -1,0 +1,84 @@
+<?php
+/**
+ * Admin → OS Versions: version records for one OS (create/edit/retire/
+ * archive/delete) with lifecycle states and provider image mappings.
+ *
+ * @var array $os @var array $versions @var array|null $editing
+ * @var array $statuses @var array $archs @var array $images @var string $baseLink
+ */
+?>
+<p><a href="<?= chs_h($baseLink . '&action=oses') ?>">← OS catalog</a></p>
+
+<div class="chs-panel">
+  <h3><?= $editing ? 'Edit version' : 'Add version' ?> — <?= chs_h($os['name']) ?></h3>
+  <form method="post" action="<?= chs_h($baseLink . '&action=osversions&os_id=' . (int) $os['id']) ?>" class="form-horizontal">
+    <?= $tokenField ?><input type="hidden" name="do" value="version_save">
+    <input type="hidden" name="os_id" value="<?= (int) $os['id'] ?>">
+    <input type="hidden" name="version_id" value="<?= (int) ($editing['id'] ?? 0) ?>">
+    <table class="table">
+      <tr><td style="width:22%">Version</td><td><input class="form-control" name="version" value="<?= chs_h($editing['version'] ?? '') ?>" placeholder="24.04" required></td></tr>
+      <tr><td>Display name</td><td><input class="form-control" name="display_name" value="<?= chs_h($editing['display_name'] ?? '') ?>" placeholder="Ubuntu 24.04 LTS" required></td></tr>
+      <tr><td>Release name</td><td><input class="form-control" name="release_name" value="<?= chs_h($editing['release_name'] ?? '') ?>" placeholder="Noble Numbat"></td></tr>
+      <tr><td>Architectures</td><td>
+        <?php foreach ($archs as $a): ?>
+          <label><input type="checkbox" name="architectures[]" value="<?= $a ?>" <?= !$editing || in_array($a, $editing['architectures'] ?? ['x86_64'], true) ? 'checked' : '' ?>> <?= $a ?></label> &nbsp;
+        <?php endforeach; ?>
+      </td></tr>
+      <tr><td>Status</td><td><select class="form-control" name="status"><?php foreach ($statuses as $s): ?><option value="<?= $s ?>"<?= ($editing['status'] ?? 'ACTIVE') === $s ? ' selected' : '' ?>><?= $s ?></option><?php endforeach; ?></select>
+        <div class="chs-muted small">ACTIVE/MAINTENANCE are selectable for new deployments; EOL_WARNING/EOL/ARCHIVED are not.</div></td></tr>
+      <tr><td>Flags</td><td>
+        <label><input type="checkbox" name="is_default" <?= !empty($editing['is_default']) ? 'checked' : '' ?>> Recommended/default for new orders</label> &nbsp;
+        <label><input type="checkbox" name="is_lts" <?= !empty($editing['is_lts']) ? 'checked' : '' ?>> LTS</label>
+      </td></tr>
+      <tr><td>Release date</td><td><input class="form-control" type="date" name="release_date" value="<?= chs_h($editing['release_date'] ?? '') ?>" style="width:180px"></td></tr>
+      <tr><td>End of life</td><td><input class="form-control" type="date" name="end_of_life_date" value="<?= chs_h($editing['end_of_life_date'] ?? '') ?>" style="width:180px"></td></tr>
+    </table>
+    <button class="btn btn-primary">Save version</button>
+    <?php if ($editing): ?><a class="btn btn-default" href="<?= chs_h($baseLink . '&action=osversions&os_id=' . (int) $os['id']) ?>">Cancel</a><?php endif; ?>
+  </form>
+</div>
+
+<div class="chs-panel">
+  <h3>Versions of <?= chs_h($os['name']) ?></h3>
+  <table class="table table-striped">
+    <thead><tr><th>Version</th><th>Display</th><th>Architectures</th><th>Status</th><th>Lifecycle</th><th>Images</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($versions as $v):
+        $vArch = json_decode((string) $v['architecture_support'], true) ?: [];
+        $vImages = array_values(array_filter($images, function ($i) use ($v) { return (int) $i['operating_system_version_id'] === (int) $v['id']; }));
+    ?>
+      <tr>
+        <td><code><?= chs_h($v['version']) ?></code></td>
+        <td><?= chs_h($v['display_name']) ?> <?= $v['is_default'] ? '<span class="label label-primary">default</span>' : '' ?></td>
+        <td class="small"><?= chs_h(implode(', ', $vArch)) ?></td>
+        <td><?= chs_status_pill($v['status']) ?></td>
+        <td class="small">
+          <?= $v['is_lts'] ? 'LTS · ' : '' ?>
+          <?= $v['release_date'] ? 'released ' . chs_h($v['release_date']) : '' ?>
+          <?= $v['end_of_life_date'] ? ' · EOL ' . chs_h($v['end_of_life_date']) : '' ?>
+        </td>
+        <td><?= count($vImages) ?></td>
+        <td class="text-nowrap">
+          <a class="btn btn-xs btn-default" href="<?= chs_h($baseLink . '&action=osversions&os_id=' . (int) $os['id'] . '&edit=' . (int) $v['id']) ?>">Edit</a>
+          <?php if ($v['status'] !== 'EOL' && $v['status'] !== 'ARCHIVED'): ?>
+          <form method="post" action="<?= chs_h($baseLink . '&action=osversions&os_id=' . (int) $os['id']) ?>" style="display:inline">
+            <?= $tokenField ?><input type="hidden" name="do" value="version_retire"><input type="hidden" name="id" value="<?= (int) $v['id'] ?>">
+            <button class="btn btn-xs btn-warning">Retire (EOL)</button>
+          </form>
+          <?php endif; ?>
+          <?php if ($v['status'] !== 'ARCHIVED'): ?>
+          <form method="post" action="<?= chs_h($baseLink . '&action=osversions&os_id=' . (int) $os['id']) ?>" style="display:inline">
+            <?= $tokenField ?><input type="hidden" name="do" value="version_archive"><input type="hidden" name="id" value="<?= (int) $v['id'] ?>">
+            <button class="btn btn-xs btn-default">Archive</button>
+          </form>
+          <?php endif; ?>
+          <form method="post" action="<?= chs_h($baseLink . '&action=osversions&os_id=' . (int) $os['id']) ?>" style="display:inline" onsubmit="return confirm('Delete this version? Refused while image mappings exist.');">
+            <?= $tokenField ?><input type="hidden" name="do" value="version_delete"><input type="hidden" name="id" value="<?= (int) $v['id'] ?>">
+            <button class="btn btn-xs btn-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+</div>

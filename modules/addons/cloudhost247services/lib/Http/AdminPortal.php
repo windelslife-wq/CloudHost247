@@ -26,10 +26,16 @@ use Chs\Core\ValidationException;
 use Chs\Services\AiBuilderService;
 use Chs\Services\AuctionService;
 use Chs\Services\ClubService;
+use Chs\Services\DomainManagementService;
 use Chs\Services\InboxService;
 use Chs\Services\ServiceRequestService;
 use Chs\Services\TldCatalogService;
+use Chs\Services\TransferService;
 use Chs\Services\ValuationService;
+use Chs\Providers\Domain\ProviderRegistry;
+use Chs\Workflow\DomainJobTypes;
+use Chs\Workflow\DomainWorker;
+use Chs\Workflow\JobQueue;
 
 class AdminPortal
 {
@@ -268,6 +274,280 @@ class AdminPortal
                     return 'Settings saved.';
                 }
                 break;
+
+            case 'providers':
+                $registry = new ProviderRegistry();
+                if ($do === 'save') {
+                    $endpoints = isset($_POST['endpoints']) ? (string) $_POST['endpoints'] : '{}';
+                    $id = $registry->save(isset($_POST['provider_id']) ? (int) $_POST['provider_id'] : 0, [
+                        'name'        => isset($_POST['name']) ? $_POST['name'] : '',
+                        'type'        => isset($_POST['type']) ? $_POST['type'] : 'http',
+                        'base_url'    => isset($_POST['base_url']) ? $_POST['base_url'] : '',
+                        'endpoints'   => $endpoints,
+                        'auth_header' => isset($_POST['auth_header']) ? $_POST['auth_header'] : 'Authorization',
+                        'auth_prefix' => isset($_POST['auth_prefix']) ? $_POST['auth_prefix'] : 'Bearer ',
+                        'token_field' => isset($_POST['token_field']) ? $_POST['token_field'] : 'api_key',
+                        'is_enabled'  => !empty($_POST['is_enabled']),
+                        'is_default'  => !empty($_POST['is_default']),
+                    ], isset($_POST['credentials']) ? (string) $_POST['credentials'] : '');
+                    Audit::admin($staff, 'domain.provider_saved', ['provider' => $id]);
+                    return 'Provider saved. Credentials are sealed with AES-256-GCM (CHS_CREDENTIALS_KEY) and never displayed.';
+                }
+                if ($do === 'delete') {
+                    $registry->delete((int) $_POST['id']);
+                    Audit::admin($staff, 'domain.provider_deleted', ['provider' => (int) $_POST['id']]);
+                    return 'Provider deleted.';
+                }
+                if ($do === 'health') {
+                    $result = $registry->healthCheck((int) $_POST['id']);
+                    return 'Health: ' . $result['status'] . ' — ' . $result['detail'];
+                }
+                if ($do === 'map') {
+                    $registry->setMapping(isset($_POST['tld']) ? $_POST['tld'] : '', (int) $_POST['provider_id']);
+                    Audit::admin($staff, 'domain.provider_mapped', [
+                        'tld' => isset($_POST['tld']) ? $_POST['tld'] : '', 'provider' => (int) $_POST['provider_id'],
+                    ]);
+                    return 'TLD mapping saved.';
+                }
+                if ($do === 'unmap') {
+                    $registry->clearMapping(isset($_POST['tld']) ? $_POST['tld'] : '');
+                    return 'TLD mapping removed.';
+                }
+                break;
+
+            case 'transfers':
+                $transfers = new TransferService();
+                if ($do === 'retry') {
+                    $transfers->adminRetry((int) $_POST['id'], $staff);
+                    return 'Transfer submission re-queued.';
+                }
+                if ($do === 'submitted') {
+                    $transfers->adminMarkSubmitted((int) $_POST['id'], $staff, isset($_POST['provider_ref']) ? (string) $_POST['provider_ref'] : '');
+                    return 'Transfer marked as submitted.';
+                }
+                if ($do === 'completed') {
+                    $transfers->adminMarkCompleted((int) $_POST['id'], $staff, isset($_POST['note']) ? (string) $_POST['note'] : '');
+                    return 'Transfer marked completed.';
+                }
+                if ($do === 'sync') {
+                    $count = $transfers->syncFromPlatform();
+                    return 'Platform reconciliation complete: ' . $count . ' transfer(s) updated.';
+                }
+                break;
+
+            case 'operations':
+                $queue = new JobQueue();
+                if ($do === 'retry') {
+                    $queue->retry((int) $_POST['id']);
+                    Audit::admin($staff, 'domain.job_retried', ['job' => (int) $_POST['id']]);
+                    return 'Job re-queued.';
+                }
+                if ($do === 'run') {
+                    $result = DomainWorker::run();
+                    return 'Worker run: ' . $result['ran'] . ' job(s), ' . $result['completed'] . ' completed, '
+                        . $result['failed'] . ' failed.';
+                }
+                if ($do === 'enqueue_expiration') {
+                    $queue->enqueue(DomainJobTypes::EXPIRATION_CHECK, [], ['idempotency_key' => 'manual:expiration:' . Clock::time()]);
+                    return 'Expiration check enqueued.';
+                }
+                if ($do === 'enqueue_sync') {
+                    $queue->enqueue(DomainJobTypes::PROVIDER_SYNC, [], ['idempotency_key' => 'manual:sync:' . Clock::time()]);
+                    $queue->enqueue(DomainJobTypes::RECONCILIATION, [], ['idempotency_key' => 'manual:recon:' . Clock::time()]);
+                    return 'Provider sync + reconciliation enqueued.';
+                }
+                break;
+
+            case 'domains':
+                if ($do === 'sync') {
+                    $count = (new DomainManagementService())->syncFromPlatform();
+                    Audit::admin($staff, 'domain.sync_run', ['synced' => $count]);
+                    return 'Platform sync complete: ' . $count . ' domain record(s) refreshed.';
+                }
+                if ($do === 'dns_sync') {
+                    (new JobQueue())->enqueue(DomainJobTypes::DNS_SYNC, [
+                        'domain_service_id' => (int) $_POST['id'],
+                    ], ['idempotency_key' => 'dns-sync:' . (int) $_POST['id']]);
+                    return 'DNS sync job enqueued.';
+                }
+                break;
+
+            case 'oses':
+                $catalog = new \Chs\Services\OsCatalogService();
+                if ($do === 'os_save') {
+                    $id = $catalog->saveOs((int) $_POST['os_id'], [
+                        'name'                   => isset($_POST['name']) ? $_POST['name'] : '',
+                        'slug'                   => isset($_POST['slug']) ? $_POST['slug'] : '',
+                        'vendor'                 => isset($_POST['vendor']) ? $_POST['vendor'] : '',
+                        'description'            => isset($_POST['description']) ? $_POST['description'] : '',
+                        'logo_url'               => isset($_POST['logo_url']) ? $_POST['logo_url'] : '',
+                        'status'                 => isset($_POST['status']) ? $_POST['status'] : 'ACTIVE',
+                        'sort_order'             => isset($_POST['sort_order']) ? (int) $_POST['sort_order'] : 0,
+                        'is_vps_supported'       => !empty($_POST['is_vps_supported']),
+                        'is_dedicated_supported' => !empty($_POST['is_dedicated_supported']),
+                        'is_cloud_supported'     => !empty($_POST['is_cloud_supported']),
+                        'is_reinstall_supported' => !empty($_POST['is_reinstall_supported']),
+                    ]);
+                    Audit::admin($staff, 'os.saved', ['os_id' => $id]);
+                    return 'Operating system saved. Add versions under "Versions".';
+                }
+                if ($do === 'os_delete') {
+                    $catalog->deleteOs((int) $_POST['id']);
+                    Audit::admin($staff, 'os.deleted', ['os_id' => (int) $_POST['id']]);
+                    return 'Operating system deleted.';
+                }
+                if ($do === 'rule_save') {
+                    $catalog->saveProductRule((int) $_POST['product_id'], [
+                        'server_type' => isset($_POST['server_type']) ? $_POST['server_type'] : 'vps',
+                        'provider_id' => (int) (isset($_POST['provider_id']) ? $_POST['provider_id'] : 0),
+                        'region_id'   => (int) (isset($_POST['region_id']) ? $_POST['region_id'] : 0),
+                    ]);
+                    Audit::admin($staff, 'os.product_rule_saved', ['product_id' => (int) $_POST['product_id']]);
+                    return 'Product rule saved.';
+                }
+                if ($do === 'rule_delete') {
+                    $catalog->deleteProductRule((int) $_POST['product_id']);
+                    Audit::admin($staff, 'os.product_rule_deleted', ['product_id' => (int) $_POST['product_id']]);
+                    return 'Product rule removed — every enabled provider/region applies.';
+                }
+                break;
+
+            case 'osversions':
+                $catalog = new \Chs\Services\OsCatalogService();
+                $osId = (int) (isset($_POST['os_id']) ? $_POST['os_id'] : $_GET['os_id']);
+                if ($do === 'version_save') {
+                    $id = $catalog->saveVersion($osId, (int) $_POST['version_id'], [
+                        'version'          => isset($_POST['version']) ? $_POST['version'] : '',
+                        'display_name'     => isset($_POST['display_name']) ? $_POST['display_name'] : '',
+                        'release_name'     => isset($_POST['release_name']) ? $_POST['release_name'] : '',
+                        'architectures'    => isset($_POST['architectures']) ? (array) $_POST['architectures'] : ['x86_64'],
+                        'status'           => isset($_POST['status']) ? $_POST['status'] : 'ACTIVE',
+                        'is_default'       => !empty($_POST['is_default']),
+                        'is_lts'           => !empty($_POST['is_lts']),
+                        'release_date'     => isset($_POST['release_date']) ? $_POST['release_date'] : '',
+                        'end_of_life_date' => isset($_POST['end_of_life_date']) ? $_POST['end_of_life_date'] : '',
+                    ]);
+                    Audit::admin($staff, 'os.version_saved', ['os_id' => $osId, 'version_id' => $id]);
+                    return 'OS version saved.';
+                }
+                if ($do === 'version_delete') {
+                    $catalog->deleteVersion((int) $_POST['id']);
+                    Audit::admin($staff, 'os.version_deleted', ['version_id' => (int) $_POST['id']]);
+                    return 'OS version deleted.';
+                }
+                if ($do === 'version_retire') {
+                    $catalog->retireVersion((int) $_POST['id']);
+                    Audit::admin($staff, 'os.version_retired', ['version_id' => (int) $_POST['id']]);
+                    return 'Version retired (EOL) — it no longer appears for new deployments; existing servers keep it.';
+                }
+                if ($do === 'version_archive') {
+                    $catalog->archiveVersion((int) $_POST['id']);
+                    Audit::admin($staff, 'os.version_archived', ['version_id' => (int) $_POST['id']]);
+                    return 'Version archived.';
+                }
+                break;
+
+            case 'osimages':
+                $catalog = new \Chs\Services\OsCatalogService();
+                if ($do === 'image_save') {
+                    $id = $catalog->saveImage((int) $_POST['image_id'], [
+                        'provider_id'                 => (int) $_POST['provider_id'],
+                        'operating_system_version_id' => (int) $_POST['operating_system_version_id'],
+                        'provider_image_id'           => isset($_POST['provider_image_id']) ? $_POST['provider_image_id'] : '',
+                        'provider_template_id'        => isset($_POST['provider_template_id']) ? $_POST['provider_template_id'] : '',
+                        'architecture'                => isset($_POST['architecture']) ? $_POST['architecture'] : 'x86_64',
+                        'region_id'                   => (int) (isset($_POST['region_id']) ? $_POST['region_id'] : 0),
+                        'metadata'                    => ['notes' => isset($_POST['notes']) ? $_POST['notes'] : ''],
+                    ]);
+                    Audit::admin($staff, 'os.image_saved', ['image_id' => $id]);
+                    return 'Image mapping saved (disabled). Use "Test image", then enable it.';
+                }
+                if ($do === 'image_delete') {
+                    $catalog->deleteImage((int) $_POST['id']);
+                    Audit::admin($staff, 'os.image_deleted', ['image_id' => (int) $_POST['id']]);
+                    return 'Image mapping deleted.';
+                }
+                if ($do === 'image_test') {
+                    $result = $catalog->testImage((int) $_POST['id']);
+                    Audit::admin($staff, 'os.image_tested', ['image_id' => (int) $_POST['id'], 'result' => $result['status']]);
+                    return 'Image test: ' . $result['status'] . ' — ' . $result['detail'];
+                }
+                if ($do === 'image_enable') {
+                    $catalog->setImageStatus((int) $_POST['id'], 'active');
+                    Audit::admin($staff, 'os.image_enabled', ['image_id' => (int) $_POST['id']]);
+                    return 'Image mapping enabled — it can now serve provisioning.';
+                }
+                if ($do === 'image_disable') {
+                    $catalog->setImageStatus((int) $_POST['id'], 'disabled');
+                    Audit::admin($staff, 'os.image_disabled', ['image_id' => (int) $_POST['id']]);
+                    return 'Image mapping disabled.';
+                }
+                break;
+
+            case 'infraproviders':
+                $registry = new \Chs\Providers\Infrastructure\InfraProviderRegistry();
+                if ($do === 'provider_save') {
+                    $caps = [];
+                    foreach (\Chs\Providers\Infrastructure\InfraProviderRegistry::CAPABILITY_KEYS as $key) {
+                        $caps[$key] = !empty($_POST['cap_' . $key]);
+                    }
+                    $id = $registry->save((int) $_POST['provider_id'], [
+                        'name'        => isset($_POST['name']) ? $_POST['name'] : '',
+                        'type'        => 'http',
+                        'base_url'    => isset($_POST['base_url']) ? $_POST['base_url'] : '',
+                        'endpoints'   => isset($_POST['endpoints']) ? $_POST['endpoints'] : '{}',
+                        'auth_header' => isset($_POST['auth_header']) ? $_POST['auth_header'] : 'Authorization',
+                        'auth_prefix' => isset($_POST['auth_prefix']) ? $_POST['auth_prefix'] : 'Bearer ',
+                        'token_field' => isset($_POST['token_field']) ? $_POST['token_field'] : 'api_key',
+                        'capabilities' => $caps,
+                        'is_enabled'  => !empty($_POST['is_enabled']),
+                        'is_default'  => !empty($_POST['is_default']),
+                    ], isset($_POST['credentials']) ? (string) $_POST['credentials'] : '');
+                    Audit::admin($staff, 'infra.provider_saved', ['provider_id' => $id]);
+                    return 'Provider saved. Credentials are sealed with AES-256-GCM (CHS_CREDENTIALS_KEY) and never displayed.';
+                }
+                if ($do === 'provider_delete') {
+                    $registry->delete((int) $_POST['id']);
+                    Audit::admin($staff, 'infra.provider_deleted', ['provider_id' => (int) $_POST['id']]);
+                    return 'Provider deleted.';
+                }
+                if ($do === 'provider_health') {
+                    $result = $registry->healthCheck((int) $_POST['id']);
+                    return 'Health: ' . $result['status'] . ' — ' . $result['detail'];
+                }
+                if ($do === 'region_save') {
+                    $registry->saveRegion((int) $_POST['region_id'], (int) $_POST['provider_id'], [
+                        'code'       => isset($_POST['code']) ? $_POST['code'] : '',
+                        'name'       => isset($_POST['name']) ? $_POST['name'] : '',
+                        'datacenter' => isset($_POST['datacenter']) ? $_POST['datacenter'] : '',
+                        'is_active'  => !empty($_POST['is_active']),
+                        'sort_order' => isset($_POST['sort_order']) ? (int) $_POST['sort_order'] : 0,
+                    ]);
+                    Audit::admin($staff, 'infra.region_saved', ['provider_id' => (int) $_POST['provider_id']]);
+                    return 'Region saved.';
+                }
+                if ($do === 'region_delete') {
+                    $registry->deleteRegion((int) $_POST['id']);
+                    Audit::admin($staff, 'infra.region_deleted', ['region_id' => (int) $_POST['id']]);
+                    return 'Region deleted.';
+                }
+                break;
+
+            case 'provisioning':
+                $provisioning = new \Chs\Services\ServerProvisioningService();
+                if ($do === 'job_retry') {
+                    $provisioning->adminRetry((int) $_POST['id'], $staff);
+                    return 'Provisioning job re-queued.';
+                }
+                if ($do === 'job_cancel') {
+                    $provisioning->adminCancel((int) $_POST['id'], $staff);
+                    return 'Provisioning job cancelled.';
+                }
+                if ($do === 'run') {
+                    $result = \Chs\Workflow\Worker::run();
+                    return 'Worker run: ' . $result['ran'] . ' job(s), ' . $result['completed'] . ' completed, ' . $result['failed'] . ' failed.';
+                }
+                break;
         }
 
         return $notice = isset($_POST['notice']) ? (string) $_POST['notice'] : '';
@@ -282,6 +562,10 @@ class AdminPortal
             'requests_enabled', 'logo_enabled', 'inbox_enabled', 'ai_enabled',
             'notifications_email', 'notifications_inapp', 'auction_cancel_unpaid_invoices',
             'debug_logging',
+            'domain_search_enabled', 'bulk_search_enabled', 'transfer_enabled',
+            'domains_dashboard_enabled', 'domain_dns_enabled', 'domain_sync_enabled',
+            'server_order_enabled', 'server_provisioning_enabled', 'server_actions_enabled',
+            'server_health_check_enabled', 'server_notifications_enabled',
         ];
         $ints = [
             'valuation_guest_daily_limit', 'valuation_client_daily_limit',
@@ -291,8 +575,17 @@ class AdminPortal
             'club_invoice_due_days', 'requests_daily_limit', 'logo_projects_limit',
             'ai_timeout_seconds', 'ai_daily_limit_per_client',
             'lookup_cache_minutes', 'cache_retention_days', 'consent_retention_days', 'audit_retention_days',
+            'search_daily_limit_per_client', 'search_daily_limit_per_ip',
+            'bulk_max_domains', 'bulk_daily_limit_per_client', 'bulk_daily_limit_per_ip',
+            'bulk_chunk_size', 'bulk_sync_threshold',
+            'transfer_invoice_due_days', 'domain_auto_renew_lead_days',
+            'jobs_per_run', 'jobs_lease_seconds', 'jobs_max_attempts', 'jobs_retention_days',
+            'provider_http_timeout_seconds',
         ];
-        $strings = ['valuation_engine', 'valuation_api_url', 'ai_provider', 'ai_endpoint', 'ai_model', 'default_currency'];
+        $strings = [
+            'valuation_engine', 'valuation_api_url', 'ai_provider', 'ai_endpoint', 'ai_model',
+            'default_currency', 'domain_renewal_notice_days',
+        ];
 
         foreach ($booleans as $key) {
             Settings::put($key, !empty($_POST[$key]) ? '1' : '0');
@@ -452,6 +745,166 @@ class AdminPortal
                     'filters' => $filters,
                     'statuses' => ['Pending', 'Confirming', 'Paid', 'Failed', 'Expired', 'Cancelled', 'Refunded'],
                 ]);
+            case 'domains':
+                $management = new DomainManagementService();
+                return $this->view('domains', [
+                    'report'      => $management->reconciliationReport(),
+                    'domains'     => Db::all('domain_services', [], 'id DESC', 100),
+                    'providers'   => (new ProviderRegistry())->all(),
+                    'mappings'    => (new ProviderRegistry())->mappings(),
+                    'transfers'   => Db::query(
+                        'SELECT COUNT(*) AS c FROM ' . Db::t('domain_transfers') . " WHERE status IN ('PENDING','INITIATED','AWAITING_AUTH_CODE','PROCESSING','PENDING_REGISTRY')"
+                    ),
+                    'baseLink'    => $this->baseLink,
+                ]);
+            case 'providers':
+                $registry = new ProviderRegistry();
+                $editing = null;
+                if (isset($_GET['edit'])) {
+                    $editing = $registry->find((int) $_GET['edit']);
+                }
+                return $this->view('providers', [
+                    'providers' => $registry->all(),
+                    'mappings'  => $registry->mappings(),
+                    'editing'   => $editing,
+                    'tld_choices' => array_map(function ($r) {
+                        return $r['tld'];
+                    }, (new TldCatalogService())->adminList()),
+                    'baseLink'  => $this->baseLink,
+                ]);
+            case 'transfers':
+                $status = isset($_GET['status']) ? (string) $_GET['status'] : '';
+                $service = new TransferService();
+                $rows = $service->adminList($status, 100);
+                foreach ($rows as &$row) {
+                    $row['history'] = json_decode((string) $row['history'], true) ?: [];
+                    unset($row['epp_enc']); // never render the sealed credential
+                }
+                unset($row);
+                return $this->view('transfers', [
+                    'rows'     => $rows,
+                    'status'   => $status,
+                    'statuses' => TransferService::statuses(),
+                    'baseLink' => $this->baseLink,
+                ]);
+            case 'operations':
+                $queue = new JobQueue();
+                $list = $queue->list([
+                    'status' => isset($_GET['status']) ? (string) $_GET['status'] : '',
+                    'type'   => isset($_GET['type']) ? (string) $_GET['type'] : '',
+                    'search' => isset($_GET['search']) ? (string) $_GET['search'] : '',
+                ], isset($_GET['page']) ? (int) $_GET['page'] : 1, 50);
+                return $this->view('operations', [
+                    'jobs'     => $list['rows'],
+                    'total'    => $list['total'],
+                    'page'     => $list['page'],
+                    'pages'    => max(1, (int) ceil($list['total'] / $list['per_page'])),
+                    'stats'    => $queue->stats(),
+                    'types'    => DomainJobTypes::labels(),
+                    'filters'  => [
+                        'status' => isset($_GET['status']) ? (string) $_GET['status'] : '',
+                        'type'   => isset($_GET['type']) ? (string) $_GET['type'] : '',
+                        'search' => isset($_GET['search']) ? (string) $_GET['search'] : '',
+                    ],
+                    'baseLink' => $this->baseLink,
+                ]);
+            case 'oses':
+                $catalog = new \Chs\Services\OsCatalogService();
+                $editing = null;
+                if (isset($_GET['edit'])) {
+                    $editing = $catalog->findOs((int) $_GET['edit']);
+                }
+                return $this->view('oses', [
+                    'oses'        => $catalog->listAdmin(),
+                    'editing'     => $editing,
+                    'statuses'    => \Chs\Services\OsCatalogService::OS_STATUSES,
+                    'rules'       => $catalog->productRules(),
+                    'products'    => \Chs\Core\Platform::gateway()->serverProducts(),
+                    'providers'   => (new \Chs\Providers\Infrastructure\InfraProviderRegistry())->all(),
+                    'regions'     => (new \Chs\Providers\Infrastructure\InfraProviderRegistry())->activeRegions(),
+                    'server_types' => \Chs\Services\OsCatalogService::SERVER_TYPES,
+                    'baseLink'    => $this->baseLink,
+                ]);
+            case 'osversions':
+                $catalog = new \Chs\Services\OsCatalogService();
+                $osId = isset($_GET['os_id']) ? (int) $_GET['os_id'] : 0;
+                $os = $catalog->findOs($osId);
+                if (!$os) {
+                    throw new NotFoundException('Operating system not found.');
+                }
+                $editing = null;
+                if (isset($_GET['edit'])) {
+                    $editing = $catalog->versionRow((int) $_GET['edit']);
+                }
+                return $this->view('osversions', [
+                    'os'         => $os,
+                    'versions'   => $catalog->versions($osId),
+                    'editing'    => $editing,
+                    'statuses'   => \Chs\Services\OsCatalogService::VERSION_STATUSES,
+                    'archs'      => \Chs\Services\OsCatalogService::ARCHITECTURES,
+                    'images'     => $catalog->images(['os_id' => $osId]),
+                    'baseLink'   => $this->baseLink,
+                ]);
+            case 'osimages':
+                $catalog = new \Chs\Services\OsCatalogService();
+                $editing = null;
+                if (isset($_GET['edit'])) {
+                    $editing = $catalog->imageRow((int) $_GET['edit']);
+                }
+                $registry = new \Chs\Providers\Infrastructure\InfraProviderRegistry();
+                return $this->view('osimages', [
+                    'images'    => $catalog->images(),
+                    'editing'   => $editing,
+                    'providers' => $registry->all(),
+                    'oses'      => $catalog->listAdmin(),
+                    'archs'     => \Chs\Services\OsCatalogService::ARCHITECTURES,
+                    'baseLink'  => $this->baseLink,
+                ]);
+            case 'infraproviders':
+                $registry = new \Chs\Providers\Infrastructure\InfraProviderRegistry();
+                $editing = null;
+                if (isset($_GET['edit'])) {
+                    $editing = $registry->find((int) $_GET['edit']);
+                }
+                $regions = [];
+                foreach ($registry->all() as $provider) {
+                    $regions[(int) $provider['id']] = $registry->regions((int) $provider['id']);
+                }
+                return $this->view('infraproviders', [
+                    'providers'    => $registry->all(),
+                    'regions'      => $regions,
+                    'editing'      => $editing,
+                    'capabilities' => \Chs\Providers\Infrastructure\InfraProviderRegistry::CAPABILITY_KEYS,
+                    'baseLink'     => $this->baseLink,
+                ]);
+            case 'provisioning':
+                $provisioning = new \Chs\Services\ServerProvisioningService();
+                $filters = [
+                    'status' => isset($_GET['status']) ? (string) $_GET['status'] : '',
+                    'type'   => isset($_GET['type']) ? (string) $_GET['type'] : '',
+                    'search' => isset($_GET['search']) ? (string) $_GET['search'] : '',
+                ];
+                $list = $provisioning->listJobs($filters, isset($_GET['page']) ? (int) $_GET['page'] : 1, 50);
+                $detail = null;
+                if (isset($_GET['id'])) {
+                    $detail = $provisioning->jobDetail((int) $_GET['id']);
+                }
+                return $this->view('provisioning', [
+                    'jobs'        => $list['rows'],
+                    'total'       => $list['total'],
+                    'page'        => $list['page'],
+                    'pages'       => max(1, (int) ceil($list['total'] / $list['per_page'])),
+                    'stats'       => $provisioning->stats(),
+                    'filters'     => $filters,
+                    'detail'      => $detail,
+                    'statuses'    => array_merge(
+                        \Chs\Services\ServerProvisioningService::ACTIVE_STATUSES,
+                        \Chs\Services\ServerProvisioningService::TERMINAL_STATUSES
+                    ),
+                    'types'       => ['PROVISION', 'REINSTALL', 'ACTION'],
+                    'servers'     => Db::count('module_servers', ['status' => 'active']),
+                    'baseLink'    => $this->baseLink,
+                ]);
             case 'audit':
                 return $this->view('audit', [
                     'rows' => Audit::recent(200),
@@ -485,9 +938,45 @@ class AdminPortal
                 ) ? (int) Db::query('SELECT COUNT(*) AS c FROM ' . Db::t('valuations') . ' WHERE created_at >= ?', [Clock::ago(86400)])[0]['c'] : 0,
                 'tlds_merchandised' => Db::count('tld_meta'),
                 'ai_generations'     => Db::count('ai_generations'),
+                'active_domains'     => Db::tableExists('domain_services')
+                    ? Db::count('domain_services', ['status' => 'active']) : 0,
+                'expiring_30d'       => Db::tableExists('domain_services')
+                    ? (int) (Db::query(
+                        'SELECT COUNT(*) AS c FROM ' . Db::t('domain_services')
+                        . " WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= ?",
+                        [Clock::in(30 * 86400)]
+                    )[0]['c'] ?? 0) : 0,
+                'open_transfers'     => Db::tableExists('domain_transfers')
+                    ? (int) (Db::query(
+                        'SELECT COUNT(*) AS c FROM ' . Db::t('domain_transfers')
+                        . " WHERE status IN ('PENDING','INITIATED','AWAITING_AUTH_CODE','PROCESSING','PENDING_REGISTRY')"
+                    )[0]['c'] ?? 0) : 0,
+                'failed_jobs'        => Db::tableExists('jobs')
+                    ? Db::count('jobs', ['status' => 'failed']) : 0,
+                'searches_24h'       => Db::tableExists('domain_searches')
+                    ? (int) (Db::query(
+                        'SELECT COUNT(*) AS c FROM ' . Db::t('domain_searches') . ' WHERE created_at >= ?',
+                        [Clock::ago(86400)]
+                    )[0]['c'] ?? 0) : 0,
+                'active_oses'        => Db::tableExists('operating_systems')
+                    ? Db::count('operating_systems', ['status' => 'ACTIVE']) : 0,
+                'active_os_images'   => Db::tableExists('server_os_images')
+                    ? Db::count('server_os_images', ['status' => 'active']) : 0,
+                'infra_providers'    => Db::tableExists('infrastructure_providers')
+                    ? Db::count('infrastructure_providers', ['is_enabled' => 1]) : 0,
+                'active_servers'     => Db::tableExists('module_servers')
+                    ? Db::count('module_servers', ['status' => 'active']) : 0,
+                'provisioning_failed' => Db::tableExists('provisioning_jobs')
+                    ? Db::count('provisioning_jobs', ['status' => 'FAILED']) : 0,
+                'provisioning_active' => Db::tableExists('provisioning_jobs')
+                    ? (int) (Db::query(
+                        'SELECT COUNT(*) AS c FROM ' . Db::t('provisioning_jobs')
+                        . " WHERE status IN ('QUEUED','ALLOCATING','CREATING','INSTALLING_OS','CONFIGURING','NETWORK_CONFIGURING','SECURITY_CONFIGURING','HEALTH_CHECK')"
+                    )[0]['c'] ?? 0) : 0,
             ],
             'ai_status' => (new AiBuilderService())->status(),
             'engine'    => (new ValuationService())->engineInfo(),
+            'providers' => Db::tableExists('domain_providers') ? (new ProviderRegistry())->all() : [],
             'baseLink'  => $this->baseLink,
         ];
     }
@@ -514,7 +1003,11 @@ class AdminPortal
     {
         $items = [
             'overview'   => 'Overview',
+            'domains'    => 'Domains',
             'tlds'       => 'TLD Catalogue',
+            'providers'  => 'Domain Providers',
+            'transfers'  => 'Transfers',
+            'operations' => 'Operations (Jobs)',
             'valuations' => 'Valuations',
             'auctions'   => 'Auctions',
             'club'       => 'Domain Club',

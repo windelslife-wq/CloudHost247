@@ -199,3 +199,18 @@ a.chs-chip { text-decoration:none !important; }
 .chs-ns-chip { font-family:ui-monospace,Menlo,monospace; font-size:12px; }
 .chs-raw-block { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:14px; font-size:12px;
   max-height:320px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
+
+/* Domain services section (domains.php) */
+.chs-domains-col-title { margin-bottom:14px; }
+.chs-domain-service-card { display:block; color:inherit; margin-bottom:14px; border-radius:12px; transition:transform .12s ease, box-shadow .12s ease; }
+.chs-domain-service-card:hover { transform:translateY(-2px); box-shadow:0 10px 24px rgba(15,23,42,.12); text-decoration:none; }
+.chs-domain-service-head { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.chs-domain-service-icon { flex:0 0 38px; width:38px; height:38px; border-radius:10px; background:#eff6ff; color:#2563eb; display:flex; align-items:center; justify-content:center; font-size:16px; }
+.chs-domain-service-card .btn { pointer-events:none; }
+
+/* Servers & provisioning (order flow + server dashboard) */
+.chs-os-card { border-radius:12px; transition:transform .12s ease, box-shadow .12s ease; }
+.chs-os-card:hover { transform:translateY(-2px); box-shadow:0 10px 24px rgba(15,23,42,.12); }
+.chs-os-pick { cursor:pointer; }
+.chs-os-pick.panel-primary { border-color:#2563eb; box-shadow:0 0 0 1px #2563eb; }
+.chs-server-status { font-weight:700; }

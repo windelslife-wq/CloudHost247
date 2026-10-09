@@ -1,0 +1,105 @@
+<?php
+/**
+ * Admin → OS Catalog: operating systems (create/edit/enable/disable/archive/
+ * delete) + per-product compatibility rules.
+ *
+ * @var array $oses @var array|null $editing @var array $statuses
+ * @var array $rules @var array $products @var array $providers @var array $regions
+ * @var array $server_types @var string $baseLink
+ */
+?>
+<div class="chs-panel">
+  <h3><?= $editing ? 'Edit operating system' : 'Add operating system' ?></h3>
+  <form method="post" action="<?= chs_h($baseLink . '&action=oses') ?>" class="form-horizontal">
+    <?= $tokenField ?><input type="hidden" name="do" value="os_save"><input type="hidden" name="os_id" value="<?= (int) ($editing['id'] ?? 0) ?>">
+    <table class="table">
+      <tr><td style="width:22%">Name</td><td><input class="form-control" name="name" value="<?= chs_h($editing['name'] ?? '') ?>" required></td></tr>
+      <tr><td>Slug</td><td><input class="form-control" name="slug" value="<?= chs_h($editing['slug'] ?? '') ?>" placeholder="ubuntu"> <span class="chs-muted small">lowercase, unique</span></td></tr>
+      <tr><td>Vendor</td><td><input class="form-control" name="vendor" value="<?= chs_h($editing['vendor'] ?? '') ?>"></td></tr>
+      <tr><td>Description</td><td><textarea class="form-control" name="description" rows="2"><?= chs_h($editing['description'] ?? '') ?></textarea></td></tr>
+      <tr><td>Logo URL</td><td><input class="form-control" name="logo_url" value="<?= chs_h($editing['logo_url'] ?? '') ?>" placeholder="modules/addons/cloudhost247services/assets/img/os/ubuntu.svg"> <span class="chs-muted small">UI asset only — the install image is the provider mapping</span></td></tr>
+      <tr><td>Status</td><td><select class="form-control" name="status"><?php foreach ($statuses as $s): ?><option value="<?= $s ?>"<?= ($editing['status'] ?? 'ACTIVE') === $s ? ' selected' : '' ?>><?= $s ?></option><?php endforeach; ?></select></td></tr>
+      <tr><td>Sort order</td><td><input class="form-control" type="number" name="sort_order" value="<?= (int) ($editing['sort_order'] ?? 0) ?>" style="width:120px"></td></tr>
+      <tr><td>Available for</td><td>
+        <label><input type="checkbox" name="is_vps_supported" <?= !empty($editing['is_vps_supported']) || !$editing ? 'checked' : '' ?>> VPS</label> &nbsp;
+        <label><input type="checkbox" name="is_dedicated_supported" <?= !empty($editing['is_dedicated_supported']) || !$editing ? 'checked' : '' ?>> Dedicated</label> &nbsp;
+        <label><input type="checkbox" name="is_cloud_supported" <?= !empty($editing['is_cloud_supported']) || !$editing ? 'checked' : '' ?>> Cloud</label> &nbsp;
+        <label><input type="checkbox" name="is_reinstall_supported" <?= !empty($editing['is_reinstall_supported']) || !$editing ? 'checked' : '' ?>> Reinstall</label>
+      </td></tr>
+    </table>
+    <button class="btn btn-primary">Save OS</button>
+    <?php if ($editing): ?><a class="btn btn-default" href="<?= chs_h($baseLink . '&action=oses') ?>">Cancel</a><?php endif; ?>
+  </form>
+</div>
+
+<div class="chs-panel">
+  <h3>Operating systems</h3>
+  <table class="table table-striped">
+    <thead><tr><th>Logo</th><th>Name</th><th>Slug</th><th>Status</th><th>Versions</th><th>Available for</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($oses as $os): ?>
+      <tr>
+        <td><?php if ($os['logo_url'] !== ''): ?><img src="<?= chs_h($os['logo_url']) ?>" alt="" style="height:24px;width:24px"><?php endif; ?></td>
+        <td><strong><?= chs_h($os['name']) ?></strong><div class="chs-muted small"><?= chs_h($os['vendor']) ?></div></td>
+        <td><code><?= chs_h($os['slug']) ?></code></td>
+        <td><?= chs_status_pill($os['status']) ?></td>
+        <td><?= (int) $os['active_version_count'] ?> active / <?= (int) $os['version_count'] ?></td>
+        <td class="small">
+          <?= $os['is_vps_supported'] ? 'VPS ' : '' ?><?= $os['is_dedicated_supported'] ? 'Dedicated ' : '' ?><?= $os['is_cloud_supported'] ? 'Cloud ' : '' ?><?= $os['is_reinstall_supported'] ? 'Reinstall' : '' ?>
+        </td>
+        <td class="text-nowrap">
+          <a class="btn btn-xs btn-default" href="<?= chs_h($baseLink . '&action=osversions&os_id=' . (int) $os['id']) ?>">Versions</a>
+          <a class="btn btn-xs btn-default" href="<?= chs_h($baseLink . '&action=oses&edit=' . (int) $os['id']) ?>">Edit</a>
+          <form method="post" action="<?= chs_h($baseLink . '&action=oses') ?>" style="display:inline" onsubmit="return confirm('Delete this OS? Refused while versions exist.');">
+            <?= $tokenField ?><input type="hidden" name="do" value="os_delete"><input type="hidden" name="id" value="<?= (int) $os['id'] ?>">
+            <button class="btn btn-xs btn-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+</div>
+
+<div class="chs-panel">
+  <h3>Product compatibility rules</h3>
+  <p class="chs-muted small">Each server product defines its server type and may pin a provider/region. No rule = every enabled provider/region. Availability is always intersected with active OS image mappings.</p>
+  <form method="post" action="<?= chs_h($baseLink . '&action=oses') ?>" class="form-inline" style="margin-bottom:10px">
+    <?= $tokenField ?><input type="hidden" name="do" value="rule_save">
+    <select class="form-control input-sm" name="product_id" required>
+      <option value="">Product…</option>
+      <?php foreach ($products as $p): ?><option value="<?= (int) $p['id'] ?>"><?= chs_h($p['name']) ?></option><?php endforeach; ?>
+    </select>
+    <select class="form-control input-sm" name="server_type">
+      <?php foreach ($server_types as $t): ?><option value="<?= $t ?>"><?= ucfirst($t) ?></option><?php endforeach; ?>
+    </select>
+    <select class="form-control input-sm" name="provider_id">
+      <option value="0">Any provider</option>
+      <?php foreach ($providers as $p): ?><option value="<?= (int) $p['id'] ?>"><?= chs_h($p['name']) ?></option><?php endforeach; ?>
+    </select>
+    <select class="form-control input-sm" name="region_id">
+      <option value="0">Any region</option>
+      <?php foreach ($regions as $r): ?><option value="<?= (int) $r['id'] ?>"><?= chs_h($r['name']) ?> (<?= chs_h($r['provider_name']) ?>)</option><?php endforeach; ?>
+    </select>
+    <button class="btn btn-sm btn-primary">Save rule</button>
+  </form>
+  <table class="table table-striped">
+    <thead><tr><th>Product</th><th>Server type</th><th>Provider</th><th>Region</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($rules as $rule): ?>
+      <tr>
+        <td><?= chs_h($rule['product_name']) ?></td>
+        <td><?= chs_h(ucfirst($rule['server_type'])) ?></td>
+        <td><?= chs_h($rule['provider_name'] ?: 'Any') ?></td>
+        <td><?= chs_h($rule['region_name'] ?: 'Any') ?></td>
+        <td>
+          <form method="post" action="<?= chs_h($baseLink . '&action=oses') ?>" style="display:inline">
+            <?= $tokenField ?><input type="hidden" name="do" value="rule_delete"><input type="hidden" name="product_id" value="<?= (int) $rule['product_id'] ?>">
+            <button class="btn btn-xs btn-danger">Remove</button>
+          </form>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+</div>

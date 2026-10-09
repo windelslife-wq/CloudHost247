@@ -12,6 +12,7 @@ namespace Chs\Http;
 
 use Chs\Core\ChsException;
 use Chs\Core\Csrf;
+use Chs\Core\Db;
 use Chs\Core\ForbiddenException;
 use Chs\Core\Http;
 use Chs\Core\Identity;
@@ -23,12 +24,19 @@ use Chs\Core\ValidationException;
 use Chs\Services\AiBuilderService;
 use Chs\Services\AuctionService;
 use Chs\Services\AvailabilityService;
+use Chs\Services\BulkSearchService;
 use Chs\Services\ClubService;
 use Chs\Services\ConsentService;
+use Chs\Services\DomainManagementService;
+use Chs\Services\DomainSearchService;
 use Chs\Services\InboxService;
 use Chs\Services\LogoService;
 use Chs\Services\NotificationService;
+use Chs\Services\OsCatalogService;
+use Chs\Services\ServerOrderService;
+use Chs\Services\ServerProvisioningService;
 use Chs\Services\ServiceRequestService;
+use Chs\Services\TransferService;
 use Chs\Services\ValuationService;
 use Chs\Core\DomainName;
 
@@ -57,6 +65,17 @@ class CustomerPortal extends Controller
 
         $map = [
             'dashboard'     => 'pageDashboard',
+            'search'        => 'pageSearch',
+            'bulk'          => 'pageBulk',
+            'bulkview'      => 'pageBulkView',
+            'domains'       => 'pageDomains',
+            'domain'        => 'pageDomainDetail',
+            'transfers'     => 'pageTransfers',
+            'transfer'      => 'pageTransferDetail',
+            'servers'       => 'pageServers',
+            'server'        => 'pageServerDetail',
+            'order'         => 'pageOrder',
+            'orderconfig'   => 'pageOrderConfig',
             'valuation'     => 'pageValuation',
             'auctions'      => 'pageAuctions',
             'auction'       => 'pageAuctionDetail',
@@ -134,12 +153,16 @@ class CustomerPortal extends Controller
             'logo_count'           => count($logos->listFor($clientId)),
             'ai_status'            => (new AiBuilderService())->status(),
             'features'             => [
-                'auctions' => Settings::bool('auction_enabled', true),
-                'club'     => Settings::bool('club_enabled', true),
+                'search'    => Settings::bool('domain_search_enabled', true),
+                'bulk'      => Settings::bool('bulk_search_enabled', true),
+                'domains'   => Settings::bool('domains_dashboard_enabled', true),
+                'transfers' => Settings::bool('transfer_enabled', true),
+                'auctions'  => Settings::bool('auction_enabled', true),
+                'club'      => Settings::bool('club_enabled', true),
                 'valuation' => Settings::bool('valuation_enabled', true),
-                'requests' => Settings::bool('requests_enabled', true),
-                'logo'     => Settings::bool('logo_enabled', true),
-                'inbox'    => Settings::bool('inbox_enabled', true),
+                'requests'  => Settings::bool('requests_enabled', true),
+                'logo'      => Settings::bool('logo_enabled', true),
+                'inbox'     => Settings::bool('inbox_enabled', true),
             ],
             'flash' => $this->flash('ok'),
         ]);
@@ -622,6 +645,470 @@ class CustomerPortal extends Controller
             Http::json(['ok' => true, 'svg' => $svg]);
         } catch (\Chs\Core\ChsException $e) {
             Http::json(['ok' => false, 'error' => $e->getMessage()], 422);
+        }
+    }
+
+    /* ------------------------------------------------------ domain search -- */
+
+    protected function pageSearch($vars, $clientId)
+    {
+        $service = new DomainSearchService();
+        $q = Http::get('q');
+        $result = null;
+        $suggestions = [];
+        $errors = [];
+
+        if ($q !== '') {
+            try {
+                $result = $service->search($q, $clientId);
+                if ($result['available'] === true) {
+                    $suggestions = $service->suggestions(DomainName::parse($q), $clientId, 4);
+                }
+            } catch (ValidationException $e) {
+                $errors = $e->fieldErrors();
+            } catch (\Chs\Core\RateLimitException $e) {
+                $errors['limit'] = $e->getMessage();
+            }
+        }
+
+        if (Http::get('format') === 'json') {
+            Http::json([
+                'ok'          => $result !== null && empty($errors),
+                'result'      => $result,
+                'suggestions' => $suggestions,
+                'errors'      => $errors,
+            ]);
+        }
+
+        return $this->page('Domain search', 'search', [
+            'query'       => $q,
+            'result'      => $result,
+            'suggestions' => $suggestions,
+            'errors'      => $errors,
+            'club'        => (new ClubService())->activeMembership($clientId),
+            'money'       => $this->moneyHelper(),
+        ]);
+    }
+
+    /* ------------------------------------------------------- bulk search -- */
+
+    protected function pageBulk($vars, $clientId)
+    {
+        $service = new BulkSearchService();
+        $errors = [];
+        $old = ['domains' => ''];
+
+        if (Http::isPost()) {
+            Csrf::verifyRequest();
+            $old['domains'] = Http::post('domains');
+            try {
+                $outcome = $service->submit(Http::post('domains'), $clientId);
+                Http::redirect('index.php?m=cloudhost247services&action=bulkview&id=' . (int) $outcome['search']['id']);
+            } catch (ValidationException $e) {
+                $errors = $e->fieldErrors();
+            } catch (\Chs\Core\RateLimitException $e) {
+                $errors['limit'] = $e->getMessage();
+            }
+        }
+
+        return $this->page('Bulk domain search', 'bulk', [
+            'errors'   => $errors,
+            'old'      => $old,
+            'searches' => $service->mySearches($clientId, 10),
+            'max'      => \Chs\Core\Settings::int('bulk_max_domains', 500),
+        ]);
+    }
+
+    protected function pageBulkView($vars, $clientId)
+    {
+        $service = new BulkSearchService();
+        $search = $service->getSearchFor(Http::getInt('id'), $clientId);
+
+        if (Http::get('export') === 'csv') {
+            $csv = $service->exportCsv((int) $search['id']);
+            if (!headers_sent()) {
+                header('Content-Type: text/csv; charset=utf-8');
+                header('Content-Disposition: attachment; filename="domain-search-' . (int) $search['id'] . '.csv"');
+                header('X-Content-Type-Options: nosniff');
+            }
+            echo $csv;
+            exit;
+        }
+
+        $page = Http::getInt('page', 1);
+        $onlyAvailable = Http::get('only_available') === '1';
+        $result = $service->results((int) $search['id'], $page, 25, $onlyAvailable);
+
+        return $this->page('Bulk search #' . (int) $search['id'], 'bulkview', [
+            'search'        => $search,
+            'rows'          => $result['rows'],
+            'total'         => $result['total'],
+            'available'     => $result['available'],
+            'page'          => $result['page'],
+            'pages'         => max(1, (int) ceil($result['total'] / $result['per_page'])),
+            'onlyAvailable' => $onlyAvailable,
+            'cartUrl'       => 'cart.php?a=add&domain=register&bulk=1',
+        ]);
+    }
+
+    /* -------------------------------------------------------- my domains -- */
+
+    protected function pageDomains($vars, $clientId)
+    {
+        $service = new DomainManagementService();
+        return $this->page('My domains', 'domains', [
+            'domains' => $service->listFor($clientId),
+            'flash'   => $this->flash('ok'),
+            'error'   => $this->flash('error'),
+        ]);
+    }
+
+    protected function pageDomainDetail($vars, $clientId)
+    {
+        $service = new DomainManagementService();
+        $id = Http::getInt('id');
+        $flashError = $this->flash('error');
+
+        if (Http::isPost()) {
+            Csrf::verifyRequest();
+            $do = Http::post('do');
+            try {
+                switch ($do) {
+                    case 'auto_renew':
+                        $service->setAutoRenew($clientId, $id, Http::post('on') === '1');
+                        $this->flash('ok', 'Auto-renew updated.');
+                        break;
+                    case 'privacy':
+                        $service->setPrivacy($clientId, $id, Http::post('on') === '1');
+                        $this->flash('ok', 'WHOIS privacy updated.');
+                        break;
+                    case 'nameservers':
+                        $raw = (string) Http::post('nameservers');
+                        $nss = array_values(array_filter(array_map('trim', preg_split('/[\s,]+/', $raw))));
+                        $service->updateNameservers($clientId, $id, $nss);
+                        $this->flash('ok', 'Nameservers updated.');
+                        break;
+                    case 'dns_add':
+                        $service->createDnsRecord($clientId, $id, [
+                            'type'     => Http::post('type'),
+                            'name'     => Http::post('name'),
+                            'value'    => Http::post('value'),
+                            'ttl'      => Http::post('ttl'),
+                            'priority' => Http::post('priority'),
+                        ]);
+                        $this->flash('ok', 'DNS record saved.');
+                        break;
+                    case 'dns_edit':
+                        $service->updateDnsRecord($clientId, $id, Http::postInt('record_id'), [
+                            'type'     => Http::post('type'),
+                            'name'     => Http::post('name'),
+                            'value'    => Http::post('value'),
+                            'ttl'      => Http::post('ttl'),
+                            'priority' => Http::post('priority'),
+                        ]);
+                        $this->flash('ok', 'DNS record updated.');
+                        break;
+                    case 'dns_delete':
+                        $service->deleteDnsRecord($clientId, $id, Http::postInt('record_id'));
+                        $this->flash('ok', 'DNS record deleted.');
+                        break;
+                }
+            } catch (ValidationException $e) {
+                $flashError = implode(' ', $e->fieldErrors());
+                $this->flash('error', $flashError);
+            } catch (\Chs\Core\ChsException $e) {
+                $this->flash('error', $e->getMessage());
+            }
+            Http::redirect('index.php?m=cloudhost247services&action=domain&id=' . $id);
+        }
+
+        $detail = $service->detailFor($clientId, $id);
+
+        return $this->page('Domain: ' . $detail['domain']['domain'], 'domain_detail', [
+            'detail'      => $detail,
+            'dns_types'   => DomainManagementService::DNS_TYPES,
+            'flash_ok'    => $this->flash('ok'),
+            'flash_error' => $flashError,
+        ]);
+    }
+
+    /* ---------------------------------------------------------- transfers -- */
+
+    protected function pageTransfers($vars, $clientId)
+    {
+        $service = new TransferService();
+        $errors = [];
+        $old = ['domain' => '', 'epp' => ''];
+        $quote = null;
+        $eligibility = null;
+
+        if (Http::isPost()) {
+            Csrf::verifyRequest();
+            $do = Http::post('do', 'check');
+            $old['domain'] = Http::post('domain');
+            if ($do === 'check') {
+                try {
+                    $eligibility = $service->checkEligibility(Http::post('domain'), Http::post('epp'), $clientId);
+                    $quote = $eligibility['quote'];
+                } catch (ValidationException $e) {
+                    $errors = $e->fieldErrors();
+                }
+            } elseif ($do === 'create') {
+                $old['epp'] = Http::post('epp');
+                try {
+                    $outcome = $service->create($clientId, Http::post('domain'), Http::post('epp'));
+                    $this->flash('ok', 'Transfer requested — invoice #' . $outcome['invoice_id'] . ' issued. '
+                        . 'It is submitted to the registry once paid.');
+                    Http::redirect('index.php?m=cloudhost247services&action=transfer&id=' . (int) $outcome['transfer']['id']);
+                } catch (ValidationException $e) {
+                    $errors = $e->fieldErrors();
+                } catch (\Chs\Core\ChsException $e) {
+                    $errors['service'] = $e->getMessage();
+                }
+            }
+        }
+
+        return $this->page('Domain transfers', 'transfers', [
+            'transfers'   => $service->listFor($clientId),
+            'errors'      => $errors,
+            'old'         => $old,
+            'eligibility' => $eligibility,
+            'quote'       => $quote,
+            'statuses'    => TransferService::statuses(),
+        ]);
+    }
+
+    protected function pageTransferDetail($vars, $clientId)
+    {
+        $service = new TransferService();
+        $transfer = $service->getFor($clientId, Http::getInt('id'));
+
+        if (Http::isPost()) {
+            Csrf::verifyRequest();
+            if (Http::post('do') === 'cancel') {
+                $service->cancel($clientId, (int) $transfer['id']);
+                $this->flash('ok', 'Transfer cancelled.');
+                Http::redirect('index.php?m=cloudhost247services&action=transfers');
+            }
+        }
+
+        return $this->page('Transfer: ' . $transfer['domain'], 'transfer_detail', [
+            'transfer'   => $transfer,
+            'invoice_url' => $transfer['invoice_id']
+                ? \Chs\Core\Platform::gateway()->invoiceUrl((int) $transfer['invoice_id']) : '',
+            'invoice_status' => $transfer['invoice_id']
+                ? \Chs\Core\Platform::gateway()->invoiceStatus((int) $transfer['invoice_id']) : null,
+            'flash_ok'   => $this->flash('ok'),
+        ]);
+    }
+
+    /* ------------------------------------------- servers & provisioning -- */
+
+    protected function pageServers($vars, $clientId)
+    {
+        $service = new ServerOrderService();
+        return $this->page('My servers', 'servers', [
+            'servers' => $service->serversForClient($clientId),
+            'flash'   => $this->flash('ok'),
+            'error'   => $this->flash('error'),
+        ]);
+    }
+
+    protected function pageServerDetail($vars, $clientId)
+    {
+        $orders = new ServerOrderService();
+        $provisioning = new ServerProvisioningService();
+        $id = Http::getInt('id');
+        $flashError = $this->flash('error');
+        $console = null;
+
+        if (Http::isPost()) {
+            Csrf::verifyRequest();
+            $do = Http::post('do');
+            try {
+                switch ($do) {
+                    case 'start':
+                    case 'stop':
+                    case 'reboot':
+                    case 'shutdown':
+                    case 'rescue':
+                    case 'delete':
+                        $provisioning->requestAction($clientId, $id, $do);
+                        $this->flash('ok', ucfirst($do) . ' requested — the server is being updated.');
+                        break;
+                    case 'reinstall':
+                        $provisioning->requestReinstall(
+                            $clientId,
+                            $id,
+                            Http::postInt('os_version_id'),
+                            Http::post('architecture'),
+                            Http::post('confirm') === '1'
+                        );
+                        $this->flash('ok', 'Reinstall queued — this erases the current OS data.');
+                        break;
+                    case 'console':
+                        $console = $provisioning->consoleFor($clientId, $id);
+                        break;
+                    case 'sshkey_add':
+                        $orders->addSshKey($clientId, Http::post('key_name'), Http::post('public_key'));
+                        $this->flash('ok', 'SSH key added.');
+                        break;
+                    case 'sshkey_delete':
+                        $orders->deleteSshKey($clientId, Http::postInt('key_id'));
+                        $this->flash('ok', 'SSH key deleted.');
+                        break;
+                }
+            } catch (ValidationException $e) {
+                $flashError = implode(' ', $e->fieldErrors());
+                $this->flash('error', $flashError);
+            } catch (\Chs\Core\ChsException $e) {
+                $this->flash('error', $e->getMessage());
+            }
+            if ($do !== 'console') {
+                Http::redirect('index.php?m=cloudhost247services&action=server&id=' . $id);
+            }
+        }
+
+        $server = $orders->serverForClient($clientId, $id);
+
+        // Which actions does the provider actually support?
+        $caps = [];
+        if (!empty($server['provider_id'])) {
+            $registry = new \Chs\Providers\Infrastructure\InfraProviderRegistry();
+            $provider = $registry->resolve((int) $server['provider_id']);
+            $caps = $provider->capabilities();
+        }
+
+        // Reinstall targets: active OSes flagged reinstall-supported.
+        $catalog = new OsCatalogService();
+        $reinstallTargets = [];
+        foreach ($catalog->listAdmin() as $os) {
+            if ($os['status'] !== 'ACTIVE' || empty($os['is_reinstall_supported'])) {
+                continue;
+            }
+            foreach ($catalog->versions((int) $os['id']) as $version) {
+                if (!in_array($version['status'], OsCatalogService::SELECTABLE_VERSION_STATUSES, true)) {
+                    continue;
+                }
+                $archs = $catalog->architecturesFor((int) $version['id'], (int) $server['provider_id'], (int) $server['region_id']);
+                if (!$archs) {
+                    continue;
+                }
+                $reinstallTargets[] = [
+                    'os_name'       => $os['name'],
+                    'os_slug'       => $os['slug'],
+                    'version_id'    => (int) $version['id'],
+                    'display_name'  => $version['display_name'],
+                    'architectures' => array_keys($archs),
+                ];
+            }
+        }
+
+        // Recent provisioning jobs for this server (status timeline).
+        $jobs = Db::all('provisioning_jobs', ['module_server_id' => $id], 'id DESC', 10);
+        foreach ($jobs as &$j) {
+            $j['logs'] = json_decode((string) $j['logs'], true) ?: [];
+        }
+        unset($j);
+
+        return $this->page('Server: ' . $server['hostname'], 'server_detail', [
+            'server'            => $server,
+            'capabilities'      => $caps,
+            'actions'           => ServerProvisioningService::ACTIONS,
+            'reinstall_targets' => $reinstallTargets,
+            'jobs'              => $jobs,
+            'ssh_keys'          => $orders->sshKeys($clientId),
+            'console'           => $console,
+            'flash_ok'          => $this->flash('ok'),
+            'flash_error'       => $flashError,
+        ]);
+    }
+
+    protected function pageOrder($vars, $clientId)
+    {
+        $service = new ServerOrderService();
+        $error = $this->flash('error');
+        $selected = [
+            'product_id'    => Http::getInt('product_id'),
+            'region_id'     => Http::getInt('region_id'),
+            'architecture'  => Http::get('architecture'),
+        ];
+
+        if (Http::isPost()) {
+            Csrf::verifyRequest();
+            if (Http::post('do') === 'create') {
+                try {
+                    $result = $service->createOrder(
+                        $clientId,
+                        Http::postInt('product_id'),
+                        Http::post('billing_cycle'),
+                        Http::post('hostname'),
+                        Http::postInt('os_version_id'),
+                        Http::post('architecture'),
+                        Http::postInt('ssh_key_id'),
+                        Http::postInt('region_id')
+                    );
+                    // Real WHMCS invoice — the customer pays through the
+                    // platform's existing checkout.
+                    Http::redirect($result['invoice_url']);
+                } catch (ValidationException $e) {
+                    $this->flash('error', implode(' ', $e->fieldErrors()));
+                    Http::redirect('index.php?m=cloudhost247services&action=order');
+                } catch (\Chs\Core\ChsException $e) {
+                    $this->flash('error', $e->getMessage());
+                    Http::redirect('index.php?m=cloudhost247services&action=order');
+                }
+            }
+        }
+
+        $products = $service->products();
+        $config = null;
+        $pricing = null;
+        $currency = \Chs\Core\Platform::gateway()->clientCurrency($clientId);
+        if ($selected['product_id']) {
+            try {
+                $config = $service->configuration($selected['product_id'], $selected['region_id'], $selected['architecture']);
+                unset($config['pricing']);
+                $pricing = \Chs\Core\Platform::gateway()->productPricing($selected['product_id'], $currency);
+            } catch (\Chs\Core\ChsException $e) {
+                $error = $error ?: $e->getMessage();
+                $selected['product_id'] = 0;
+            }
+        }
+
+        return $this->page('Order a server', 'order', [
+            'products'      => $products,
+            'config'        => $config,
+            'os_json'       => $config ? json_encode($config['operatingSystems']) : '[]',
+            'pricing'       => $pricing,
+            'currency'      => $currency,
+            'selected'      => $selected,
+            'ssh_keys'      => $service->sshKeys($clientId),
+            'error'         => $error,
+            'flash'         => $this->flash('ok'),
+            'order_enabled' => \Chs\Core\Settings::bool('server_order_enabled', true),
+        ]);
+    }
+
+    /**
+     * JSON configuration endpoint for the order form: valid OS/version/
+     * architecture combinations only — the frontend never keeps its own
+     * OS database.
+     */
+    protected function pageOrderConfig($vars, $clientId)
+    {
+        try {
+            $service = new ServerOrderService();
+            $config = $service->configuration(
+                Http::getInt('product_id'),
+                Http::getInt('region_id'),
+                Http::get('architecture')
+            );
+            Http::json(['ok' => true, 'config' => $config]);
+        } catch (ValidationException $e) {
+            Http::json(['ok' => false, 'error' => implode(' ', $e->fieldErrors())], 422);
+        } catch (\Chs\Core\ChsException $e) {
+            Http::json(['ok' => false, 'error' => $e->getMessage()], 400);
         }
     }
 

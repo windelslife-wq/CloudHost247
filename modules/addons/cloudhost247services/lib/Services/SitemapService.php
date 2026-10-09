@@ -26,6 +26,7 @@ class SitemapService
      */
     private const PAGES = [
         'index.php'                 => '1.0',
+        'domains.php'               => '0.9',
         'domain-search.php'         => '0.9',
         'bulk-domain-search.php'    => '0.8',
         'domain-transfer.php'       => '0.8',

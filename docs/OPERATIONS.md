@@ -9,8 +9,21 @@ no aspirational features.
 1. Upload the repository over the WHMCS web root (files under `templates/`,
    `modules/`, root landing pages, `sitemap.xml`, `sitemap.html`).
 2. WHMCS admin → **Apps & Integrations** → enable **CloudHost247 Services**.
-   The module migrator (0001–0011) creates all module tables and seeds club
-   plans, TLD metadata, and inbox labels.
+   The module migrator (0001–0014) creates all module tables and seeds club
+   plans, TLD metadata, and inbox labels. Migration 0012 adds the domain
+   platform tables (providers, transfers, DNS records, searches, jobs,
+   renewals, events, expiration notices) — see
+   [`DOMAIN_SERVICES.md`](DOMAIN_SERVICES.md). Migrations 0013–0014 add the
+   infrastructure layer (OS catalog, provider image mappings, provisioning
+   jobs, module servers, SSH keys) and seed the 12-OS catalog — see
+   [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md).
+3a. Domain platform credentials: set the `CHS_CREDENTIALS_KEY` environment
+   variable (32 random bytes, hex) **before** saving any HTTP registrar
+   provider credential — saving fails closed without it. Registrar provider
+   setup: admin → CloudHost247 Services → **Domain Providers**. Until a
+   write-capable provider is configured, availability/WHOIS/pricing are real
+   via the WHMCS chain, but register/transfer/renew/DNS writes fail honestly
+   with `PROVIDER_OPERATION_UNSUPPORTED` and wait in **Operations (Jobs)**.
 3. Module settings (admin → addon modules → CloudHost247 Services):
    - `service_enabled` = on
    - `system_url` = `https://<your-host>/` (drives sitemap.xml generation)
@@ -23,8 +36,11 @@ no aspirational features.
    */5 * * * * /usr/bin/php -q /path/to/whmcs/modules/addons/cloudhost247services/cron/cloudhost247services.php
    ```
 
-   Runs auction heartbeat + invoice lapse, club expiry, and sitemap
-   regeneration. Auctions depend on this cadence; do not run it less often.
+   Runs auction heartbeat + invoice lapse, club expiry, sitemap
+   regeneration, and the domain platform: expiration checks + auto-renew
+   notices, provider/platform sync, reconciliation, and the job-queue drain.
+   Auctions and domain renewals depend on this cadence; do not run it less
+   often.
 5. Confirm `sitemap.xml` is web-writable by the cron user if you want
    regenerated versions to land (the suite logs and skips on failure).
 
@@ -142,13 +158,44 @@ download history. Verify a real paid staging order, a duplicate payment hook, a
 cancellation, and a wrong-customer token before production release. See
 [`DIGITAL_PRODUCTS.md`](DIGITAL_PRODUCTS.md) for storage, schema and incident response.
 
-## 7. Testing & lint gates
+## 7. Domain Services platform (v1.1.0)
+
+The domain platform lives inside this same addon — no second module, billing
+or customer system. WHMCS stays the system of record; the module links to
+`tbldomains`, invoices and clients and never duplicates them.
+
+- **Customer surfaces:** `/domains` + `/domain.php` (3-column Domain Services
+  section), `domain-search.php`, `bulk-domain-search.php` (results + CSV
+  export), `domain-transfer.php`, plus client-area module pages
+  (`action=search|bulk|bulkview|domains|domain|transfers|transfer`) with
+  auto-renew, privacy, nameservers and DNS-record management.
+- **Admin surfaces:** Domains, Domain Providers, Transfers and
+  Operations (Jobs) sections; domain KPIs on the Overview page; domain
+  settings on the Settings page.
+- **Providers:** resolution is TLD mapping → default provider → WHMCS
+  registrar chain → null. The default WHMCS provider answers
+  availability/WHOIS/pricing for real and refuses writes honestly
+  (`PROVIDER_OPERATION_UNSUPPORTED`). Add a write-capable HTTP provider on
+  the Domain Providers page; credentials are sealed with AES-256-GCM under
+  `CHS_CREDENTIALS_KEY` and never reach the browser.
+- **Jobs:** cron enqueues `DOMAIN_EXPIRATION_CHECK`,
+  `DOMAIN_PROVIDER_SYNC` and `DOMAIN_RECONCILIATION` (per-window idempotency
+  keys) and drains the queue; `InvoicePaid` drives registration, transfer and
+  renewal jobs after verifying the invoice is actually paid.
+- **Honest failures:** unconfigured capabilities surface
+  `DOMAIN_PROVIDER_NOT_CONFIGURED` / `DOMAIN_LOOKUP_UNAVAILABLE` /
+  `PROVIDER_OPERATION_UNSUPPORTED` — never fabricated data.
+
+Full runbook (schema, provider setup, settings, job table, audit events,
+limitations): [`DOMAIN_SERVICES.md`](DOMAIN_SERVICES.md).
+
+## 8. Testing & lint gates
 
 From `modules/addons/cloudhost247services/`:
 
 ```bash
 npm install               # test harness deps (php-wasm)
-node tests/run.mjs        # 704 assertions currently pass
+node tests/run.mjs        # 1062 assertions currently pass (21 suites)
 node tests/lint.mjs       # module PHP parse gate: BAD=0 LINT_OK
 node tests/lint-root.mjs  # root landing pages parse gate: ROOT_LINT_OK
 ```
@@ -173,7 +220,7 @@ node tests/lint.mjs       # 45 module PHP files load clean: BAD=0 LINT_OK
 
 `node_modules/` is local-only and git-ignored on purpose.
 
-## 7a. CloudHost247 AI control plane
+## 8a. CloudHost247 AI control plane
 
 Activate `modules/addons/cloudhost247ai/` from WHMCS Addon Modules (additive
 migrations only — deactivation drops nothing). It is fully functional as a
@@ -196,12 +243,15 @@ ever suspect, engage the kill switch on the module's Settings page — it stops
 every model call and tool execution immediately without deactivating the
 module. Full runbook: [`AI_CONTROL_PLANE.md`](AI_CONTROL_PLANE.md).
 
-## 7. Credentials matrix (what needs what)
+## 9. Credentials matrix (what needs what)
 
 | Feature | Works without credentials | Needs |
 |---|---|---|
-| Domain search / bulk | Yes (WHMCS cart chain) | Registrar API for live quotes beyond cart |
-| Transfers | EPP flow UI + state machine | Registrar API to submit transfers |
+| Domain search / bulk | Yes (WHMCS cart chain via default provider) | Registrar API for live quotes beyond cart |
+| Domain registration / renewal | Real availability + invoicing; registration job fails honestly | Write-capable provider + `CHS_CREDENTIALS_KEY` env (sealed credentials) |
+| Transfers | EPP flow UI + state machine + real invoices | Registrar API to submit transfers (writes surface `PROVIDER_OPERATION_UNSUPPORTED` until then) |
+| Domain management / DNS | Reads + honest capability refusals | Write-capable provider for nameserver/DNS writes |
+| Auto-renewal | Notices + invoices via existing gateway | Registrar API to execute renewals |
 | WHOIS lookup | Yes (port-43 whois) | — |
 | Valuation | Yes (rules engine) | Comparable-sales feed (optional, marked) |
 | Auctions | Yes (full lifecycle) | Payment gateway for settlement invoices |

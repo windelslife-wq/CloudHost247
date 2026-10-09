@@ -40,6 +40,45 @@ $text = function ($key, $values, $attrs = '') {
   </div>
 
   <div class="chs-panel">
+    <h3>Domain platform</h3>
+    <table class="table">
+      <?= $row('Domain search', $check('domain_search_enabled', 'Enabled')
+        . ' &nbsp; limits/day: clients ' . $text('search_daily_limit_per_client', $values, 'type="number" min="1" style="width:80px;display:inline-block"')
+        . ' guests ' . $text('search_daily_limit_per_ip', $values, 'type="number" min="1" style="width:80px;display:inline-block"')) ?>
+      <?= $row('Bulk search', $check('bulk_search_enabled', 'Enabled')
+        . ' &nbsp; max names ' . $text('bulk_max_domains', $values, 'type="number" min="1" style="width:90px;display:inline-block"')
+        . ' &nbsp; lists/day: clients ' . $text('bulk_daily_limit_per_client', $values, 'type="number" min="1" style="width:80px;display:inline-block"')
+        . ' guests ' . $text('bulk_daily_limit_per_ip', $values, 'type="number" min="1" style="width:80px;display:inline-block"')) ?>
+      <?= $row('Transfers', $check('transfer_enabled', 'Enabled')
+        . ' &nbsp; invoice due after ' . $text('transfer_invoice_due_days', $values, 'type="number" min="1" style="width:70px;display:inline-block"') . ' days') ?>
+      <?= $row('Customer dashboard', $check('domains_dashboard_enabled', 'My domains area') . ' &nbsp; '
+        . $check('domain_dns_enabled', 'DNS management') . ' &nbsp; ' . $check('domain_sync_enabled', 'Platform sync')) ?>
+      <?= $row('Expiration notices', $text('domain_renewal_notice_days', $values, 'placeholder="30,14,7,3,1"'),
+        'Days before expiry to notify (comma-separated). Auto-renew runs within the lead window below.') ?>
+      <?= $row('Auto-renew lead', $text('domain_auto_renew_lead_days', $values, 'type="number" min="1" style="width:80px;display:inline-block"') . ' days before expiry') ?>
+      <?= $row('Worker', $text('jobs_per_run', $values, 'type="number" min="1" style="width:80px;display:inline-block"') . ' jobs/run &nbsp; lease '
+        . $text('jobs_lease_seconds', $values, 'type="number" min="30" style="width:80px;display:inline-block"') . 's &nbsp; max attempts '
+        . $text('jobs_max_attempts', $values, 'type="number" min="1" style="width:70px;display:inline-block"')) ?>
+      <?= $row('HTTP provider timeout', $text('provider_http_timeout_seconds', $values, 'type="number" min="5" style="width:80px;display:inline-block"') . ' seconds') ?>
+    </table>
+  </div>
+
+  <div class="chs-panel">
+    <h3>Servers &amp; provisioning</h3>
+    <table class="table">
+      <?= $row('Enabled', $check('server_order_enabled', 'Server ordering') . ' &nbsp; '
+        . $check('server_provisioning_enabled', 'Provisioning worker') . ' &nbsp; '
+        . $check('server_actions_enabled', 'Server actions') . ' &nbsp; '
+        . $check('server_health_check_enabled', 'Health checks') . ' &nbsp; '
+        . $check('server_notifications_enabled', 'Customer notifications')) ?>
+      <?= $row('Provisioning', $text('provisioning_max_attempts', $values, 'type="number" min="1" style="width:70px;display:inline-block"') . ' max attempts &nbsp; poll every '
+        . $text('provisioning_poll_seconds', $values, 'type="number" min="30" style="width:70px;display:inline-block"') . 's &nbsp; deadline '
+        . $text('provisioning_deadline_minutes', $values, 'type="number" min="5" style="width:70px;display:inline-block"') . ' min') ?>
+    </table>
+    <p class="chs-muted small">Provider credentials are sealed with the CHS_CREDENTIALS_KEY environment variable — set it before saving credentials under Infra Providers. Without a configured provider, ordering offers no deployable OS images and provisioning fails honestly with PROVIDER_NOT_CONFIGURED.</p>
+  </div>
+
+  <div class="chs-panel">
     <h3>Auctions</h3>
     <table class="table">
       <?= $row('Enabled', $check('auction_enabled', 'Master switch') . ' &nbsp; '

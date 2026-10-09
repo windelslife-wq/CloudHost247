@@ -250,6 +250,202 @@ class WhmcsGateway implements GatewayInterface
         Db::exec('UPDATE tbltickets SET status = ? WHERE id = ?', [(string) $status, (int) $ticketId]);
     }
 
+    /* ------------------------------------------- servers, products, orders -- */
+
+    public function serverProducts()
+    {
+        $rows = Db::query(
+            "SELECT p.id, p.name, p.description, p.paytype, p.servertype, p.gid,
+                    g.name AS group_name
+             FROM tblproducts p
+             LEFT JOIN tblproductgroups g ON g.id = p.gid
+             WHERE p.type = 'server' AND (p.hidden IS NULL OR p.hidden = '' OR p.hidden = '0')
+             ORDER BY p.name"
+        );
+        $out = [];
+        foreach ($rows ?: [] as $row) {
+            $pricing = $this->productPricing((int) $row['id'], $this->defaultCurrency());
+            $amount = null;
+            if ($pricing['cycles'] !== []) {
+                $cycle = (string) $row['paytype'] === 'onetime' ? 'onetime'
+                    : ((string) $row['paytype'] === 'free' ? 'free' : 'monthly');
+                $amount = isset($pricing['cycles'][$cycle]) ? $pricing['cycles'][$cycle] : reset($pricing['cycles']);
+            }
+            $row['price_minor'] = $amount === null ? null : (int) $amount + (int) $pricing['setup_minor'];
+            $row['currency'] = $this->defaultCurrency();
+            $out[] = $row;
+        }
+        return $out;
+    }
+
+    public function productDetail($productId)
+    {
+        $rows = Db::query('SELECT * FROM tblproducts WHERE id = ?', [(int) $productId]);
+        return $rows ? $rows[0] : null;
+    }
+
+    public function productPricing($productId, $currency)
+    {
+        $currency = strtoupper((string) $currency);
+        $rows = Db::query(
+            'SELECT pr.*, c.code AS currency_code
+             FROM tblpricing pr JOIN tblcurrencies c ON c.id = pr.currency
+             WHERE pr.type = \'product\' AND pr.relid = ?',
+            [(int) $productId]
+        );
+        $cycles = [];
+        $setup = 0;
+        foreach ($rows ?: [] as $row) {
+            if (strtoupper((string) $row['currency_code']) !== $currency) {
+                continue;
+            }
+            foreach (['onetime', 'monthly', 'quarterly', 'semiannually', 'annually', 'biennially', 'triennially'] as $cycle) {
+                $value = isset($row[$cycle]) ? (string) $row[$cycle] : '';
+                if ($value === '' || $value === '-1.00') {
+                    continue; // -1.00 = disabled cycle in WHMCS
+                }
+                $minor = Money::fromDecimal($value, $currency);
+                if ($minor > 0 || $value === '0.00') {
+                    $cycles[$cycle] = $minor;
+                }
+            }
+            $setup = max($setup, Money::fromDecimal((string) $row['msetupfee'], $currency));
+        }
+        return ['setup_minor' => $setup, 'cycles' => $cycles];
+    }
+
+    public function createOrder($clientId, $productId, $billingCycle, $hostname, $paymentMethod = '')
+    {
+        if (!function_exists('localAPI')) {
+            throw new \RuntimeException('localAPI() is unavailable outside the WHMCS runtime.');
+        }
+        $product = $this->productDetail($productId);
+        if (!$product || (string) $product['type'] !== 'server') {
+            throw new \InvalidArgumentException('Product is not a server product.');
+        }
+        $payload = [
+            'userid'        => (int) $clientId,
+            'pid'           => (int) $productId,
+            'paymentmethod' => (string) $paymentMethod,
+            'billingcycle'  => (string) $billingCycle,
+            'domain'        => (string) $hostname,
+        ];
+        $res = localAPI('AddOrder', $payload, (int) \Chs\Core\Identity::adminId() ?: null);
+        if (!isset($res['result']) || $res['result'] !== 'success' || !isset($res['orderid'])) {
+            throw new \RuntimeException('AddOrder returned an error: ' . substr(chs_json($res), 0, 200));
+        }
+        return [
+            'order_id'   => (int) $res['orderid'],
+            'invoice_id' => isset($res['invoiceid']) ? (int) $res['invoiceid'] : 0,
+        ];
+    }
+
+    public function serviceForInvoice($invoiceId)
+    {
+        $rows = Db::query(
+            'SELECT h.* FROM tblhosting h
+             JOIN tblorders o ON o.id = h.orderid
+             WHERE o.invoiceid = ? ORDER BY h.id ASC LIMIT 1',
+            [(int) $invoiceId]
+        );
+        return $rows ? $rows[0] : null;
+    }
+
+    public function hostingDetail($hostingId)
+    {
+        $rows = Db::query(
+            'SELECT h.*, p.name AS product_name, p.type AS product_type, p.paytype
+             FROM tblhosting h LEFT JOIN tblproducts p ON p.id = h.packageid
+             WHERE h.id = ?',
+            [(int) $hostingId]
+        );
+        return $rows ? $rows[0] : null;
+    }
+
+    public function clientServices($clientId)
+    {
+        return Db::query(
+            'SELECT h.id, h.userid, h.packageid, h.orderid, h.domain, h.server, h.status,
+                    h.nextduedate, h.regdate, p.name AS product_name
+             FROM tblhosting h LEFT JOIN tblproducts p ON p.id = h.packageid
+             WHERE h.userid = ? ORDER BY h.id DESC',
+            [(int) $clientId]
+        ) ?: [];
+    }
+
+    public function updateService($hostingId, array $fields)
+    {
+        $allowed = ['domain' => true, 'server' => true, 'status' => true, 'nextduedate' => true];
+        $set = [];
+        $bind = [];
+        foreach ($allowed as $column => $ok) {
+            if (array_key_exists($column, $fields)) {
+                $set[] = '`' . $column . '` = ?';
+                $bind[] = $fields[$column];
+            }
+        }
+        if (!$set) {
+            return false;
+        }
+        $bind[] = (int) $hostingId;
+        return Db::exec('UPDATE tblhosting SET ' . implode(', ', $set) . ' WHERE id = ?', $bind) > 0;
+    }
+
+    public function createServerRecord(array $fields)
+    {
+        $allowed = [
+            'name' => '', 'ipaddress' => '', 'hostname' => '', 'username' => '',
+            'password' => '', 'type' => '', 'assignedips' => '', 'ns1' => '', 'ns2' => '',
+        ];
+        $cols = [];
+        $bind = [];
+        foreach ($allowed as $column => $default) {
+            if (array_key_exists($column, $fields)) {
+                $cols[$column] = $fields[$column];
+            }
+        }
+        if (!$cols) {
+            throw new \InvalidArgumentException('No server record fields supplied.');
+        }
+        $columns = implode(', ', array_map(function ($c) {
+            return '`' . $c . '`';
+        }, array_keys($cols)));
+        $placeholders = implode(', ', array_fill(0, count($cols), '?'));
+        Db::exec(
+            'INSERT INTO tblservers (' . $columns . ') VALUES (' . $placeholders . ')',
+            array_values($cols)
+        );
+        $row = Db::query('SELECT MAX(id) AS m FROM tblservers');
+        return $row && $row[0]['m'] !== null ? (int) $row[0]['m'] : 0;
+    }
+
+    public function updateServerRecord($serverId, array $fields)
+    {
+        $allowed = [
+            'name' => true, 'ipaddress' => true, 'hostname' => true, 'username' => true,
+            'password' => true, 'type' => true, 'assignedips' => true, 'ns1' => true, 'ns2' => true,
+        ];
+        $set = [];
+        $bind = [];
+        foreach ($allowed as $column => $ok) {
+            if (array_key_exists($column, $fields)) {
+                $set[] = '`' . $column . '` = ?';
+                $bind[] = $fields[$column];
+            }
+        }
+        if (!$set) {
+            return false;
+        }
+        $bind[] = (int) $serverId;
+        return Db::exec('UPDATE tblservers SET ' . implode(', ', $set) . ' WHERE id = ?', $bind) > 0;
+    }
+
+    public function serverRecord($serverId)
+    {
+        $rows = Db::query('SELECT * FROM tblservers WHERE id = ?', [(int) $serverId]);
+        return $rows ? $rows[0] : null;
+    }
+
     /* -------------------------------------------------------- internals -- */
 
     private function systemUrl()

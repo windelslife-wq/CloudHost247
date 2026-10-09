@@ -31,11 +31,12 @@ function cloudhost247services_config()
     return [
         'name' => 'CloudHost247 Services Suite',
         'description' => 'Domain valuation, domain auctions, Discount Domain Club, TLD catalogue, '
-            . 'WHOIS lookup, expert services, Logo Studio, AI Website Builder and unified inbox — '
-            . 'integrated with WHMCS billing, domains and the client area.',
+            . 'WHOIS lookup, expert services, Logo Studio, AI Website Builder, unified inbox, and the '
+            . 'infrastructure layer: OS catalog, provider image mappings, server provisioning, '
+            . 'OS reinstall and server management — integrated with WHMCS billing, domains and the client area.',
         'author' => 'CloudHost247',
         'language' => 'english',
-        'version' => '1.0.0',
+        'version' => '1.2.0',
         'fields' => [
             'service_enabled' => [
                 'FriendlyName' => 'Suite enabled',
@@ -134,6 +135,12 @@ function cloudhost247services_sidebar($vars)
 {
     $items = [
         ''              => ['dashboard', 'Dashboard'],
+        'search'        => ['domain_search', 'Domain search'],
+        'bulk'          => ['bulk_domain_search', 'Bulk domain search'],
+        'domains'       => ['my_domains', 'My domains'],
+        'transfers'     => ['domain_transfers', 'Domain transfers'],
+        'servers'       => ['my_servers', 'My servers'],
+        'order'         => ['order_server', 'Order server'],
         'valuation'     => ['domain_valuation', 'Domain valuation'],
         'auctions'      => ['domain_auctions_nav', 'Domain auctions'],
         'watchlist'     => ['auction_watchlist', 'Auction watchlist'],

@@ -76,6 +76,41 @@ class Settings
         'notifications_email'           => '1',
         'notifications_inapp'           => '1',
 
+        'domain_search_enabled'         => '1',
+        'search_daily_limit_per_client' => '100',
+        'search_daily_limit_per_ip'     => '30',
+
+        'bulk_search_enabled'           => '1',
+        'bulk_max_domains'              => '500',
+        'bulk_daily_limit_per_client'   => '10',
+        'bulk_daily_limit_per_ip'       => '3',
+        'bulk_chunk_size'               => '25',
+        'bulk_sync_threshold'           => '10',
+
+        'transfer_enabled'              => '1',
+        'transfer_invoice_due_days'     => '7',
+
+        'domains_dashboard_enabled'     => '1',
+        'domain_dns_enabled'            => '1',
+        'domain_renewal_notice_days'    => '30,14,7,3,1',
+        'domain_auto_renew_lead_days'   => '7',
+        'domain_sync_enabled'           => '1',
+
+        'jobs_per_run'                  => '25',
+        'jobs_lease_seconds'            => '300',
+        'jobs_max_attempts'             => '5',
+        'jobs_retention_days'           => '30',
+        'provider_http_timeout_seconds' => '15',
+
+        'server_order_enabled'          => '1',
+        'server_provisioning_enabled'   => '1',
+        'server_actions_enabled'        => '1',
+        'server_health_check_enabled'   => '1',
+        'server_notifications_enabled'  => '1',
+        'provisioning_max_attempts'     => '5',
+        'provisioning_poll_seconds'     => '60',
+        'provisioning_deadline_minutes' => '30',
+
         'system_url'                    => '',
         'default_currency'              => '',
     ];

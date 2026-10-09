@@ -1,0 +1,114 @@
+<?php
+/**
+ * Admin → Provisioning: the provisioning job journal with per-stage logs,
+ * retry/cancel, and worker controls.
+ *
+ * @var array $jobs @var int $total @var int $page @var int $pages @var array $stats
+ * @var array $filters @var array|null $detail @var array $statuses @var array $types
+ * @var int $servers @var string $baseLink
+ */
+?>
+<div class="chs-grid-3">
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $servers ?></div><div class="chs-kpi-label">Active servers</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) ($stats['QUEUED'] ?? 0) + (int) ($stats['CREATING'] ?? 0) + (int) ($stats['INSTALLING_OS'] ?? 0) + (int) ($stats['HEALTH_CHECK'] ?? 0) ?></div><div class="chs-kpi-label">In flight</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) ($stats['READY'] ?? 0) ?></div><div class="chs-kpi-label">Ready</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) ($stats['FAILED'] ?? 0) ?></div><div class="chs-kpi-label">Failed</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) ($stats['CANCELLED'] ?? 0) ?></div><div class="chs-kpi-label">Cancelled</div></div>
+</div>
+
+<div class="chs-panel">
+  <h3>Actions</h3>
+  <form method="post" action="<?= chs_h($baseLink . '&action=provisioning') ?>" style="display:inline-block">
+    <?= $tokenField ?><input type="hidden" name="do" value="run">
+    <button class="btn btn-primary">Run worker now</button>
+  </form>
+  <p class="chs-muted small">The cron drains the shared job queue every 5 minutes. Failed jobs keep their machine code until retried; retries are idempotent.</p>
+</div>
+
+<div class="chs-panel">
+  <h3>Provisioning jobs</h3>
+  <form method="get" action="addonmodules.php" class="form-inline" style="margin-bottom:10px">
+    <input type="hidden" name="module" value="cloudhost247services">
+    <input type="hidden" name="action" value="provisioning">
+    <select class="form-control input-sm" name="status">
+      <option value="">Any status</option>
+      <?php foreach ($statuses as $s): ?><option value="<?= chs_h($s) ?>"<?= $filters['status'] === $s ? ' selected' : '' ?>><?= chs_h($s) ?></option><?php endforeach; ?>
+    </select>
+    <select class="form-control input-sm" name="type">
+      <option value="">Any type</option>
+      <?php foreach ($types as $t): ?><option value="<?= chs_h($t) ?>"<?= $filters['type'] === $t ? ' selected' : '' ?>><?= chs_h($t) ?></option><?php endforeach; ?>
+    </select>
+    <input class="form-control input-sm" name="search" value="<?= chs_h($filters['search']) ?>" placeholder="hostname / job key / error">
+    <button class="btn btn-sm btn-default">Filter</button>
+  </form>
+  <table class="table table-striped">
+    <thead><tr><th>ID</th><th>Type</th><th>Server</th><th>OS</th><th>Status</th><th>Stage</th><th>Attempts</th><th>Error</th><th>Updated</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($jobs as $j): ?>
+      <tr>
+        <td><?= (int) $j['id'] ?><div class="chs-muted small"><?= chs_h($j['job_key']) ?></div></td>
+        <td><code><?= chs_h($j['type']) ?></code><?= $j['action'] ? '<div class="chs-muted small">' . chs_h($j['action']) . '</div>' : '' ?></td>
+        <td><?= chs_h($j['server_hostname'] ?: $j['hostname']) ?><div class="chs-muted small"><?= chs_h($j['provider_server_id']) ?></div></td>
+        <td class="small"><?= chs_h($j['os_display'] ?: '—') ?></td>
+        <td><?= chs_status_pill($j['status']) ?></td>
+        <td class="small"><?= chs_h($j['stage']) ?></td>
+        <td><?= (int) $j['attempts'] ?> / <?= (int) $j['max_attempts'] ?></td>
+        <td><?php if ($j['error_code'] !== ''): ?><span class="label label-danger"><?= chs_h($j['error_code']) ?></span><div class="chs-muted small"><?= chs_h($j['error_message']) ?></div><?php endif; ?></td>
+        <td class="small"><?= chs_dt($j['updated_at']) ?></td>
+        <td class="text-nowrap">
+          <a class="btn btn-xs btn-default" href="<?= chs_h($baseLink . '&action=provisioning&id=' . (int) $j['id']) ?>">Logs</a>
+          <?php if ($j['status'] === 'FAILED'): ?>
+          <form method="post" action="<?= chs_h($baseLink . '&action=provisioning') ?>" style="display:inline">
+            <?= $tokenField ?><input type="hidden" name="do" value="job_retry"><input type="hidden" name="id" value="<?= (int) $j['id'] ?>">
+            <button class="btn btn-xs btn-primary">Retry</button>
+          </form>
+          <?php endif; ?>
+          <?php if (in_array($j['status'], ['QUEUED', 'FAILED'], true)): ?>
+          <form method="post" action="<?= chs_h($baseLink . '&action=provisioning') ?>" style="display:inline">
+            <?= $tokenField ?><input type="hidden" name="do" value="job_cancel"><input type="hidden" name="id" value="<?= (int) $j['id'] ?>">
+            <button class="btn btn-xs btn-danger">Cancel</button>
+          </form>
+          <?php endif; ?>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  <?php if ($pages > 1): ?>
+  <p class="chs-muted small">Page <?= (int) $page ?> of <?= (int) $pages ?> · <?= (int) $total ?> job(s)</p>
+  <?php endif; ?>
+</div>
+
+<?php if ($detail): ?>
+<div class="chs-panel">
+  <h3>Job #<?= (int) $detail['id'] ?> — <?= chs_h($detail['job_key']) ?></h3>
+  <table class="table table-condensed">
+    <tr><th>Type / action</th><td><?= chs_h($detail['type']) ?><?= $detail['action'] ? ' / ' . chs_h($detail['action']) : '' ?></td>
+        <th>Status</th><td><?= chs_status_pill($detail['status']) ?></td></tr>
+    <tr><th>Client</th><td>#<?= (int) $detail['client_id'] ?></td><th>Correlation</th><td><code><?= chs_h($detail['correlation_id']) ?></code></td></tr>
+    <tr><th>Invoice</th><td><?= $detail['invoice_id'] ? '#' . (int) $detail['invoice_id'] : '—' ?></td><th>Hosting</th><td><?= $detail['hosting_id'] ? '#' . (int) $detail['hosting_id'] : '—' ?></td></tr>
+    <tr><th>Provider server</th><td><?= chs_h($detail['provider_server_id'] ?: '—') ?></td><th>IP</th><td><?= chs_h($detail['ip_address'] ?: '—') ?></td></tr>
+    <tr><th>Started</th><td><?= chs_dt($detail['started_at']) ?></td><th>Completed</th><td><?= chs_dt($detail['completed_at']) ?></td></tr>
+  </table>
+  <h4>Stage log</h4>
+  <table class="table table-condensed table-striped">
+    <thead><tr><th>Time</th><th>Stage</th><th>Message</th></tr></thead>
+    <tbody>
+    <?php foreach ($detail['logs'] as $entry): ?>
+      <tr>
+        <td class="small"><?= chs_h($entry['at']) ?></td>
+        <td><code><?= chs_h($entry['stage']) ?></code></td>
+        <td><?= $entry['ok'] ? '' : '<span class="label label-danger">!</span> ' ?><?= chs_h($entry['message']) ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  <?php if ($detail['status'] === 'FAILED'): ?>
+  <form method="post" action="<?= chs_h($baseLink . '&action=provisioning') ?>" style="display:inline-block;margin-right:8px">
+    <?= $tokenField ?><input type="hidden" name="do" value="job_retry"><input type="hidden" name="id" value="<?= (int) $detail['id'] ?>">
+    <button class="btn btn-primary">Retry job</button>
+  </form>
+  <?php endif; ?>
+  <a class="btn btn-default" href="<?= chs_h($baseLink . '&action=provisioning') ?>">Back to jobs</a>
+</div>
+<?php endif; ?>

@@ -1,0 +1,70 @@
+<?php
+/**
+ * Admin → Transfers: every tracked transfer with status filter and the
+ * operational actions (retry provider submission, mark submitted/completed,
+ * run platform reconciliation). The sealed EPP is never rendered.
+ *
+ * @var array $rows @var string $status @var array $statuses @var string $baseLink
+ */
+?>
+<div class="chs-panel">
+  <h3>Domain transfers</h3>
+  <p>
+    <a class="btn btn-default btn-sm<?= $status === '' ? ' active' : '' ?>" href="<?= chs_h($baseLink . '&action=transfers') ?>">All</a>
+    <?php foreach ($statuses as $s): ?>
+      <a class="btn btn-default btn-sm<?= $status === $s ? ' active' : '' ?>" href="<?= chs_h($baseLink . '&action=transfers&status=' . $s) ?>"><?= chs_h(ucfirst(strtolower($s))) ?></a>
+    <?php endforeach; ?>
+  </p>
+  <form method="post" action="<?= chs_h($baseLink . '&action=transfers') ?>" style="margin-bottom:10px">
+    <?= $tokenField ?><input type="hidden" name="do" value="sync">
+    <button class="btn btn-primary btn-sm">Reconcile with platform now</button>
+    <span class="chs-muted small">Marks transfers COMPLETED when WHMCS shows the domain active for the client.</span>
+  </form>
+  <table class="table table-striped">
+    <thead><tr><th>ID</th><th>Domain</th><th>Client</th><th>Status</th><th>Registrar</th><th>Price</th><th>Invoice</th><th>Requested</th><th>Last error</th><th>Actions</th></tr></thead>
+    <tbody>
+    <?php foreach ($rows as $t): ?>
+      <tr>
+        <td><?= (int) $t['id'] ?></td>
+        <td><?= chs_h($t['domain']) ?></td>
+        <td>#<?= (int) $t['client_id'] ?></td>
+        <td><?= chs_status_pill($t['status']) ?></td>
+        <td><?= chs_h($t['registrar']) ?></td>
+        <td><?= chs_money((int) $t['price_minor'], (string) $t['currency']) ?></td>
+        <td><?= $t['invoice_id'] ? '#' . (int) $t['invoice_id'] : '—' ?></td>
+        <td><?= chs_dt($t['requested_at']) ?></td>
+        <td><code class="small"><?= chs_h(mb_strlen((string) $t['error']) > 80 ? substr((string) $t['error'], 0, 80) . '…' : (string) $t['error']) ?></code></td>
+        <td>
+          <?php if (!in_array($t['status'], ['COMPLETED', 'CANCELLED', 'EXPIRED'], true)): ?>
+          <form method="post" action="<?= chs_h($baseLink . '&action=transfers') ?>" style="display:inline">
+            <?= $tokenField ?><input type="hidden" name="do" value="retry"><input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
+            <button class="btn btn-xs btn-default">Retry submission</button>
+          </form>
+          <form method="post" action="<?= chs_h($baseLink . '&action=transfers') ?>" style="display:inline">
+            <?= $tokenField ?><input type="hidden" name="do" value="submitted"><input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
+            <input name="provider_ref" class="form-control input-sm" placeholder="provider ref" style="width:90px;display:inline-block">
+            <button class="btn btn-xs btn-default">Mark submitted</button>
+          </form>
+          <form method="post" action="<?= chs_h($baseLink . '&action=transfers') ?>" style="display:inline">
+            <?= $tokenField ?><input type="hidden" name="do" value="completed"><input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
+            <button class="btn btn-xs btn-success">Mark completed</button>
+          </form>
+          <?php else: ?>
+            <span class="chs-muted small">settled</span>
+          <?php endif; ?>
+        </td>
+      </tr>
+      <?php if (!empty($t['history'])): ?>
+      <tr>
+        <td colspan="10" class="chs-muted small">
+          History:
+          <?php foreach (array_slice($t['history'], -5) as $h): ?>
+            <div><?= chs_h(substr((string) $h['at'], 0, 16)) ?> — <?= chs_h($h['actor']) ?>: <?= chs_h(isset($h['from']) ? $h['from'] . ' → ' : '') ?><?= chs_h($h['to']) ?> <?= chs_h(isset($h['note']) ? '— ' . $h['note'] : '') ?></div>
+          <?php endforeach; ?>
+        </td>
+      </tr>
+      <?php endif; ?>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+</div>

@@ -1,0 +1,86 @@
+<?php
+/**
+ * Admin → Domains: platform reconciliation report, provider health summary,
+ * tracked domains and open transfers. Actions: run sync, enqueue DNS sync.
+ *
+ * @var array $report @var array $domains @var array $providers @var array $mappings
+ * @var array $transfers @var string $baseLink
+ */
+?>
+<div class="chs-grid-3">
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $report['total'] ?></div><div class="chs-kpi-label">Tracked domains</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $report['active'] ?></div><div class="chs-kpi-label">Active</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $report['expiring_30d'] ?></div><div class="chs-kpi-label">Expiring ≤ 30 days</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $report['auto_renew_enabled'] ?></div><div class="chs-kpi-label">Auto-renew on</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $report['dns_records'] ?></div><div class="chs-kpi-label">DNS records (module)</div></div>
+  <div class="chs-card"><div class="chs-kpi"><?= (int) $report['missing_at_platform'] ?></div><div class="chs-kpi-label">Missing at platform</div></div>
+</div>
+
+<div class="chs-panel">
+  <h3>Actions</h3>
+  <form method="post" action="<?= chs_h($baseLink . '&action=domains') ?>" style="display:inline-block;margin-right:8px">
+    <?= $tokenField ?><input type="hidden" name="do" value="sync">
+    <button class="btn btn-primary">Sync from platform now</button>
+  </form>
+  <a class="btn btn-default" href="<?= chs_h($baseLink . '&action=operations') ?>">Open job operations</a>
+  <a class="btn btn-default" href="<?= chs_h($baseLink . '&action=providers') ?>">Manage providers</a>
+  <a class="btn btn-default" href="<?= chs_h($baseLink . '&action=transfers') ?>">Transfers</a>
+  <p class="chs-muted small">Sync merges WHMCS' own domain records (tbldomains) into the module's tracking rows — nothing is duplicated and nothing is deleted; domains that vanished at the platform are flagged <code>missing_at_platform</code>.</p>
+</div>
+
+<div class="chs-panel">
+  <h3>Provider health</h3>
+  <?php if (!$providers): ?>
+    <p class="chs-muted">No external providers configured — all TLDs resolve through the WHMCS registrar chain (the platform's own lookup pipeline).</p>
+  <?php else: ?>
+  <table class="table table-striped">
+    <thead><tr><th>Provider</th><th>Type</th><th>Default</th><th>Health</th><th>Mapped TLDs</th></tr></thead>
+    <tbody>
+    <?php
+    foreach ($providers as $p):
+        $mapped = array_keys(array_filter($mappings, function ($pid) use ($p) { return $pid === (int) $p['id']; }));
+    ?>
+      <tr>
+        <td><?= chs_h($p['name']) ?></td>
+        <td><code><?= chs_h($p['type']) ?></code></td>
+        <td><?= !empty($p['is_default']) ? 'yes' : '—' ?></td>
+        <td>
+          <?php if ($p['health_status'] === 'ok'): ?><span class="label label-success">ok</span>
+          <?php elseif ($p['health_status'] === 'not_configured'): ?><span class="label label-warning">not configured</span>
+          <?php else: ?><span class="label label-default"><?= chs_h($p['health_status']) ?></span><?php endif; ?>
+          <?php if ($p['last_error'] !== ''): ?><div class="chs-muted small"><?= chs_h($p['last_error']) ?></div><?php endif; ?>
+        </td>
+        <td><?= $mapped ? chs_h(implode(', ', array_map(function ($t) { return '.' . $t; }, $mapped))) : '—' ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  <?php endif; ?>
+</div>
+
+<div class="chs-panel">
+  <h3>Tracked domains (latest 100)</h3>
+  <table class="table table-striped">
+    <thead><tr><th>ID</th><th>Domain</th><th>Client</th><th>Status</th><th>Registrar</th><th>Expires</th><th>Auto-renew</th><th>Privacy</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($domains as $d): ?>
+      <tr>
+        <td><?= (int) $d['id'] ?></td>
+        <td><?= chs_h($d['domain']) ?></td>
+        <td>#<?= (int) $d['client_id'] ?></td>
+        <td><?= chs_status_pill($d['status']) ?></td>
+        <td><?= chs_h($d['registrar']) ?></td>
+        <td><?= chs_dt($d['expires_at'] ? substr($d['expires_at'], 0, 10) : '') ?></td>
+        <td><?= !empty($d['auto_renew']) ? 'on' : 'off' ?></td>
+        <td><?= !empty($d['whois_privacy']) ? 'on' : 'off' ?></td>
+        <td>
+          <form method="post" action="<?= chs_h($baseLink . '&action=domains') ?>" style="display:inline">
+            <?= $tokenField ?><input type="hidden" name="do" value="dns_sync"><input type="hidden" name="id" value="<?= (int) $d['id'] ?>">
+            <button class="btn btn-xs btn-default">Sync DNS</button>
+          </form>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+</div>
