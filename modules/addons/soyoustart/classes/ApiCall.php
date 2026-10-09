@@ -2,8 +2,11 @@
 
 namespace WGSModule\Soyoustart\classes;
 
+require_once __DIR__ . "/../lib/TrustedEndpoint.php";
+
 use WHMCS\Database\Capsule;
 use WHMCS\Module\Addon\Soyoustart\Helper;
+use WHMCS\Module\Addon\Soyoustart\TrustedEndpoint;
 
 class ApiCall extends Helper
 {
@@ -11,72 +14,9 @@ class ApiCall extends Helper
 
     public $url = '';
 
-    // public function __curlCall($method, $data = null, $apiUrl =null, $header =[], $action ='')
-    // {
-    //     $curl = curl_init();
-    //     switch ($method) {
-    //         case 'POST':
-    //             curl_setopt($curl, CURLOPT_POST, 1);
-    //             if (is_string($data)) {
-    //                 curl_setopt($curl, CURLOPT_POSTFIELDS, (strlen($data) ? $data : ""));
-    //             } else {
-    //                 curl_setopt($curl, CURLOPT_POSTFIELDS, (count($data) ? json_encode($data) : ""));
-    //             }
-    //             break;
-    //         case 'PUT':
-
-    //             curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'PUT');
-    //             if (is_string($data)) {
-    //                 curl_setopt($curl, CURLOPT_POSTFIELDS, (strlen($data) ? $data : ""));
-    //             } else {
-    //                 curl_setopt($curl, CURLOPT_POSTFIELDS, (count($data) ? json_encode($data) : ""));
-    //             }
-    //             break;
-
-    //         case 'DELETE':
-
-    //             curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'DELETE');
-    //             if (is_string($data)) {
-    //                 curl_setopt($curl, CURLOPT_POSTFIELDS, (strlen($data) ? $data : ""));
-    //             } else {
-    //                 curl_setopt($curl, CURLOPT_POSTFIELDS, (count($data) ? json_encode($data) : ""));
-    //             }
-    //             break;
-
-    //         default:
-    //             curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'GET');
-    //     }
-
-    //     curl_setopt($curl, CURLOPT_URL, $apiUrl);
-    //     curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-    //     curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, 0);
-    //     curl_setopt($curl, CURLOPT_MAXREDIRS, 10);
-    //     curl_setopt($curl, CURLOPT_FOLLOWLOCATION, 1);
-    //     curl_setopt($curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
-
-    //     curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
-    //     curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, false);
-
-    //     curl_setopt($curl, CURLOPT_HTTPHEADER, $header);
-    //     $response = curl_exec($curl);
-    //     $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-    //     if (curl_errno($curl)) {
-    //         throw new \Exception(curl_error($curl));
-    //     }
-    //     curl_close($curl);
-
-    //     $isLogEnable = Capsule::table("mod_acl_settings")->where(["key" => "generalaclSettings"])->first();
-    //     $isLogEnable = (isset($isLogEnable->id) ? json_decode($isLogEnable->value, true) : []);
-
-    //     if (isset($isLogEnable["moduleLogstatus"]) && $isLogEnable["moduleLogstatus"] == "on" && !in_array($action, ["Get Info for vps server", "Get Info for eco server", "Get info for baremetal server"])) {
-    //         $postData = ["datetime" => date("Y/m/d h:i"), "action" => $action, "type" => $method, "request" => (empty($data) || is_null($data) ? $apiUrl : json_encode($data)), "response" => json_encode(['httpcode' => $httpCode, 'result' => json_decode($response)])];
-    //         Capsule::table("mod_soyoustart_log")->insertGetId($postData);
-    //     }
-    //     return ['httpcode' => $httpCode, 'result' => json_decode($response)];
-    // }
-
     public function __curlCall($method, $data = null, $apiUrl = null, $header = [], $action = '')
     {
+        TrustedEndpoint::assertOvhUrl($apiUrl, $header);
         $curl = curl_init();
         $method = strtoupper($method);
         $body = "";
@@ -106,10 +46,11 @@ class ApiCall extends Helper
         curl_setopt($curl, CURLOPT_TIMEOUT, 60);
         curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, 20);
 
-        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, false);
-
-        curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
+        // OVH request signatures cover the exact URL; never follow a redirect
+        // or send signed credentials without verified TLS/hostname checks.
+        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, 2);
+        curl_setopt($curl, CURLOPT_FOLLOWLOCATION, false);
         curl_setopt($curl, CURLOPT_MAXREDIRS, 10);
 
         $finalHeader = array_merge($header, [

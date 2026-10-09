@@ -15,7 +15,13 @@
  */
 
 use Ch247Apps\Infrastructure\Providers\HetznerCloudAdapter;
+use Ch247Apps\Infrastructure\Providers\DigitalOceanAdapter;
+use Ch247Apps\Infrastructure\Providers\VultrAdapter;
+use Ch247Apps\Infrastructure\Providers\ContaboReadOnlyAdapter;
 
 return [
     new HetznerCloudAdapter(),
+    new DigitalOceanAdapter(),
+    new VultrAdapter(),
+    new ContaboReadOnlyAdapter(),
 ];

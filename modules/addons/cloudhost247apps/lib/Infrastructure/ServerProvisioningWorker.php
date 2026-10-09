@@ -111,6 +111,10 @@ class ServerProvisioningWorker
             return 'The provider rejected the configured credentials.';
         }
         if ($e instanceof ProviderOperationException) {
+            if ($e->errorCode() === 'PROVIDER_CREATE_UNCERTAIN'
+                || $e->errorCode() === 'PROVIDER_ACTION_UNCERTAIN') {
+                return 'The provider operation may have succeeded. Reconcile the provider resource and billing before any retry.';
+            }
             return 'The provider operation failed. Review the provider account and adapter logs.';
         }
         if ($e instanceof \Ch247Apps\Core\ProviderUnavailableException
@@ -134,6 +138,11 @@ class ServerProvisioningWorker
             ? (string) $job['idempotency_key'] : 'customer-server:' . $type . ':' . $serverId;
 
         if ($type === JobQueue::TYPE_SERVER_CREATE) {
+            if (!empty($row['product_mapping_id'])) {
+                // An operator may revoke/remap a product while the job waits in
+                // the queue. Fail before any provider call, never orphan a new VM.
+                (new ServerProductMappingService($this->actor))->assertCurrent($row);
+            }
             return $this->create($job, $payload, $row, $serverId, $accountId, $idempotencyKey);
         }
         if ($type === JobQueue::TYPE_SERVER_POLL) {
@@ -224,9 +233,12 @@ class ServerProvisioningWorker
         $spec = isset($payload['spec']) && is_array($payload['spec'])
             ? ServerSpec::normalise($payload['spec']) : ServerSpec::normalise([]);
         // Keep the final authoritative WHMCS check adjacent to the external
-        // create call; service/payment state may have changed while credentials
-        // were loaded or the worker was scheduled.
+        // create call; service/payment state or the operator mapping may have
+        // changed while credentials were loaded or the worker was scheduled.
         $this->servers->workerAssertProvisioningAllowed($serverId);
+        if (!empty($row['product_mapping_id'])) {
+            (new ServerProductMappingService($this->actor))->assertCurrent($row);
+        }
         $raw = $context['adapter']->createServer($context['credentials'], $context['config'], $spec, $idempotencyKey);
         if (!is_array($raw)) {
             throw new ProviderOperationException('The provider returned an invalid server-create response.');

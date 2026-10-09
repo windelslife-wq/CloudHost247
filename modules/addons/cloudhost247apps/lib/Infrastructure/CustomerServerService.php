@@ -79,6 +79,30 @@ class CustomerServerService
     public function requestProvision($serviceId, $providerAccountId, array $spec, $idempotencyKey)
     {
         Rbac::assert($this->actor, Rbac::CUSTOMER_SERVER_MANAGE);
+        return $this->queueProvision($serviceId, $providerAccountId, $spec, $idempotencyKey, null);
+    }
+
+    /** Customers supply only a purchased WHMCS service id; the operator owns all VM choices. */
+    public function requestSelfServiceProvision($serviceId, $idempotencyKey)
+    {
+        Rbac::assert($this->actor, Rbac::CUSTOMER_SERVER_ORDER);
+        if (!$this->actor->isCustomer()) {
+            throw new AuthorizationException('Only the owning customer can request self-service provisioning.');
+        }
+        if (!Settings::bool('customer_server_self_service_enabled', false)) {
+            throw new ProviderConfigurationException('Self-service VPS provisioning is disabled.');
+        }
+        $serviceId = (int) $serviceId;
+        if ($serviceId <= 0) {
+            throw new ValidationException('A WHMCS service is required.');
+        }
+        $mapping = (new ServerProductMappingService($this->actor, $this->gateway))->forService($serviceId);
+        return $this->queueProvision($serviceId, $mapping['provider_account_id'], $mapping['spec'],
+            $idempotencyKey, $mapping['id']);
+    }
+
+    private function queueProvision($serviceId, $providerAccountId, array $spec, $idempotencyKey, $mappingId)
+    {
         if (!Settings::bool('customer_server_provisioning_enabled', false)) {
             throw new ProviderConfigurationException(
                 'Customer-server provisioning is disabled until a real provider adapter is configured and verified.'
@@ -95,32 +119,52 @@ class CustomerServerService
             'whmcs_service_id' => $serviceId,
             'provider_account_id' => $providerAccountId,
             'spec' => $normalisedSpec,
+            'product_mapping_id' => $mappingId,
         ];
 
         try {
             $run = Idempotency::run('customer-server.provision', $key, $payload, function () use (
-                $serviceId, $providerAccountId, $normalisedSpec
+                $serviceId, $providerAccountId, $normalisedSpec, $mappingId
             ) {
+                if ($mappingId !== null) {
+                    $this->assertSelfServiceMapping($serviceId, $providerAccountId, $normalisedSpec, $mappingId);
+                }
                 $existing = Db::first('customer_servers', ['whmcs_service_id' => $serviceId]);
+                if ($existing && (int) $existing['product_mapping_id'] !== (int) $mappingId) {
+                    throw new ConflictException('This WHMCS service already has a different provisioning request.');
+                }
                 if ($existing) {
                     $this->assertSameProvisioningRequest($existing, $providerAccountId, $normalisedSpec);
                     return ['server_id' => (int) $existing['id'], 'job_id' => (int) $existing['create_job_id']];
                 }
 
+                if (Db::first('contabo_adoptions', ['whmcs_service_id' => $serviceId])) {
+                    throw new ConflictException('This WHMCS service is reserved for an existing Contabo instance.');
+                }
                 $billing = $this->billingContext($serviceId);
                 // Fail before making any record when the configured provider is
                 // not real, verified, and capable of creating and reading VMs.
                 $this->accounts->assertOperational($providerAccountId, ['server.create', 'server.get']);
 
-                return Db::transaction(function () use ($serviceId, $providerAccountId, $normalisedSpec, $billing) {
+                return Db::transaction(function () use ($serviceId, $providerAccountId, $normalisedSpec, $billing, $mappingId) {
+                    // Recheck the operator mapping and service ownership at insertion time.
+                    if ($mappingId !== null) {
+                        $this->assertSelfServiceMapping($serviceId, $providerAccountId, $normalisedSpec, $mappingId);
+                    }
                     // Recheck inside the transaction; the unique WHMCS service
                     // key remains the final concurrency guard.
                     $existing = Db::first('customer_servers', ['whmcs_service_id' => $serviceId]);
+                    if ($existing && (int) $existing['product_mapping_id'] !== (int) $mappingId) {
+                        throw new ConflictException('This WHMCS service already has a different provisioning request.');
+                    }
                     if ($existing) {
                         $this->assertSameProvisioningRequest($existing, $providerAccountId, $normalisedSpec);
                         return ['server_id' => (int) $existing['id'], 'job_id' => (int) $existing['create_job_id']];
                     }
 
+                    if (Db::first('contabo_adoptions', ['whmcs_service_id' => $serviceId])) {
+                        throw new ConflictException('This WHMCS service is reserved for an existing Contabo instance.');
+                    }
                     $now = Clock::now();
                     $serverId = Db::insert('customer_servers', [
                         'uuid' => Str::uuid4(),
@@ -129,6 +173,7 @@ class CustomerServerService
                         'whmcs_order_id' => (int) $billing['order_id'],
                         'whmcs_invoice_id' => (int) $billing['invoice_id'],
                         'provider_account_id' => $providerAccountId,
+                        'product_mapping_id' => $mappingId,
                         'name' => $normalisedSpec['name'],
                         'hostname' => $normalisedSpec['hostname'],
                         'region' => $normalisedSpec['region'],
@@ -189,6 +234,9 @@ class CustomerServerService
             $existing = Db::first('customer_servers', ['whmcs_service_id' => $serviceId]);
             if (!$existing) {
                 throw new ConflictException('This provisioning request is already being processed.');
+            }
+            if ((int) $existing['product_mapping_id'] !== (int) $mappingId) {
+                throw new ConflictException('This WHMCS service already has a different provisioning request.');
             }
             $this->assertSameProvisioningRequest($existing, $providerAccountId, $normalisedSpec);
             $run = ['result' => ['server_id' => (int) $existing['id'],
@@ -729,6 +777,22 @@ class CustomerServerService
             ]);
         }
         return true;
+    }
+
+    private function assertSelfServiceMapping($serviceId, $accountId, array $spec, $mappingId)
+    {
+        $mapping = (new ServerProductMappingService($this->actor, $this->gateway))->forService($serviceId);
+        if ($mapping['id'] !== (int) $mappingId || $mapping['provider_account_id'] !== (int) $accountId
+            || $mapping['spec'] !== $spec) {
+            throw new ProviderConfigurationException('Self-service product mapping changed before provisioning.');
+        }
+    }
+
+    /** Reuse the existing WHMCS service/order/invoice/payment gate for operator-only adoption. */
+    public function billingContextForExisting($serviceId)
+    {
+        Rbac::assert($this->actor, Rbac::CUSTOMER_SERVER_MANAGE);
+        return $this->billingContext((int) $serviceId);
     }
 
     private function billingContext($serviceId)

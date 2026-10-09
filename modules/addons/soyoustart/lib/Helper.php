@@ -1,6 +1,8 @@
 <?php
 namespace WHMCS\Module\Addon\Soyoustart;
 
+require_once __DIR__ . "/TrustedEndpoint.php";
+
 use BadFunctionCallException;
 use WHMCS\Database\Capsule;
 if (!defined("WHMCS")) {
@@ -632,13 +634,14 @@ class Helper
     }
     public function getProductApiRequest($url)
     {
+        TrustedEndpoint::assertOvhUrl($url);
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_HEADER, 0);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
         $jsonData = curl_exec($ch);
         curl_close($ch);
         return json_decode($jsonData);
@@ -1281,6 +1284,7 @@ class Helper
     }
     private function __googleAuthCurlCall()
     {
+        TrustedEndpoint::assertGoogleUrl($this->url);
         $this->curl = curl_init();
         $this->postdata = ($this->data_type == "http_build_query" ?  http_build_query($this->postdata) : json_encode($this->postdata));
         switch ($this->method) {
@@ -1304,8 +1308,10 @@ class Helper
         curl_setopt($this->curl, CURLOPT_ENCODING, '');
         curl_setopt($this->curl, CURLOPT_HTTP_VERSION, 'CURL_HTTP_VERSION_1_1');
         curl_setopt($this->curl, CURLOPT_MAXREDIRS, 10);
-        curl_setopt($this->curl, CURLOPT_TIMEOUT, 0);
-        curl_setopt($this->curl, CURLOPT_FOLLOWLOCATION, 1);
+        curl_setopt($this->curl, CURLOPT_TIMEOUT, 30);
+        curl_setopt($this->curl, CURLOPT_FOLLOWLOCATION, false);
+        curl_setopt($this->curl, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($this->curl, CURLOPT_SSL_VERIFYHOST, 2);
         curl_setopt($this->curl, CURLOPT_HTTPHEADER, $this->header);
         $response = curl_exec($this->curl);
         $httpCode = curl_getinfo($this->curl, CURLINFO_HTTP_CODE);

@@ -84,6 +84,7 @@ class Rbac
     // Customer-owned infrastructure VMs and provider accounts (separate from
     // App Cloud deployment targets and their agents).
     const CUSTOMER_SERVER_VIEW_OWN = 'customer_server.view.own';
+    const CUSTOMER_SERVER_ORDER    = 'customer_server.order';
     const CUSTOMER_SERVER_VIEW_ALL = 'customer_server.view.all';
     const CUSTOMER_SERVER_MANAGE   = 'customer_server.manage';
     const PROVIDER_ACCOUNT_VIEW     = 'provider_account.view';
@@ -119,7 +120,7 @@ class Rbac
             self::INSTALL_SETTINGS_WRITE,
             self::DOMAIN_VIEW_OWN, self::DOMAIN_MANAGE_OWN,
             self::BILLING_VIEW_OWN, self::BILLING_CHECKOUT,
-            self::CUSTOMER_SERVER_VIEW_OWN,
+            self::CUSTOMER_SERVER_VIEW_OWN, self::CUSTOMER_SERVER_ORDER,
         ],
         // Read-only operations staff: can look at everything, change nothing.
         Actor::ROLE_STAFF => [

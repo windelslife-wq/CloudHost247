@@ -18,6 +18,9 @@ require_once __DIR__ . '/autoload.php';
 
 use Ch247Apps\Catalog\PanelCatalogService;
 use Ch247Apps\Core\AppsException;
+use Ch247Apps\Core\Csrf;
+use Ch247Apps\Core\Db;
+use Ch247Apps\Core\Str;
 use Ch247Apps\Core\Identity;
 use Ch247Apps\Core\Logger;
 use Ch247Apps\Core\Migrator;
@@ -28,6 +31,8 @@ use Ch247Apps\Http\PanelAccountAdmin;
 use Ch247Apps\Http\PanelCatalogAdmin;
 use Ch247Apps\Infrastructure\ProviderBootstrap;
 use Ch247Apps\Infrastructure\ProviderRegistry;
+use Ch247Apps\Infrastructure\ServerProductMappingService;
+use Ch247Apps\Integration\Gateway;
 
 function cloudhost247apps_config()
 {
@@ -37,7 +42,7 @@ function cloudhost247apps_config()
             . 'integrated with WHMCS services, invoices, identity and RBAC.',
         'author' => 'CloudHost247',
         'language' => 'english',
-        'version' => '1.9.2',
+        'version' => '1.11.0',
         'fields' => [
             'bootstrap_admin_id' => [
                 'FriendlyName' => 'Bootstrap administrator ID',
@@ -64,6 +69,18 @@ function cloudhost247apps_config()
                 'Type' => 'yesno',
                 'Default' => '',
                 'Description' => 'Keep off until a real provider adapter is installed, credentials are encrypted and verified, and staging checks pass.',
+            ],
+            'customer_server_self_service_enabled' => [
+                'FriendlyName' => 'Self-service VPS provisioning enabled',
+                'Type' => 'yesno',
+                'Default' => '',
+                'Description' => 'Separately gated: only paid customer-owned WHMCS server services with an enabled operator product mapping can request a fixed VM. Keep off until WHMCS/provider staging and billing review pass.',
+            ],
+            'contabo_adoption_enabled' => [
+                'FriendlyName' => 'Contabo existing-instance adoption enabled',
+                'Type' => 'yesno',
+                'Default' => '',
+                'Description' => 'Staff-only read-back of an existing paid Contabo instance, never provider ordering or cancellation. Keep off until Contabo/WHMCS identity and billing staging passes.',
             ],
             'panel_account_workflow_enabled' => [
                 'FriendlyName' => 'cPanel account lifecycle workflow enabled',
@@ -184,6 +201,7 @@ function cloudhost247apps_output($vars)
         }
         $apiUrl = Whmcs::systemUrl('modules/addons/cloudhost247apps/api/index.php?path=/v1');
         $enabled = Settings::bool('customer_server_provisioning_enabled', false);
+        $selfServiceEnabled = Settings::bool('customer_server_self_service_enabled', false);
         $panelWorkflowEnabled = Settings::bool('panel_account_workflow_enabled', false);
         $uapiDomainsEnabled = Settings::bool('cpanel_uapi_domains_enabled', false);
         $uapiAliasesEnabled = Settings::bool('cpanel_uapi_aliases_enabled', false);
@@ -206,6 +224,7 @@ function cloudhost247apps_output($vars)
         echo '</p>';
         echo '<dl class="dl-horizontal">'
             . '<dt>Customer-server provisioning</dt><dd>' . ($enabled ? 'Enabled' : 'Disabled (safe default)') . '</dd>'
+            . '<dt>Customer VPS self-service</dt><dd>' . ($selfServiceEnabled ? 'Enabled (requires paid mapped service)' : 'Disabled (safe default)') . '</dd>'
             . '<dt>cPanel account workflow</dt><dd>' . ($panelWorkflowEnabled
                 ? 'Enabled (staff-only existing accounts; customer creation unavailable)' : 'Disabled (safe default)') . '</dd>'
             . '<dt>cPanel UAPI domain inventory</dt><dd>' . ($uapiDomainsEnabled
@@ -256,6 +275,9 @@ function cloudhost247apps_output($vars)
 function cloudhost247apps_clientarea($vars)
 {
     $actor = Identity::current();
+    if (isset($_GET['action']) && (string) $_GET['action'] === 'vps') {
+        return cloudhost247apps_vps_clientarea($actor);
+    }
     try {
         $catalog = (new PanelCatalogService($actor))->customerCatalog();
         return [
@@ -294,12 +316,76 @@ function cloudhost247apps_clientarea($vars)
     ];
 }
 
+/** Paid WHMCS service → fixed-spec request; the cart remains the only checkout. */
+function cloudhost247apps_vps_clientarea($actor)
+{
+    $page = [
+        'pagetitle' => 'My VPS',
+        'breadcrumb' => ['index.php?m=cloudhost247apps&action=vps' => 'My VPS'],
+        'templatefile' => 'templates/client/vps',
+        'requirelogin' => true,
+        'forcessl' => true,
+        'vars' => [
+            'vps_products' => [], 'vps_services' => [], 'vps_error' => '',
+            'vps_enabled' => false, 'vps_csrf' => '', 'vps_api_url' => '', 'vps_js_url' => '',
+        ],
+    ];
+    if (!$actor->isCustomer()) {
+        return $page;
+    }
+    try {
+        $enabled = Settings::bool('customer_server_provisioning_enabled', false)
+            && Settings::bool('customer_server_self_service_enabled', false);
+        $page['vars']['vps_enabled'] = $enabled;
+        if (!$enabled) {
+            return $page;
+        }
+        ProviderBootstrap::boot();
+        $mappings = new ServerProductMappingService($actor);
+        $page['vars']['vps_products'] = $mappings->customerCatalog();
+        $gateway = Gateway::get();
+        foreach ($gateway->getClientServices($actor->clientId) as $service) {
+            $serviceId = isset($service['id']) ? (int) $service['id'] : 0;
+            if ($serviceId <= 0) {
+                continue;
+            }
+            try {
+                $mappings->forService($serviceId);
+                $existing = Db::first('customer_servers', ['whmcs_service_id' => $serviceId]);
+                $product = $gateway->getProduct((int) $service['packageid']);
+                $page['vars']['vps_services'][] = [
+                    'id' => $serviceId,
+                    'product' => $product ? (string) $product['name'] : 'VPS',
+                    'status' => isset($service['domainstatus']) ? (string) $service['domainstatus'] : '',
+                    'existing' => $existing !== null,
+                    'request_key' => Str::uuid4(),
+                ];
+            } catch (AppsException $e) {
+                // Unmapped, retired or inaccessible products are not offered.
+                continue;
+            }
+        }
+        $page['vars']['vps_csrf'] = Csrf::token();
+        $page['vars']['vps_api_url'] = Whmcs::moduleUrl('api/index.php?path=/v1/servers/self-service');
+        $page['vars']['vps_js_url'] = Whmcs::moduleUrl('assets/vps.js');
+    } catch (\Throwable $e) {
+        Logger::warning('VPS client page unavailable.', ['exception' => get_class($e), 'source' => 'vps']);
+        $page['vars']['vps_products'] = [];
+        $page['vars']['vps_services'] = [];
+        $page['vars']['vps_error'] = 'The VPS service is temporarily unavailable.';
+    }
+    return $page;
+}
+
 /** WHMCS client-area navigation entry for the catalog. */
 function cloudhost247apps_sidebar($vars)
 {
     $link = isset($vars['modulelink']) && is_scalar($vars['modulelink'])
         ? (string) $vars['modulelink'] : 'index.php?m=cloudhost247apps';
+    $vpsLink = (Identity::current()->isCustomer() && Settings::bool('customer_server_self_service_enabled', false))
+        ? '<a class="list-group-item" href="' . htmlspecialchars($link . '&action=vps', ENT_QUOTES, 'UTF-8')
+            . '">My VPS</a>' : '';
     return '<div class="panel panel-default"><div class="panel-heading"><strong>App Cloud</strong></div>'
         . '<div class="list-group"><a class="list-group-item" href="'
-        . htmlspecialchars($link, ENT_QUOTES, 'UTF-8') . '">Control Panel Catalog</a></div></div>';
+        . htmlspecialchars($link, ENT_QUOTES, 'UTF-8') . '">Control Panel Catalog</a>' . $vpsLink . '</div></div>';
 }

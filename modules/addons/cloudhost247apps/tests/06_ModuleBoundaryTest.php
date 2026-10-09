@@ -18,7 +18,7 @@ Harness::boot();
 section('WHMCS addon configuration matches fail-closed defaults');
 $config = cloudhost247apps_config();
 T::is('addon identity is registered with WHMCS', 'CloudHost247 App Cloud', $config['name']);
-T::is('Phase 14 DNS inventory API ships in the WHMCS addon patch release', '1.9.2', $config['version']);
+T::is('read-only Contabo adoption ships in the WHMCS addon minor release', '1.11.0', $config['version']);
 T::is('unmapped admin default matches staff RBAC', 'staff', $config['fields']['default_admin_role']['Default']);
 T::is('customer VM provisioning is disabled in module config', '', $config['fields']['customer_server_provisioning_enabled']['Default']);
 T::is('cPanel account workflow is disabled in module config', '', $config['fields']['panel_account_workflow_enabled']['Default']);
@@ -64,13 +64,13 @@ cloudhost247apps_output([]);
 $output = ob_get_clean();
 Identity::reset();
 T::contains('readiness page honestly reports the installed adapter',
-    'real provider adapter(s) installed: Hetzner Cloud', $output);
+    'real provider adapter(s) installed: Contabo (existing instances only), DigitalOcean, Hetzner Cloud, Vultr', $output);
 T::contains('readiness page still discloses the fail-closed error code for uninstalled providers',
     'PROVIDER_UNAVAILABLE', $output);
 T::contains('readiness page claims no live provider verification',
     'this page claims no live provider verification', $output);
 T::contains('readiness page counts installed adapters against the catalog',
-    '1 installed of 6 catalog entries', $output);
+    '4 installed of 6 catalog entries', $output);
 T::contains('readiness page does not claim provisioning is enabled', 'Disabled (safe default)', $output);
 T::contains('readiness page discloses the safe cPanel workflow default',
     'cPanel account workflow</dt><dd>Disabled (safe default)</dd>', $output);

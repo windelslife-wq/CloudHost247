@@ -159,6 +159,12 @@ class Str
         return $json === false ? '{}' : $json;
     }
 
+    /** PHP 7.4-compatible equivalent of array_is_list (also true for []). */
+    public static function isList(array $value)
+    {
+        return $value === [] || array_keys($value) === range(0, count($value) - 1);
+    }
+
     /** Does $haystack start with $needle? (PHP 7 compatible.) */
     public static function startsWith($haystack, $needle)
     {

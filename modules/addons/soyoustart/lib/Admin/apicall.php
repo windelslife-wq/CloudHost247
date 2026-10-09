@@ -12,6 +12,8 @@ class getData
 
     private function __curlCall()
     {
+        require_once __DIR__ . "/../TrustedEndpoint.php";
+        \WHMCS\Module\Addon\Soyoustart\TrustedEndpoint::assertGoogleUrl($this->baseUrl . $this->endPoint);
         $this->curl = curl_init();
 
         switch ($this->method) {
@@ -46,8 +48,10 @@ class getData
 
         curl_setopt($this->curl, CURLOPT_TIMEOUT, 10); //timeout in seconds
 
-        curl_setopt($this->curl, CURLOPT_FOLLOWLOCATION, 1);
+        curl_setopt($this->curl, CURLOPT_FOLLOWLOCATION, false);
 
+        curl_setopt($this->curl, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($this->curl, CURLOPT_SSL_VERIFYHOST, 2);
         curl_setopt($this->curl, CURLOPT_HTTPHEADER, $this->header);
 
         $response = curl_exec($this->curl);

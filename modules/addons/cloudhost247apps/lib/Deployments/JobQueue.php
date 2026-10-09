@@ -57,6 +57,7 @@ class JobQueue
     const TYPE_SERVER_RESIZE     = 'server_resize';
     const TYPE_SERVER_DELETE     = 'server_delete';
     const TYPE_PROVIDER_ACCOUNT_VERIFY = 'provider_account_verify';
+    const TYPE_CONTABO_ADOPT = 'contabo_adopt_existing';
     const TYPE_PANEL_ACCOUNT_VERIFY = 'panel_account_verify';
     const TYPE_PANEL_ACCOUNT_DOMAINS = 'panel_account_domains_list';
     const TYPE_PANEL_ACCOUNT_ALIASES = 'panel_account_domain_aliases_list';
@@ -74,6 +75,7 @@ class JobQueue
         self::TYPE_SERVER_CREATE, self::TYPE_SERVER_POLL, self::TYPE_SERVER_REBOOT,
         self::TYPE_SERVER_POWER_ON, self::TYPE_SERVER_POWER_OFF, self::TYPE_SERVER_REBUILD,
         self::TYPE_SERVER_RESIZE, self::TYPE_SERVER_DELETE, self::TYPE_PROVIDER_ACCOUNT_VERIFY,
+        self::TYPE_CONTABO_ADOPT,
         self::TYPE_PANEL_ACCOUNT_VERIFY, self::TYPE_PANEL_ACCOUNT_DOMAINS, self::TYPE_PANEL_ACCOUNT_ALIASES,
         self::TYPE_PANEL_ACCOUNT_QUOTA_USAGE, self::TYPE_PANEL_ACCOUNT_BANDWIDTH_USAGE,
         self::TYPE_PANEL_ACCOUNT_SUSPEND, self::TYPE_PANEL_ACCOUNT_UNSUSPEND, self::TYPE_PANEL_ACCOUNT_TERMINATE,
