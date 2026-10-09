@@ -5,7 +5,7 @@ WHMCS, a database, or PHPUnit.
 
 ## What is covered
 
-`run.php` contains 15 tests:
+`run.php` contains 39 tests: 15 general tests, plus `usage_proxy_tests.php` (24 tests for the authenticated usage/log proxy, S-6).
 
 | Area | Tests |
 |---|---|
@@ -47,8 +47,8 @@ file system, runs `tests/run.php`, and runs a whole-module syntax lint
 
 | Runtime | Suite | Syntax lint |
 |---|---|---|
-| PHP 8.3.33 (php-wasm) | 15/15 passed | 639 files, 0 syntax errors |
-| PHP 7.4.33 (php-wasm) | 15/15 passed | 639 files, 0 syntax errors |
+| PHP 8.3.33 (php-wasm) | 39/39 passed | 643 files, 0 syntax errors |
+| PHP 7.4.33 (php-wasm) | 39/39 passed | 643 files, 0 syntax errors |
 | Unmodified code, PHP 8.3 (before fixes) | 2/15 passed, 13 failed | 637 files, 0 errors |
 
 ## Not covered (limitations)

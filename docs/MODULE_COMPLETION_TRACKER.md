@@ -18,7 +18,7 @@ php-wasm. Commands and results are in
 |---|---|
 | Module | `modules/servers/Smtphosting` (ModulesGarden "Products Reseller" framework, v1.5.0 per `composer.json`) |
 | Specification | None in the repository for the API, cron, or AppController hooks. No `docs/` entry or Build.txt for Smtphosting. The `Core/Api` framework expects `App/Config/api/routes.php`, `api/config.php`, `AltoRouter` and `App\Http\Api\*`, none of which exist. |
-| Status | **Blocked** (two owner decisions required, see Remaining issues). Stub-level defects are fixed and verified. |
+| Status | **Code fixed; not closed.** Stub-level defects (S-1, S-2, S-5) and the S-6 server-side fix are implemented and tested. Closure needs owner action: rotate the upstream secrets, configure them, and run the live check (see Remaining issues). Module 2 stays on hold until then. |
 
 ### Findings (verified by executing the code, not only by reading it)
 
@@ -29,12 +29,30 @@ php-wasm. Commands and results are in
 | S-3 | Nothing in the module reaches `Api`, `Cron`, or `Hooks` except `Application` mapping the `api` caller. No WHMCS function named `Smtphosting_api` exists. The cron queue framework (`Core/CommandLine`) has no registered jobs. | Repository search; `Smtphosting.php` lists all WHMCS functions | Info |
 | S-4 | No scheduled jobs exist. `App/UI/Admin/ProductConfig/Pages/CronInfo.php` tells the admin to run `<module>/cron/cron.php queue`, but that file does not exist, and `CronInfo` is never instantiated. | `find` for `cron.php`; `grep` for `CronInfo` | Medium (misleading UI, dead) |
 | S-5 | `Instances/Addon/ConfigOptions.php` had `catch (\Excpetion $exc)`. The misspelled class never matches, so installer exceptions escaped the JSON error path. | Baseline regression test failure | Medium (real defect, fixed) |
-| S-6 | **CRITICAL: shared secrets are exposed to every customer.** `smtp-api.php` hardcodes two upstream secrets. `templates/assets/tpl/DefaultSubmodule/clientarea.tpl` renders them into client-area JavaScript (`xhr.open('GET', ...secret=...&user_name={$username}&main_domain={$domain})`). The endpoint trusts `user_name` and `main_domain` from the request, so any customer can read another customer's mail usage and logs if they know that customer's username and domain. The secrets are also in git history. Secret comparison uses `!==` (not constant-time). `CURLOPT_FOLLOWLOCATION` is on, so the secret could be forwarded on redirect. | `grep` results above; `smtp-api.php` lines 50 and 54 (secrets), 65 (`!==` comparison), 90 (`CURLOPT_FOLLOWLOCATION`); `clientarea.tpl` lines 422 and 493 | **Critical** |
+| S-6 | **CRITICAL (fixed in code, secrets still need rotation): shared upstream secrets were exposed to every customer.** The original `smtp-api.php` hardcoded two upstream secrets. `clientarea.tpl` put them in client-area JavaScript together with `user_name` and `main_domain` from the browser, so any customer could read another customer's mail usage and logs. The secrets are also in git history. Secret comparison used `!==`, and `CURLOPT_FOLLOWLOCATION` could forward the secret on redirect. | Original lines 49-54 (secrets), 65 (`!==`), 90 (`FOLLOWLOCATION`); `clientarea.tpl` lines 422 and 493 (before the fix). | **Critical** → mitigated in code; open until the owner rotates the secrets |
 | S-7 | `Synchronize` (admin button) swallows exceptions and returns a generic error without logging. | `App/Http/Actions/Synchronize.php` | Low |
 | S-8 | `App/UI` `ClientAreaPrimarySidebar` hook dereferences `Hosting::find(...)->packageid` without a null check. This emits a PHP warning for an unknown service ID but is not fatal. | Code review only (not executed against WHMCS) | Low |
 | S-9 | `App/Hooks/AdminProductConfigFieldsSave.php` catches all exceptions and does nothing ("do nothing on save"), so save failures are silent. | Code review only | Low |
 
 ### Changes made
+
+S-6 fix (second change set, on top of commit 2baeebe):
+
+| File | Change |
+|---|---|
+| `smtp-api.php` | Rewritten as a WHMCS-bootstrapped endpoint (`dirname(__DIR__, 3) . '/init.php'`). GET only. Requires `$_SESSION['uid']`. Accepts only `fn`, `serviceid`, `page`, `per_page`. Looks up `username` and `domain` in `tblhosting` where `id` and `userid` match. JSON error bodies. No secrets in the file. Exception details are never returned. |
+| `Helpers/SmtpUsageProxy.php` (new) | Core logic: auth, `fn` and `serviceid` validation, ownership check, rate limit, upstream call, redaction, JSON validation, generic 502. `loadSecrets()` reads env vars with a file fallback. `curlTransport()` is HTTPS only, verifies TLS, and does not follow redirects. |
+| `Helpers/SmtpUsageRateLimiter.php` (new) | File-backed fixed-window limiter under `storage/app/smtp-usage-ratelimit/`, with `flock`. Throws when storage is unavailable, so the proxy fails closed (503). |
+| `templates/assets/tpl/DefaultSubmodule/clientarea.tpl` | Both XHR calls (lines 422 and 493) now send only `fn` and `serviceid` (plus `page` and `per_page` for logs). `secret`, `user_name`, and `main_domain` removed. |
+| `tests/usage_proxy_tests.php` (new) | 24 tests: auth, 400/401/403/404/429/503/502 paths, identity from the service record, pagination clamping, redaction, limiter behaviour, secret precedence, and static regression checks (old secret digests absent, template has no `secret=`, curl options). |
+| `tests/run.php` | Includes `usage_proxy_tests.php`. |
+| `.gitignore` | Ignores `storage/config/*.php` (except `index.php`) and `storage/app/smtp-usage-ratelimit/`. |
+| `storage/config/index.php` (new) | Placeholder that blocks directory listing. |
+| `docs/SMTPHOSTING_USAGE_PROXY.md` (new) | Behaviour, secret setup, owner rotation steps, verification, limitations. |
+
+Behaviour changes, all intentional: authentication is now required; the rate limit is per client, not per IP (same 100/300 s); `per_page` is capped at 100; upstream non-200 and non-JSON responses return a generic 502 instead of being passed through.
+
+Earlier change set (commit 2baeebe):
 
 | File | Change |
 |---|---|
@@ -43,7 +61,7 @@ php-wasm. Commands and results are in
 | `Core/App/Controllers/AppControllers/Hooks.php` | Same pattern. Points to `App/Hooks/*.php` as the real hook mechanism. |
 | `Core/App/Controllers/Instances/Api/ApiController.php` | Imports `DefaultController`. Implements `execute()` and `runExecuteProcess()`, both throwing `RuntimeException`. |
 | `Core/App/Controllers/Instances/Addon/ConfigOptions.php` | `\Excpetion` → `\Exception` (one token). |
-| `tests/` (new) | `run.php` (15 tests), `bootstrap.php`, `run-php-wasm.mjs`, `README.md`. |
+| `tests/` (new) | `run.php` (15 tests now 39 with the S-6 suite), `bootstrap.php`, `run-php-wasm.mjs`, `README.md`. |
 | `docs/MODULE_COMPLETION_TRACKER.md` (new) | This tracker. |
 
 No behaviour was invented. Nothing that previously worked changed. The routing
@@ -53,9 +71,12 @@ and Addon controller paths are covered by regression tests.
 
 | Command | Result |
 |---|---|
-| `run-php-wasm.mjs 8.3 <module>` (tests + lint) | Suite 15/15 passed; lint 639 files, 0 errors |
-| `run-php-wasm.mjs 7.4 <module>` (tests + lint) | Suite 15/15 passed; lint 639 files, 0 errors |
-| Same suite on unmodified code (8.3) | 2/15 passed; 13 failed, each matching S-1, S-2, or S-5 |
+| Suite before the S-6 fix, on the S-6 tests (8.3) | 15/39 passed; 24 failed, all in the new S-6 tests (expected: the classes and fixes did not exist yet) |
+| Suite after the S-6 fix, PHP 8.3.33 (php-wasm) | **39/39 passed**, 0 failed |
+| Suite after the S-6 fix, PHP 7.4.33 (php-wasm) | **39/39 passed**, 0 failed |
+| Lint after the S-6 fix, PHP 8.3.33 and 7.4.33 | 643 files, 0 syntax errors on both |
+| Endpoint smoke test (stub WHMCS `init.php` and `Capsule`, PHP 8.3, php-wasm) | 7 scenarios: not logged in → 401; POST → 405; not owned → 404; no username → 404; bad `fn` → 400; owned usage and logs with request-supplied `user_name`/`secret` ignored → generic 502 (no outbound transport in php-wasm). No secret in any output. |
+| Live upstream call, live WHMCS database | **Not run.** No WHMCS install and no access to the Smtphosting API from the sandbox. |
 | Local `php tests/run.php` | **Not run** (no local PHP binary) |
 
 ### Acceptance criteria against the directive
@@ -63,36 +84,36 @@ and Addon controller paths are covered by regression tests.
 | Criterion | Status |
 |---|---|
 | Implement missing functionality per specification | **Not met, by design.** No specification exists. Behaviour is not invented. Owner decision D-2. |
-| Auth, authorization, input validation, error handling, API responses | **Not met for the public proxy (S-6).** The four stubs fail closed, but there is no API to validate. |
+| Auth, authorization, input validation, error handling, API responses | **Met in code for the usage/log proxy (S-6)**: WHMCS session auth, service ownership, strict input validation, generic error bodies, redaction. Verified by the 39-test suite and the endpoint smoke test. Not yet verified live. The four stubs fail closed. |
 | Cron and hooks safe to repeat | **Not applicable to cron** (no jobs, S-3/S-4). Hooks not exercised against WHMCS. |
-| Tests for success, failure, permission denial, invalid input, retry | Failure and regression paths covered. Success, permission denial, and retry **not applicable** without functionality. |
-| Documentation | Done for tests and this tracker. |
+| Tests for success, failure, permission denial, invalid input, retry | Covered for the usage/log proxy: success (pass-through), failure (502/503), permission denial (401/404), invalid input (400), retry and limit (429). Stub API/cron retry **not applicable**. |
+| Documentation | Done: this tracker, `docs/SMTPHOSTING_USAGE_PROXY.md` (setup, rotation, verification). |
 
 ### Remaining issues / blockers
 
-1. **D-1 (critical, owner decision): fix S-6 before anything else.** Options I recommend:
-   - (a) Replace the browser-side call with a WHMCS-authenticated server-side endpoint. It derives `user_name` and `main_domain` from the logged-in client's own service (`tblhosting`) and checks ownership server-side. The secrets never reach the browser.
-   - (b) Move the two secrets to WHMCS configuration (not the source tree), add constant-time comparison, and disable redirect following.
-   - Whichever option is chosen, **rotate both secrets**, because they are already in git history and in every customer's page source.
-   - I have not changed this code, because it needs the upstream provider's rotated credentials and a decision on the client-area flow.
-2. **D-2 (owner decision): what to do with the stub API/cron/hook classes.**
-   - Keep them as fail-closed placeholders (current state), or
-   - delete them and their references, or
-   - write a specification and implement a real API, which would be new scope.
+1. **S-6 owner actions (blocking closure of Module 1).** The code fix is done, but the agent cannot do these:
+   - Rotate both upstream secrets in the Smtphosting provider account and revoke the old ones. They are in git history and were visible in every customer's page source.
+   - Configure the new values with environment variables (recommended) or `storage/config/smtp-usage-secrets.php`. Steps: `docs/SMTPHOSTING_USAGE_PROXY.md`.
+   - Run the live check on a WHMCS install as a client who owns a service: expect JSON with no `secret` key, 404 for another client's service ID, and 401 without a session.
+   - Optional: rewrite git history to remove the old values. Not required once they are revoked. Not done.
+2. **D-2 (owner decision): what to do with the stub API/cron/hook classes.** Keep them as fail-closed placeholders (current state, user decision), delete them, or write a specification and implement them as new scope.
 3. S-4: remove or fix the `CronInfo` instruction, which points to a missing script (cosmetic and dead today).
 4. S-7 to S-9: low-severity hardening, not started.
 5. WHMCS-level integration tests are not possible in this sandbox. They need a WHMCS install.
+6. Limitations of the S-6 test evidence: php-wasm has no working outbound cURL, so `curlTransport()` is covered by static checks and not by a live request. The `tblhosting` query runs under a stub.
 
 ### Completion evidence
 
-- Source: the five files in *Changes made*.
-- Executed suite: `modules/servers/Smtphosting/tests/run.php`, 15/15 on PHP 7.4 and 8.3 (php-wasm).
-- Lint: 639 non-vendor PHP files, 0 syntax errors on PHP 7.4 and 8.3.
+- Source: the files in *Changes made*, both change sets.
+- Executed suite: `modules/servers/Smtphosting/tests/run.php`, 39/39 on PHP 8.3.33 and 7.4.33 (php-wasm), run after the S-6 fix.
+- Lint: 643 non-vendor PHP files, 0 syntax errors on PHP 7.4 and 8.3.
+- Endpoint smoke test: 7 scenarios, no secret in output (see Tests).
+- Not yet evidence: live upstream call, live WHMCS run, owner rotation. Module 1 is not marked verified until these are done.
 
 ---
 
 ## Module 2 — tools_center — Not started
-Blocked by the sequencing rule: Module 1 must be closed or agreed first.
+Held by the sequencing rule and the user's decision: Module 2 waits until S-6 is resolved (code fix done; owner rotation and live check pending). Module 1 needs approval before Module 2 starts.
 
 ## Module 3 — cloudhost247apps — Not started
 

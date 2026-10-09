@@ -1,98 +1,82 @@
 <?php
 
-header('Content-Type: application/json');
-ini_set('display_errors', 0);
+/**
+ * Smtphosting mail usage and sent-log lookup for the client area.
+ *
+ *   GET smtp-api.php?fn=usage&serviceid=<id>
+ *   GET smtp-api.php?fn=logs&serviceid=<id>[&page=<n>][&per_page=<1..100>]
+ *
+ * Requires a logged-in WHMCS client who owns the service. The upstream
+ * credentials are read server-side (environment variables or
+ * storage/config/smtp-usage-secrets.php) and are never sent to the browser.
+ * See docs/SMTPHOSTING_USAGE_PROXY.md.
+ */
 
-$remote_ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-$limit = 100;
-$period = 300;
+header('Content-Type: application/json; charset=UTF-8');
+header('Cache-Control: no-store');
+header('X-Content-Type-Options: nosniff');
+ini_set('display_errors', '0');
 
-if (function_exists('apcu_fetch')) {
-    $key = 'rate_' . $remote_ip;
-    $data = apcu_fetch($key) ?: ['count'=>0, 'ts'=>time()];
-    if (time() - $data['ts'] > $period) {
-        $data = ['count'=>1, 'ts'=>time()];
-    } else {
-        $data['count']++;
-    }
-    if ($data['count'] > $limit) {
-        http_response_code(429);
-        echo json_encode(['status'=>'error','msg'=>'Rate limit exceeded']);
-        exit;
-    }
-    apcu_store($key, $data, $period);
-} else {
-    $file = sys_get_temp_dir() . '/rate_' . md5($remote_ip);
-    $data = @json_decode(@file_get_contents($file), true) ?: ['count'=>0,'ts'=>time()];
-    if (time() - $data['ts'] > $period) {
-        $data = ['count'=>1,'ts'=>time()];
-    } else {
-        $data['count']++;
-    }
-    if ($data['count'] > $limit) {
-        http_response_code(429);
-        echo json_encode(['status'=>'error','msg'=>'Rate limit exceeded']);
-        exit;
-    }
-    file_put_contents($file, json_encode($data));
-}
+$moduleDir = __DIR__;
 
-$fn = $_GET['fn'] ?? '';
-$user_name = trim($_GET['user_name'] ?? '');
-$main_domain = trim($_GET['main_domain'] ?? '');
-$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-$per_page = isset($_GET['per_page']) ? (int)$_GET['per_page'] : 10;
-$incoming_secret = $_GET['secret'] ?? '';
-
-$map = [
-    'usage' => [
-        'url' => 'https://my.smtphosting.com/smtp/mail-usage-log.php',
-        'secret' => 'lmjHzI2OR1cxk8DAehvhxtN5it5YutZwX5B3'
-    ],
-    'logs' => [
-        'url' => 'https://my.smtphosting.com/smtp/mail-sent-log.php',
-        'secret' => 'tiWlB6R1PlyKXUJICSm4tVrdOxVuFgAQOKnJ'
-    ]
-];
-
-if (!isset($map[$fn])) {
-    http_response_code(400);
-    echo json_encode(['status'=>'error','msg'=>'Invalid fn']);
+/**
+ * Module lives at <whmcs>/modules/servers/Smtphosting/, so WHMCS root is three levels up.
+ */
+$whmcsInit = dirname(__DIR__, 3) . '/init.php';
+if (!is_file($whmcsInit)) {
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'msg' => 'Service temporarily unavailable.']);
     exit;
 }
 
-// verify secret
-if ($incoming_secret !== $map[$fn]['secret']) {
-    http_response_code(403);
-    echo json_encode(['status'=>'error','msg'=>'Invalid secret']);
-    exit;
+try {
+    require_once $whmcsInit;
+    require_once $moduleDir . '/Helpers/SmtpUsageProxy.php';
+    require_once $moduleDir . '/Helpers/SmtpUsageRateLimiter.php';
+
+    $method = isset($_SERVER['REQUEST_METHOD']) ? strtoupper($_SERVER['REQUEST_METHOD']) : '';
+    if ($method !== 'GET') {
+        http_response_code(405);
+        header('Allow: GET');
+        echo json_encode(['status' => 'error', 'msg' => 'Method not allowed.']);
+        exit;
+    }
+
+    $clientId = isset($_SESSION['uid']) ? (int) $_SESSION['uid'] : 0;
+
+    $serviceLookup = function ($serviceId, $clientId) {
+        $row = \WHMCS\Database\Capsule::table('tblhosting')
+            ->select('username', 'domain')
+            ->where('id', $serviceId)
+            ->where('userid', $clientId)
+            ->first();
+
+        if (!$row) {
+            return null;
+        }
+
+        return ['username' => (string) $row->username, 'domain' => (string) $row->domain];
+    };
+
+    $secrets = \ModulesGarden\ProductsReseller\Server\Smtphosting\Helpers\SmtpUsageProxy::loadSecrets(
+        $moduleDir . '/storage/config/smtp-usage-secrets.php'
+    );
+
+    $proxy = new \ModulesGarden\ProductsReseller\Server\Smtphosting\Helpers\SmtpUsageProxy(
+        $secrets,
+        $serviceLookup,
+        [\ModulesGarden\ProductsReseller\Server\Smtphosting\Helpers\SmtpUsageProxy::class, 'curlTransport'],
+        new \ModulesGarden\ProductsReseller\Server\Smtphosting\Helpers\SmtpUsageRateLimiter(
+            $moduleDir . '/storage/app/smtp-usage-ratelimit'
+        )
+    );
+
+    $result = $proxy->handle($_GET, $clientId);
+
+    http_response_code($result['httpStatus']);
+    echo json_encode($result['payload']);
+} catch (\Throwable $e) {
+    // Never expose exception details to the browser.
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'msg' => 'Service temporarily unavailable.']);
 }
-
-// build query
-$query = [
-    'secret' => $map[$fn]['secret'],
-    'user_name' => $user_name,
-    'main_domain' => $main_domain
-];
-
-if ($fn === 'logs') {
-    $query['page'] = $page;
-    $query['per_page'] = $per_page;
-}
-
-$url = $map[$fn]['url'] . '?' . http_build_query($query);
-
-// fetch
-$ch = curl_init($url);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_TIMEOUT, 8);
-curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 4);
-curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-
-$response = curl_exec($ch);
-$httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
-
-http_response_code($httpcode ?: 200);
-echo $response;
-?>
