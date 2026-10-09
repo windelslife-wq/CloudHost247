@@ -18,7 +18,7 @@ php-wasm. Commands and results are in
 |---|---|
 | Module | `modules/servers/Smtphosting` (ModulesGarden "Products Reseller" framework, v1.5.0 per `composer.json`) |
 | Specification | None in the repository for the API, cron, or AppController hooks. No `docs/` entry or Build.txt for Smtphosting. The `Core/Api` framework expects `App/Config/api/routes.php`, `api/config.php`, `AltoRouter` and `App\Http\Api\*`, none of which exist. |
-| Status | **Code fixed; not closed.** Stub-level defects (S-1, S-2, S-5), the S-6 server-side fix, and the low-severity items S-4, S-7, S-8, S-9 are implemented and tested (S-7 to S-9 by static checks only). Closure needs owner action: rotate the upstream secrets, configure them, and run the live check (see Remaining issues). Module 2 stays on hold until then. |
+| Status | **Accepted by the user (gate closed) with owner follow-ups.** The user chose to accept now and keep the stubs as fail-closed placeholders (D-2). Owner follow-ups, not blocking: rotate the two upstream secrets and run the live check (see Remaining issues). Earlier status text follows for history: **Code fixed; not closed.** Stub-level defects (S-1, S-2, S-5), the S-6 server-side fix, and the low-severity items S-4, S-7, S-8, S-9 are implemented and tested (S-7 to S-9 by static checks only). Closure needs owner action: rotate the upstream secrets, configure them, and run the live check (see Remaining issues). Module 2 stays on hold until then. |
 
 ### Findings (verified by executing the code, not only by reading it)
 
@@ -122,8 +122,8 @@ and Addon controller paths are covered by regression tests.
 
 ---
 
-## Module 2 — tools_center — Not started
-Held by the sequencing rule and the user's decision: Module 2 waits until S-6 is resolved (code fix done; owner rotation and live check pending). Module 1 needs approval before Module 2 starts.
+## Module 2 — tools_center — In progress (audit)
+Started after Module 1 was accepted by the user.
 
 ## Module 3 — cloudhost247apps — Not started
 
