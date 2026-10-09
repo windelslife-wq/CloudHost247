@@ -45,6 +45,7 @@ use Ch247Apps\Deployments\Orchestrator;
 use Ch247Apps\Servers\AgentAuthenticator;
 use Ch247Apps\Servers\CredentialVault;
 use Ch247Apps\Servers\ServerService;
+use Ch247Apps\Servers\UptimeRetention;
 
 if (PHP_SAPI !== 'cli' && !defined('WHMCS')) {
     die('This file cannot be accessed directly');
@@ -78,7 +79,10 @@ $task = function ($name, callable $fn) use (&$results, &$errors, $only) {
     }
 };
 
-if (!Db::isBound()) {
+try {
+    // WHMCS binds Capsule lazily; isBound() alone rejects a valid fresh cron.
+    Db::pdo();
+} catch (\Throwable $e) {
     $message = 'No database connection is available; the App Cloud cron did nothing.';
     Logger::error($message, ['source' => 'cron']);
     echo $json ? json_encode(['ok' => false, 'error' => $message]) . "\n" : $message . "\n";
@@ -105,6 +109,9 @@ $task('jobs_pruned', function () use ($queue) {
 });
 $task('nonces_pruned', function () {
     return AgentAuthenticator::pruneNonces();
+});
+$task('agent_uptime_pruned', function () use ($actor) {
+    return (new UptimeRetention($actor))->prune();
 });
 $task('deployment_logs_pruned', function () use ($actor) {
     return (new DeploymentService($actor))->pruneLogs();

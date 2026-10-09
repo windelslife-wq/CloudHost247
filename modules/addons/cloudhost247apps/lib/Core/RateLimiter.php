@@ -32,6 +32,7 @@ class RateLimiter
         'auth'               => [20, 900],
         'webhook'            => [300, 60],
         'agent'              => [600, 60],
+        'agent.uptime'       => [12, 3600], // at most one kernel-uptime sample per five minutes
         'logs.view'          => [120, 60],
     ];
 

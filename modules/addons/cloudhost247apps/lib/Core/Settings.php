@@ -104,6 +104,10 @@ class Settings
         'free_subdomain_suffix'       => '',   // e.g. apps.cloudhost247.com
 
         // Agent
+        'agent_heartbeat_ingress_enabled' => '0', // liveness from signed node heartbeats only
+        'agent_uptime_ingress_enabled' => '0', // separate gate for real Linux /proc/uptime samples
+        'agent_uptime_retention_enabled' => '0', // operator-approved pruning only; never prune untagged metrics
+        'agent_uptime_retention_days' => '30', // applies only after the separate retention gate is enabled
         'agent_token_ttl_seconds'     => '600',
         'agent_request_ttl_seconds'   => '120',
         'agent_request_timeout_seconds' => '120',

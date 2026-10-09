@@ -1,0 +1,17 @@
+[Unit]
+Description=CloudHost247 App Cloud outbound heartbeat (no command listener)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ch247-heartbeat
+Group=ch247-heartbeat
+EnvironmentFile=/etc/cloudhost247/heartbeat.env
+ExecStart=/usr/bin/php /opt/cloudhost247/agent/heartbeat.php
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077

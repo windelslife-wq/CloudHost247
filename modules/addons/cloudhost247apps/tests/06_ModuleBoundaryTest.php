@@ -18,7 +18,7 @@ Harness::boot();
 section('WHMCS addon configuration matches fail-closed defaults');
 $config = cloudhost247apps_config();
 T::is('addon identity is registered with WHMCS', 'CloudHost247 App Cloud', $config['name']);
-T::is('read-only Contabo adoption ships in the WHMCS addon minor release', '1.11.0', $config['version']);
+T::is('source-tagged uptime retention ships in the WHMCS addon patch release', '1.11.1', $config['version']);
 T::is('unmapped admin default matches staff RBAC', 'staff', $config['fields']['default_admin_role']['Default']);
 T::is('customer VM provisioning is disabled in module config', '', $config['fields']['customer_server_provisioning_enabled']['Default']);
 T::is('cPanel account workflow is disabled in module config', '', $config['fields']['panel_account_workflow_enabled']['Default']);

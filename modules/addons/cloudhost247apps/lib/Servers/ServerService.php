@@ -21,6 +21,7 @@ namespace Ch247Apps\Servers;
 
 use Ch247Apps\Core\Actor;
 use Ch247Apps\Core\Audit;
+use Ch247Apps\Core\AuthorizationException;
 use Ch247Apps\Core\Clock;
 use Ch247Apps\Core\Crypto;
 use Ch247Apps\Core\Db;
@@ -51,6 +52,9 @@ class ServerService
     const STATUS_OFFLINE     = 'offline';
     const STATUS_MAINTENANCE = 'maintenance';
     const STATUS_DISABLED    = 'disabled';
+
+    // Only this precisely validated metric source is eligible for uptime pruning.
+    const METRIC_SOURCE_AGENT_UPTIME = 'agent_linux_uptime';
 
     const STATUSES = [
         self::STATUS_PENDING, self::STATUS_ONLINE, self::STATUS_DEGRADED,
@@ -1076,11 +1080,29 @@ class ServerService
         ];
     }
 
-    /** Store one real metrics sample. */
-    public function recordMetrics($serverId, array $metrics, $installationId = null, $scope = 'server')
+    /** Store the sole agent-uptime field, labelled for narrow retention. */
+    public function recordNodeUptime($serverId, $seconds)
     {
+        if (!$this->actor->isAgent() || (int) $this->actor->serverId !== (int) $serverId) {
+            throw new AuthorizationException('An assigned agent is required for node uptime.');
+        }
+        if (!is_int($seconds) || $seconds < 0 || $seconds > 2147483647) {
+            throw new ValidationException('Invalid kernel uptime in seconds.');
+        }
+        return $this->recordMetrics($serverId, ['uptime_seconds' => $seconds], null,
+            'server', self::METRIC_SOURCE_AGENT_UPTIME);
+    }
+
+    /** Store one real metrics sample. Untagged legacy records are never pruned here. */
+    public function recordMetrics($serverId, array $metrics, $installationId = null, $scope = 'server', $source = null)
+    {
+        if ($source !== null && ($source !== self::METRIC_SOURCE_AGENT_UPTIME
+            || $installationId !== null || array_keys($metrics) !== ['uptime_seconds'])) {
+            throw new ValidationException('Invalid source-labelled metrics sample.');
+        }
         $now = isset($metrics['sampled_at']) ? (string) $metrics['sampled_at'] : Clock::now();
         $row = [
+            'source' => $source,
             'server_id' => (int) $serverId ?: null,
             'installation_id' => $installationId === null ? null : (int) $installationId,
             'scope' => $installationId === null ? 'server' : (string) $scope,
