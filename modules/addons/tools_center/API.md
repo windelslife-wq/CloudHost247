@@ -200,7 +200,7 @@ X-RateLimit-Reset: 1699999999
 | Action | Parameters | Description |
 |--------|-----------|-------------|
 | `qrGenerator` | `data`, `size`, `level` (L/M/Q/H) | QR code generation |
-| `qrScanner` | `url` (image URL) | QR decode (external) |
+| `qrScanner` | — (no server call) | Not used by the Tools Center page. QR decoding runs in the browser (`js/qr-scanner.js`, vendored jsQR). The external endpoint returns a note and does not decode. |
 | `loremIpsum` | `type` (paragraphs/sentences/words/lists), `count`, `html` | Placeholder text |
 | `timeCard` | `entries` (JSON array), `hourly_rate` | Work hours calculation |
 | `binChecker` | `bin` (string, 6+ digits) | Bank ID lookup |

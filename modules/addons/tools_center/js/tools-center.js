@@ -11,6 +11,53 @@
         ? window.toolsCenterConfig.apiUrl 
         : 'index.php?m=tools_center';
 
+    // Tools that run entirely in the browser. They never send anything to the server.
+    var LOCAL_TOOL_HANDLERS = {
+        qrScanner: decodeQrFromForm
+    };
+
+    function getLocalHandler(action) {
+        return Object.prototype.hasOwnProperty.call(LOCAL_TOOL_HANDLERS, action)
+            ? LOCAL_TOOL_HANDLERS[action]
+            : null;
+    }
+
+    /**
+     * Decode the QR image chosen in the form, in the browser.
+     * showResult receives a response shaped like the server responses ({success, data | error}).
+     */
+    function decodeQrFromForm(form, showResult) {
+        var input = form.querySelector('input[type="file"]');
+        var file = input && input.files ? input.files[0] : null;
+
+        if (!window.ToolsCenterQR) {
+            showResult({ success: false, error: 'The QR decoder is not loaded. Reload the page and try again.' });
+            return;
+        }
+
+        var problem = window.ToolsCenterQR.validateFile(file);
+        if (problem) {
+            showResult({ success: false, error: problem });
+            return;
+        }
+
+        window.ToolsCenterQR.decodeFile(file, function(result) {
+            if (!result.ok) {
+                showResult({ success: false, error: result.error });
+                return;
+            }
+            showResult({
+                success: true,
+                data: {
+                    decoded_text: result.text,
+                    characters: result.text.length,
+                    looks_like_url: /^https?:\/\//i.test(result.text)
+                },
+                response_time_ms: 0
+            });
+        });
+    }
+
     /**
      * Open tool modal
      */
@@ -72,6 +119,7 @@
                 input.name = field.name;
                 input.className = 'form-control';
                 if (field.placeholder) input.placeholder = field.placeholder;
+                if (field.accept) input.accept = field.accept;
                 if (field.value) input.value = field.value;
                 if (field.required) input.required = true;
 
@@ -135,6 +183,18 @@
     function submitToolForm(category, action, form) {
         var resultsDiv = document.getElementById('modalResults');
         var submitBtn = form.querySelector('button[type="submit"]');
+
+        var localHandler = getLocalHandler(action);
+        if (localHandler) {
+            if (resultsDiv) {
+                resultsDiv.style.display = 'block';
+                resultsDiv.innerHTML = '<div class="tc-loading"><div class="tc-spinner"></div> Processing...</div>';
+            }
+            localHandler(form, function(response) {
+                displayResults(resultsDiv, response);
+            });
+            return;
+        }
 
         // Collect form data
         var params = {};
@@ -398,6 +458,7 @@
                 input.name = field.name;
                 input.className = 'form-control';
                 if (field.placeholder) input.placeholder = field.placeholder;
+                if (field.accept) input.accept = field.accept;
                 if (field.value) input.value = field.value;
                 if (field.required) input.required = true;
 
@@ -439,6 +500,18 @@
         var resultsDiv = document.getElementById('toolResults');
         var resultsContent = document.getElementById('resultsContent');
         var submitBtn = form.querySelector('button[type="submit"]');
+
+        var localHandler = getLocalHandler(action);
+        if (localHandler) {
+            resultsDiv.style.display = 'block';
+            resultsContent.innerHTML = '<div class="tc-loading"><div class="tc-spinner"></div> Processing...</div>';
+            localHandler(form, function(response) {
+                var tempDiv = document.createElement('div');
+                displayResults(tempDiv, response);
+                resultsContent.innerHTML = tempDiv.innerHTML;
+            });
+            return;
+        }
 
         var params = {};
         var inputs = form.querySelectorAll('input, select, textarea');

@@ -89,7 +89,9 @@ add_hook('ClientAreaHeadOutput', 1, function ($vars) {
     }
     
     $css = '<link rel="stylesheet" href="modules/addons/tools_center/css/tools-center.css" />';
-    $js = '<script src="modules/addons/tools_center/js/tools-center.js"></script>';
+    $js = '<script src="modules/addons/tools_center/js/vendor/jsQR-1.4.0.js"></script>' . "\n"
+        . '<script src="modules/addons/tools_center/js/qr-scanner.js"></script>' . "\n"
+        . '<script src="modules/addons/tools_center/js/tools-center.js"></script>';
     
     return $css . "\n" . $js;
 });
@@ -242,7 +244,11 @@ function tools_center_api_request($category, $action, $params = [], $settings = 
         ],
         CURLOPT_TIMEOUT => 60,
         CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_FOLLOWLOCATION => true,
+        // Redirects are not followed: the API token is sent in a header and must not be forwarded.
+        // HTTPS only (the README requires HTTPS for all API traffic).
+        CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
     ]);
     
     $startTime = microtime(true);

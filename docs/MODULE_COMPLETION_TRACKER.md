@@ -122,8 +122,74 @@ and Addon controller paths are covered by regression tests.
 
 ---
 
-## Module 2 — tools_center — In progress (audit)
-Started after Module 1 was accepted by the user.
+## Module 2 — tools_center (QR decoding)
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/tools_center` (WHMCS addon; PHP addon plus `external-api/` service, JS, templates) |
+| Specification | No standalone Build.txt. Basis: the directive ("tools_center (QR decoding)"); `docs/MODULES.md` (alternative to `CloudHost247_tools`, proxies to a separate API); the module's own `API.md`/`README.md`; and the DNS Checker build spec, which lists **"QR Scanner (JS)"** under Productivity tools (`docs/All DNS Checker/All DNS Checker Build.txt`). The JS wording sets the requirement: decode in the browser. |
+| Status | **Code complete and tested; browser file-read check and gate approval pending.** Hardening findings T-1 and T-2 are fixed. |
+
+### Audit findings
+
+| ID | Finding | Evidence | Severity |
+|---|---|---|---|
+| T-1 | **QR decoding was a placeholder.** The QR Scanner tool posted a URL to the external API, which returned a note and a third-party `decode_url`. It decoded nothing. | `external-api/tools/productivity.php` `qrScanner()` (line ~51-66) | High (functional gap) |
+| T-2 | **Outbound API call followed redirects.** `tools_center_api_request()` used `CURLOPT_FOLLOWLOCATION => true` while sending the API token in an `X-API-Token` header. A redirect to another host could receive the token. The call also allowed any protocol. | `hooks.php` `tools_center_api_request()` | Medium (security) |
+| T-3 | `apiToken` was assigned to the client-area template. No template used it, but it puts the secret where a future template could print it. | `clientarea.php` (removed) | Low (hygiene) |
+| T-4 | The external `qrGenerator` builds an image URL on `api.qrserver.com` that contains the user's data. The browser then requests it, so the data goes to a third party. | `external-api/tools/productivity.php` `qrGenerator()` | Medium (privacy). **Not changed; owner decision (see Remaining issues).** |
+| T-5 | Token handling is otherwise sound. The browser never receives the token: the page posts to `index.php?m=tools_center`, and the server calls the API after the access check. | `clientarea.php` AJAX branch; `tools_center_check_access()` | Info (verified) |
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `js/qr-scanner.js` (new) | Client-side QR decoding. `decodeImageData()` (pure, testable), `validateFile()` (PNG/JPG/GIF/WebP/BMP, max 5 MB), `decodeFile()` (browser: reads the file, downscales to 1600 px, decodes). Nothing is uploaded. |
+| `js/vendor/jsQR-1.4.0.js` (new) | Vendored jsQR 1.4.0 (Apache-2.0, free, no runtime dependencies). SHA-256 recorded in `js/vendor/README.md`; licence in `jsQR-1.4.0.LICENSE`. |
+| `js/tools-center.js` | `LOCAL_TOOL_HANDLERS` (qrScanner → local decode). Both submit paths (modal and page) check it before any XHR call. The `accept` attribute is passed to file inputs. Decoded text is rendered with the existing escaped `renderObject`. |
+| `templates/tools/tool.tpl` | QR Scanner field changed from "QR Image URL" to a file input, with a note that decoding happens in the browser. |
+| `hooks.php` | T-2: `CURLOPT_FOLLOWLOCATION => false`, `CURLOPT_PROTOCOLS` and `CURLOPT_REDIR_PROTOCOLS` set to HTTPS only. Loads `jsQR`, `qr-scanner.js`, then `tools-center.js`. |
+| `clientarea.php` | T-3: `apiToken` no longer assigned to the template. |
+| `API.md` | `qrScanner` row updated: not a server call; decoding runs in the browser. |
+| `tests/` (new) | `run-tests.js` (runner), `ui-wiring.js` (jsdom UI tests), `fixtures/qr-fixtures.json`, `README.md`. |
+
+Not changed: `external-api/tools/productivity.php` `qrScanner()` still returns its note. The page no longer calls it. Left in place to avoid changing the external API contract. It is listed as an open item.
+
+### Tests
+
+| Command | Result |
+|---|---|
+| `node modules/addons/tools_center/tests/run-tests.js` (no jsdom) | 21/21 passed; UI wiring (8) **skipped**, printed as SKIP |
+| Same, with jsdom 24 (`NODE_PATH` set to a jsdom install outside the repo) | **29/29 passed**, 0 failed |
+| Same tests on the original code (HEAD) | 16/29 passed, 13 failed. All 13 are the intended regressions (static checks and UI tests). The one non-local-tool regression test passes on both. |
+| PHP lint, `tools_center` (18 files), PHP 8.3.33 and 7.4.33 (php-wasm) | 0 syntax errors on both |
+| Real QR decoding | Three fixture codes (ECC L, M, H; versions 4 and 6) decode to the exact text. An inverted code decodes too. A blank image reports "no QR code". |
+| Browser file reading (`FileReader`, `Image`, canvas) | **Not run.** No browser in the sandbox. The UI tests stub only this step. |
+| WHMCS live run (curl path, access check) | **Not run.** No WHMCS install. |
+
+### Security review
+
+- The API token is still never sent to the browser (T-5). The redirect and protocol fix (T-2) stops the token from being forwarded.
+- QR decoding runs in the browser. The uploaded image is never sent to the server, and no third-party service is used (T-1 closed, T-4 not affected by this tool).
+- The decoded text is rendered as text (tested with an HTML payload).
+- Upload limits: type allowlist, 5 MB, 1600 px downscale before decoding.
+- Open: T-4 (`qrGenerator` sends user data to a third-party host). Needs an owner decision; not changed.
+
+### Remaining issues / blockers
+
+1. **Browser check (required before closing):** load the QR Scanner tool in a real browser, upload a PNG and a JPG QR code, and confirm the decoded text appears. Also confirm an oversized or non-image file is rejected.
+2. **WHMCS check:** on a live install, confirm the Tools Center page loads the three scripts, and that a tool call still reaches the external API over HTTPS.
+3. **Owner decision (T-4):** keep `qrGenerator` on api.qrserver.com (external, data leaves the site), or replace it with a local generator (new dependency, needs approval).
+4. The external `qrScanner()` placeholder in `external-api/` is unused by the page. Remove it, or keep it for other clients. Owner decision.
+5. Other tools in `external-api/` were not audited in this pass (scope: QR decoding and the proxy path). They belong to the additional audit list.
+
+### Completion evidence
+
+- Source: the files in *Changes made*.
+- Executed: `node modules/addons/tools_center/tests/run-tests.js`, 29/29 with jsdom 24; PHP lint 0 errors on 8.3 and 7.4.
+- Not yet evidence: browser file reading and the live WHMCS run (items 1 and 2 above).
+
+
 
 ## Module 3 — cloudhost247apps — Not started
 
