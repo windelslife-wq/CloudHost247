@@ -3,8 +3,10 @@
 namespace WGSModule\Soyoustart\classes {
     function curl_init() { $GLOBALS['ovhCurlCalls']++; return new \stdClass(); }
     function curl_setopt($ch, $key, $value) { $GLOBALS['ovhCurlOptions'][$key] = $value; return true; }
-    function curl_exec($ch) { return '{"ok":true}'; }
-    function curl_getinfo($ch, $key) { return 200; }
+    function curl_exec($ch) {
+        return isset($GLOBALS['ovhReply']) ? $GLOBALS['ovhReply'] : '{"ok":true}';
+    }
+    function curl_getinfo($ch, $key) { return isset($GLOBALS['ovhStatus']) ? $GLOBALS['ovhStatus'] : 200; }
     function curl_error($ch) { return ''; }
     function curl_close($ch) {}
 }
@@ -29,9 +31,15 @@ namespace WHMCS\Module\Addon\Soyoustart {
 namespace WHMCS\Database {
     class Capsule {
         public static function table($name) {
-            return new class {
+            return new class($name) {
+                private $table;
+                public function __construct($table) { $this->table = $table; }
                 public function where($key) { return $this; }
                 public function first() {
+                    if ($this->table === 'mod_soyoustart') {
+                        return (object) ['secret_key' => 'test-secret',
+                            'consumer_key' => 'test-consumer', 'application_key' => 'test-application'];
+                    }
                     return !empty($GLOBALS['enableLegacyModuleLog'])
                         ? (object) ['id' => 1, 'value' => '{"moduleLogstatus":"on"}'] : null;
                 }
@@ -115,6 +123,46 @@ namespace {
     T::is('certificate chain checked', true, $GLOBALS['ovhCurlOptions'][CURLOPT_SSL_VERIFYPEER]);
     T::is('hostname checked', 2, $GLOBALS['ovhCurlOptions'][CURLOPT_SSL_VERIFYHOST]);
     T::is('redirects disabled', false, $GLOBALS['ovhCurlOptions'][CURLOPT_FOLLOWLOCATION]);
+
+    section('Narrow read-back uses only the legacy account and a signed GET');
+    $GLOBALS['ovhReply'] = '{"name":"vps-123.ovh.net","state":"running","password":"never-projected"}';
+    $GLOBALS['ovhStatus'] = 200;
+    $GLOBALS['ovhCurlOptions'] = [];
+    $before = $GLOBALS['ovhCurlCalls'];
+    $identity = $api->getVpsIdentity('europe', 'vps-123.ovh.net', 4);
+    T::is('only name and state are returned', ['name' => 'vps-123.ovh.net', 'state' => 'running'], $identity);
+    T::is('exactly one signed provider read', $before + 1, $GLOBALS['ovhCurlCalls']);
+    T::is('GET method selected', true, $GLOBALS['ovhCurlOptions'][CURLOPT_HTTPGET]);
+    T::ok('no provider purchase or mutation method selected',
+        !isset($GLOBALS['ovhCurlOptions'][CURLOPT_POST])
+        && !isset($GLOBALS['ovhCurlOptions'][CURLOPT_CUSTOMREQUEST]));
+    T::is('read uses fixed legacy OVH endpoint', 'https://eu.api.ovh.com/1.0/vps/vps-123.ovh.net',
+        $GLOBALS['ovhCurlOptions'][CURLOPT_URL]);
+    $headers = $GLOBALS['ovhCurlOptions'][CURLOPT_HTTPHEADER];
+    $timestamp = null;
+    $signature = null;
+    foreach ($headers as $header) {
+        if (strpos($header, 'X-Ovh-Timestamp:') === 0) { $timestamp = substr($header, strlen('X-Ovh-Timestamp:')); }
+        if (strpos($header, 'X-Ovh-Signature:') === 0) { $signature = substr($header, strlen('X-Ovh-Signature:')); }
+    }
+    T::is('signature uses the transmitted timestamp', '$1$' . sha1('test-secret+test-consumer+GET+'
+        . 'https://eu.api.ovh.com/1.0/vps/vps-123.ovh.net++' . $timestamp), $signature);
+    T::notContains('response never contains provider-only data', 'never-projected', json_encode($identity));
+    $GLOBALS['ovhReply'] = '{"name":"another.ovh.net","state":"running"}';
+    T::throws('wrong provider identity fails closed', \RuntimeException::class,
+        function () use ($api) { $api->getVpsIdentity('europe', 'vps-123.ovh.net', 4); });
+    $GLOBALS['ovhReply'] = '{"name":"vps-123.ovh.net","state":"running"}';
+    $GLOBALS['ovhStatus'] = 404;
+    T::throws('missing provider resource fails closed', \RuntimeException::class,
+        function () use ($api) { $api->getVpsIdentity('europe', 'vps-123.ovh.net', 4); });
+    $GLOBALS['ovhStatus'] = 200;
+    $before = $GLOBALS['ovhCurlCalls'];
+    T::throws('path injection rejected before network', \InvalidArgumentException::class,
+        function () use ($api) { $api->getVpsIdentity('europe', '../other', 4); });
+    T::throws('untrusted region rejected before network', \InvalidArgumentException::class,
+        function () use ($api) { $api->getVpsIdentity('evil.test', 'vps-123.ovh.net', 4); });
+    T::is('invalid inputs never touched provider', $before, $GLOBALS['ovhCurlCalls']);
+    unset($GLOBALS['ovhReply'], $GLOBALS['ovhStatus']);
 
     section('Unsigned product catalog uses the same TLS protections');
     $GLOBALS['catalogCurlOptions'] = [];

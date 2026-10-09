@@ -371,9 +371,9 @@ class ApiCall extends Helper
     {
         try {
             $authData = Capsule::table("mod_soyoustart")->where(["id" => $ovhAccountId])->first();
-            $signature = self::generateSignature(trim($authData->secret_key), trim($authData->consumer_key), $method, $url, $data);
-
-            $time = time() + 0;
+            // Signature and transmitted timestamp must be the same second.
+            $time = time();
+            $signature = self::generateSignature(trim($authData->secret_key), trim($authData->consumer_key), $method, $url, $data, $time);
             return [
                 'content-type:application/json',
                 'accept:application/json',
@@ -395,19 +395,54 @@ class ApiCall extends Helper
         @return string in sha1 formate.
 
     */
-    private function generateSignature($secretKey, $consumerKey, $method, $url, $data = null)
+    private function generateSignature($secretKey, $consumerKey, $method, $url, $data = null, $time = null)
     {
         try {
             if (!is_null($data)) {
                 $data = json_encode($data);
             }
-            $time = time() + 0;
+            $time = $time === null ? time() : (int) $time;
             $toSign = $secretKey . '+' . $consumerKey . '+' . $method . '+' . $url . '+' . $data . '+' . $time;
             $signature = '$1$' . sha1($toSign);
             return $signature;
         } catch (\Exception $e) {
             throw new \Exception('Error while generating signature: ' . $e->getMessage());
         }
+    }
+
+    /** Strictly read one existing VPS via the legacy account's signed GET. */
+    public function getVpsIdentity($location, $ovhServerName, $accountId)
+    {
+        if (!is_string($ovhServerName)
+            || !preg_match('/^[a-zA-Z0-9][a-zA-Z0-9.-]{0,254}$/D', $ovhServerName)
+            || !is_string($location)
+            || !in_array(strtolower($location), ['europe', 'canada', 'us', 'uk', 'singapore', 'world'], true)
+            || (!is_int($accountId) && !is_string($accountId))
+            || !preg_match('/^[1-9][0-9]{0,18}$/D', (string) $accountId)
+            || (string) (int) $accountId !== (string) $accountId) {
+            throw new \InvalidArgumentException('A trusted legacy OVH account and VPS name are required.');
+        }
+        try {
+            $response = $this->get('/vps/' . rawurlencode($ovhServerName), (int) $accountId,
+                $location, 'Read existing VPS identity', true);
+        } catch (\Throwable $e) {
+            // Never forward signed URL, provider response or legacy credentials.
+            throw new \RuntimeException('Legacy OVH VPS read-back failed.');
+        }
+        if (!is_array($response) || !isset($response['httpcode']) || (int) $response['httpcode'] !== 200
+            || !isset($response['result']) || !is_object($response['result'])) {
+            throw new \RuntimeException('Legacy OVH VPS read-back failed.');
+        }
+        $resource = $response['result'];
+        if (!isset($resource->name, $resource->state)
+            || !is_string($resource->name) || $resource->name !== $ovhServerName
+            || !is_string($resource->state)
+            || !preg_match('/^[a-z][a-z-]{0,39}$/D', $resource->state)) {
+            throw new \RuntimeException('Legacy OVH VPS identity does not match the WHMCS claim.');
+        }
+        // This confirms an accessible resource in the configured legacy account;
+        // it does not prove its WHMCS billing association or create a binding.
+        return ['name' => $resource->name, 'state' => $resource->state];
     }
 
     public function getServerInfo($location, $servertype, $ovhServerName, $accountId)
