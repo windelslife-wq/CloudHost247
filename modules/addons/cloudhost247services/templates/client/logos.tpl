@@ -1,4 +1,4 @@
-{if $flash}<div class="alert alert-success">{$flash}</div>{/if}
+{if $flash}<div class="alert alert-success">{$flash|escape}</div>{/if}
 <div class="panel panel-default">
   <div class="panel-heading"><strong>My logo projects</strong>
     <a class="btn btn-xs btn-primary pull-right" href="{$modulelink}&action=logostudio">Open the studio</a></div>

@@ -1,4 +1,4 @@
-{if $flash_ok}<div class="alert alert-success">{$flash_ok}</div>{/if}
+{if $flash_ok}<div class="alert alert-success">{$flash_ok|escape}</div>{/if}
 {if $flash_error}<div class="alert alert-danger">{$flash_error|escape}</div>{/if}
 
 <div class="chs-auction-detail">

@@ -1,4 +1,4 @@
-{if $flash}<div class="alert alert-success">{$flash}</div>{/if}
+{if $flash}<div class="alert alert-success">{$flash|escape}</div>{/if}
 
 {if $membership}
 <div class="panel panel-success">

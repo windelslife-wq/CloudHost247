@@ -1,5 +1,5 @@
 {* CloudHost247 Services — client dashboard *}
-{if $flash}<div class="alert alert-success">{$flash}</div>{/if}
+{if $flash}<div class="alert alert-success">{$flash|escape}</div>{/if}
 <div class="chs-dash">
   <div class="chs-dash-grid">
     {if $features.valuation}
