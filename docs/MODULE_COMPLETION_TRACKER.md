@@ -303,6 +303,18 @@ Creation-time rules after A-6: a customer install needs a plan. Free plans (pric
 - Executed: full suite 2215/0; lint 110/0; suite 04 confirmed to fail on the old code (5 failures, see Tests).
 - Not yet evidence: the cPanel staging runbook and the live WHMCS payment check (see Remaining issues 1 and 2).
 
+## Additional audit item 1 — customaffiliate (2026-10-10)
+
+| ID | Finding | Evidence | Severity |
+|---|---|---|---|
+| C-1 | **Self-referral payout.** When a client had no referrer, the lookup fell back to `tblaffiliates.clientid`, which is the affiliate account the client owns. Their own orders then earned commission. | `lib/CommissionManager.php` `getClientAffiliate()` | High (financial) → **fixed**: fallback removed. Test: "no commission to own affiliate account". |
+| C-2 | **Recurring commissions were never reversed on refund**, although the README promised automatic reversal. | `handleInvoiceRefund()` reversed only the first commission. | High → **fixed**: `reverseRecurringForInvoice()`, idempotent. |
+| C-3 | **Raw SQL `CONCAT(notes, …)` in five places.** A NULL `notes` made CONCAT return NULL, so the note was silently lost. The raw expressions also concatenated values into SQL. | `CommissionManager`, `UpgradeHandler`, `utilities.php` | Medium → **fixed**: notes appended in PHP (`appendNote()`); no raw SQL in the module. |
+
+Tests: `tests/CommissionTest.php`, 22 checks, all pass; 12 of them failed on the old code. PHP parse check passes on all 8 PHP files. Not run: a live WHMCS invoice and refund flow, and hook order (AffiliateCommission vs InvoicePaid), which depends on WHMCS.
+
+Open for the owner: partial refunds still reset the full first-commission flag (documented, conservative). `UpgradeHandler` and the upgrade/downgrade hooks only record notes; re-grouping logic runs only from the manual utility.
+
 ## Module 4 — domainbroker (Domain Broker Service)
 
 | Field | Information |

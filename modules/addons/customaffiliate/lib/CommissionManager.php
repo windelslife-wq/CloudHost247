@@ -295,13 +295,14 @@ class CommissionManager
                 ]);
             } else {
                 // Update existing record for recurring
+                $amount = round((float) $commissionData['commission_amount'], 2);
                 Capsule::table('mod_customaffiliate_commissions')
                     ->where('id', $record->id)
                     ->update([
-                        'total_recurring_commission' => Capsule::raw('total_recurring_commission + ' . $commissionData['commission_amount']),
-                        'recurring_count'            => Capsule::raw('recurring_count + 1'),
+                        'total_recurring_commission' => round((float) $record->total_recurring_commission + $amount, 2),
+                        'recurring_count'            => (int) $record->recurring_count + 1,
                         'last_commission_at'         => date('Y-m-d H:i:s'),
-                        'notes'                      => Capsule::raw("CONCAT(notes, ' | Recurring commission recorded: " . $commissionData['commission_amount'] . "')"),
+                        'notes'                      => $this->appendNote($record->notes, 'Recurring commission recorded: ' . number_format($amount, 2, '.', '')),
                     ]);
             }
 
@@ -409,7 +410,7 @@ class CommissionManager
                         'first_commission_paid'    => false,
                         'first_commission_paid_at' => null,
                         'first_commission_invoice_id' => null,
-                        'notes'                    => Capsule::raw("CONCAT(notes, ' | First commission refunded on " . date('Y-m-d H:i:s') . "')"),
+                        'notes'                    => $this->appendNote($record->notes, 'First commission refunded on ' . date('Y-m-d H:i:s')),
                     ]);
 
                 // Log the refund action
@@ -430,6 +431,8 @@ class CommissionManager
                 ]);
             }
 
+            $this->reverseRecurringForInvoice($invoiceId);
+
             return true;
         } catch (Exception $e) {
             $this->logDebug('Error processing refund', [
@@ -437,6 +440,88 @@ class CommissionManager
                 'invoice_id' => $invoiceId,
             ]);
             return false;
+        }
+    }
+
+    /**
+     * Append a note to existing notes. NULL or empty notes are replaced, not
+     * concatenated (SQL CONCAT(NULL, ...) silently drops the new note).
+     *
+     * @param string|null $existing
+     * @param string $text
+     * @return string
+     */
+    public static function appendNote($existing, $text)
+    {
+        $current = trim((string) $existing);
+        return $current === '' ? $text : $current . ' | ' . $text;
+    }
+
+    /** Append a note to every commission row for a service. */
+    private function appendNoteForService($serviceId, $text)
+    {
+        foreach (Capsule::table('mod_customaffiliate_commissions')->where('service_id', $serviceId)->get() as $row) {
+            Capsule::table('mod_customaffiliate_commissions')
+                ->where('id', $row->id)
+                ->update(['notes' => $this->appendNote($row->notes, $text)]);
+        }
+    }
+
+    /**
+     * Reverse recurring commissions recorded against an invoice. Idempotent:
+     * each recurring log entry is reversed at most once, keyed by a
+     * 'refund_recurring' log row that names the original entry.
+     *
+     * @param int $invoiceId
+     * @return void
+     */
+    private function reverseRecurringForInvoice($invoiceId)
+    {
+        $entries = Capsule::table('mod_customaffiliate_log')
+            ->where('invoice_id', $invoiceId)
+            ->where('action', 'recurring_commission')
+            ->get();
+
+        foreach ($entries as $entry) {
+            $marker = 'Recurring commission reversed (log #' . $entry->id . ')';
+            $already = Capsule::table('mod_customaffiliate_log')
+                ->where('invoice_id', $invoiceId)
+                ->where('action', 'refund_recurring')
+                ->where('description', $marker)
+                ->exists();
+            if ($already) {
+                continue;
+            }
+
+            $amount = round((float) $entry->amount, 2);
+            $record = Capsule::table('mod_customaffiliate_commissions')
+                ->where('service_id', $entry->service_id)
+                ->where('affiliate_id', $entry->affiliate_id)
+                ->first();
+
+            Capsule::table('mod_customaffiliate_log')->insert([
+                'service_id'   => $entry->service_id,
+                'affiliate_id' => $entry->affiliate_id,
+                'invoice_id'   => $invoiceId,
+                'action'       => 'refund_recurring',
+                'amount'       => -$amount,
+                'percentage'   => 0,
+                'description'  => $marker,
+            ]);
+
+            if ($record) {
+                Capsule::table('mod_customaffiliate_commissions')
+                    ->where('id', $record->id)
+                    ->update([
+                        'total_recurring_commission' => max(0, round((float) $record->total_recurring_commission - $amount, 2)),
+                        'recurring_count'            => max(0, (int) $record->recurring_count - 1),
+                        'notes'                      => $this->appendNote($record->notes, 'Recurring commission reversed on refund of invoice ' . $invoiceId),
+                    ]);
+            }
+
+            $this->logDebug('Recurring commission reversed for refund', [
+                'invoice_id' => $invoiceId, 'service_id' => $entry->service_id, 'amount' => $amount,
+            ]);
         }
     }
 
@@ -462,18 +547,10 @@ class CommissionManager
             if ((int)$newGroupId !== (int)$this->productGroupId) {
                 // Service moved out of web hosting group - we keep the record
                 // but future commissions won't apply due to group check
-                Capsule::table('mod_customaffiliate_commissions')
-                    ->where('service_id', $serviceId)
-                    ->update([
-                        'notes' => Capsule::raw("CONCAT(notes, ' | Product changed to non-hosting on " . date('Y-m-d H:i:s') . "')"),
-                    ]);
+                $this->appendNoteForService($serviceId, 'Product changed to non-hosting on ' . date('Y-m-d H:i:s'));
             } else {
                 // Still in hosting group - maintain existing commission logic
-                Capsule::table('mod_customaffiliate_commissions')
-                    ->where('service_id', $serviceId)
-                    ->update([
-                        'notes' => Capsule::raw("CONCAT(notes, ' | Service " . $type . " on " . date('Y-m-d H:i:s') . "')"),
-                    ]);
+                $this->appendNoteForService($serviceId, 'Service ' . $type . ' on ' . date('Y-m-d H:i:s'));
             }
         } catch (Exception $e) {
             $this->logDebug('Error processing service change', [
@@ -616,17 +693,11 @@ class CommissionManager
                 ->where('id', $clientId)
                 ->first();
 
+            // Only the referrer counts. tblaffiliates.clientid is the affiliate
+            // account the client OWNS, so using it here would pay the client
+            // commission on their own orders (self-referral).
             if ($client && !empty($client->affiliateid)) {
                 return (int) $client->affiliateid;
-            }
-
-            // Alternative: Check if there's an active affiliate relationship via tblaffiliates
-            $affiliate = Capsule::table('tblaffiliates')
-                ->where('clientid', $clientId)
-                ->first();
-
-            if ($affiliate) {
-                return (int) $affiliate->id;
             }
 
             return false;
