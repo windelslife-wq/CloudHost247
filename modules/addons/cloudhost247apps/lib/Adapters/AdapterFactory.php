@@ -64,10 +64,7 @@ class AdapterFactory
         if (isset(self::$overrides[$engine])) {
             return self::$overrides[$engine];
         }
-        if (self::isDryRun() && self::$fake === null) {
-            self::$fake = new FakeAdapter();
-        }
-        if (self::$fake !== null && self::isDryRun()) {
+        if (self::isDryRun()) {
             return self::$fake;
         }
 

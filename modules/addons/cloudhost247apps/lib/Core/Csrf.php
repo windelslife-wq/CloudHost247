@@ -59,7 +59,7 @@ class Csrf
             return false;
         }
         if ($submitted === null) {
-            $submitted = isset($_REQUEST['ch247_token']) ? $_REQUEST['ch247_token'] : Http::header('X-CSRF-Token');
+            $submitted = isset($_POST['ch247_token']) ? $_POST['ch247_token'] : Http::header('X-CSRF-Token');
         }
         if (!is_string($submitted) || $submitted === '') {
             return false;

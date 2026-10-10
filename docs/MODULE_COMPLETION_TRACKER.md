@@ -198,7 +198,68 @@ Not changed: `external-api/tools/productivity.php` `qrScanner()` still returns i
 
 
 
-## Module 3 — cloudhost247apps — Not started
+## Module 3 — cloudhost247apps (hosting control plane)
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/cloudhost247apps` (WHMCS addon: control plane, catalog, billing gate, deployments, agent, cPanel/WHM adapter boundary, cron) |
+| Specification | `docs/HOSTING_CONTROL_PLANE_AUDIT.md` (post-audit status), `docs/APP_PLATFORM_PLAN.md` §5 (non-negotiable rules), `docs/PHASE2_…` to `docs/PHASE11_…`. Documented deliberate gaps: no production infrastructure adapter; customer VM provisioning disabled; Phase 3 is metadata-only; Phase 4–8 UAPI calls default off; cPanel staging runbook not executed. |
+| Status | **In audit (gate open).** Suite and lint pass. Security review covers the items below. Not yet verified: the full payment-gate path end to end, health and metrics provenance, and the live cPanel/WHM staging run. |
+
+### Audit findings
+
+| ID | Finding | Evidence | Severity |
+|---|---|---|---|
+| A-1 | **CSRF token could be supplied in the URL.** `Csrf::matches()` fell back to `$_REQUEST`, which includes query parameters, and `InfrastructureApi` did the same. A token in a URL can leak through server logs and Referer headers. | `lib/Core/Csrf.php` line 62; `lib/Api/InfrastructureApi.php` line 74. A new test first failed on the old code (query-string token accepted). | Medium (hygiene). **Fixed:** both now read `$_POST` (form) or the `X-CSRF-Token` header (API). |
+| A-2 | **Dead branch in `AdapterFactory::forEngine`.** `if (isDryRun() && $fake === null)` can never be true, because `isDryRun()` requires an installed fake. | `lib/Adapters/AdapterFactory.php`, `isDryRun()` | Low. **Fixed:** branch removed. Behaviour unchanged; the second check is now `if (isDryRun())`. |
+| A-3 | **Legacy claim that `KubernetesAdapter` is implemented is false.** No such file exists and it has no git history. `ENGINES` maps `kubernetes` to the missing class, but the `class_exists` guard fails closed with `ADAPTER_NOT_INSTALLED`. | Repository search; `AdapterFactory::forEngine` | Info. **Covered by a new test** that pins the fail-closed behaviour. |
+| A-4 | The "not implemented" messages in `lib/ControlPanels/CpanelWhmClient.php` are intended fail-closed allowlist rejections, not fake features. | Source review | Info (verified) |
+| A-5 | `FakeAdapter` is reachable only through `setFake`, which only tests call. `Settings::override` is in-memory, so a database setting cannot enable the fake. | `grep setFake`; `Settings::override` | Info (verified) |
+
+### Security review (source-verified in this pass)
+
+- **Webhook verification** (`lib/Billing/PaymentGate.php`): HMAC-SHA256 with `hash_equals`; a timestamp tolerance window (`WEBHOOK_TIMESTAMP_SKEW`); base64 and hex signatures; missing signatures rejected; replay detection through the event-ID ledger.
+- **API tokens** (`lib/Core/Identity.php`): stored as SHA-256 hashes (plaintext never stored); expiry, revocation, IP allowlist, and optional scopes enforced.
+- **Ownership:** customer-facing Deployment, Environment and Installation services compare `customer_id` with the authenticated actor. Customer installs take their client ID from the actor, not from input.
+- **CSRF:** enforced on state-changing admin POST handlers and on non-bearer API writes. Bearer-token callers are exempt by design, because browsers do not attach them automatically.
+- **Agent** (`lib/Servers/AgentAuthenticator.php`): HMAC over method, path, timestamp and nonce; a nonce of 16–128 characters; nonce uniqueness inside the window, so captured requests cannot be replayed.
+- **Cron** (`cron/cloudhost247apps.php`): refuses non-CLI execution. Runs as the SYSTEM actor, which may observe and maintain but not approve, publish or refund.
+- **Output and CORS:** no `Access-Control-Allow-Origin` wildcard in the module. No unescaped `echo` found in `lib/Http`, `lib/Api` or `api/` by grep. This is a grep-based check, not a full template review.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `lib/Core/Csrf.php` | Token read from `$_POST` (not `$_REQUEST`) when no explicit token is passed. |
+| `lib/Api/InfrastructureApi.php` | Form-token fallback read from `$_POST`. |
+| `lib/Adapters/AdapterFactory.php` | Dead branch removed (A-2). |
+| `tests/06_ModuleBoundaryTest.php` | 3 checks added: a query-string token is rejected; a POST-body token is accepted (A-1). |
+| `tests/26_AdapterFactoryTest.php` (new) | 8 checks: kubernetes and unknown engines fail closed; dry-run precedence; fake installed but dry-run off stays fail-closed (A-2, A-3). |
+
+### Tests
+
+| Command | Result |
+|---|---|
+| `node tests/run.mjs` (full suite, PHP 8.3 php-wasm), before this pass | 2198 PASS, 0 FAIL |
+| `node tests/run.mjs ModuleBoundary`, after the A-1 change (new checks first failed on the old code) | 49/49 |
+| `node tests/run.mjs AdapterFactory` | 8/8 |
+| `node tests/run.mjs` (full suite), after this pass | **2208 PASS, 0 FAIL, exit 0** (17.9 s) |
+| `node tests/lint.mjs` | FILES=110, BAD=0 |
+| Live WHMCS run, live payment webhook, live cPanel/WHM staging | **Not run.** No WHMCS install or upstream access in the sandbox. |
+
+### Remaining issues / blockers
+
+1. Finish Step 1 of the audit: verify that provisioning is blocked for unpaid orders end to end, and that health and metrics values are never fabricated (the grep check was inconclusive).
+2. The cPanel staging runbook has not been executed (documented gap; owner or staging access needed).
+3. Documented gaps stay as they are: no production infrastructure adapter, customer VM provisioning disabled, Phase 3 metadata-only, Phase 4–8 UAPI calls default off.
+4. Gate is not closed until items 1–2 are either verified or accepted by the user as documented gaps.
+
+### Completion evidence
+
+- Source: the files in *Changes made*.
+- Executed: full suite 2208/0 and lint 110/0 (see Tests). The new checks were run after the change.
+- Not yet evidence: live WHMCS, payment webhook and staging runs (see Remaining issues).
+
 
 ## Module 4 — domainbroker — Not started
 
