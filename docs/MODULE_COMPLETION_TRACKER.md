@@ -1047,7 +1047,13 @@ No defect found. The design matches what `docs/MODULES.md` describes (256-bit ha
 
 Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools`, `cloudhost247services`, `hostx`, announcement bar, `tools_center`. Each item follows the same workflow and needs approval before the next one starts.
 
-**Progress: the original 11-item list is complete; 12 modules now have completion records.** Six addons had **no completion record at all** and so were unfinished under the original definition — `cloudhost247ai`, `cloudhost247cart_recovery`, `cloudhost247cloudflare`, `cloudhost247marketing`, `cloudhost247passkey`, `soyoustart` (roughly 57,600 lines between them). Of those six, **`cloudhost247cloudflare` (Module 12) and `soyoustart` (Module 13) are now audited**. **Four remain: `cloudhost247ai`, `cloudhost247_cart_recovery`, `cloudhost247marketing`, `cloudhost247passkey`** — all four already have test suites, so each needs a verification pass rather than a suite built from scratch. `soyoustart` was taken first because it is vendored, credential-bearing and had no tests.
+**Progress: the original 11-item list is complete, and every addon in `MODULES.md` now has a completion record.** Six addons had **no completion record at all** and so were unfinished under the original definition — `cloudhost247ai`, `cloudhost247cart_recovery`, `cloudhost247cloudflare`, `cloudhost247marketing`, `cloudhost247passkey`, `soyoustart` (~57,600 lines between them). All six are now recorded: `cloudhost247cloudflare` (Module 12), `soyoustart` (Module 13), and the remaining four (Module 14).
+
+**Depth varies, and is stated per module rather than averaged away:** Modules 6–13 were audited line by line against their specs. Module 14's four addons (~45,500 lines) received **baseline verification plus a targeted review of the highest-risk surface** — not a full audit. See the Module 14 section.
+
+**Open owner decisions:** D-2 (deactivation, partially done), D-6 (`digitalproducts` activation limits), D-7 (routing `/tools/<slug>`), D-8 (policy for the two 100% ionCube-encoded modules). Plus the pre-existing High items: **P-5** (`phoneservices` all-tenant API key) and **M-5** (`smmaddon` client-controlled order quantity).
+
+**Not done anywhere in this programme:** no CI (fifteen suites, nothing runs them), and no live WHMCS or browser run.
 
 **Note on method:** `soyoustart` is vendored third-party code, so its findings are **recorded rather than patched** (forking upstream creates upgrade pain). That is a deliberate departure from Modules 6–12 and is stated in the Module 13 section.
 
