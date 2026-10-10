@@ -1053,6 +1053,23 @@ Taken first of the four because authentication is the highest-consequence surfac
 
 Not covered by this pass: `lib/Admin.php` (1,534 lines), `lib/Http/PasskeyHttpKernel.php` (1,052), `lib/Core/ExternalIdentityLinkService.php`, `lib/Core/PasskeyActionConfirmationService.php`, and the client templates.
 
+### Follow-up (2026-10-10): `cloudhost247ai` tool-execution layer — audited at depth, sound
+
+Second of the four. Scope: the agent tool-execution pipeline — the surface that lets an LLM read and write live WHMCS data (`lib/Tools/ToolExecutor.php`, `lib/Tools/ToolDefinition.php`, `lib/Tools/ToolRegistry.php`, `lib/Tools/Readers/*`, `lib/Approval/ApprovalEngine.php`). **No defect found.**
+
+**The pipeline fails closed at every step.** `ToolExecutor::doExecute()` applies, in order: kill-switch → tool exists and is enabled → per-agent tool grant (allowlist, and an unknown agent or a DB error both `return false`) → actor authority via `Rbac` (no group ⇒ no access) → approval gate → parameter validation → redaction → call → audit. Refusals are audited as well as executions, so blocked attempts leave a trail.
+
+**Multi-tenant isolation holds on all nine client-reachable tools.** Client scope is structurally restricted to `risk === 'READ' && $tool->clientBound`, so a customer cannot reach a write tool at all. The nine client-bound readers then isolate by one of two enforced mechanisms:
+
+- **Eight billing readers** force the session's client id first and make the caller-supplied `client_id` unreachable. The shape is `if ($client = ch247ai_scope_client($ctx)) { bind forced } elseif (!empty($args['client_id'])) { bind arg }` — the `elseif` is the control. Because `ch247ai_scope_client()` returns the session id whenever scope is `client`, the argument branch is only reachable when the forced value is 0 (admin scope). **This was the specific pattern checked for IDOR; it is correct, and deliberately uses `elseif` rather than a separate `if`.**
+- **One knowledge reader** (`read_knowledge`) has no per-client rows to filter on, so it isolates by visibility instead: `ch247ai_knowledge_search()` appends a hardcoded `AND ks.visibility = 'public'` when `$onlyPublic` is true. Critically, `$onlyPublic` is derived from `$ctx['scope'] === 'client'` — a server-side value, never from a tool argument — and the filter is a literal, not interpolated input. It is applied on both the MySQL FULLTEXT path and the LIKE fallback, so the fallback is not a weaker parallel route.
+
+**Write execution is gated three ways**: the global `writes_enabled` flag defaults to `false`; non-READ tools additionally require an approval row that is approved, unexpired, *and* whose argument digest matches this exact call (`assertExecutable` + `assertArgumentsMatch`), so an approval cannot be replayed against different arguments.
+
+Supporting controls observed: every query is parameterised with bound values (no SQL string interpolation anywhere in the readers), row limits are clamped (`ch247ai_clamp_limit` to 1–50, knowledge to 1–10), tables are checked with `ch247ai_require_tables()` which fails loudly with `DATA_UNAVAILABLE` rather than letting the model answer from memory, results pass through `Redaction::clean()` on the way out, and each tool returns `_citations` for grounding.
+
+Not covered by this pass: `lib/Http/AdminPortal.php` (1,116 lines), `lib/Agents/AgentRuntime.php` (439), `lib/SupportOperator/` (operator engine, conversation and escalation services), `lib/Board/`, `lib/Model/ModelRouter.php` and the outbound provider calls.
+
 ### Note on the four node_modules symlinks
 
 `cloudhost247ai`, `cloudhost247_cart_recovery`, `cloudhost247marketing` and `cloudhost247passkey` each needed `node_modules` for the php-wasm runners. That directory is a symlink to `cloudhost247services/node_modules` and is **gitignored for `CloudHost247_tools` and `cloudhost247cloudflare` only**. The four symlinks created here are untracked and were not committed — a fresh clone needs `npm i @php-wasm/node` in each module. Worth adding to `.gitignore` alongside the existing two entries.
@@ -1065,7 +1082,9 @@ Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phon
 
 **Depth varies, and is stated per module rather than averaged away:** Modules 6–13 were audited line by line against their specs. Module 14's four addons (~45,500 lines) initially received **baseline verification plus a targeted review of the highest-risk surface** — not a full audit.
 
-**Now upgrading those four one by one.** `cloudhost247passkey`'s authentication core (WebAuthn ceremonies + challenge lifecycle) has since been audited at full depth and found **sound** — atomic single-use challenge consumption, session/RP/origin/identity binding, and post-verification ownership checks. See the Module 14 follow-up. **Remaining at baseline depth: `cloudhost247ai`, `cloudhost247marketing`, `cloudhost247_cart_recovery`.** `cloudhost247ai` is next (agent tool execution over live WHMCS data).
+**Now upgrading those four one by one.** `cloudhost247passkey`'s authentication core (WebAuthn ceremonies + challenge lifecycle) has since been audited at full depth and found **sound** — atomic single-use challenge consumption, session/RP/origin/identity binding, and post-verification ownership checks. See the Module 14 follow-up. **Now upgrading those four one by one.** `cloudhost247passkey`'s authentication core (WebAuthn ceremonies + challenge lifecycle) has since been audited at full depth and found **sound** — atomic single-use challenge consumption, session/RP/origin/identity binding, and post-verification ownership checks. `cloudhost247ai`'s tool-execution layer has likewise been audited at depth and found **sound** — the pipeline fails closed at every step, and all nine client-reachable tools enforce tenant isolation. See the Module 14 follow-ups.
+
+**Remaining at baseline depth: `cloudhost247marketing`, `cloudhost247_cart_recovery`.** `cloudhost247marketing` is next (outbound messaging and subscriber data — the largest remaining surface).
 
 **Open owner decisions:** D-2 (deactivation, partially done), D-6 (`digitalproducts` activation limits), D-7 (routing `/tools/<slug>`), D-8 (policy for the two 100% ionCube-encoded modules). Plus the pre-existing High items: **P-5** (`phoneservices` all-tenant API key) and **M-5** (`smmaddon` client-controlled order quantity).
 
