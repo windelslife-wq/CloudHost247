@@ -30,24 +30,14 @@ class DeveloperTools {
             throw new Exception('Invalid URL');
         }
         
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HEADER => true,
-            CURLOPT_NOBODY => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        // Guarded fetch: public targets only, every redirect hop re-validated.
+        $fetch = tc_fetch_url($url, [
+            'nobody' => true,
+            'timeout' => 30,
+            'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         ]);
-        
-        $response = curl_exec($ch);
-        $info = curl_getinfo($ch);
-        curl_close($ch);
-        
-        if ($response === false) {
-            throw new Exception('Failed to fetch URL');
-        }
+        $response = $fetch['headers'];
+        $info = $fetch['info'];
         
         // Parse headers
         $headers = [];
@@ -97,8 +87,8 @@ class DeveloperTools {
             'headers' => $headers,
             'security_analysis' => $securityAnalysis,
             'security_score' => round(($presentSecurity / max(1, $totalSecurity)) * 100),
-            'redirects' => $info['redirect_count'] ?? 0,
-            'final_url' => $info['url'] ?? $url,
+            'redirects' => $fetch['redirects'],
+            'final_url' => $fetch['final_url'],
         ];
     }
     
@@ -271,7 +261,8 @@ class DeveloperTools {
         
         foreach (array_unique($testPorts) as $testPort) {
             $startTime = microtime(true);
-            $socket = @fsockopen($host, $testPort, $errno, $errstr, $timeout);
+            // Connects only to a validated public address (see outbound.php).
+            $socket = tc_open_public_socket($host, $testPort, $timeout, $errno, $errstr);
             $connectTime = round((microtime(true) - $startTime) * 1000, 2);
             
             if ($socket) {
@@ -418,22 +409,10 @@ class DeveloperTools {
         }
         
         // Fetch page content
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_USERAGENT => 'Mozilla/5.0 (compatible; WHMCS-Tools-Center/1.0; +https://example.com)'
-        ]);
-        
-        $html = curl_exec($ch);
-        $info = curl_getinfo($ch);
-        curl_close($ch);
-        
-        if ($html === false) {
-            throw new Exception('Failed to fetch page');
-        }
+        // Guarded fetch: public targets only, every redirect hop re-validated.
+        $page = tc_fetch_url($url, ['timeout' => 30, 'user_agent' => 'Mozilla/5.0 (compatible; WHMCS-Tools-Center/1.0)']);
+        $html = $page['body'];
+        $info = $page['info'];
         
         // Extract links
         $links = [];
@@ -456,21 +435,14 @@ class DeveloperTools {
             $isInternal = $linkHost === $baseHost;
             
             // Check link
-            $linkCh = curl_init($link);
-            curl_setopt_array($linkCh, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_NOBODY => true,
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_TIMEOUT => 15,
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_USERAGENT => 'Mozilla/5.0 (compatible; WHMCS-Tools-Center/1.0)'
-            ]);
-            
-            curl_exec($linkCh);
-            $linkInfo = curl_getinfo($linkCh);
-            curl_close($linkCh);
-            
-            $statusCode = $linkInfo['http_code'];
+            // A link the guard refuses (private target, bad scheme) is reported as
+            // unreachable; it does not abort the whole check.
+            try {
+                $check = tc_fetch_url($link, ['nobody' => true, 'timeout' => 15, 'user_agent' => 'Mozilla/5.0 (compatible; WHMCS-Tools-Center/1.0)']);
+                $statusCode = $check['status'];
+            } catch (Exception $e) {
+                $statusCode = 0;
+            }
             $broken = $statusCode === 0 || $statusCode >= 400;
             
             $results[] = [
@@ -478,9 +450,10 @@ class DeveloperTools {
                 'status_code' => $statusCode,
                 'broken' => $broken,
                 'internal' => $isInternal,
-                'redirects' => $linkInfo['redirect_count'] ?? 0,
-                'response_time_ms' => round($linkInfo['total_time'] * 1000, 2)
+                'redirects' => isset($check) ? $check['redirects'] : 0,
+                'response_time_ms' => isset($check) ? round($check['info']['total_time'] * 1000, 2) : null
             ];
+            unset($check);
         }
         
         $brokenCount = count(array_filter($results, function($r) { return $r['broken']; }));

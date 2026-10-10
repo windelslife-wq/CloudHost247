@@ -39,7 +39,8 @@ class NetworkTools {
         
         foreach ($portList as $port) {
             $startTime = microtime(true);
-            $socket = @fsockopen($host, $port, $errno, $errstr, $timeout);
+            // Connects only to a validated public address (see outbound.php).
+            $socket = tc_open_public_socket($host, $port, $timeout, $errno, $errstr);
             $responseTime = round((microtime(true) - $startTime) * 1000, 2);
             
             if ($socket) {

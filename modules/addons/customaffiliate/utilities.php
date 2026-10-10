@@ -118,14 +118,17 @@ switch ($command) {
         echo "Resetting commission status for service {$serviceId}...\n";
 
         try {
-            $affected = Capsule::table('mod_customaffiliate_commissions')
-                ->where('service_id', $serviceId)
-                ->update([
-                    'first_commission_paid' => false,
-                    'first_commission_paid_at' => null,
-                    'first_commission_invoice_id' => null,
-                    'notes' => Capsule::raw("CONCAT(notes, ' | Manual reset via utility script on " . date('Y-m-d H:i:s') . "')"),
-                ]);
+            $affected = 0;
+            foreach (Capsule::table('mod_customaffiliate_commissions')->where('service_id', $serviceId)->get() as $row) {
+                $affected += Capsule::table('mod_customaffiliate_commissions')
+                    ->where('id', $row->id)
+                    ->update([
+                        'first_commission_paid' => false,
+                        'first_commission_paid_at' => null,
+                        'first_commission_invoice_id' => null,
+                        'notes' => CommissionManager::appendNote($row->notes, 'Manual reset via utility script on ' . date('Y-m-d H:i:s')),
+                    ]);
+            }
 
             echo "Updated {$affected} record(s).\n";
             echo "Next payment for this service will be treated as FIRST payment (50%).\n";

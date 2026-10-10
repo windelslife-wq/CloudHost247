@@ -13,6 +13,9 @@
 				{rdelim}
 			{rdelim} catch (ignore) {ldelim} return; {rdelim}
 			if (!window.fetch || !consentId) return;
+			var tokenMeta = document.querySelector('meta[name="chs-csrf-token"]');
+			var csrfToken = tokenMeta ? tokenMeta.getAttribute('content') : '';
+			if (!csrfToken) return;
 			var categories = status === 'allow' ? 'necessary,analytics,marketing' : 'necessary';
 			var body = 'status=' + encodeURIComponent(status)
 				+ '&consent_id=' + encodeURIComponent(consentId)
@@ -21,7 +24,7 @@
 				+ '&language=' + encodeURIComponent('{$LANG.locale|default:"en"|escape:"javascript"}');
 			window.fetch('{$WEB_ROOT|escape:'javascript'}/index.php?m=cloudhost247services&action=consent', {ldelim}
 				method: 'POST', credentials: 'same-origin',
-				headers: {ldelim}'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'{rdelim},
+				headers: {ldelim}'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-CSRF-Token': csrfToken{rdelim},
 				body: body
 			{rdelim}).catch(function () {ldelim}{rdelim});
 		{rdelim}

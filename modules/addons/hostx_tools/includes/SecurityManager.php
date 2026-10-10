@@ -272,35 +272,28 @@ class SecurityManager
      */
     public static function getClientIp()
     {
-        $headers = [
-            'HTTP_CF_CONNECTING_IP',
-            'HTTP_CLIENT_IP',
-            'HTTP_X_FORWARDED_FOR',
-            'HTTP_X_FORWARDED',
-            'HTTP_X_CLUSTER_CLIENT_IP',
-            'HTTP_FORWARDED_FOR',
-            'HTTP_FORWARDED',
-            'REMOTE_ADDR',
-        ];
-        
-        foreach ($headers as $header) {
-            if (!empty($_SERVER[$header])) {
-                $ips = explode(',', $_SERVER[$header]);
-                $ip = trim($ips[0]);
-                
-                if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-                    return $ip;
+        // REMOTE_ADDR is authoritative. Client-supplied forwarding headers are read
+        // only when REMOTE_ADDR is a configured trusted proxy
+        // (CLOUDHOST247_TRUSTED_PROXIES, comma-separated). Trusting them lets a
+        // caller choose a new rate-limit key on every request (audit H-1).
+        $remote = isset($_SERVER['REMOTE_ADDR']) ? trim((string) $_SERVER['REMOTE_ADDR']) : '';
+        $trusted = getenv('CLOUDHOST247_TRUSTED_PROXIES');
+        if ($trusted && filter_var($remote, FILTER_VALIDATE_IP)
+            && in_array($remote, array_map('trim', explode(',', $trusted)), true)) {
+            foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR'] as $header) {
+                if (empty($_SERVER[$header])) {
+                    continue;
                 }
-                
-                if (filter_var($ip, FILTER_VALIDATE_IP)) {
-                    return $ip;
+                $first = trim(explode(',', $_SERVER[$header])[0]);
+                if (filter_var($first, FILTER_VALIDATE_IP)) {
+                    return $first;
                 }
             }
         }
-        
-        return '127.0.0.1';
+
+        return filter_var($remote, FILTER_VALIDATE_IP) ? $remote : '127.0.0.1';
     }
-    
+
     /**
      * Get module configuration
      *

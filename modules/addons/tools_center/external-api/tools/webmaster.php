@@ -31,20 +31,11 @@ class WebmasterTools {
             throw new Exception('Invalid URL');
         }
         
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_USERAGENT => 'Mozilla/5.0 (compatible; WHMCS-LinkAnalyzer/1.0)'
-        ]);
-        
-        $html = curl_exec($ch);
-        $info = curl_getinfo($ch);
-        curl_close($ch);
-        
-        if ($html === false) {
+        // Guarded fetch: public targets only, every redirect hop re-validated.
+        $page = tc_fetch_url($url, ['timeout' => 30, 'user_agent' => 'Mozilla/5.0 (compatible; WHMCS-LinkAnalyzer/1.0)']);
+        $html = $page['body'];
+        $info = $page['info'];
+        if ($html === '' && $page['status'] === 0) {
             throw new Exception('Failed to fetch page');
         }
         
@@ -121,21 +112,17 @@ class WebmasterTools {
         // Check for broken links (sample check on first 10)
         $checkLinks = array_slice(array_merge($internalLinks, $externalLinks), 0, 10);
         foreach ($checkLinks as $link) {
-            $linkCh = curl_init($link['url']);
-            curl_setopt_array($linkCh, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_NOBODY => true,
-                CURLOPT_TIMEOUT => 10,
-                CURLOPT_SSL_VERIFYPEER => false,
-            ]);
-            curl_exec($linkCh);
-            $linkInfo = curl_getinfo($linkCh);
-            curl_close($linkCh);
-            
-            if ($linkInfo['http_code'] >= 400 || $linkInfo['http_code'] === 0) {
+            // A link the guard refuses is reported as unreachable (status 0).
+            try {
+                $status = (int) tc_fetch_url($link['url'], ['nobody' => true, 'timeout' => 10])['status'];
+            } catch (Exception $e) {
+                $status = 0;
+            }
+
+            if ($status >= 400 || $status === 0) {
                 $brokenLinks[] = [
                     'url' => $link['url'],
-                    'status' => $linkInfo['http_code']
+                    'status' => $status
                 ];
             }
         }

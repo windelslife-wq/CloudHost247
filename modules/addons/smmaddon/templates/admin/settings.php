@@ -2,15 +2,16 @@
     <h2>SMM Panel Settings</h2>
 
     <?php if ($flash): ?>
-    <div class="alert alert-<?php echo $flash['type'] === 'success' ? 'success' : 'danger'; ?>">
-        <?php echo $flash['message']; ?>
+    <div class="alert alert-<?php echo htmlspecialchars((string) ($flash['type'] === 'success' ? 'success' : 'danger'), ENT_QUOTES, 'UTF-8'); ?>">
+        <?php echo htmlspecialchars((string) ($flash['message']), ENT_QUOTES, 'UTF-8'); ?>
     </div>
     <?php endif; ?>
 
     <div class="panel panel-default">
         <div class="panel-heading"><h4>API Configuration</h4></div>
         <div class="panel-body">
-            <form method="post" action="<?php echo $modulelink; ?>&action=settings">
+            <form method="post" action="<?php echo htmlspecialchars((string) ($modulelink), ENT_QUOTES, 'UTF-8'); ?>
+<input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8'); ?>">&action=settings">
                 <input type="hidden" name="action" value="settings">
                 <div class="form-group">
                     <label>SMM Panel API URL</label>
@@ -24,14 +25,14 @@
                 </div>
                 <div class="form-group">
                     <label>
-                        <input type="checkbox" name="auto_sync" value="1" <?php echo ($config['auto_sync'] ?? 'off') === 'on' ? 'checked' : ''; ?>>
+                        <input type="checkbox" name="auto_sync" value="1" <?php echo htmlspecialchars((string) (($config['auto_sync'] ?? 'off') === 'on' ? 'checked' : ''), ENT_QUOTES, 'UTF-8'); ?>>
                         Auto Sync Services Daily
                     </label>
                     <small class="text-muted">Automatically sync SMM services list during daily cron.</small>
                 </div>
                 <div class="form-group">
                     <label>
-                        <input type="checkbox" name="debug_mode" value="1" <?php echo ($config['debug_mode'] ?? 'off') === 'on' ? 'checked' : ''; ?>>
+                        <input type="checkbox" name="debug_mode" value="1" <?php echo htmlspecialchars((string) (($config['debug_mode'] ?? 'off') === 'on' ? 'checked' : ''), ENT_QUOTES, 'UTF-8'); ?>>
                         Debug Mode (Log API Calls)
                     </label>
                     <small class="text-muted">Enable only for troubleshooting. Logs may grow large.</small>

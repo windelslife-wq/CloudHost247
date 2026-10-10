@@ -74,6 +74,13 @@ function phoneservices_config()
                 'Default'      => '',
                 'Description'  => 'Your Vonage API Secret.',
             ],
+            'vonage_signature_secret' => [
+                'FriendlyName' => 'Vonage Signature Secret',
+                'Type'         => 'password',
+                'Size'         => '50',
+                'Default'      => '',
+                'Description'  => 'Vonage signature secret (Dashboard > Settings). Webhooks are rejected until this is set.',
+            ],
             'airalo_api_token' => [
                 'FriendlyName' => 'Airalo API Token',
                 'Type'         => 'password',

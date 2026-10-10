@@ -39,9 +39,17 @@ class DownloadAuthorizer
         return $query->update(['downloads_used' => Capsule::raw('downloads_used + 1'), 'updated_at' => date('Y-m-d H:i:s')]) > 0;
     }
 
+    /**
+     * True when the token's version is NOT the one this entitlement may download.
+     * purchase_version entitlements are locked to the release bought; all others
+     * follow the product's current release. Fails closed when the expected id is
+     * missing (null never equals a real version id).
+     */
     protected function versionNotAllowed($record)
     {
-        if ($record->access_mode === 'purchase_version') return (int) $record->version_id === (int) $record->purchase_version_id;
-        return (int) $record->version_id === (int) $record->current_version_id;
+        if ($record->access_mode === 'purchase_version') {
+            return $record->purchase_version_id === null || (int) $record->version_id !== (int) $record->purchase_version_id;
+        }
+        return $record->current_version_id === null || (int) $record->version_id !== (int) $record->current_version_id;
     }
 }

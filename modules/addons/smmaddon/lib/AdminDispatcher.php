@@ -23,8 +23,13 @@ class AdminDispatcher
             return;
         }
 
-        // Handle POST actions
+        // Handle POST actions. Every admin POST must carry the session CSRF token.
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_REQUEST['ajax'])) {
+            if (!$this->csrfValid()) {
+                $this->setFlash('error', 'Security token mismatch. Reload the page and try again.');
+                header('Location: ' . $this->vars['modulelink'] . '&action=' . urlencode($action));
+                exit;
+            }
             $this->handlePost($action);
         }
 
@@ -156,6 +161,7 @@ class AdminDispatcher
     private function render($action)
     {
         $modulelink = $this->vars['modulelink'];
+        $csrf = $this->csrfToken();
         $flash = $this->getFlash();
 
         switch ($action) {
@@ -408,6 +414,24 @@ class AdminDispatcher
         } catch (Exception $e) {
             // Silent fail
         }
+    }
+
+    /**
+     * Per-session CSRF token for admin forms.
+     */
+    private function csrfToken()
+    {
+        if (empty($_SESSION['smmaddon_csrf'])) {
+            $_SESSION['smmaddon_csrf'] = bin2hex(random_bytes(32));
+        }
+        return $_SESSION['smmaddon_csrf'];
+    }
+
+    private function csrfValid()
+    {
+        $expected = $_SESSION['smmaddon_csrf'] ?? '';
+        $given = (string) ($_POST['csrf_token'] ?? '');
+        return $expected !== '' && hash_equals($expected, $given);
     }
 
     private function setFlash($type, $message)

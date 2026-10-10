@@ -116,6 +116,21 @@ To receive real-time updates from providers:
    https://your-whmcs.com/modules/servers/hostx_email/webhook.php?provider=professional
    ```
 
+### Webhook authentication (fail-closed)
+
+Every webhook request is authenticated **before** it is processed. Requests that
+cannot be authenticated get HTTP 401 and change nothing.
+
+| Provider | What must be sent | Secret source |
+|---|---|---|
+| Professional Email | `X-Webhook-Signature` or `X-Hub-Signature-256` (`sha256=` prefix allowed): HMAC-SHA256 of the raw body | The module's API key (server password). Rejected if empty. |
+| Google Workspace | `X-Goog-Channel-Token` equal to the secret | `tblconfiguration` setting `hostx_email_google_channel_token`. Rejected while unset. |
+| Microsoft 365 | Each notification's `clientState` equal to the secret | `tblconfiguration` setting `hostx_email_ms_client_state`. Notifications are skipped while unset. |
+
+Set the secret values in `tblconfiguration` and use the same values when you create the
+Microsoft subscription (`clientState`) or the Google push channel (`token`). The Microsoft
+validation handshake (`validationToken`) only echoes the token and changes nothing.
+
 ## Features
 
 ### Client Area
@@ -141,8 +156,8 @@ To receive real-time updates from providers:
 ### Security
 - **Encrypted Credentials**: AES-256 encryption for API keys
 - **Input Validation**: All user inputs sanitized and validated
-- **Rate Limiting**: API request throttling to prevent abuse
-- **Webhook Verification**: Signature validation for incoming webhooks
+- **Rate Limiting**: Not implemented in this module. Webhooks are authenticated (see above); add throttling at the web server or WAF if needed.
+- **Webhook Verification**: Every webhook is authenticated before processing (see Webhook authentication above)
 - **Audit Logging**: All API calls logged with sanitized credentials
 
 ## API Reference
@@ -162,7 +177,7 @@ To receive real-time updates from providers:
 | Function | Endpoint | Method |
 |----------|----------|--------|
 | Create User | `/users` | POST |
-| Assign License | Licensing API | PUT |
+| Assign License | `/apps/licensing/v1/product/Google-Apps/sku/{skuId}/user` (Licensing API) | POST |
 | Suspend User | `/users/{email}` | PUT |
 | Delete User | `/users/{email}` | DELETE |
 | Change Password | `/users/{email}` | PUT |

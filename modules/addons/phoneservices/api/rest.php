@@ -7,6 +7,14 @@
 use PhoneServices\Core\Router;
 use PhoneServices\API\Middleware\AuthMiddleware;
 
+// Bootstrap WHMCS (session, select_query, ...). Fail closed if it is missing.
+$whmcsInit = dirname(__DIR__, 4) . '/init.php';
+if (!file_exists($whmcsInit)) {
+    http_response_code(500);
+    exit;
+}
+require_once $whmcsInit;
+
 require_once __DIR__ . '/../autoload.php';
 
 header('Content-Type: application/json');

@@ -80,15 +80,17 @@ class UpgradeHandler
     private function resetCommissionStatus($serviceId)
     {
         try {
-            Capsule::table('mod_customaffiliate_commissions')
-                ->where('service_id', $serviceId)
-                ->update([
-                    'first_commission_paid' => false,
-                    'first_commission_paid_at' => null,
-                    'first_commission_invoice_id' => null,
-                    'total_recurring_commission' => Capsule::raw('total_recurring_commission'),
-                    'notes' => Capsule::raw("CONCAT(notes, ' | Commission tracking reset on " . date('Y-m-d H:i:s') . "')"),
-                ]);
+            // Recurring totals are left as they are; only the first-payment flag is reset.
+            foreach (Capsule::table('mod_customaffiliate_commissions')->where('service_id', $serviceId)->get() as $row) {
+                Capsule::table('mod_customaffiliate_commissions')
+                    ->where('id', $row->id)
+                    ->update([
+                        'first_commission_paid' => false,
+                        'first_commission_paid_at' => null,
+                        'first_commission_invoice_id' => null,
+                        'notes' => CommissionManager::appendNote($row->notes, 'Commission tracking reset on ' . date('Y-m-d H:i:s')),
+                    ]);
+            }
         } catch (Exception $e) {
             $this->manager->logDebug('Error resetting commission status', [
                 'error' => $e->getMessage(),
@@ -107,11 +109,11 @@ class UpgradeHandler
     private function updateNotes($serviceId, $note)
     {
         try {
-            Capsule::table('mod_customaffiliate_commissions')
-                ->where('service_id', $serviceId)
-                ->update([
-                    'notes' => Capsule::raw("CONCAT(notes, ' | " . addslashes($note) . "')"),
-                ]);
+            foreach (Capsule::table('mod_customaffiliate_commissions')->where('service_id', $serviceId)->get() as $row) {
+                Capsule::table('mod_customaffiliate_commissions')
+                    ->where('id', $row->id)
+                    ->update(['notes' => CommissionManager::appendNote($row->notes, (string) $note)]);
+            }
         } catch (Exception $e) {
             $this->manager->logDebug('Error updating notes', [
                 'error' => $e->getMessage(),

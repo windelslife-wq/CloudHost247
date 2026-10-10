@@ -198,13 +198,27 @@ Not changed: `external-api/tools/productivity.php` `qrScanner()` still returns i
 
 
 
+### Module 2 follow-up — `external-api/` audit (open item 4 closed in code)
+
+| ID | Finding | Evidence | Severity |
+|---|---|---|---|
+| T-6 | **SSRF.** The HTTP headers checker, the open-graph/broken-link checker, the link analyzer, the broken-link sample, and the port checker and SMTP test connected to any caller-supplied host, including private ranges and cloud metadata, and followed redirects. | `external-api/tools/developer.php`, `webmaster.php`, `network.php` (before the fix) | High |
+| T-7 | **Unsafe action dispatch.** `api.php` called any method that `method_exists()` found. Private methods raised an uncaught `Error` (not an `Exception`), and magic methods were callable. | `external-api/api.php` | Medium |
+| T-8 | Certificate verification is still off in the page-fetch tools (`SSL_VERIFYPEER => false`, kept to preserve behaviour for sites with broken certificates). Connections are pinned to the validated address, so this affects content integrity in transit only. | `developer.php`, `webmaster.php` | Low (accepted, documented) |
+
+**Fix:** new `external-api/outbound.php`. It accepts only http/https on ports 80/443 with no credentials, resolves the host and rejects any non-public address (deny-list covers IPv4-mapped IPv6, CGNAT, NAT64 and the other reserved ranges), pins the connection to the validated IP, and re-validates every redirect hop (maximum 5). Sockets use `tc_open_public_socket()`. `api.php` dispatches only public, non-magic methods declared on the tool class. A link the guard refuses is reported as unreachable rather than aborting the report.
+
+**Tests:** `tests/outbound-guard.php` (60 offline checks, run with `tests/run-php-guard.mjs` on php-wasm). The PHP syntax check passes on all 19 PHP files. Live DNS and network behaviour is **not run** in the sandbox.
+
+**Still open:** the unused `qrScanner()` and `qrGenerator()` in `external-api/` (owner decision, unchanged); T-8 (owner decision on verification); the external API's wildcard CORS header (`Access-Control-Allow-Origin: *`), which is also unchanged.
+
 ## Module 3 — cloudhost247apps (hosting control plane)
 
 | Field | Information |
 |---|---|
 | Module | `modules/addons/cloudhost247apps` (WHMCS addon: control plane, catalog, billing gate, deployments, agent, cPanel/WHM adapter boundary, cron) |
 | Specification | `docs/HOSTING_CONTROL_PLANE_AUDIT.md` (post-audit status), `docs/APP_PLATFORM_PLAN.md` §5 (rules 5 and 7) and §20 (payment rule), `docs/PHASE2_…` to `docs/PHASE11_…`. Documented deliberate gaps: no production infrastructure adapter; customer VM provisioning disabled; Phase 3 is metadata-only; Phase 4–8 UAPI calls default off; cPanel staging runbook not executed. |
-| Status | **Accepted by the user (gate closed) with owner items pending:** the cPanel staging runbook, the live WHMCS payment check, and the decision on A-8. Code findings A-1 to A-7 are fixed and tested. |
+| Status | **Closed for code (owner, 2026-10-10): code-complete, owner items pending.** Owner-run checks remain: the cPanel staging runbook and the live WHMCS payment check. A-8 decided: keep, inert. Code findings A-1 to A-7 are fixed and tested. Suite re-run 2026-10-10: 2215 PASS, 0 FAIL. Out-of-scope features (customer account creation, SSO, panel installation, licensing) are not started. |
 
 ### Audit findings
 
@@ -217,7 +231,7 @@ Not changed: `external-api/tools/productivity.php` `qrScanner()` still returns i
 | A-5 | `FakeAdapter` is reachable only through `setFake`, which only tests call. `Settings::override` is in-memory, so a database setting cannot enable it. | `grep setFake`; `Settings::override` | Info (verified) |
 | A-6 | **Provisioning could skip payment in two ways.** (a) An installation with no `plan_id` has no price, so `requiresPayment` was false and it provisioned with no invoice. This breaks §20 ("provisioning only from a server-verified invoice"). (b) `bypass_payment` in the input was honoured for any actor, including customers. No HTTP route currently exposes `InstallationService::create`, so this was latent, but it is one route away from being live. | `lib/Deployments/InstallationService.php` `create()` | **High (latent).** **Fixed:** customers must supply `plan_id` (`ValidationException`, `PLAN_REQUIRED`). `bypass_payment` is honoured only for `PLAN_MANAGE` actors. On the old code, four of the new checks fail, and so does one existing count check (\"provisions exactly one installation\"), which the old bypass broke. |
 | A-7 | `DockerAdapter::health()` and `dispatch()` reported `attempts = 1` when the agent did not report a count, asserting a value nobody measured. Nothing in production reads it. | `lib/Adapters/DockerAdapter.php` lines 458 and 581 | Low. **Fixed:** reports `null` when not reported. Covered only by the full suite, not a dedicated assertion. |
-| A-8 | `install_requires_paid_order` (default `1`) is read by no code. Payment is enforced by price, not by this setting. The setting is misleading. | `grep install_requires_paid_order`: only `Settings.php` and tests | Low. **Not removed** (backward compatibility). Owner decision: delete or wire. Wiring it to disable payment would be a financial bypass, so the agent did not do so. |
+| A-8 | `install_requires_paid_order` (default `1`) is read by no code. Payment is enforced by price, not by this setting. The setting is misleading. | `grep install_requires_paid_order`: only `Settings.php` and tests | Low. **Not removed** (backward compatibility). **Decision (owner, 2026-10-10): keep as-is, documented as inert.** Wiring it to disable payment would be a financial bypass and is not done. |
 
 ### Payment gate: verified end to end (source plus tests)
 
@@ -288,6 +302,66 @@ Creation-time rules after A-6: a customer install needs a plan. Free plans (pric
 - Source: the files in *Changes made*.
 - Executed: full suite 2215/0; lint 110/0; suite 04 confirmed to fail on the old code (5 failures, see Tests).
 - Not yet evidence: the cPanel staging runbook and the live WHMCS payment check (see Remaining issues 1 and 2).
+
+## Additional audit item 1 — customaffiliate (2026-10-10)
+
+| ID | Finding | Evidence | Severity |
+|---|---|---|---|
+| C-1 | **Self-referral payout.** When a client had no referrer, the lookup fell back to `tblaffiliates.clientid`, which is the affiliate account the client owns. Their own orders then earned commission. | `lib/CommissionManager.php` `getClientAffiliate()` | High (financial) → **fixed**: fallback removed. Test: "no commission to own affiliate account". |
+| C-2 | **Recurring commissions were never reversed on refund**, although the README promised automatic reversal. | `handleInvoiceRefund()` reversed only the first commission. | High → **fixed**: `reverseRecurringForInvoice()`, idempotent. |
+| C-3 | **Raw SQL `CONCAT(notes, …)` in five places.** A NULL `notes` made CONCAT return NULL, so the note was silently lost. The raw expressions also concatenated values into SQL. | `CommissionManager`, `UpgradeHandler`, `utilities.php` | Medium → **fixed**: notes appended in PHP (`appendNote()`); no raw SQL in the module. |
+
+Tests: `tests/CommissionTest.php`, 22 checks, all pass; 10 of them failed on the old code. PHP parse check passes on all 8 PHP files. Not run: a live WHMCS invoice and refund flow, and hook order (AffiliateCommission vs InvoicePaid), which depends on WHMCS.
+
+Open for the owner: partial refunds still reset the full first-commission flag (documented, conservative). `UpgradeHandler` and the upgrade/downgrade hooks only record notes; re-grouping logic runs only from the manual utility.
+
+## Additional audit item 2 — hostx_email (2026-10-10)
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| H-1 | **Unauthenticated webhooks were processed.** The signature check ran only when a header was present. Microsoft 365 and Google returned `true` unconditionally. The Microsoft `clientState` check was skipped when no secret was set. Unsigned POSTs could set a customer's WHMCS service to `Terminated`. | `webhook.php`; `api.php` `verifyWebhookSignature()` | High | **Fixed** (`dee0cfe`). `authenticateWebhook()` is required for every request. Google needs `hostx_email_google_channel_token`; Microsoft needs `hostx_email_ms_client_state`; Professional needs a non-empty API key and a valid HMAC. |
+| H-2 | **Google license assignment never worked.** The code sent `PUT .../product/Google-Apps/users/{sku}/{email}`. That path does not exist, and PUT reassigns an existing license, so a new user could not receive one. The create path ignored the failure. | `api.php` `assignGoogleWorkspaceLicense()`; Google Licensing API `licenseAssignments.insert` | High (functional) | **Fixed.** Now `POST .../product/Google-Apps/sku/{skuId}/user` with `{userId}`. 409 (already licensed) counts as success. Both create paths log `Create-LicenseFailed` on failure. Not run live. |
+| H-3 | **A second, unused webhook implementation** in `api.php` (`handleWebhook` and three private handlers) kept the old fail-open auth. A future caller would bypass H-1. | `api.php` (no callers) | Medium (latent) | **Fixed:** removed (184 lines). `webhook.php` is the only entry point. |
+| H-4 | **Stored credentials use a key that is not secret.** The key is `sha256(SystemURL . 'HostXEmail_v1.0.0')`. Anyone with DB read access who knows the SystemURL (usually public) can decrypt. Changing SystemURL makes all stored credentials unreadable. | `functions.php` `hostx_email_get_encryption_key()`, `hostx_email_encrypt/decrypt()` | Medium | **Open, owner decision.** Fix: move to WHMCS's own encryption key with a versioned ciphertext and a one-time migration. This is not a one-line change because existing rows must be migrated. |
+| H-5 | **Rate limiter is dead code, but the README claimed rate limiting.** `hostx_email_check_rate_limit()` has no callers. It is file-based, not atomic, and fails open. | `functions.php` ~725 | Low | **Fixed:** dead function removed from `functions.php`; README corrected. Throttling, if wanted, belongs at the web server or WAF. |
+| H-6 | **AES-256-CBC without a MAC.** Ciphertext can be modified without detection. Decrypt returns an empty string on failure, so there is no padding oracle. | `functions.php` encrypt/decrypt | Low | **Open**; address with H-4. |
+
+Tests: `tests/WebhookAuthTest.php`, 13 checks, all pass (`node tests/run.mjs`). The test file loads `api.php`, so the edited class parses. PHP parse check passes on `webhook.php` and `api.php`. Not run: live provider webhooks, a live Google license assignment, and a before/after run on the old code.
+
+Behaviour changes: (1) Google and Microsoft webhooks stop working until their secrets are set (H-1). (2) Google licences are now actually assigned on create (H-2), which is a real change for existing Google deployments.
+
+## Additional audit item 3 — phoneservices (2026-10-10)
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| P-1 | **Provider webhooks accepted unsigned requests.** Anyone could post a fake inbound SMS into a customer's inbox (matched by number), or rewrite call status and cost. | `api/webhooks/twilio.php`, `api/webhooks/vonage.php` | High | **Fixed.** Twilio: `X-Twilio-Signature` (HMAC-SHA1, documented algorithm). Vonage: HS256 JWT in `Authorization: Bearer`, checked with the signature secret and `exp`. Both fail closed. |
+| P-2 | **REST API and webhooks never loaded WHMCS.** Neither file included `init.php`, so `select_query()` and the session would be undefined. | `api/rest.php`, `api/webhooks/*.php` | High (functional) | **Fixed:** WHMCS bootstrap added; fails closed (500) if `init.php` is missing. Not run live. |
+| P-3 | **Path-based auth bypass.** `AuthMiddleware` skipped auth for any path containing `webhooks`. No route used it, but any future route would be open. | `lib/API/Middleware/AuthMiddleware.php` | Medium (latent) | **Fixed:** bypass removed. |
+| P-4 | **JWT with `sub` = 0 acted as "no user".** The ownership checks skip when the user ID is 0, so such a token saw all tenants. | `AuthMiddleware::validateJwt()`; `NumbersController` and others | Medium | **Fixed:** only `sub` > 0 is accepted. |
+| P-5 | **The shared API key is all-tenant access.** `validateApiKey()` sets no user ID, so every ownership check is skipped. A key holder can list all customers' numbers (`getAllNumbers`) and suspend or release any number. This is undocumented, and the key cannot be set from the admin UI. | `lib/API/Middleware/AuthMiddleware.php`; `NumbersController`; `Config.php` | High | **Open, owner decision:** keep the key as an admin credential (document it and restrict it), or scope it to a user or role. Not changed. |
+| P-6 | **Stored secrets may be encrypted.** `Config::get()` reads `tbladdonmodules` raw, and nothing decrypts. If WHMCS encrypts password-type addon settings, the provider credentials and the new webhook secrets read as ciphertext. The verifier then fails closed, and the existing Twilio/Vonage calls fail too. | `lib/Core/Config.php`; `phoneservices.php` | High, to verify | **Open:** check on a live install. |
+| P-7 | **`mysql_fetch_assoc()` is used in `Database`, `Config`, `Logger` and three services.** This function was removed in PHP 7. It works only if the target WHMCS provides a compatibility shim. | `lib/Core/Database.php` and others | Medium, to verify | **Open:** check against the target WHMCS and PHP versions. |
+| P-8 | **Status callbacks and DLRs only log.** Twilio `type=status` and Vonage `type=dlr` never update the message record. | `api/webhooks/*.php` | Low (functional) | **Open.** |
+
+Tests: `tests/WebhookVerifierTest.php`, 20 checks, all pass (`node tests/run.mjs`). The Twilio known answer was computed independently (Node crypto) from Twilio's documented algorithm. The Vonage checks use real HS256 tokens. PHP parse check passes on all six changed PHP files.
+
+Not run: live Twilio or Vonage requests, the WHMCS bootstrap, and a before/after run on the old code. Twilio's docs recommend the SDK's `RequestValidator` over hand-written validation. The SDK is already declared in `composer.json`, so switching is an option if you prefer it.
+
+## Additional audit item 4 — smmaddon (2026-10-10)
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| M-1 | **Stored XSS in the admin area.** The client-supplied order link (a custom field), provider error text, the flash message and provider names were echoed raw into admin pages. A client could run script in an admin's browser. | `templates/admin/*.php` (79 echoes) | High | **Fixed:** every template echo is escaped with `htmlspecialchars`. Tested with hostile values (`AdminSecurityTest.php`). |
+| M-2 | **No CSRF token on admin POST actions.** Settings (including API URL and key), order cancel and refresh, service mapping and log clearing all accepted any POST. A forged settings POST could point the module at an attacker's API URL, which would then receive the real key. Modern SameSite defaults limit this, but the module must not rely on them. | `lib/AdminDispatcher.php` `dispatch()`; 7 forms | High | **Fixed:** per-session token, checked before any admin POST; hidden field in all 7 forms. **Open:** AJAX actions (`ajax=1`) still accept GET and include state changes (`sync_services`, `refresh_order`). |
+| M-3 | **The API key was written to the log table in plaintext** when debug mode was on (the request parameters include `key`). | `lib/ApiClient.php` `request()` | Medium | **Fixed:** logged as `***`. |
+| M-4 | **Duplicate provider orders.** `AfterModuleCreate` placed an order each time it ran, with no check for an existing order for the service. A provisioning retry could buy twice. | `hooks.php` `AfterModuleCreate` | Medium | **Fixed:** skip when a non-error order already exists for the service. Retries after an error still place the order. |
+| M-5 | **Client controls the order quantity.** The quantity comes from a custom field that the client can edit. The provider order uses it, not the price paid. When `smm_max` is 0 there is no cap. The minimum clamp can raise it above what the client asked for. | `hooks.php` `AfterModuleCreate`; `smm_max` from `AdminDispatcher` sync | High (financial) | **Open, owner decision:** derive quantity from the product or config option that was paid for, and enforce `smm_max` even when it is 0. |
+| M-6 | **`api_url` is not restricted to HTTPS.** It is sanitised with `FILTER_SANITIZE_URL` only. The request uses cURL with peer verification on, but other URL schemes are not blocked. | `lib/AdminDispatcher.php` settings; `lib/ApiClient.php` | Low (admin only) | **Open:** require `https://` and restrict cURL to HTTP(S). |
+| M-7 | **Provider API key stored in `mod_smm_config` and read raw.** Same question as P-6 in phoneservices: confirm how WHMCS stores addon password fields, and whether the key should be encrypted at rest. | `lib/Helper.php` `getServerConfig()` | Medium, to verify | **Open:** check on a live install. |
+
+Tests: `tests/AdminSecurityTest.php`, 13 checks, all pass (`node tests/run.mjs`). PHP parse check passes on the changed PHP files and all admin templates.
+
+Not run: live admin sessions and a real CSRF attempt, a live SMM provider, and a before/after run on the old code.
 
 ## Module 4 — domainbroker (Domain Broker Service)
 
@@ -462,7 +536,7 @@ Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phon
 |---|---|
 | Module | `modules/addons/hostx_tools` (21 files, about 3,800 lines PHP, **no tests directory**). |
 | Specification | `docs/All DNS Checker/All DNS Checker Build.txt` names this module. It asks for about 100 tools across nine categories (DNS, IP, developer, designer, webmaster, network, security, productivity, gaming). |
-| Status | **Decision D-2 = A (retire). Awaiting your approval of this item.** Owner action pending: deactivate the addon in WHMCS. No code removed. |
+| Status | **Decision D-2 = A (retire), approved.** H-1 fixed in code (`SecurityManager::getClientIp()` now trusts forwarding headers only from `CLOUDHOST247_TRUSTED_PROXIES`); 6 regression checks in `tests/ClientIpTest.php` (fail on the old code). Owner action pending: deactivate the addon in WHMCS. No other code removed. |
 
 **Scope.** The module's own README lists four tools: domain WHOIS, IP lookup, DNS lookup, domain availability. The spec asks for about 100. That is a scope gap of about 96 tools.
 

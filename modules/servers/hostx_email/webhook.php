@@ -149,21 +149,21 @@ try {
     
     $api = new HostxEmailAPI($params);
     
-    // Verify signature if present
-    $signature = '';
-    if (isset($_SERVER['HTTP_X_WEBHOOK_SIGNATURE'])) {
-        $signature = $_SERVER['HTTP_X_WEBHOOK_SIGNATURE'];
-    } elseif (isset($_SERVER['HTTP_X_HUB_SIGNATURE_256'])) {
-        $signature = $_SERVER['HTTP_X_HUB_SIGNATURE_256'];
+    // Authenticate every request before processing. Unauthenticated requests
+    // are rejected, not processed (they could otherwise terminate services).
+    $headers = [];
+    foreach ($_SERVER as $key => $value) {
+        if (strpos($key, 'HTTP_') === 0 && is_string($value)) {
+            $name = strtolower(str_replace('_', '-', substr($key, 5)));
+            $headers[$name] = $value;
+        }
     }
     
-    if (!empty($signature)) {
-        if (!$api->verifyWebhookSignature($provider, $rawInput, $signature)) {
-            hostx_email_webhook_response(401, [
-                'success' => false,
-                'message' => 'Invalid webhook signature',
-            ]);
-        }
+    if (!$api->authenticateWebhook($provider, $rawInput, $headers)) {
+        hostx_email_webhook_response(401, [
+            'success' => false,
+            'message' => 'Invalid or missing webhook authentication',
+        ]);
     }
     
     // Process webhook based on provider
@@ -232,7 +232,8 @@ function handleMicrosoft365Webhook(array $payload, HostxEmailAPI $api)
                 ->where('setting', 'hostx_email_ms_client_state')
                 ->value('value');
             
-            if (!empty($expectedClientState) && $clientState !== $expectedClientState) {
+            // Fail closed: reject when no client state is configured or it does not match.
+            if (empty($expectedClientState) || !is_string($clientState) || !hash_equals((string) $expectedClientState, $clientState)) {
                 logModuleCall(
                     'hostx_email',
                     'Webhook-InvalidClientState',

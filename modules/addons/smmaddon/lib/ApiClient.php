@@ -57,7 +57,7 @@ class ApiClient
             Helper::logApi(
                 'API_REQUEST',
                 $url,
-                $params,
+                array_merge($params, ['key' => '***']),
                 $response,
                 $httpCode,
                 $curlError ?: null

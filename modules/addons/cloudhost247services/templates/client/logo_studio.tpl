@@ -7,7 +7,7 @@
     <form class="form-horizontal chs-studio-controls" id="chs-logo-form" method="post" action="{$modulelink}&action=logostudio">
       {$csrf_field}
       <input type="hidden" name="do" value="save">
-      <input type="hidden" name="concept" id="chs-concept-input" value="{$prefill.company|default:''}">
+      <input type="hidden" name="concept" id="chs-concept-input" value="{$prefill.company|default:''|escape}">
       <div class="row">
         <div class="col-sm-4">
           <div class="form-group">

@@ -155,6 +155,11 @@ class HttpAiProvider implements AiProviderInterface
         if ($this->poster) {
             return call_user_func($this->poster, $url, $headers, $body, $timeout);
         }
+        // C-5: file_get_contents() would accept file:// and other wrappers; allow http(s) only.
+        $scheme = strtolower((string) parse_url((string) $url, PHP_URL_SCHEME));
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            throw new \RuntimeException('AI endpoint must be an http or https URL.');
+        }
         $context = stream_context_create([
             'http' => [
                 'method'        => 'POST',

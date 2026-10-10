@@ -250,6 +250,19 @@ curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
 
 ## Webhooks
 
+Every webhook request is verified before it is processed. Unsigned or wrongly
+signed requests get HTTP 403 and change nothing.
+
+- **Twilio** (`twilio.php`): checks `X-Twilio-Signature` (HMAC-SHA1 of the exact
+  URL plus the sorted form parameters, keyed with the **Twilio Auth Token**).
+  Rejected while the auth token is unset. The URL must match the one configured in
+  Twilio exactly, including `?type=...`.
+- **Vonage** (`vonage.php`): checks the `Authorization: Bearer` JWT (HS256, keyed with
+  the **Vonage Signature Secret**, setting `vonage_signature_secret`). Rejected while
+  the secret is unset or the token is expired. The `payload_hash` claim is not checked yet.
+  Enable signed webhooks in the Vonage dashboard.
+
+
 ### Twilio Webhooks
 
 Configure the following URLs in your Twilio console:
@@ -410,7 +423,7 @@ modules/addons/phoneservices/
 ## Security Considerations
 
 1. **API Keys**: Never commit credentials to version control
-2. **Webhooks**: Validate webhook signatures where supported
+2. **Webhooks**: Verified for Twilio and Vonage (see Webhooks). Configure the auth token and signature secret before go-live.
 3. **HTTPS**: Always use HTTPS in production
 4. **Rate Limiting**: Implement rate limiting on API endpoints for production use
 5. **Input Validation**: All inputs are escaped using WHMCS database helpers

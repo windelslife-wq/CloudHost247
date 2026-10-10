@@ -68,6 +68,10 @@ class Csrf
     /** Test seam / request pinning: plant the token for subsequent calls. */
     public static function pin($token)
     {
+        // C-4: test seam only. Refuse outside the offline test harness.
+        if (!defined('CHS_TESTING') || CHS_TESTING !== true) {
+            throw new \LogicException('Csrf::pin() is a test seam and is disabled outside the test harness.');
+        }
         self::$pinned = (string) $token;
         if (session_status() === PHP_SESSION_ACTIVE && $token !== '') {
             $_SESSION[self::SESSION_KEY] = (string) $token;

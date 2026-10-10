@@ -178,6 +178,10 @@ When an invoice is refunded:
 - The module finds the linked commission record
 - The `first_commission_paid` flag is reset to allow re-commissioning if the client pays again
 - A negative audit log entry is created
+- Recurring commissions recorded against that invoice are reversed too: the
+  recurring total and count drop, and a `refund_recurring` log entry is written.
+  Each recurring entry is reversed at most once, so a repeated hook does not
+  double-reverse.
 - Note: For partial refunds, the full first commission flag is reset (conservative approach)
 
 ### Duplicate Prevention
@@ -299,3 +303,17 @@ For issues related to this module:
 2. Verify your WHMCS version compatibility
 3. Check database table integrity
 4. Review hook firing order if conflicts with other modules exist
+
+## Tests
+
+`tests/CommissionTest.php` runs 22 offline checks against an in-memory stand-in
+for `WHMCS\Database\Capsule` (`tests/CapsuleShim.php`). Run it with:
+
+```
+node modules/addons/customaffiliate/tests/run.mjs
+```
+
+It uses the php-wasm runtime already vendored under `cloudhost247services`. The
+shim refuses raw SQL, so a test fails if raw SQL comes back. Live WHMCS behaviour
+(hook order, real invoices, payouts) is not covered.
+

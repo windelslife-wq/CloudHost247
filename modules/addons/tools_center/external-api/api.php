@@ -42,6 +42,9 @@ require_once __DIR__ . '/cache.php';
 // Load rate limiter
 require_once __DIR__ . '/rate-limit.php';
 
+// Outbound guard: every server-side fetch or socket goes through it (SSRF).
+require_once __DIR__ . '/outbound.php';
+
 // Response helper
 function apiResponse($data, $status = 200) {
     http_response_code($status);
@@ -111,8 +114,17 @@ if (!class_exists($toolClass)) {
 
 $toolInstance = new $toolClass($config);
 
-// Check if method exists
-if (!method_exists($toolInstance, $action)) {
+// Only public tool methods declared on the tool class are actions. Magic
+// methods (__construct etc.), inherited or private methods are not reachable.
+$actionOk = preg_match('/^[a-z][A-Za-z0-9]*$/', $action) === 1
+    && strpos($action, '__') !== 0
+    && method_exists($toolInstance, $action);
+if ($actionOk) {
+    $reflection = new ReflectionMethod($toolInstance, $action);
+    $actionOk = $reflection->isPublic() && !$reflection->isStatic()
+        && $reflection->getDeclaringClass()->getName() === $toolClass;
+}
+if (!$actionOk) {
     apiError('Tool action not found: ' . $action, 404, 'ACTION_NOT_FOUND');
 }
 

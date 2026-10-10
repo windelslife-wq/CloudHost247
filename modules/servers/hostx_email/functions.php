@@ -715,45 +715,6 @@ function hostx_email_clean_old_logs()
 }
 
 /**
- * Rate limiting check
- * 
- * @param string $identifier
- * @param int $maxRequests
- * @param int $timeWindow
- * @return bool
- */
-function hostx_email_check_rate_limit($identifier, $maxRequests = 60, $timeWindow = 3600)
-{
-    try {
-        $cacheKey = 'hostx_email_ratelimit_' . md5($identifier);
-        $cacheFile = sys_get_temp_dir() . '/' . $cacheKey . '.cache';
-        
-        $requests = [];
-        if (file_exists($cacheFile)) {
-            $requests = json_decode(file_get_contents($cacheFile), true) ?: [];
-        }
-        
-        $now = time();
-        $requests = array_filter($requests, function ($timestamp) use ($now, $timeWindow) {
-            return ($now - $timestamp) < $timeWindow;
-        });
-        
-        if (count($requests) >= $maxRequests) {
-            return false;
-        }
-        
-        $requests[] = $now;
-        file_put_contents($cacheFile, json_encode($requests), LOCK_EX);
-        
-        return true;
-        
-    } catch (Exception $e) {
-        // If rate limiting fails, allow the request
-        return true;
-    }
-}
-
-/**
  * Safe cURL execution with timeout and error handling
  * 
  * @param string $url
