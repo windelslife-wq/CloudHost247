@@ -42,3 +42,4 @@ modules/addons/cloudhost247apps/cache/
 modules/servers/Smtphosting/storage/config/*.php
 !modules/servers/Smtphosting/storage/config/index.php
 modules/servers/Smtphosting/storage/app/smtp-usage-ratelimit/
+modules/addons/cloudhost247cloudflare/node_modules

@@ -173,6 +173,12 @@ class CloudflareClient
         if (!$parts || strtolower((string) ($parts['scheme'] ?? '')) !== 'https' || strtolower((string) ($parts['host'] ?? '')) !== 'api.cloudflare.com' || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) {
             throw new ConfigurationException('Cloudflare API endpoint must be the official HTTPS api.cloudflare.com host.');
         }
+        // parse_url puts the port in its own key, which the check above never
+        // sees - so an explicit non-standard port (api.cloudflare.com:22) passed
+        // validation and the account token would have been sent to it.
+        if (isset($parts['port']) && (int) $parts['port'] !== 443) {
+            throw new ConfigurationException('Cloudflare API endpoint must use the default HTTPS port.');
+        }
         $path = rtrim((string) ($parts['path'] ?? ''), '/');
         if ($path !== '/client/v4') throw new ConfigurationException('Cloudflare API endpoint must end in /client/v4.');
     }

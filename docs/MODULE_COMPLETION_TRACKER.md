@@ -904,11 +904,66 @@ Authentication runs **before** category/action resolution, so all three reflecte
 - Mutation checks, each caught and each restored byte-identical (`diff -q` verified): removing `escapeHtml()` from the error banner (1 failure) and restoring the exception echo (1 failure).
 - Not evidence: no live run. Both fixes are verified by static assertion only; the XSS needs a staging click-through to confirm end to end.
 
+## Module 12 — cloudhost247cloudflare
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/cloudhost247cloudflare/` — 35 PHP files, 3,176 lines. Encrypted Cloudflare accounts, product mappings, linked customer services, zone/DNS CRUD. Documented in `docs/MODULES.md` (Phases 11–13) and `docs/PHASE1{1,2,3,4}_CLOUDFLARE_*.md`. |
+| Specification | `docs/MODULES.md` lines 26 and 43; `docs/PHASE11_CLOUDFLARE_COMPATIBILITY.md`, `PHASE12_CLOUDFLARE_DNS_INVENTORY.md`, `PHASE13_CLOUDFLARE_DNS_BRIDGE.md`, `PHASE14_CLOUDFLARE_DNS_API.md`. |
+| Status | **Audited; one real defect found and fixed (CF-1).** This module shipped with **no test suite at all**; the pass built one. Suite now **60 assertions, 0 failures**; lint 37 files clean. No live run. |
+
+This module was **not** on the original 11-item list. It is one of six addons that had no completion record anywhere in the tracker, so it counts as unfinished under the original definition ("any non-complete status in the tracker **plus** modules in `MODULES.md` with no completion record").
+
+### Findings
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| CF-1 | **The API endpoint allowlist did not constrain the port.** `validateBaseUrl()` pinned scheme, host, user, pass, query and fragment — but `parse_url()` returns the port in its own `$parts['port']` key, which the check never examined. So `https://api.cloudflare.com:22/client/v4` passed validation, and the account's Cloudflare API token would have been sent to port 22 on that host. | `lib/Provider/CloudflareClient.php` `validateBaseUrl()`; probe: `new CloudflareClient('https://api.cloudflare.com:22/client/v4', 'tok')` was accepted | Low (host is still pinned, so this is not open SSRF — but the module's own error text claims to pin the endpoint, and the token is what traverses it) | **Fixed** — an explicit port is now refused unless it is 443. `:443` is still accepted, so nothing legitimate breaks. |
+
+CF-1 was found by the new assertion suite rather than by reading: the first version of the "alternative port" test passed for the wrong reason (it had no valid path, so the path check rejected it), which is exactly why the tests were rewritten to give every hostile endpoint a valid `/client/v4` path.
+
+### Checked and found sound
+
+- **Credential encryption** (`Core/Crypto.php`) is exemplary, and notably **does not repeat the `hostx_email` H-4 mistake**: AES-256-GCM with a 12-byte random nonce, a 16-byte tag, AAD bound to `cloudhost247-cloudflare-v1`, and key material taken from `CLOUDFLARE_ENCRYPTION_KEY` or WHMCS's real secret `$cc_encryption_hash` — not from the public SystemURL. It **never falls back to plaintext**: `open()` throws on a missing `cfenc:v1:` prefix, a truncated payload, a tampered ciphertext, or the wrong key.
+- **Outbound transport** (`Provider/CurlTransport.php`): TLS verification on (`VERIFYPEER`, `VERIFYHOST` = 2), connect/response timeouts, and **no `CURLOPT_FOLLOWLOCATION`** — so the bearer token cannot be forwarded to a redirect target.
+- **Path and parameter safety** (`Provider/CloudflareApi.php`): resource ids are matched against `/^[A-Za-z0-9_-]{1,128}$/` and then `rawurlencode`d; zone settings are checked against a 19-item allowlist.
+- **Both portals**: the admin portal calls `Csrf::verifyRequest()` before `Identity::requireAdmin()` and any mutation, and audits every write; the client portal gates on `Identity::clientId()` first, then verifies CSRF, scopes lookups through `ServiceRepository::forCustomer($serviceId, $clientId)`, and rate-limits writes (30/60s).
+- **DNS validation** (`Service/DnsRecordValidator.php`): 8-type allowlist, per-type content rules (IPv4/IPv6 via `filter_var`, CAA and SRV regexes with numeric ranges), TTL 60–86400 or Automatic, priority 0–65535, length caps, and `firewallRule()` validates the IP/CIDR with `inet_pton` **before** embedding it in the rule expression — which is what prevents expression injection.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `lib/Provider/CloudflareClient.php` | `validateBaseUrl()` now refuses any explicit port other than 443 (CF-1). |
+| `tests/run.mjs` (new) | php-wasm runner, matching the convention used by the other modules. |
+| `tests/lint.php`, `tests/lint.mjs` (new) | Parse-check all 37 PHP files. |
+| `tests/01_SecurityCoreTest.php` (new) | 60 assertions — see below. |
+
+### What `01_SecurityCoreTest.php` pins (60 assertions)
+
+- **Crypto**: round trip, prefix, ciphertext never contains the plaintext, randomised nonce, empty-in/empty-out, and refusal of plaintext / foreign-prefix / truncated / garbage / tampered / wrong-key values.
+- **Endpoint pinning**: the official endpoint is accepted, and nine hostile endpoints are refused — each carrying a **valid `/client/v4` path** so only the host/port/scheme checks can reject them.
+- **DNS validation**: all 8 record types; per-type content rejection (A with IPv6, AAAA with IPv4, bad CAA, unsupported types); TTL, priority, comment and TXT bounds; proxying forced to TTL Automatic for A/AAAA/CNAME and dropped elsewhere.
+- **Firewall rules**: invalid IP, invalid CIDR prefix, unknown action, empty description, and expression injection.
+- **Domain names**: normalisation (case, trailing dot, whitespace) and zone containment, including the `example.com.evil.test` suffix lookalike.
+
+### Completion evidence
+
+- Executed: **60 assertions, 0 failures**. Lint: 37 files, 0 bad.
+- Mutation checks, each caught and each restored byte-identical (`diff -q` verified): weakening the host check (6 failures, up from 1 after the tests were tightened) and adding a plaintext fallback to `Crypto::open()` (2 failures).
+- Not evidence: no live run. The DNS and crypto assertions execute real code; the endpoint-pinning assertions construct `CloudflareClient` but never issue a request.
+
+### Remaining coverage gap
+
+The module's DB-backed surface has **no tests**: `Http/AdminPortal.php`, `Http/ClientPortal.php`, `Service/ProvisioningService.php`, `Service/Worker.php`, `Service/JobQueue.php`, and the three repositories. There is no offline `Db` shim for this module (unlike `digitalproducts`' `CapsuleShim`), so covering them means building one first.
+
 ## Additional audit (after workstreams 1–5)
 
 Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools`, `cloudhost247services`, `hostx`, announcement bar, `tools_center`. Each item follows the same workflow and needs approval before the next one starts.
 
-**Progress: 11 of 11 audited — the list is complete.** Done: `hostx_tools` (decision D-2 = retire, deactivation pending), `customaffiliate`, `digitalproducts` (Module 6), `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools` (Module 7), `cloudhost247services` (Module 8 — cleanest module reviewed: no functional defect, one latent JSON-LD hardening fixed), `hostx` (Module 9 — **cannot be audited**, 63/63 files ionCube-encoded; decision D-8), announcement bar (Module 10 — spec-complete, two cosmetic/a11y fixes), `tools_center` (Module 11 — second pass, reflected XSS and exception-leak fixed).
+**Progress: the original 11-item list is complete; 12 modules now have completion records.** Six addons had **no completion record at all** and so were unfinished under the original definition — `cloudhost247ai`, `cloudhost247cart_recovery`, `cloudhost247cloudflare`, `cloudhost247marketing`, `cloudhost247passkey`, `soyoustart` (roughly 57,600 lines between them). Of those six, **`cloudhost247cloudflare` is now audited** (Module 12). **Five remain: `cloudhost247ai`, `cloudhost247_cart_recovery`, `cloudhost247marketing`, `cloudhost247passkey`, `soyoustart`.** Four have test suites already (`cloudhost247ai`, `cloudhost247_cart_recovery`, `cloudhost247marketing`, `cloudhost247passkey`); **`soyoustart` (8,857 lines) has none.**
+
+Original 11-item list — all done: `hostx_tools` (decision D-2 = retire, deactivation pending), `customaffiliate`, `digitalproducts` (Module 6), `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools` (Module 7), `cloudhost247services` (Module 8 — cleanest module reviewed: no functional defect, one latent JSON-LD hardening fixed), `hostx` (Module 9 — **cannot be audited**, 63/63 files ionCube-encoded; decision D-8), announcement bar (Module 10 — spec-complete, two cosmetic/a11y fixes), `tools_center` (Module 11 — second pass, reflected XSS and exception-leak fixed).
 
 **Two cross-cutting discoveries from the final items, recorded for follow-up:**
 
