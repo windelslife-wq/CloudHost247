@@ -38,7 +38,13 @@ $subheadline = 'The perfect domain is usually already taken. Our brokers approac
 $feeNote = 'Our brokerage fee is agreed in writing before you are asked to pay anything.';
 $serviceEnabled = true;
 $landingEnabled = true;
-$prefillDomain = isset($_GET['domain']) ? (string) $_GET['domain'] : '';
+// Only a plain hostname may pre-fill the form. Anything else (quotes, angle
+// brackets, whitespace) is dropped rather than echoed back into the page.
+$prefillDomain = '';
+if (isset($_GET['domain']) && is_string($_GET['domain'])
+    && preg_match('/^[A-Za-z0-9-]{1,63}(\.[A-Za-z0-9-]{1,63})*\.[A-Za-z]{2,63}$/D', $_GET['domain'])) {
+    $prefillDomain = $_GET['domain'];
+}
 
 if ($brokerAvailable) {
     try {

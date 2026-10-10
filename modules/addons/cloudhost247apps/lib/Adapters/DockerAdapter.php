@@ -455,7 +455,7 @@ class DockerAdapter implements AdapterInterface
                 'state' => isset($data['state']) && in_array($data['state'], ['healthy', 'unhealthy'], true)
                     ? $data['state'] : 'unknown',
                 'message' => isset($data['message']) ? Str::clip((string) $data['message'], 255) : null,
-                'attempts' => isset($data['attempts']) ? (int) $data['attempts'] : 1,
+                'attempts' => isset($data['attempts']) ? (int) $data['attempts'] : null,
                 'checked_at' => \Ch247Apps\Core\Clock::now(),
             ];
         } catch (\Throwable $e) {
@@ -578,7 +578,7 @@ class DockerAdapter implements AdapterInterface
             'resources' => $resources,
             'message' => $message,
             'request_id' => isset($dispatch['request_id']) ? $dispatch['request_id'] : null,
-            'attempts' => isset($dispatch['attempts']) ? (int) $dispatch['attempts'] : 1,
+            'attempts' => isset($dispatch['attempts']) ? (int) $dispatch['attempts'] : null,
             'duration_ms' => isset($dispatch['duration_ms']) ? (int) $dispatch['duration_ms'] : null,
         ];
     }

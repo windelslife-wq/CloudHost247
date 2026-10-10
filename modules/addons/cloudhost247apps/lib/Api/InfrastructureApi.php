@@ -71,7 +71,7 @@ class InfrastructureApi
             }
             if (!in_array($method, ['GET', 'HEAD'], true)) {
                 $submitted = isset($headers['x-csrf-token']) ? $headers['x-csrf-token']
-                    : (isset($_REQUEST['ch247_token']) ? $_REQUEST['ch247_token'] : null);
+                    : (isset($_POST['ch247_token']) ? $_POST['ch247_token'] : null);
                 if ($this->actor->authMethod !== 'api_token') {
                     Csrf::verify($submitted);
                 }

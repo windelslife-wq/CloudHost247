@@ -218,7 +218,7 @@ $ca->assign('toolCategories', $toolCategories);
 $ca->assign('currentCategory', $category);
 $ca->assign('currentTool', $toolAction);
 $ca->assign('apiEndpoint', $settings['api_endpoint'] ?? '');
-$ca->assign('apiToken', $settings['api_token'] ?? '');
+// The API token is used only server-side (tools_center_api_request). It is never sent to the template.
 $ca->assign('modulePath', 'modules/addons/tools_center');
 
 // Load specific template based on view

@@ -64,7 +64,7 @@ class ConfigOptions extends \ModulesGarden\ProductsReseller\Server\Smtphosting\C
                     return $this->buildFailedQueriesMessage($installer->getFailedQueries());
                 }
             }
-            catch (\Excpetion $exc)
+            catch (\Exception $exc)
             {
                 $data = $this->buildErrorMessage($exc->getMessage());
 

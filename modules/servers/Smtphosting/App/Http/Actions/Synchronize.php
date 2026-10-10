@@ -42,6 +42,16 @@ class Synchronize extends AddonController
         }
         catch (\Exception $e)
         {
+            // Keep the generic message for the admin UI; record the cause for support.
+            try
+            {
+                \ModulesGarden\ProductsReseller\Server\Smtphosting\Core\HandlerError\Logger::get()
+                    ->error('Service synchronization failed: ' . $e->getMessage());
+            }
+            catch (\Throwable $logError)
+            {
+                // Logging must never change the result of the action.
+            }
             return ['error' => 'An error ocurred during synchronization'];
         }
 

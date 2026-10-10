@@ -13,7 +13,16 @@ $hookManager->register(
         }
         catch (\Exception $exc)
         {
-            //do nothing on save
+            // Do not break the admin product save, but record the failure.
+            try
+            {
+                \ModulesGarden\ProductsReseller\Server\Smtphosting\Core\HandlerError\Logger::get()
+                    ->error('Product config save hook failed: ' . $exc->getMessage());
+            }
+            catch (\Throwable $logError)
+            {
+                // Logging must never change the result of the save.
+            }
         }
     },
     100

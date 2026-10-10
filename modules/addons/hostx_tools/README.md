@@ -1,5 +1,13 @@
 # HostX Tools v1.0.0
 
+> **RETIRED (decision D-2, option A).** This addon duplicates `CloudHost247_tools`,
+> which provides the same WHOIS, IP WHOIS, DNS lookup and domain search tools
+> (and 87 more). Deactivate it in WHMCS: **System Settings > Addon Modules >
+> HostX Tools > Deactivate**. Until it is deactivated, its client-IP handling
+> can be spoofed to bypass the rate limit (see `docs/MODULE_COMPLETION_TRACKER.md`,
+> Additional audit item 1, finding H-1). No code has been removed; the files are
+> kept so the module can be restored if needed.
+
 A comprehensive WHMCS addon module providing professional networking tools for domain analysis, IP intelligence, and DNS diagnostics. Built specifically for HostX v2.2.6 theme compatibility.
 
 ## Features

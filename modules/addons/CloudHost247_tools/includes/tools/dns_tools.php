@@ -8,6 +8,7 @@ if (!defined("WHMCS") && !defined("CLOUDHOST247_TOOLS")) {
 }
 
 require_once __DIR__ . '/../functions.php';
+require_once __DIR__ . '/../DnsPropagation.php';
 
 function CloudHost247_tool_spf_checker($post)
 {
@@ -106,7 +107,8 @@ function CloudHost247_tool_reverse_ip_lookup($post)
 function CloudHost247_tool_dns_lookup($post)
 {
     $domain = CloudHost247_tools_sanitize($post['domain'] ?? '', 'domain');
-    $type = strtoupper(CloudHost247_tools_sanitize($post['type'] ?? 'A', 'string'));
+    // The form sends record_type; accept the older type key too.
+    $type = strtoupper(CloudHost247_tools_sanitize($post['record_type'] ?? ($post['type'] ?? 'A'), 'string'));
     $validTypes = ['A', 'AAAA', 'MX', 'TXT', 'NS', 'SOA', 'CNAME', 'PTR', 'SRV', 'CAA'];
 
     if (!CloudHost247_tools_validate_domain($domain)) {
@@ -205,42 +207,45 @@ function CloudHost247_tool_mx_lookup($post)
 function CloudHost247_tool_dns_propagation($post)
 {
     $domain = CloudHost247_tools_sanitize($post['domain'] ?? '', 'domain');
-    $type = strtoupper(CloudHost247_tools_sanitize($post['type'] ?? 'A', 'string'));
-    $servers = [
-        ['name' => 'Google', 'ip' => '8.8.8.8'],
-        ['name' => 'Google 2', 'ip' => '8.8.4.4'],
-        ['name' => 'Cloudflare', 'ip' => '1.1.1.1'],
-        ['name' => 'Cloudflare 2', 'ip' => '1.0.0.1'],
-        ['name' => 'Quad9', 'ip' => '9.9.9.9'],
-        ['name' => 'OpenDNS', 'ip' => '208.67.222.222'],
-        ['name' => 'OpenDNS 2', 'ip' => '208.67.220.220'],
-        ['name' => 'Level3', 'ip' => '209.244.0.3'],
-        ['name' => 'Verisign', 'ip' => '64.6.64.6'],
-        ['name' => 'DNS.WATCH', 'ip' => '84.200.69.80'],
-    ];
-
     if (!CloudHost247_tools_validate_domain($domain)) {
         return ['error' => 'Invalid domain name'];
     }
-    if (!in_array($type, ['A', 'AAAA', 'MX', 'TXT', 'NS', 'CNAME'])) {
+    // The form sends record_type; accept the older type key too.
+    $type = strtoupper(CloudHost247_tools_sanitize($post['record_type'] ?? ($post['type'] ?? 'A'), 'string'));
+    if (!isset(CloudHost247_dns_qtypes()[$type])) {
         return ['error' => 'Invalid record type'];
     }
-
-    $results = [];
-    foreach ($servers as $server) {
-        $cmd = 'dig @' . escapeshellarg($server['ip']) . ' ' . escapeshellarg($domain) . ' ' . $type . ' +short';
-        $output = CloudHost247_tools_safe_exec($cmd, 5);
-        $lines = array_filter(explode("\n", trim($output ?: '')));
-
-        $results[] = [
-            'server_name' => $server['name'],
-            'server_ip' => $server['ip'],
-            'resolved' => !empty($lines),
-            'records' => array_values($lines),
-        ];
+    $enabled = CloudHost247_dns_parse_type_list(CloudHost247_tools_get_setting('propagation_record_types', ''));
+    if (!in_array($type, $enabled, true)) {
+        return ['error' => 'This record type is not enabled for propagation checks. Ask the administrator to enable it.'];
     }
 
-    return ['domain' => $domain, 'type' => $type, 'results' => $results];
+    $results = CloudHost247_dns_query_servers(CloudHost247_dns_resolvers(), $domain, $type);
+    $rows = [];
+    foreach (CloudHost247_dns_resolvers() as $i => $server) {
+        $result = $results[$i];
+        $rows[] = [
+            'server_name' => $server['name'],
+            'server_ip' => $server['ip'],
+            'resolved' => $result['outcome'] === 'answer',
+            'outcome' => $result['outcome'],
+            'records' => $result['records'],
+            'error' => $result['error'],
+        ];
+    }
+    $summary = CloudHost247_dns_classify($rows);
+
+    return [
+        'domain' => $domain,
+        'type' => $type,
+        'status' => $summary['status'],
+        'propagated' => $summary['propagated'],
+        'summary' => $summary['summary'],
+        'answering' => $summary['answering'],
+        'responded' => $summary['responded'],
+        'total' => $summary['total'],
+        'results' => $rows,
+    ];
 }
 
 function CloudHost247_tool_dmarc_lookup($post)

@@ -419,7 +419,7 @@ function loadMailUsage() {
   content.style.display = 'none';
 
   var xhr = new XMLHttpRequest();
-  xhr.open('GET', '/modules/servers/Smtphosting/smtp-api.php?fn=usage&secret={/literal}lmjHzI2OR1cxk8DAehvhxtN5it5YutZwX5B3{literal}&user_name={/literal}{$username}{literal}&main_domain={/literal}{$domain}{literal}', true);
+  xhr.open('GET', '/modules/servers/Smtphosting/smtp-api.php?fn=usage&serviceid={/literal}{$serviceid|escape:"url"}{literal}', true);
   xhr.onload = function() {
     spinner.style.display = 'none';
     if (xhr.status === 200) {
@@ -490,7 +490,7 @@ function loadMailLogs(page = 1) {
 
   var perPage = 10;
   var xhr = new XMLHttpRequest();
-  xhr.open('GET', '/modules/servers/Smtphosting/smtp-api.php?fn=logs&secret={/literal}tiWlB6R1PlyKXUJICSm4tVrdOxVuFgAQOKnJ{literal}&user_name={/literal}{$username}{literal}&main_domain={/literal}{$domain}{literal}&page=' + page + '&per_page=' + perPage, true);
+  xhr.open('GET', '/modules/servers/Smtphosting/smtp-api.php?fn=logs&serviceid={/literal}{$serviceid|escape:"url"}{literal}&page=' + page + '&per_page=' + perPage, true);
   xhr.onload = function() {
     spinner.style.display = 'none';
     if (xhr.status !== 200) {

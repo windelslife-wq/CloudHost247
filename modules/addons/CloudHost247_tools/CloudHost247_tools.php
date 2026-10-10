@@ -63,6 +63,13 @@ function CloudHost247_tools_config()
                 'Default' => '10',
                 'Description' => 'How long to cache DNS/IP results',
             ],
+            'propagation_record_types' => [
+                'FriendlyName' => 'DNS Propagation Record Types',
+                'Type' => 'text',
+                'Size' => '40',
+                'Default' => 'A,AAAA,MX,TXT,NS,CNAME',
+                'Description' => 'Record types the DNS Propagation Checker offers, comma-separated. Choose from A, AAAA, MX, TXT, NS, CNAME. Unknown names are ignored; if none are valid, all six are offered.',
+            ],
             'enable_logs' => [
                 'FriendlyName' => 'Enable Activity Logs',
                 'Type' => 'yesno',

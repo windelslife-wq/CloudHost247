@@ -11,6 +11,90 @@
         ? window.toolsCenterConfig.apiUrl 
         : 'index.php?m=tools_center';
 
+    // Tools that run entirely in the browser. They never send anything to the server.
+    var LOCAL_TOOL_HANDLERS = {
+        qrScanner: decodeQrFromForm,
+        qrGenerator: generateQrFromForm
+    };
+
+    var SVG_DATA_URI_PREFIX = 'data:image/svg+xml;charset=utf-8,';
+
+    function getLocalHandler(action) {
+        return Object.prototype.hasOwnProperty.call(LOCAL_TOOL_HANDLERS, action)
+            ? LOCAL_TOOL_HANDLERS[action]
+            : null;
+    }
+
+    /**
+     * Generate a QR code in the browser from the form fields (data, level, size).
+     * The data never leaves the page.
+     */
+    function generateQrFromForm(form, showResult) {
+        if (!window.ToolsCenterQRGen) {
+            showResult({ success: false, error: 'The QR generator is not loaded. Reload the page and try again.' });
+            return;
+        }
+        var field = function (name) {
+            var el = form.querySelector('[name="' + name + '"]');
+            return el ? el.value : '';
+        };
+        var result = window.ToolsCenterQRGen.generate(field('data'), field('level'), field('size'));
+        if (!result.ok) {
+            showResult({ success: false, error: result.error });
+            return;
+        }
+        showResult({
+            success: true,
+            data: {
+                error_correction: result.error_correction,
+                size_px: result.size_px,
+                characters: result.characters,
+                format: 'SVG'
+            },
+            local_image: {
+                src: SVG_DATA_URI_PREFIX + encodeURIComponent(result.svg),
+                filename: 'qr-code.svg'
+            },
+            response_time_ms: 0
+        });
+    }
+
+    /**
+     * Decode the QR image chosen in the form, in the browser.
+     * showResult receives a response shaped like the server responses ({success, data | error}).
+     */
+    function decodeQrFromForm(form, showResult) {
+        var input = form.querySelector('input[type="file"]');
+        var file = input && input.files ? input.files[0] : null;
+
+        if (!window.ToolsCenterQR) {
+            showResult({ success: false, error: 'The QR decoder is not loaded. Reload the page and try again.' });
+            return;
+        }
+
+        var problem = window.ToolsCenterQR.validateFile(file);
+        if (problem) {
+            showResult({ success: false, error: problem });
+            return;
+        }
+
+        window.ToolsCenterQR.decodeFile(file, function(result) {
+            if (!result.ok) {
+                showResult({ success: false, error: result.error });
+                return;
+            }
+            showResult({
+                success: true,
+                data: {
+                    decoded_text: result.text,
+                    characters: result.text.length,
+                    looks_like_url: /^https?:\/\//i.test(result.text)
+                },
+                response_time_ms: 0
+            });
+        });
+    }
+
     /**
      * Open tool modal
      */
@@ -72,6 +156,7 @@
                 input.name = field.name;
                 input.className = 'form-control';
                 if (field.placeholder) input.placeholder = field.placeholder;
+                if (field.accept) input.accept = field.accept;
                 if (field.value) input.value = field.value;
                 if (field.required) input.required = true;
 
@@ -135,6 +220,18 @@
     function submitToolForm(category, action, form) {
         var resultsDiv = document.getElementById('modalResults');
         var submitBtn = form.querySelector('button[type="submit"]');
+
+        var localHandler = getLocalHandler(action);
+        if (localHandler) {
+            if (resultsDiv) {
+                resultsDiv.style.display = 'block';
+                resultsDiv.innerHTML = '<div class="tc-loading"><div class="tc-spinner"></div> Processing...</div>';
+            }
+            localHandler(form, function(response) {
+                displayResults(resultsDiv, response);
+            });
+            return;
+        }
 
         // Collect form data
         var params = {};
@@ -209,6 +306,17 @@
         var html = '<div class="tc-results-content">';
         html += '<div class="tc-result-section">';
         html += '<h4><i class="fa fa-check-circle"></i> Result</h4>';
+
+        // Images generated in the browser (QR Generator). Only the local SVG data URI is accepted.
+        if (data.local_image && typeof data.local_image.src === 'string' &&
+            data.local_image.src.indexOf(SVG_DATA_URI_PREFIX) === 0) {
+            html += '<div class="tc-qr-preview" style="margin-bottom:10px;">';
+            html += '<img alt="QR code" src="' + escapeAttr(data.local_image.src) + '" ' +
+                'style="max-width:100%;background:#fff;padding:8px;border:1px solid #ddd;">';
+            html += '</div>';
+            html += '<p><a class="btn btn-default" href="' + escapeAttr(data.local_image.src) + '" download="' +
+                escapeAttr(data.local_image.filename || 'qr-code.svg') + '"><i class="fa fa-download"></i> Download SVG</a></p>';
+        }
 
         // Render data based on type
         if (typeof data.data === 'object' && data.data !== null) {
@@ -339,6 +447,16 @@
         return div.innerHTML;
     }
 
+    /** Escape a value for use inside a double-quoted HTML attribute. */
+    function escapeAttr(text) {
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
     /**
      * Render tool form on page
      */
@@ -398,6 +516,7 @@
                 input.name = field.name;
                 input.className = 'form-control';
                 if (field.placeholder) input.placeholder = field.placeholder;
+                if (field.accept) input.accept = field.accept;
                 if (field.value) input.value = field.value;
                 if (field.required) input.required = true;
 
@@ -439,6 +558,18 @@
         var resultsDiv = document.getElementById('toolResults');
         var resultsContent = document.getElementById('resultsContent');
         var submitBtn = form.querySelector('button[type="submit"]');
+
+        var localHandler = getLocalHandler(action);
+        if (localHandler) {
+            resultsDiv.style.display = 'block';
+            resultsContent.innerHTML = '<div class="tc-loading"><div class="tc-spinner"></div> Processing...</div>';
+            localHandler(form, function(response) {
+                var tempDiv = document.createElement('div');
+                displayResults(tempDiv, response);
+                resultsContent.innerHTML = tempDiv.innerHTML;
+            });
+            return;
+        }
 
         var params = {};
         var inputs = form.querySelectorAll('input, select, textarea');

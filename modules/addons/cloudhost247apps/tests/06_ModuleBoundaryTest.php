@@ -130,6 +130,19 @@ cloudhost247apps_output(['modulelink' => 'addonmodules.php?module=cloudhost247ap
 $invalidPostOutput = ob_get_clean();
 T::contains('invalid CSRF is rejected', 'session expired or the form was tampered with', $invalidPostOutput);
 T::is('rejected CSRF does not create a category', 0, Db::count('panel_categories', ['slug' => 'csrf-attack']));
+
+// A token supplied only through the query string ($_REQUEST / $_GET) must not
+// satisfy CSRF: URL tokens leak through logs and Referer headers.
+$_POST = [];
+$_GET = ['ch247_token' => $csrfToken];
+$_REQUEST = ['ch247_token' => $csrfToken];
+T::is('CSRF token in the query string alone is rejected', false, Csrf::matches(null));
+$_REQUEST = [];
+$_GET = [];
+$_POST = ['ch247_token' => $csrfToken];
+T::is('CSRF token in the POST body is accepted', true, Csrf::matches(null));
+$_POST = [];
+$_REQUEST = [];
 $_POST = [];
 $_SERVER['REQUEST_METHOD'] = 'GET';
 unset($_GET['action']);

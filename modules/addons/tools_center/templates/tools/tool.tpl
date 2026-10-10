@@ -499,7 +499,7 @@ var toolDefinitions = {
     qrScanner: {
         title: 'QR Scanner',
         fields: [
-            {name: 'url', label: 'QR Image URL', type: 'text', placeholder: 'https://example.com/qr.png', required: true}
+            {name: 'image', label: 'QR image (PNG, JPG, GIF, WebP or BMP, max 5 MB). Decoded in your browser; the image is not uploaded.', type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp,image/bmp', required: true}
         ]
     },
     loremIpsum: {

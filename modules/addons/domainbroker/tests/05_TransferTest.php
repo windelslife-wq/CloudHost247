@@ -187,13 +187,35 @@ T::throws('completion needs evidence', ValidationException::class, function () u
     $transfers->markCompleted($broker, $transfer['id'], []);
 });
 
-$transfer = T::nothrow('the broker records the registry confirmation', function () use ($transfers, $broker, $transfer) {
-    return $transfers->markCompleted($broker, $transfer['id'], [
+// Registry checking is off here (the default), so completion is an attestation:
+// only finance may attest, and must give the registrar's reference.
+T::throws('a broker cannot attest completion while the registry check is off', AuthorizationException::class,
+    function () use ($transfers, $broker, $transfer) {
+        $transfers->markCompleted($broker, $transfer['id'], [
+            'evidence' => 'Registry confirmation 2026-10-06; domain now in our account.',
+            'registrar_reference' => 'TUCOWS-CONF-1',
+        ]);
+    });
+T::isnt('and the transfer stays open after the refusal', TransferStatus::COMPLETED,
+    Db::first('transfers', ['id' => (int) $transfer['id']])['status']);
+
+T::throws('finance attestation needs the registrar reference', ValidationException::class,
+    function () use ($transfers, $finance, $transfer) {
+        $transfers->markCompleted($finance, $transfer['id'], [
+            'evidence' => 'Registry confirmation 2026-10-06; domain now in our account.',
+        ]);
+    });
+
+$transfer = T::nothrow('finance attests the registry confirmation with its reference', function () use ($transfers, $finance, $transfer) {
+    return $transfers->markCompleted($finance, $transfer['id'], [
         'evidence' => 'Registry confirmation 2026-10-06; domain now in our account.',
+        'registrar_reference' => 'TUCOWS-CONF-88412',
         'whmcs_domain_id' => 777,
         'registry_response' => '{"result":"ok"}',
     ]);
 });
+T::is('the completion basis is recorded as attested', 'attested_finance', $transfer['completion_basis']);
+T::is('the registrar reference is stored', 'TUCOWS-CONF-88412', $transfer['registrar_reference']);
 T::is('the registry operation is complete', TransferStatus::COMPLETED, $transfer['status']);
 $afterTransfer = $requests->findRow($request['id']);
 T::is('the request is in transfer verification', RequestStatus::TRANSFER_VERIFICATION, $afterTransfer['status']);
