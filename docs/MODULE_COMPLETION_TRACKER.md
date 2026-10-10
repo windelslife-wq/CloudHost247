@@ -523,12 +523,603 @@ Also fixed in this module: **DNS Lookup** had the same `record_type` bug (every 
 - Executed: PHP suites 464/0; `core` 68/0; `tools` 845/0; `qr` 36/0; PHP syntax check 5/0; mutation check caught; live TCP fallback returned records.
 - Not yet evidence: live UDP resolver queries, browser UI, PHP 7.4 runtime.
 
+## Module 6 — digitalproducts (Digital Products Marketplace)
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/digitalproducts/` (WHMCS addon: products, versioned releases, entitlements, licensing, private downloads, JSON API) |
+| Specification | `docs/DIGITAL_PRODUCTS.md` (operator runbook), `docs/DIGITAL_PRODUCTS_REBUILD.md` (audit and rebuild record), `docs/WHMCS Digital Product Module/Build.txt` (original brief), `SECURITY.md`, `API.md`. |
+| Status | **Audited and code-fixed; owner decision pending on D-6 (activation limits).** Findings G-1 to G-3 fixed in code and covered by tests. G-4 and G-5 are recorded, not changed. Suite went from 17 assertions (2 files) to **225 assertions (8 files, 0 failures)**. No live WHMCS run. |
+
+### Why this module was re-audited
+
+It was the last never-started item from the first five workstreams that had a
+complete rebuild record (`DIGITAL_PRODUCTS_REBUILD.md`) but only 17 offline
+assertions. The gap was assurance, not obviously broken code, so the pass built
+a database-backed harness first and then looked for defects with it.
+
+### Test harness added
+
+There was no way to execute the module's services offline, because every service
+goes through `WHMCS\Database\Capsule` and no test stub existed.
+
+| File | Change |
+|---|---|
+| `tests/CapsuleShim.php` (new) | Offline `WHMCS\Database\Capsule` backed by in-memory SQLite. Compiles the query-builder subset the module uses (select/aliases, joins with aliases, where/whereIn/whereNull/whereDate/nested closures, orderBy, forPage, insert/insertGetId/update/delete/increment/updateOrInsert/paginate, `raw()`, schema DDL) to real SQL. Unsupported builder methods **throw** rather than being ignored, so a test cannot pass by accident. |
+| `tests/bootstrap.php` | Boots the module against the **shipped migrations** (`0001`–`0005`) on SQLite, recreates the WHMCS core tables the module reads (`tblhosting`, `tblorders`, `tblproducts`, `tblclients`, `tblconfiguration`, `tbladdonmodules`), and adds `DPDb` fixtures. |
+
+Migrations run for real, so the suites exercise the production schema — not a
+hand-written approximation of it.
+
+### Findings
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| G-1 | **The permitted-release rule had no shared definition.** `DownloadAuthorizer::versionNotAllowed()` was `protected`, so the client area (`lib/Client.php`) and the API (`api.php`) each re-derived the version themselves and only checked that the requested version was *active and on the product*. Under `purchase_version` mode a client could obtain a download token for any newer active release. The download endpoint then refused it, so nothing leaked — but the module handed out links it knew would fail, and the rule existed in three places. | `lib/Client.php` (`access_mode === 'purchase_version' ? (int) $entitlement->purchase_version_id : …`), `api.php` (same expression) | Medium (consistency, dead links) | **Fixed.** `DownloadAuthorizer::allowedVersionId()` is now the single definition; `versionNotAllowed()` delegates to it, and both callers resolve through it and refuse a requested release that is not the permitted one. |
+| G-2 | **Backslash traversal was not rejected in upload filenames.** The check was `preg_match('#(^|[\/])\.\.?([\/]|$)#', …)`. Inside a character class `[\/]` is only `/`, so `..\..\evil.zip` passed. Separately, a name that was nothing but an extension (`.zip`) was accepted, producing an empty basename. | `lib/Security/UploadValidator.php` `validate()` | Low (defence in depth; the stored object uses an opaque random key, and the original name is only a download filename) | **Fixed.** Both separators are recognised, and an empty basename is rejected. |
+| G-3 | **A legacy `disabled` release could never be published.** Migration `0002_versions_from_files` writes `status = 'disabled'` for legacy rows that were not active. The admin screen only offered *Publish* when `status === 'draft'`, so such a release was undownloadable, invisible in the client area (`whereIn('status', ['active','retired'])`) and could only be retired — never restored to service. | `install/migrations/0002_versions_from_files.php`; `lib/Admin.php` `versions()` | Low (functional gap) | **Fixed.** Publish is offered for any state that is neither active nor retired. |
+| G-4 | **License activation limits are enforced but unreachable.** `License::activateLicense()` honours `domain_limit`/`activations_limit`, but `generateLicense()` is only ever called from `EntitlementService` **without** either value, and there is no admin field, product column or addon setting for them. Every license is therefore issued with unlimited activations. | `lib/License.php` `generateLicense()` / `activateLicense()`; `lib/Services/EntitlementService.php`; grep for `activation_limit` — schema + `api.php` + `Client.php` only, no admin surface | Medium (incomplete feature) | **Open, owner decision (D-6).** Not changed: adding a cap would change business behaviour. Recorded, not silently wired. |
+| G-5 | **The ZIP symlink guard is environment-dependent.** It reads `ZipArchive::statIndex()['external_attributes']`, which this PHP build does not expose at all; `isset()` then skips the check silently. The module never extracts archives (objects are stored as opaque blobs and streamed), so this is defence in depth for downstream consumers. | `lib/Security/UploadValidator.php` `validateArchive()`; probe: `setExternalAttributesName()` with mode `0120777` → `statIndex()` returns no `external_attributes` key | Low, and **not verifiable here** | **Open, recorded.** Deliberately not made fail-closed: on a build without the field that would reject every archive. The suite prints `SKIP` rather than claiming a defence it cannot see. |
+
+### Checked and found sound
+
+- **Download authorisation** (`DownloadAuthorizer::resolve()`): wrong client, expired token, replayed single-use token, revoked/suspended entitlement, inactive product, unpublished version, version from another product, suspended/cancelled service, service owned by another client, service on another package, cancelled order — every path refused, and the version-binding rule refuses superseded and newer releases under both access modes. 26 assertions.
+- **Entitlement lifecycle** (`EntitlementService`): grant is idempotent, pending/cancelled services and draft/unpublished/unlinked products are not granted, suspend/restore/revoke/reactivate all behave, order-level grant and refund revoke work, and grants write audit rows with correlation ids. 24 assertions.
+- **Licensing** (`License`): the raw key is never stored (SHA-256 hash plus an encrypted copy), generation is idempotent per service, unknown/empty/over-long/near-miss keys are refused, suspended and expired keys are refused, expired keys are marked expired, domain binding and activation limits are enforced, and legacy plaintext rows still validate through their hash. 42 assertions.
+- **Tokens and rate limiting**: raw tokens are never stored, forged/malformed/expired/spent tokens do not resolve, single-use replay is refused, multi-use tokens survive consumption, purge keeps live tokens, the limiter allows up to the budget and blocks after it, windows reset, and a missing rate-limit table **fails closed**. 40 assertions.
+- **Storage and uploads**: a storage root inside the document root is refused, keys are opaque, and ZIP traversal (parent, absolute, Windows drive), corrupt archives and a declared 2 GB zip bomb are all refused.
+- **Output escaping**: both client templates escape every user- and database-derived field; `Admin.php` escapes throughout via `e()`.
+- **Endpoint hygiene**: all three entry points include the WHMCS `init.php` at the correct depth (verified by resolving each path — `download.php` and `api.php` use `__DIR__ . '/../../../init.php'`, cron uses `dirname(__DIR__, 4)`, all correct); the API rejects `?api_token=`, emits no CORS wildcard, and sets `nosniff`; `download.php` consumes the single-use token *before* claiming the download limit and marks the response `no-store`.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `lib/Security/DownloadAuthorizer.php` | New public `allowedVersionId()` — the single permitted-release rule. `versionNotAllowed()` now delegates to it, so download-time behaviour is unchanged. |
+| `lib/Client.php` | Resolves the release through `allowedVersionId()`; an explicit `version_id` is honoured only when it is the permitted release. |
+| `api.php` | Same rule, returning `422 invalid_version` instead of issuing a link `download.php` would reject. |
+| `lib/Security/UploadValidator.php` | Backslash treated as a separator in the filename check; empty basename rejected. |
+| `lib/Admin.php` | Publish offered for every non-active, non-retired release (G-3). `allowed_extensions` is now stored through the same allowlist the validator uses, so a hostile value cannot loosen it. |
+| `tests/CapsuleShim.php` (new) | SQLite-backed `WHMCS\Database\Capsule` for offline execution. |
+| `tests/bootstrap.php` | Boots the shipped migrations and WHMCS core tables; adds `DPDb` fixtures. |
+| `tests/00_HarnessTest.php` (new) | 17 checks: every shipped table is created and the grant path works end to end. |
+| `tests/02_DownloadAuthorizerTest.php` (new) | 26 checks: happy path, 14 denial paths, version binding, download limits. |
+| `tests/03_EntitlementTest.php` (new) | 24 checks: grant, guards, lifecycle, order level, counter, audit. |
+| `tests/04_LicenseTest.php` (new) | 42 checks: generation, validation, domain binding, activation limits, legacy keys, crypto. |
+| `tests/05_TokenAndLimitsTest.php` (new) | 40 checks: token issuance/lookup/replay/expiry/purge, rate limiter, permitted-release rule. |
+| `tests/07_UploadAndStaticTest.php` (new) | 59 checks: real ZIP attacks, extension allowlist, and static regression checks on the security wiring. |
+
+No behaviour was invented and no default was changed. The download-time rule is
+byte-for-byte the same decision as before; only its location moved, and the two
+callers that previously re-derived it now use it.
+
+### Tests
+
+| Command | Result |
+|---|---|
+| `node tests/run.mjs` before this pass (2 suites) | 17 PASS, 0 FAIL |
+| `node tests/run.mjs` after this pass (8 suites, PHP 8.3.33, php-wasm) | **225 PASS, 0 FAIL** |
+| Same suites, PHP 7.4.33 (php-wasm) | **225 PASS, 0 FAIL** |
+| `node tests/lint.mjs` | **FILES=35, BAD=0** on PHP 8.3.33 and on PHP 7.4.33 |
+| Mutation check A: pre-fix `UploadValidator` filename logic restored | **Caught:** `backslash traversal is refused`, `empty basename is refused` fail. Files restored and verified byte-identical. |
+| Mutation check B: pre-fix version selection restored in `Client.php` and `api.php` | **Caught:** 4 static wiring checks fail. Files restored and verified byte-identical. |
+| Live WHMCS run (payment hook, email template, real download, admin screens) | **Not run.** No WHMCS install. |
+| Browser check of the client area and admin screens | **Not run.** No browser in the sandbox. |
+
+### Remaining issues / blockers
+
+1. **D-6 (owner decision): license activation limits.** Enforcement exists; configuration does not. Choose one: (a) leave unlimited and document it; (b) add a global default in the addon settings (default 0 = unlimited, so nothing changes until an operator sets it); (c) add a per-product column via a migration plus an admin field. Option (b) or (c) is needed before the feature can be called complete.
+2. **Live WHMCS staging sign-off**, per `docs/DIGITAL_PRODUCTS.md`: a paid order end to end, a duplicate payment hook, a new release, refund/cancellation, a wrong-customer token, a forged/expired/replayed token, a download limit, a missing file, license validation throttling, and direct HTTP access to the private storage directory.
+3. **G-5** stays open and unverifiable here (see Findings).
+4. The suite runs on SQLite, not MySQL. MySQL-only DDL in migrations `0004`/`0005` (`ALTER TABLE … MODIFY`) is skipped by the migrations' own `try/catch`, exactly as on a host where it is unsupported; the resulting column types are therefore not identical to production.
+5. `Settings::validate()` is called before storage-path validation but does not validate `allowed_extensions`; the admin save path now normalises it through `Settings::extensions()`. A direct call to `Settings::set()` elsewhere could still store an unvalidated value.
+
+### Completion evidence
+
+- Source: the files in *Changes made*.
+- Executed: 225/0 on PHP 8.3.33 and PHP 7.4.33; lint 35/0 on both; both mutation checks caught and files restored byte-identical.
+- Not yet evidence: the live WHMCS run and the browser check (items 1–2 above).
+
+## Module 7 — CloudHost247_tools (Tools Platform)
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/CloudHost247_tools/` (30 PHP files, the authoritative 91-tool registry in `config/cloudhost247-tools.php`, 91 route-split browser modules in `assets/js/tools/`, `includes/{Catalog,Router,Runner,Security,RateLimiter,DnsPropagation}.php`). |
+| Specification | `docs/MODULES.md`, `config/cloudhost247-tools.php` (91 tools, 9 categories, `exec` = client/server/hybrid), `includes/Catalog.php`, `bin/verify-catalog.php`. |
+| Status | **Audited and code-fixed; one owner decision pending (D-7, routing the `/tools/<slug>` surface).** Findings T2-1 to T2-3 fixed in code and pinned by tests; T2-6 (test reproducibility) fixed. Suite went from **1419 to 1481 assertions, 0 failures**. No live WHMCS or browser run. |
+
+### Why this module was audited
+
+It is item 7 in the audit order below, and it is the largest tools module in the
+repo: 91 tools, a purpose-built security layer and a hardened execution gate
+(`CloudHost247ToolsRunner`) that had already been written and heavily tested.
+The question for this pass was whether that gate is what actually executes a
+tool.
+
+It is not.
+
+### Findings
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| T2-1 | **The live execution path bypassed the hardened Runner.** `index.php?m=CloudHost247_tools&action=ajax` reaches `CloudHost247ToolsClient::handleAjax()`, which called `call_user_func($handler, $_POST)` directly. `hooks.php` loads `assets/js/CloudHost247-tools.js` on every addon page and `templates/client/tool.tpl` calls `CloudHost247RenderToolForm`, whose submit handler posts to this endpoint — so it is the live path, **not** dead code. It skipped every Runner guarantee: the 1 MB request-size cap, the tiered quotas and global per-IP ceiling, the `exec=client` rejection, input redaction, generic error messages, the execution/socket timeout, and the `nosniff` / `no-store` / `Referrer-Policy` headers. | `includes/classes.php` `handleAjax()` (pre-fix); `assets/js/CloudHost247-tools.js:1111` | High | **Fixed.** `handleAjax()` now delegates to `CloudHost247ToolsRunner::run()` and emits through `Runner::respondLegacy()`. |
+| T2-2 | **The privacy guarantee for `exec=client` tools was contradicted by the live path.** The catalog registers 46 tools as `exec=client`, and the Runner tells the user *"This tool runs entirely in your browser and has no server endpoint. Your data is never transmitted to CloudHost247."* All 46 nevertheless have a server handler function, and the legacy bundle has **no client-side execution at all** (no `run()` in the bundle; it posts every form). So all 46 ran on the server. 39 are reachable from the legacy UI's `toolFields`, including **`credit_card_validator`**. Worse, the legacy path logged **raw `$_POST` with no redaction** into `mod_CloudHost247_tools_logs`, so card numbers and passwords were retained in plaintext in the database. | probe: 46 client tools, 46 with a server handler; `toolFields` ∩ client-exec = 39; `CloudHost247_tools_log($toolId, $_POST, …)` (pre-fix) | High (privacy + data retention) | **Fixed.** The server refuses all 46 by slug *and* by legacy handler id; the 39 exposed by the legacy UI now execute in the browser via their existing route-split module; all logging goes through `Runner::redact()`. |
+| T2-3 | **Raw exception messages were returned to the browser.** The legacy `catch` echoed `$e->getMessage()`, exposing internals (paths, SQL, driver text) to any caller. The Runner already logged detail server-side and returned a generic message. | `includes/classes.php` (pre-fix) | Medium (information disclosure) | **Fixed** — the delegation inherits the Runner's generic `server_error` text. |
+| T2-4 | **The `/tools/<slug>` surface is built and tested but has no request entry point in this repo.** `CloudHost247ToolsRouter` and `CloudHost247ToolsRunner` are referenced only by their own definitions, `tests/`, and `bin/verify-catalog.php`. `api/index.php` is a `die()` placeholder, and there is no `.htaccess` or front controller for the pretty routes. So the modern surface — and the Runner's protections — guard no traffic today; the 531 PHP assertions test code that no request reaches. | `grep -rn CloudHost247ToolsRunner\|Router` across the repo | Medium (incomplete wiring) | **Open, owner decision (D-7).** Needs a root-level rewrite rule plus a front controller. Not added unilaterally: it creates a new public URL namespace and a new deployment dependency. |
+| T2-5 | **A cross-module note in this tracker was wrong.** It recorded the legacy AJAX path as *"reachable but not used by the front end."* It is used by every tool page. | `hooks.php:20`, `templates/client/tool.tpl` | Low (documentation) | **Corrected** by this section. |
+| T2-6 | **`tests/tools.test.mjs` was not reproducible on a clean checkout.** It reads the 91-tool registry as JSON from `/tmp/tools.json`, and nothing in the repo produced that file, so the 845-assertion suite could only run on a machine where the file already existed. | `tests/tools.test.mjs` | Low (assurance) | **Fixed** — `tests/dump-catalog.php` + `tests/dump-catalog.mjs` generate it, and the suite generates it on demand when absent. |
+
+### Checked and found sound
+
+- **H-1 (carried over from `hostx_tools`) is already fixed here.** `CloudHost247_tools_get_client_ip()` ignores `X-Forwarded-For` / `CF-Connecting-IP` unless `REMOTE_ADDR` is in `CLOUDHOST247_TRUSTED_PROXIES`; `tests/ClientIpTest.php` pins it with 6 assertions, including that three spoofed requests collapse to one rate-limit bucket. Verified, **not** re-fixed.
+- **SSRF and URL rules** (`includes/Security.php`, 703 lines): 95 assertions cover the IPv4/IPv6 CIDR blocklist, internal-hostname rejection, scheme/port/credential rejection, IDN normalisation and output escaping.
+- **Catalog integrity**: 57 assertions over 91 tools and 9 categories — unique ids, slugs, routes and handlers, route format, SEO field lengths, no "coming soon" placeholders, sensitive tools pinned client-side.
+- **Routing**: 84 assertions — all 100 routes resolve, alias 301s, API parsing, fuzzy 404s, canonical/robots, JSON-LD with no fabricated ratings, sitemap exclusions.
+- **Handlers**: 72 assertions prove all 91 catalog handlers resolve to a callable, plus behaviour of the newly written ones.
+- **Rate limiting**: 17 assertions over per-tool and per-IP buckets, tiers, the global ceiling, bucket isolation and CSRF issue/validate/reject.
+- **DNS propagation and IPv6**: 95 and 44 assertions respectively.
+- **The 91 browser modules**: `tools.test.mjs` (845 assertions) executes all 46 client `run()` functions and exercises all 45 server `render()` paths.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `includes/Runner.php` | New `respondLegacy()` — emits the legacy `{success,data}` / `{success,message}` shape with the same security headers as `respond()`, so the existing bundle keeps working while inheriting every Runner protection. |
+| `includes/classes.php` | `handleAjax()` now verifies the legacy CSRF token, honours the admin enable/disable switch, then delegates to `CloudHost247ToolsRunner::run()` and `respondLegacy()`. `renderToolPage()` resolves the catalog record and exposes `tool_exec` / `tool_slug` / `tool_id` to the template. |
+| `templates/client/tool.tpl` | Loads `assets/js/tools-core.js` and declares `CloudHost247ToolExec`, `CloudHost247ToolSlug`, `CloudHost247AssetsUrl`. |
+| `assets/js/CloudHost247-tools.js` | New `CloudHost247LoadToolModule()` (loads `assets/js/tools/<slug>.js` once, stubbing `ToolPage`/`ready` during load so nothing re-renders the page) and `CloudHost247RunClientTool()`. `CloudHost247SubmitTool` branches on `exec=client` and runs those tools locally **before** any XHR, so their input never leaves the device. |
+| `tests/LegacyAjaxTest.php` | New — 62 assertions (see below). |
+| `tests/dump-catalog.php`, `tests/dump-catalog.mjs` | New — render the registry to JSON so `tools.test.mjs` is reproducible. |
+| `tests/tools.test.mjs` | Generates `/tmp/tools.json` on demand when it is absent. |
+| `tests/README.md` | Coverage row for `LegacyAjaxTest.php` and fixture-regeneration instructions. |
+| `.gitignore` | Ignore the `CloudHost247_tools/node_modules` symlink. |
+
+### What `LegacyAjaxTest.php` pins (62 assertions)
+
+- All 46 `exec=client` tools are refused by slug **and** by the legacy handler id the bundle posts — asserted per tool, so a regression names the tool.
+- The refusal is HTTP 400 / `client_only`, states the browser guarantee, and carries no `data`.
+- Every client tool ships a browser module at `assets/js/tools/<slug>.js`.
+- `Runner::redact()` masks password / pass / passphrase / cvv / card_number / cc / private_key / api_key / token, recurses into arrays, truncates long values, drops `csrf_token` entirely, and leaves no plaintext card number or password in the encoded payload.
+- `respondLegacy()` preserves the `{success,data}` / `{success,message}` contract and never emits internals.
+- Static guarantees on the live path: it delegates to `Runner::run` and `respondLegacy`, verifies the legacy CSRF token, honours the admin enable/disable switch, passes the resolved client IP, and contains no `call_user_func`, no `$e->getMessage()`, no unredacted logging of raw `$_POST`, no flat rate limit and no direct handler-file include.
+- Static guarantees on the front end: the tool page loads `tools-core.js` and declares the exec mode; the submit handler's client branch runs **before** `xhr.send`; the loader restores `CH.ToolPage` after load and handles an async `run()`.
+
+### Behaviour changes worth knowing
+
+- **Rate limits are now tiered, not flat.** The `rate_limit_requests` addon setting (default 60/min) no longer applies to this endpoint; the Runner's tiers do — server 30/min, hybrid 60/min, heavy 10/min (`traceroute`, `ping`, `dns-propagation-checker`, `blacklist-check`, `broken-links-checker`, `image-to-text`, `website-crawl-test`, `port-checker`, `smtp-test`, `page-rank`, `website-status`, `reverse-image-search`, `speed-test`), with a 120/min global ceiling per IP.
+- **Request bodies are capped at 1 MB** (`Runner::MAX_REQUEST_BYTES`).
+- **The 39 client-exec tools now render through their modern module**, not the legacy `resultRenderers` — richer output, and no server round trip.
+- **Errors returned to the browser are generic**; the detail is logged server-side only.
+
+### Completion evidence
+
+- Executed: **1481 assertions, 0 failures** — PHP suites 532 (9 files), `core.test.mjs` 68, `tools.test.mjs` 845, `qr.test.mjs` 36. The PHP suites were re-run on **PHP 7.4.33** as well as 8.3: 532/0 on both.
+- Lint: 31 PHP files clean on 8.3 and 7.4 (`token_get_all(…, TOKEN_PARSE)`), plus `node --check` on both changed JS files.
+- Mutation checks, each caught and each restored byte-identical: allowing client-only tools to execute (6 failures), disabling `Runner::redact()` (14), and calling handlers directly again (1).
+- Not evidence: no live WHMCS run, no browser run. The browser-execution wiring in particular is verified only by static assertions and by the existing module tests — it needs a click-through on staging.
+
+### Still open (owner)
+
+- **D-7** — whether to add the root-level rewrite and front controller that would make the `/tools/<slug>` Router surface live. Until then the Runner protects the legacy endpoint only, and `api/index.php` remains a placeholder.
+
+## Module 8 — cloudhost247services (Domain & Infrastructure Platform)
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/cloudhost247services/` — 87 lib files, ~21k lines. Domain platform (search, bulk search, transfers, client DNS CRUD, auto-renewal, registration, auctions, valuation, club, TLD catalog, WHOIS, service requests, Logo Studio, AI builder shell, unified inbox) plus the v1.2.0 infrastructure layer (OS catalog, provider image mappings, server provisioning, reinstall, server actions). |
+| Specification | `docs/DOMAIN_SERVICES.md`, `docs/INFRASTRUCTURE.md`, `docs/OPERATIONS.md`, `docs/MODULES.md`. |
+| Status | **Audited. No functional defect found; one latent hardening issue fixed (S-1).** This is the best-built module reviewed so far: it already carried 1,396 assertions across 29 suites, all green before any change. Suite now **1,428 assertions (30 files, 0 failures)**. No live WHMCS run. |
+
+### Why this module is different from the previous seven
+
+The prior audits each found the live path bypassing or mis-implementing its own
+guard. This module does not have that shape. Its request layer is sound, so the
+pass produced one hardening fix rather than a set of severity findings. A clean
+result is only meaningful if the checks were real, so the deliverable here is
+mostly **regression tests that pin what was verified by reading** — 32 new
+assertions covering the surfaces that had no dedicated suite.
+
+### Findings
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| S-1 | **JSON-LD was emitted without `JSON_HEX_TAG`.** `Landing::headMarkup()` encoded with `JSON_UNESCAPED_SLASHES \| JSON_UNESCAPED_UNICODE` only. Neither flag escapes `<` or `>`, so a payload containing `</script>` is emitted literally and closes the tag. **Not exploitable today**: `seo['jsonld']` is never populated anywhere in the module — it is dead configuration. It is a latent trap waiting for the first person to assign user-derived SEO data. | `lib/Http/Landing.php` `headMarkup()`; probe: `json_encode(['name'=>'</script><script>alert(1)</script>'], JSON_UNESCAPED_SLASHES\|JSON_UNESCAPED_UNICODE)` emits the tag literally | Low (latent), defence in depth | **Fixed.** Added `JSON_HEX_TAG\|JSON_HEX_AMP\|JSON_HEX_APOS\|JSON_HEX_QUOT`, keeping `UNESCAPED_SLASHES`/`UNICODE` so URLs and non-ASCII SEO text stay readable (verified: `héllo` survives). |
+
+### Checked and found sound
+
+- **Admin portal** (1,055 lines, previously untested): `render()` requires `Identity::adminId()` before anything else and returns *"Administrator session required"*; `checkToken()` runs **before** `handlePost()` for **any** POST, so every mutation is covered by one central call rather than per-case discipline; `checkToken()` prefers WHMCS's `check_token('WHMCS.admin.default')` and falls back to `Csrf::verifyRequest()`; hand-built error/success boxes escape through `chs_h()`; mutations write `Audit::admin()` rows.
+- **Customer portal** (1,140 lines): every handler that reads `Http::post()`/`$_POST` calls `Csrf::verifyRequest()`, and does so **before** the first state-changing service call (verified per-handler, 19 handlers). The 12 handlers without a verify call are provably read-only — GET-only listings, ownership-scoped lookups, or JSON config endpoints.
+- **IDOR**: every `*Detail` handler passes the session `$clientId` into the service call (`detail($id, $clientId)`, `placeBid($clientId, $id, …)`, `export($clientId, …)`, `requestAction($clientId, $id, $do)`), so one client cannot address another's auction, request, server or domain.
+- **Output escaping**: notification `subject`/`body` are escaped in both feeds (`dashboard.tpl`, `notifications.tpl`) — worth pinning because those strings embed user-supplied domain names, and the pre-existing `28_TemplateEscapeTest` only greps `flash`/`prefill`. Every mutation form carries `{$csrf_field}`. The unescaped `{$var}` occurrences are trusted literals (`$modulelink`, `$csrf_field`, `$WEB_ROOT`), integer ids, or loop variables over literal arrays and server-defined enums.
+- **Notification links** are not user-controlled: every `notify()` call passes either an internal `index.php?m=…&id=<int>` URL or `Platform::gateway()->invoiceUrl(<int>)`.
+- **`WhmcsGateway`** (460 lines, untested — the real money path) fails closed outside WHMCS (`function_exists('localAPI')` → throws) and builds invoice amounts from integer minor units via `Money::toDecimal((int) $item['amount_minor'], …)`.
+- **`Controller::guard()`** maps each domain exception to an honest screen and collapses `\Throwable` to a generic message with the detail logged server-side — the same discipline the other modules needed adding.
+
+### Remaining coverage gaps (recorded, not fixed)
+
+These files have **no test coverage at all** and were reviewed by reading only. They are the natural next pass if this module is revisited:
+
+`Http/AdminPortal.php` (1,055), `Http/Controller.php`, `Http/Landing.php` (now partly pinned by `30_PortalSecurityTest`), `Http/functions.php`, `Providers/Whmcs/WhmcsGateway.php` (460 — real invoice/order creation; tests use `FakeGateway`), `Providers/Infrastructure/HttpInfrastructureProvider.php` (357 — real provisioning; tests use `FakeInfrastructureProvider`), `Workflow/InfraWorker.php`, `Core/{Audit,Blueprint,I18n,Logger}.php`, `Admin/BlockonomicsFactory.php`, `Services/{DomainEventService,SitemapService}.php`.
+
+The two that matter most are **`WhmcsGateway`** and **`HttpInfrastructureProvider`**: both are the *real* implementations behind fakes, both touch money or external infrastructure, and neither has a single assertion.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `lib/Http/Landing.php` | `json_encode()` for the JSON-LD payload now sets `JSON_HEX_TAG\|JSON_HEX_AMP\|JSON_HEX_APOS\|JSON_HEX_QUOT` (S-1). Slashes and Unicode remain unescaped. |
+| `tests/30_PortalSecurityTest.php` | New — 32 assertions covering the four surfaces above (see below). |
+
+### What `30_PortalSecurityTest.php` pins (32 assertions)
+
+- **Customer portal CSRF**: every handler reading POST input calls `Csrf::verifyRequest()`, and does so before its first state-changing service call (a mutator-name regex, so it cannot pass off a comment); the GET-only handlers are enumerated; `pageLogoApi` and `pageOrderConfig` are asserted to be read-only JSON endpoints with no write call.
+- **IDOR**: every `*Detail` handler passes `$clientId` into a service call.
+- **Admin portal**: the staff gate precedes `handlePost`, `checkToken()` precedes `handlePost`, both token paths exist, and the hand-built HTML escapes through `chs_h()`.
+- **JSON-LD (S-1)**: all four `JSON_HEX_*` flags present **inside the `json_encode()` call** (not merely in the docblock), plus behavioural proof that `</script><script>alert(1)</script>` is escaped, that non-ASCII SEO text survives, and that a meta description containing `"quoted" & <tagged>` is HTML-escaped.
+- **Notification escaping** in both templates, and CSRF fields on both mutation forms.
+- **Gateway fail-closed** on `WhmcsGateway`.
+
+### Completion evidence
+
+- Executed: **1,428 assertions, 0 failures** (30 files) — up from 1,396/0 before any change.
+- Lint: `node tests/lint.mjs` → 105 files, 0 bad.
+- Mutation checks on S-1, each caught and each restored byte-identical (`diff -q` verified): removing all four `JSON_HEX_*` flags (5 failures) and removing only `JSON_HEX_TAG` (3 failures).
+- Not evidence: no live WHMCS run. The portal assertions are static/wiring checks plus the JSON-LD behavioural test — the admin portal and `WhmcsGateway` are verified by reading, not execution.
+
+## Module 9 — hostx (HostX theme companion)
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/hostx/` — 63 PHP files, 47,701 lines. Page builder, blocks, settings, menus, SEO content, theme assets. `docs/MODULES.md` records it as **required** by the custom landing pages and by `templates/hostx`. |
+| Specification | None in-repo. It is third-party commercial software. |
+| Status | **Cannot be audited — 100% of the source is ionCube-encrypted.** Recorded as **owner decision D-8**. This is a finding about the project, not about the module: it is the largest single block of code in the repository and the only one that no review, test or lint can reach. |
+
+### Finding
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| H-1 | **All 63 PHP files are ionCube-encoded bytecode.** Each file opens with a plain-PHP guard that prints an *"ionCube Loader needs to be installed"* notice and calls `exit(199)` when the Loader extension is missing, followed by base64 ciphertext. There is **no readable source anywhere in the module** — not in `hooks.php`, `includes/`, `classes/`, or the root files. | `for f in $(find modules/addons/hostx -name '*.php'); do head -c 400 "$f" \| grep -q ionCube; done` → **63 of 63** | Informational for the module; **material for the project** | **Open, owner decision (D-8).** Not a defect to fix — a boundary to accept or act on. |
+
+What this means concretely:
+
+- **No source review is possible.** Every technique used in the previous eight audits — reading the request layer, tracing ownership, checking CSRF and escaping — has nothing to read here.
+- **No tests and no lint are possible.** This fully explains why `hostx` was one of the four addons with no test suite; it is not a gap in discipline, it is a property of the artifact.
+- **It is a hard runtime dependency.** The module cannot run at all without the `ionCube Loader` PHP extension on the server. The guard fails loudly and correctly (`exit(199)` with an explanatory message) rather than silently misbehaving, which is the right behaviour for encoded software.
+- **It is 47,701 lines — the largest attack surface in the repo**, larger than `cloudhost247services` (≈21k) and `CloudHost247_tools` (≈4k) combined, and it is entirely outside every assurance process the project has.
+
+### The same applies to `xtreme_currency_rates`
+
+While confirming the extent of the encoding, a second fully-encoded module was found: **`xtreme_currency_rates`, 18 of 18 PHP files**. It was earlier listed (in the coverage survey) as one of four addons with no tests; that is explained by the same cause, not by neglect. It is not on this audit list, so it is recorded here rather than audited.
+
+### What was verified despite the encryption
+
+- The loader guard is present in every file and **fails closed and loudly** — an operator who deploys without the extension gets a clear message and a non-zero exit, not a blank page.
+- No readable PHP anywhere in the module, so no unencoded side-car code was missed.
+
+### Owner decision D-8
+
+Choose one:
+
+1. **Accept** — document that `hostx` and `xtreme_currency_rates` are opaque third-party components, treat them as trusted binaries, and rely on the vendor for fixes. Cheapest, and probably correct: they are commercial products where the source was never available.
+2. **Replace `hostx` with first-party code** — it is a *required* dependency of `templates/hostx` and the custom landing pages, so this is a large project, not a swap.
+3. **Reduce the dependency** — determine exactly which landing pages and template hooks need `hostx`, and decide whether any of that surface can be served without it.
+
+Recommended: **option 1**, with two owner actions — confirm the licences are current and that a vendor support channel exists, and confirm the production PHP runtime has the ionCube Loader installed (otherwise the module is dead weight that fails at runtime).
+
+### Completion evidence
+
+- Executed: the encoding scan above (63/63 and 18/18).
+- Not evidence, and not possible: source review, tests, lint, mutation checks, live run.
+
+## Module 10 — Announcement Bar
+
+| Field | Information |
+|---|---|
+| Deliverable | `templates/hostx/includes/announcementbar.tpl`, integrated into `templates/hostx/header.tpl` immediately after `<body>` (above the navbar). |
+| Specification | `docs/Announcement Bar/Build.txt` (13 numbered requirements) plus `Announcement Bar.pdf`. |
+| Status | **Complete against the specification; two defects found and fixed (AB-1, AB-2).** One informational item recorded (AB-3). No automated tests — see note below. |
+
+### Spec conformance
+
+| Requirement | Met | Evidence |
+|---|---|---|
+| File at `/templates/hostx/includes/announcementbar.tpl` | Yes | File present |
+| Smarty + HTML + CSS only, no JS | Yes | No `<script>` in the template |
+| Integrated into the layout above the navbar | Yes | `header.tpl:14`, first include after `<body>` |
+| Multiple messages from an array, text + optional link | Yes | `{foreach from=$announcements item=announcement}` |
+| Horizontal scroll, smooth infinite loop, CSS `@keyframes` only | Yes | `@keyframes announcement-scroll`, `translateX(0 → -50%)` |
+| No `<marquee>`, no external slider library | Yes | None present |
+| Seamless looping, no gaps or jumps | Yes | Items rendered twice via `{section name=loop loop=2}` with a `-50%` translate |
+| Pause on hover | Yes | `.announcement-bar:hover .announcement-bar__track { animation-play-state: paused; }` |
+| Clickable when a URL is present | Yes | `<a href>` branch vs `<span>` branch |
+| Responsive (mobile / tablet / desktop) | Yes | Breakpoints at 767.98px and 575.98px |
+| Prevent text overflow / layout breaking | Yes | `overflow: hidden`, `white-space: nowrap`, `flex-shrink: 0` |
+
+Good practice already present: every interpolation is escaped (`|escape:'html'` on `url`, `text` and `icon`), external links carry `rel="noopener noreferrer"`, decorative dots and icons are `aria-hidden="true"`, the region has `role="region"` + `aria-label`, and `prefers-reduced-motion` disables the animation.
+
+### Findings
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| AB-1 | **The separator bullet anchored to the wrong element.** `.announcement-bar__item::after` used `position: absolute; right: 0`, but `.announcement-bar__item` has no `position` of its own. The nearest positioned ancestor is `.announcement-bar` (`position: relative`), so every copy of the bullet stacked at the bar's right edge instead of sitting after its item. | `.announcement-bar__item` rule has no `position`; `::after` has `position: absolute; right: 0` | Low (cosmetic) | **Fixed** by deleting the vestigial rule. Adding `position: relative` to the item would have been the wrong fix: the `.announcement-bar__dot` span already renders the intended separator, so keeping the `::after` would have doubled it. The matching `display: none` override in the `prefers-reduced-motion` block was removed with it. |
+| AB-2 | **Screen readers announced every message twice.** The seamless loop renders the item list twice (`{section name=loop loop=2}`), and both copies were exposed to assistive technology. | `{section name=loop loop=2}` wrapping the `{foreach}` | Low (accessibility) | **Fixed** — the second pass is marked `aria-hidden="true"`, so each message is announced once while the visual loop is unchanged. |
+| AB-3 | **`href` accepts any URI scheme.** `\|escape:'html'` does not stop a `javascript:` URL. Not exploitable today: the `$announcements` array is assigned server-side (by a hook, an addon, or statically), not from user input. | `href="{$announcement.url\|escape:'html'}"` | Informational | **Recorded, not changed.** Worth revisiting if announcements ever become admin- or user-editable through a form. |
+
+### Testing note
+
+There is no test harness for `templates/hostx/` anywhere in the repository, and none was added for this item. The template is Smarty rendered inside WHMCS, so both fixes are **static-only and unverified by execution** — they need a visual check on staging (confirm one separator dot between messages, and that the loop is still seamless). This is the weakest assurance of the ten modules and is called out rather than glossed over.
+
+## Module 11 — tools_center (second pass over `external-api/`)
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/tools_center/` — `external-api/` (api.php, auth, cache, config, rate-limit, outbound guard) plus 10 tool classes totalling 5,848 lines. |
+| Specification | `API.md`, `INSTALL.md`, `README.md`. Module 2 covered QR; this is the second pass over the remaining `external-api/` surface. |
+| Status | **Second pass complete; two findings fixed (TC-1, TC-2).** Suite went from **91 to 93 assertions, 0 failures**. No live run. |
+
+### Baseline
+
+| Suite | Result |
+|---|---|
+| `node tests/run-tests.js` | 31 PASS / 0 FAIL (1 SKIP — jsdom not installed) |
+| `node tests/run-php-guard.mjs` (SSRF guard) | 60 PASS / 0 FAIL |
+
+### Findings
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| TC-1 | **Reflected XSS: `data.error` was written to `innerHTML` unescaped.** `displayResults()` rendered the failure banner as `'<div class="tc-alert tc-alert-danger">…' + (data.error \|\| 'An error occurred') + '</div>'`. The API reflects caller-controlled input into that string — `apiError('Tool category not found: ' . $category)` and `apiError('Tool action not found: ' . $action)`, where both values come straight from `$input`/`$_GET`. So `?category=<img src=x onerror=…>` is echoed into the page. Every *other* interpolation in this file already escapes via `escapeHtml`/`escapeAttr`; this was the one path that did not. | `js/tools-center.js:301` `displayResults()`; `external-api/api.php` `apiError('Tool category not found: ' . $category, …)` | Medium | **Fixed** — `escapeHtml(data.error \|\| 'An error occurred')`. |
+| TC-2 | **Raw exception messages were returned to the caller.** The catch block replied `'Tool execution failed: ' . $e->getMessage()`, exposing internal paths, driver text and SQL to anyone holding the API token — and, via TC-1, rendering it into the page. The detail was already being written to the on-disk error log. | `external-api/api.php` catch block | Medium (information disclosure) | **Fixed** — the caller now gets `'Tool execution failed. The error has been logged.'`; the detail still goes to the log file. |
+
+### Severity note on TC-1
+
+Authentication runs **before** category/action resolution, so all three reflected error strings are reachable only with a valid API token — an anonymous attacker gets a static `401 Unauthorized`. That caps this at Medium rather than High. Two things still make it worth fixing promptly:
+
+- The token is a single shared static credential (the WHMCS module calls its own external API with it), so anyone who obtains it gets the XSS.
+- `api.php` sets **`Access-Control-Allow-Origin: *`**, which widens who can drive an authenticated request from a browser context. That wildcard is a pre-existing open item carried from Module 2 and is **unchanged** here — see the note below.
+
+### Checked and found sound
+
+- **SSRF guard** (`outbound.php`): 60 assertions cover `tc_is_public_ip`, `tc_validate_outbound_url`, `tc_resolve_public_ips`, `tc_fetch_url` (the guard runs before any connection), `tc_open_public_socket` and `tc_resolve_redirect`. cURL is pinned to `CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS`, so the token is never forwarded across a redirect.
+- **Action dispatch**: only public, non-magic, non-static methods **declared on the tool class itself** are reachable — verified with `ReflectionMethod::getDeclaringClass()`, which correctly blocks inherited and magic methods. The category filename is filtered through `preg_replace('/[^a-z0-9_-]/i', '', $category)`.
+- **Escaping generally**: the tool classes mostly return data rather than HTML, which is correct — the API emits JSON (`json_encode` + `nosniff`) and the client escapes. Where a class *does* build HTML (`GamingTools::formatMinecraftText()`), it escapes first with `htmlspecialchars($text, ENT_QUOTES)`.
+- **Response hygiene**: `display_errors` is off, `error_reporting(E_ALL)`, and errors are logged to a dated file rather than displayed.
+
+### Pre-existing items referenced, not re-raised
+
+- The external API's `Access-Control-Allow-Origin: *` wildcard (Module 2 open item) — unchanged.
+- The unused `qrScanner()` / `qrGenerator()` in `external-api/` (owner decision) — unchanged.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `js/tools-center.js` | `displayResults()` escapes `data.error` through `escapeHtml()` (TC-1). |
+| `external-api/api.php` | The execution catch returns a generic message and logs the detail server-side (TC-2). |
+| `tests/run-tests.js` | Two new assertions: the error banner escapes `data.error`, and the API does not echo `$e->getMessage()`. |
+
+### Completion evidence
+
+- Executed: **93 assertions, 0 failures** — `run-tests.js` 33 (was 31), `run-php-guard.mjs` 60. One SKIP remains (jsdom not installed).
+- Mutation checks, each caught and each restored byte-identical (`diff -q` verified): removing `escapeHtml()` from the error banner (1 failure) and restoring the exception echo (1 failure).
+- Not evidence: no live run. Both fixes are verified by static assertion only; the XSS needs a staging click-through to confirm end to end.
+
+## Module 12 — cloudhost247cloudflare
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/cloudhost247cloudflare/` — 35 PHP files, 3,176 lines. Encrypted Cloudflare accounts, product mappings, linked customer services, zone/DNS CRUD. Documented in `docs/MODULES.md` (Phases 11–13) and `docs/PHASE1{1,2,3,4}_CLOUDFLARE_*.md`. |
+| Specification | `docs/MODULES.md` lines 26 and 43; `docs/PHASE11_CLOUDFLARE_COMPATIBILITY.md`, `PHASE12_CLOUDFLARE_DNS_INVENTORY.md`, `PHASE13_CLOUDFLARE_DNS_BRIDGE.md`, `PHASE14_CLOUDFLARE_DNS_API.md`. |
+| Status | **Audited; one real defect found and fixed (CF-1).** This module shipped with **no test suite at all**; the pass built one. Suite now **60 assertions, 0 failures**; lint 37 files clean. No live run. |
+
+This module was **not** on the original 11-item list. It is one of six addons that had no completion record anywhere in the tracker, so it counts as unfinished under the original definition ("any non-complete status in the tracker **plus** modules in `MODULES.md` with no completion record").
+
+### Findings
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| CF-1 | **The API endpoint allowlist did not constrain the port.** `validateBaseUrl()` pinned scheme, host, user, pass, query and fragment — but `parse_url()` returns the port in its own `$parts['port']` key, which the check never examined. So `https://api.cloudflare.com:22/client/v4` passed validation, and the account's Cloudflare API token would have been sent to port 22 on that host. | `lib/Provider/CloudflareClient.php` `validateBaseUrl()`; probe: `new CloudflareClient('https://api.cloudflare.com:22/client/v4', 'tok')` was accepted | Low (host is still pinned, so this is not open SSRF — but the module's own error text claims to pin the endpoint, and the token is what traverses it) | **Fixed** — an explicit port is now refused unless it is 443. `:443` is still accepted, so nothing legitimate breaks. |
+
+CF-1 was found by the new assertion suite rather than by reading: the first version of the "alternative port" test passed for the wrong reason (it had no valid path, so the path check rejected it), which is exactly why the tests were rewritten to give every hostile endpoint a valid `/client/v4` path.
+
+### Checked and found sound
+
+- **Credential encryption** (`Core/Crypto.php`) is exemplary, and notably **does not repeat the `hostx_email` H-4 mistake**: AES-256-GCM with a 12-byte random nonce, a 16-byte tag, AAD bound to `cloudhost247-cloudflare-v1`, and key material taken from `CLOUDFLARE_ENCRYPTION_KEY` or WHMCS's real secret `$cc_encryption_hash` — not from the public SystemURL. It **never falls back to plaintext**: `open()` throws on a missing `cfenc:v1:` prefix, a truncated payload, a tampered ciphertext, or the wrong key.
+- **Outbound transport** (`Provider/CurlTransport.php`): TLS verification on (`VERIFYPEER`, `VERIFYHOST` = 2), connect/response timeouts, and **no `CURLOPT_FOLLOWLOCATION`** — so the bearer token cannot be forwarded to a redirect target.
+- **Path and parameter safety** (`Provider/CloudflareApi.php`): resource ids are matched against `/^[A-Za-z0-9_-]{1,128}$/` and then `rawurlencode`d; zone settings are checked against a 19-item allowlist.
+- **Both portals**: the admin portal calls `Csrf::verifyRequest()` before `Identity::requireAdmin()` and any mutation, and audits every write; the client portal gates on `Identity::clientId()` first, then verifies CSRF, scopes lookups through `ServiceRepository::forCustomer($serviceId, $clientId)`, and rate-limits writes (30/60s).
+- **DNS validation** (`Service/DnsRecordValidator.php`): 8-type allowlist, per-type content rules (IPv4/IPv6 via `filter_var`, CAA and SRV regexes with numeric ranges), TTL 60–86400 or Automatic, priority 0–65535, length caps, and `firewallRule()` validates the IP/CIDR with `inet_pton` **before** embedding it in the rule expression — which is what prevents expression injection.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `lib/Provider/CloudflareClient.php` | `validateBaseUrl()` now refuses any explicit port other than 443 (CF-1). |
+| `tests/run.mjs` (new) | php-wasm runner, matching the convention used by the other modules. |
+| `tests/lint.php`, `tests/lint.mjs` (new) | Parse-check all 37 PHP files. |
+| `tests/01_SecurityCoreTest.php` (new) | 60 assertions — see below. |
+
+### What `01_SecurityCoreTest.php` pins (60 assertions)
+
+- **Crypto**: round trip, prefix, ciphertext never contains the plaintext, randomised nonce, empty-in/empty-out, and refusal of plaintext / foreign-prefix / truncated / garbage / tampered / wrong-key values.
+- **Endpoint pinning**: the official endpoint is accepted, and nine hostile endpoints are refused — each carrying a **valid `/client/v4` path** so only the host/port/scheme checks can reject them.
+- **DNS validation**: all 8 record types; per-type content rejection (A with IPv6, AAAA with IPv4, bad CAA, unsupported types); TTL, priority, comment and TXT bounds; proxying forced to TTL Automatic for A/AAAA/CNAME and dropped elsewhere.
+- **Firewall rules**: invalid IP, invalid CIDR prefix, unknown action, empty description, and expression injection.
+- **Domain names**: normalisation (case, trailing dot, whitespace) and zone containment, including the `example.com.evil.test` suffix lookalike.
+
+### Completion evidence
+
+- Executed: **60 assertions, 0 failures**. Lint: 37 files, 0 bad.
+- Mutation checks, each caught and each restored byte-identical (`diff -q` verified): weakening the host check (6 failures, up from 1 after the tests were tightened) and adding a plaintext fallback to `Crypto::open()` (2 failures).
+- Not evidence: no live run. The DNS and crypto assertions execute real code; the endpoint-pinning assertions construct `CloudflareClient` but never issue a request.
+
+### Remaining coverage gap
+
+The module's DB-backed surface has **no tests**: `Http/AdminPortal.php`, `Http/ClientPortal.php`, `Service/ProvisioningService.php`, `Service/Worker.php`, `Service/JobQueue.php`, and the three repositories. There is no offline `Db` shim for this module (unlike `digitalproducts`' `CapsuleShim`), so covering them means building one first.
+
+## Module 13 — soyoustart (WGS OVH / SoYouStart admin addon)
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/soyoustart/` — 34 PHP files, 8,857 lines. **Vendored third-party code** (`WGS-OVH-v8.0.8-Sourcecode.zip`): OVH API consumer setup, product/price settings, order management, existing-server import, server status, email templates. |
+| Specification | `docs/MODULES.md` lines 29, 37, 49, 52. |
+| Status | **Audited; two findings recorded and NOT patched (SO-1, SO-2).** No test suite exists and none was added. No live run. |
+
+This is the second of the six addons with no completion record. It was prioritised because it is the largest of them with **zero tests** and it handles OVH API credentials and server provisioning.
+
+### A deliberate decision: record, do not patch
+
+`soyoustart` is **vendored third-party code**, unlike every module audited before it. Editing it means forking upstream, and the next vendor drop silently reverts or conflicts with any local fix. Both findings below are therefore **recorded rather than patched**, for owner action. This is a change of approach from Modules 6–12 and is stated so the difference is visible rather than looking like an omission.
+
+If the owner prefers fixes in-tree, the work is small and described per finding — but it should be a conscious choice to fork this module.
+
+### Findings
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| SO-1 | **Hardcoded OVH application keys in source.** Two literal application keys are committed: `t7r8jC5iiznmTNNm` in **7** header constructions, and `iE3vL3mgAtLZg00l` in a further one (`classes/ApiCall.php:264`). The module has a correct, configuration-driven path — `createHeader()` reads `application_key` from the `mod_soyoustart` table — but these call sites bypass it and send a fixed key instead. | `classes/ApiCall.php` lines 142, 163, 185, 207, 237, 251, 328, and 264; contrast with line 380 `trim($authData->application_key)` | Medium | **Open, recorded.** Rotation requires a code change, and these calls ignore the operator's configured OVH application entirely — so they are also very likely *broken*, not merely untidy. |
+| SO-2 | **`$endPoint` is interpolated into a URL without validation.** `getOs($endPoint)` builds `"https://ca.api.ovh.com/1.0/dedicated/installationTemplate/{$endPoint}"` with no format check, so a value containing `../`, `?` or `#` alters the request path. | `classes/ApiCall.php:265` | Low | **Open, recorded.** The host is a hardcoded literal, so this cannot reach a non-OVH host — it is path manipulation within OVH's API, not SSRF. |
+
+**Important qualifier on SO-1:** the **signing secret is not exposed.** It is read from the database (`$authData->secret_key`) and never hardcoded, and `generateSignature()` implements OVH's scheme correctly (`'$1$' . sha1(secret + consumer + method + url + data + time)`). OVH's application key is an identifier, not a signing credential, so possession of these literals alone does **not** permit forging signed requests or taking over an account. The severity rests on **non-rotation and bypass of configuration**, not on credential compromise.
+
+### Verified, including a documentation claim
+
+`docs/MODULES.md` states that *"the legacy OVH transport verifies TLS and restricts signed requests to trusted OVH API endpoints."* That claim was checked against the code and **holds**:
+
+- `CURLOPT_SSL_VERIFYPEER => true` and `CURLOPT_SSL_VERIFYHOST => 2` — TLS is verified.
+- `CURLOPT_FOLLOWLOCATION => false` — redirects are not followed, so the `X-Ovh-Signature` header cannot be forwarded to a redirect target.
+- `CURLOPT_CONNECTTIMEOUT => 20`, `CURLOPT_TIMEOUT => 60`.
+- API hosts are hardcoded OVH literals (`api.us.ovhcloud.com`, `eu.api.ovh.com`, `ca.api.ovh.com`, `api.ovh.com`); no request host is derived from user input.
+
+Also checked and sound:
+
+- **No SQL injection surface anywhere in the module.** There is no raw SQL string interpolation and no direct `mysql_*`/`PDO::query()` call; all persistence goes through the WHMCS `Capsule` schema and query builders (`classes/CustomDatabase.php` is schema DDL only).
+- **Credential storage**: the application key, consumer key and secret are held in the `mod_soyoustart` table and read per request, rather than being derived from a public value — so this module does **not** repeat the `hostx_email` H-4 pattern.
+
+### Testing note
+
+No test suite exists and **none was added.** Every other module audited in this programme got one, and the omission is deliberate for two reasons: this is vendored code that the owner may replace wholesale, and a meaningful suite would need an offline OVH API harness plus a `Capsule` shim. That is a real gap and is recorded as such — the assertions that would matter most are "no hardcoded credentials" and "every request host is an OVH literal", both of which are cheap to add if the owner wants them.
+
+### Recommended owner action
+
+1. Rotate the OVH application credentials, and confirm whether the 7 hardcoded call sites are currently failing (they bypass the configured application, so they may already be broken).
+2. Decide fork-vs-replace for this module. If replacing, the findings resolve themselves; if forking, both are small, well-localised changes.
+3. Confirm with the vendor whether a newer WGS-OVH release already addresses SO-1.
+
+## Module 14 — the last four addons (baseline verified, targeted review)
+
+| Module | Lines | Assertions | Ratio | Baseline |
+|---|---|---|---|---|
+| `cloudhost247ai` | 13,989 | 1,126 (15 suites) | 1 per 12 | **PASS / 0 FAIL** |
+| `cloudhost247marketing` | 15,039 | 674 (8 suites) | 1 per 22 | **PASS / 0 FAIL** |
+| `cloudhost247passkey` | 11,871 | 200 (11 phases) | 1 per 59 | **PASS / 0 FAIL** |
+| `cloudhost247_cart_recovery` | 4,653 | 61 | 1 per 76 | **PASS / 0 FAIL** |
+
+**Total: 2,061 assertions, 0 failures.** All four were the remaining addons with no completion record. With this entry, **every addon in `MODULES.md` now has a completion record.**
+
+### Scope — stated precisely
+
+These four already shipped substantial test suites, so they did **not** need suites built from scratch. What they needed was a verification pass. Given that they total ~45,500 lines, this entry is:
+
+- **Baseline verification** — all four suites executed and confirmed green.
+- **A targeted security review of the highest-risk surface in the thinnest-covered module** (`cloudhost247_cart_recovery`, see below).
+
+It is **not** a line-by-line audit of 45,500 lines comparable to Modules 6–13. That is recorded rather than implied. If the owner wants that depth, `cloudhost247passkey` (authentication) and `cloudhost247ai` (agent/tool execution over live data) are the two worth prioritising.
+
+### `cloudhost247_cart_recovery` — recovery-link security (checked, sound)
+
+Chosen because it has the weakest coverage ratio (1 assertion per 76 lines) and handles the module's highest-risk asset: hashed cart-recovery links.
+
+- **Generation**: `bin2hex(random_bytes(32))` — a 256-bit token.
+- **Storage**: only `hash('sha256', 'cloudhost247-cart-recovery:' . $token)` is persisted (`RecoveryService.php:117`); the raw token is never stored.
+- **Lookup**: records are found by `token_hash` (`RecoveryService.php:239`), not by the raw token, so a 256-bit value must be guessed — enumeration is not feasible.
+- **Comparison**: `hash_equals()` (constant time) via `TokenService::equals()` (`lib/TokenService.php:47`).
+- **Expiry**: enforced on both the recovery path (`RecoveryService.php:248`) and the reminder path (`ReminderService.php:72`), against `token_expires_at` set from `SettingsRepository::int('token_lifetime')`.
+- **Domain separation**: unsubscribe tokens use distinct hash prefixes (`cloudhost247-cart-unsubscribe:`, `…-lookup:`), so a recovery token cannot be replayed as an unsubscribe token or vice versa.
+
+No defect found. The design matches what `docs/MODULES.md` describes (256-bit hashed links with expiry).
+
+### Follow-up (2026-10-10): `cloudhost247passkey` authentication core — audited at depth, sound
+
+Taken first of the four because authentication is the highest-consequence surface in the module. Scope: the WebAuthn ceremony and challenge lifecycle (`lib/Core/WebAuthnService.php`, `lib/Core/CeremonyChallengeStore.php`). **No defect found.** The controls that matter are all present:
+
+- **Cryptography is delegated** to the audited `web-auth/webauthn-lib` (`loadAndCheckAttestationResponse` / `loadAndCheckAssertionResponse`), with the algorithm set constrained to `['ES256','RS256']`. Not hand-rolled.
+- **Fails closed when dependencies are absent** — `assertRuntimeAvailable()` throws unless the library classes exist.
+- **Single-use challenge, consumed atomically.** `consume()` performs a compare-and-swap (`UPDATE … SET consumed_at = ? WHERE consumed_at IS NULL`) and rejects when `$changed !== 1`, so two concurrent assertions cannot both succeed. This closes the TOCTOU replay race that simpler `SELECT`-then-`DELETE` implementations leave open.
+- **Challenge is bound to everything that matters**, each compared with `hash_equals`: challenge type, `user_type`, `user_id`, a **session binding hash**, the RP ID and the origin. TTL is 300 seconds. Stored options are additionally cross-checked against the raw challenge.
+- **Ownership is re-verified *after* signature verification**, not assumed from it: `findOwnerByHandle($source->getUserHandle())` must resolve, and the owner's `user_type` must match the scope and (when a specific user was requested) the `user_id` must match. This is the control that stops a valid credential for one account authenticating as another, and it is applied on both the registration and authentication paths.
+- Usernameless (discoverable) login is handled by the same post-verification owner check rather than by a separate weaker path.
+- Registration requires `none` attestation, and the returned user handle must match the local identity.
+
+Not covered by this pass: `lib/Admin.php` (1,534 lines), `lib/Http/PasskeyHttpKernel.php` (1,052), `lib/Core/ExternalIdentityLinkService.php`, `lib/Core/PasskeyActionConfirmationService.php`, and the client templates.
+
+### Follow-up (2026-10-10): `cloudhost247ai` tool-execution layer — audited at depth, sound
+
+Second of the four. Scope: the agent tool-execution pipeline — the surface that lets an LLM read and write live WHMCS data (`lib/Tools/ToolExecutor.php`, `lib/Tools/ToolDefinition.php`, `lib/Tools/ToolRegistry.php`, `lib/Tools/Readers/*`, `lib/Approval/ApprovalEngine.php`). **No defect found.**
+
+**The pipeline fails closed at every step.** `ToolExecutor::doExecute()` applies, in order: kill-switch → tool exists and is enabled → per-agent tool grant (allowlist, and an unknown agent or a DB error both `return false`) → actor authority via `Rbac` (no group ⇒ no access) → approval gate → parameter validation → redaction → call → audit. Refusals are audited as well as executions, so blocked attempts leave a trail.
+
+**Multi-tenant isolation holds on all nine client-reachable tools.** Client scope is structurally restricted to `risk === 'READ' && $tool->clientBound`, so a customer cannot reach a write tool at all. The nine client-bound readers then isolate by one of two enforced mechanisms:
+
+- **Eight billing readers** force the session's client id first and make the caller-supplied `client_id` unreachable. The shape is `if ($client = ch247ai_scope_client($ctx)) { bind forced } elseif (!empty($args['client_id'])) { bind arg }` — the `elseif` is the control. Because `ch247ai_scope_client()` returns the session id whenever scope is `client`, the argument branch is only reachable when the forced value is 0 (admin scope). **This was the specific pattern checked for IDOR; it is correct, and deliberately uses `elseif` rather than a separate `if`.**
+- **One knowledge reader** (`read_knowledge`) has no per-client rows to filter on, so it isolates by visibility instead: `ch247ai_knowledge_search()` appends a hardcoded `AND ks.visibility = 'public'` when `$onlyPublic` is true. Critically, `$onlyPublic` is derived from `$ctx['scope'] === 'client'` — a server-side value, never from a tool argument — and the filter is a literal, not interpolated input. It is applied on both the MySQL FULLTEXT path and the LIKE fallback, so the fallback is not a weaker parallel route.
+
+**Write execution is gated three ways**: the global `writes_enabled` flag defaults to `false`; non-READ tools additionally require an approval row that is approved, unexpired, *and* whose argument digest matches this exact call (`assertExecutable` + `assertArgumentsMatch`), so an approval cannot be replayed against different arguments.
+
+Supporting controls observed: every query is parameterised with bound values (no SQL string interpolation anywhere in the readers), row limits are clamped (`ch247ai_clamp_limit` to 1–50, knowledge to 1–10), tables are checked with `ch247ai_require_tables()` which fails loudly with `DATA_UNAVAILABLE` rather than letting the model answer from memory, results pass through `Redaction::clean()` on the way out, and each tool returns `_citations` for grounding.
+
+Not covered by this pass: `lib/Http/AdminPortal.php` (1,116 lines), `lib/Agents/AgentRuntime.php` (439), `lib/SupportOperator/` (operator engine, conversation and escalation services), `lib/Board/`, `lib/Model/ModelRouter.php` and the outbound provider calls.
+
+### Follow-up (2026-10-10): `cloudhost247marketing` delivery path — audited at depth, sound
+
+Third of the four. Scope: outbound message construction and delivery — `lib/Transport/Message.php`, `lib/Transport/SmtpTransport.php`, `lib/Delivery/TrackingService.php`, `lib/Http/TrackingEndpoint.php`, and the unsubscribe path in `lib/Audience/SubscriberService.php`. **No defect found.** This is the surface where a marketing module is most often exploitable, so each classic finding was tested for specifically.
+
+- **SMTP command and header injection — closed.** `SmtpTransport` interpolates `$message->toEmail` and `$from` straight into `MAIL FROM:`/`RCPT TO:` with no escaping of its own, which would normally be the finding. It is safe because `Message::clean()` strips `\r`, `\n` and `\0` at construction, and is applied to every address, display name, subject and header value. Header *names* are restricted to `[A-Za-z0-9-]`, so no new header can be introduced. Two things make this hold rather than merely look right: `Message::make()` is the **only** construction path — a search for direct assignment to the public `$toEmail`/`$fromEmail`/`$subject`/`$replyTo`/`$headers` across `lib/`, `api.php` and `hooks.php` returns nothing, so the sanitiser cannot be bypassed — and `rfc822()` re-sanitises through `encodeHeader()`/`address()` at build time, giving defence in depth. `dotStuff()` correctly doubles leading dots for the DATA phase.
+- **Click tracking is not an open redirect.** The destination is resolved from the database by link token (`TrackingService::recordClick()`/`linkUrl()`), never from a query parameter, so a caller cannot supply an arbitrary target. The 302 also sets `Referrer-Policy: no-referrer`, and the HTML fallback escapes with `ch247m_h()`.
+- **Tracking tokens are cryptographically strong.** `uniqueLinkToken()` uses `Str::token(18)` — base64url of 18 bytes from `random_bytes()`, i.e. 144 bits. The `uniqid()` line beneath it is a fallback reachable only after ten consecutive collisions and is effectively dead code.
+- **Self-service opt-out is scoped to the caller.** `SubscriberService::optOutClient()` iterates `forClient($clientId)` and only unsubscribes rows belonging to that client, so it cannot be pointed at another tenant's subscriptions.
+- **Transport security is sound for the `tls` mode**: STARTTLS is required and the connection is torn down if the server does not advertise it or refuses the upgrade; `peer_name` is bound to the configured host for certificate verification, and PHP's default `verify_peer` applies. EHLO/HELO names are filtered to `[A-Za-z0-9.-]`.
+
+**Two observations that are not defects, recorded so they are not rediscovered:** (1) `encryption` permits a `none` value, which allows cleartext submission — an operator configuration choice, but one worth an admin-UI warning. (2) `CampaignService.php:933` and `:944` fall back to `substr(hash('sha256', uniqid(..., true)), 0, 32)` if `random_bytes()` throws; `uniqid()` with `more_entropy` is not a CSPRNG, so on a host without a working random source these degrade. They are fallbacks, not the live path.
+
+Not covered by this pass: `lib/Http/AdminPortal.php` (2,015 lines — the largest file in the addon), `lib/Campaign/CampaignService.php` (946), `lib/Automation/AutomationService.php` (739), `lib/Audience/SegmentService.php` and `lib/Campaign/Renderer.php` (template rendering of subscriber-supplied fields).
+
+### Note on the four node_modules symlinks
+
+`cloudhost247ai`, `cloudhost247_cart_recovery`, `cloudhost247marketing` and `cloudhost247passkey` each needed `node_modules` for the php-wasm runners. That directory is a symlink to `cloudhost247services/node_modules` and is **gitignored for `CloudHost247_tools` and `cloudhost247cloudflare` only**. The four symlinks created here are untracked and were not committed — a fresh clone needs `npm i @php-wasm/node` in each module. Worth adding to `.gitignore` alongside the existing two entries.
 
 ## Additional audit (after workstreams 1–5)
 
 Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools`, `cloudhost247services`, `hostx`, announcement bar, `tools_center`. Each item follows the same workflow and needs approval before the next one starts.
 
-**Progress:** 1 of 11 audited (`hostx_tools`, awaiting a decision). Items 2–11 not started.
+**Progress: the original 11-item list is complete, and every addon in `MODULES.md` now has a completion record.** Six addons had **no completion record at all** and so were unfinished under the original definition — `cloudhost247ai`, `cloudhost247cart_recovery`, `cloudhost247cloudflare`, `cloudhost247marketing`, `cloudhost247passkey`, `soyoustart` (~57,600 lines between them). All six are now recorded: `cloudhost247cloudflare` (Module 12), `soyoustart` (Module 13), and the remaining four (Module 14).
+
+**Depth varies, and is stated per module rather than averaged away:** Modules 6–13 were audited line by line against their specs. Module 14's four addons (~45,500 lines) initially received **baseline verification plus a targeted review of the highest-risk surface** — not a full audit.
+
+**Now upgrading those four one by one.** `cloudhost247passkey`'s authentication core (WebAuthn ceremonies + challenge lifecycle) has since been audited at full depth and found **sound** — atomic single-use challenge consumption, session/RP/origin/identity binding, and post-verification ownership checks. See the Module 14 follow-up. **Now upgrading those four one by one.** `cloudhost247passkey`'s authentication core (WebAuthn ceremonies + challenge lifecycle) has since been audited at full depth and found **sound** — atomic single-use challenge consumption, session/RP/origin/identity binding, and post-verification ownership checks. `cloudhost247ai`'s tool-execution layer has likewise been audited at depth and found **sound** — the pipeline fails closed at every step, and all nine client-reachable tools enforce tenant isolation. See the Module 14 follow-ups.
+
+`cloudhost247marketing`'s delivery path has also been audited at depth and found **sound** — SMTP injection closed at the `Message` boundary with no bypass path, click-tracking destinations resolved from the DB rather than the query string, 144-bit CSPRNG tracking tokens, and self-service opt-out scoped to the caller.
+
+**Remaining at baseline depth: `cloudhost247_cart_recovery` only** (4,653 lines). Its recovery-link security was already reviewed and found sound, so what remains is the rest of the module rather than a known-weak area.
+
+**Open owner decisions:** D-2 (deactivation, partially done), D-6 (`digitalproducts` activation limits), D-7 (routing `/tools/<slug>`), D-8 (policy for the two 100% ionCube-encoded modules). Plus the pre-existing High items: **P-5** (`phoneservices` all-tenant API key) and **M-5** (`smmaddon` client-controlled order quantity).
+
+**Not done anywhere in this programme:** no CI (fifteen suites, nothing runs them), and no live WHMCS or browser run.
+
+**Note on method:** `soyoustart` is vendored third-party code, so its findings are **recorded rather than patched** (forking upstream creates upgrade pain). That is a deliberate departure from Modules 6–12 and is stated in the Module 13 section.
+
+Original 11-item list — all done: `hostx_tools` (decision D-2 = retire, deactivation pending), `customaffiliate`, `digitalproducts` (Module 6), `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools` (Module 7), `cloudhost247services` (Module 8 — cleanest module reviewed: no functional defect, one latent JSON-LD hardening fixed), `hostx` (Module 9 — **cannot be audited**, 63/63 files ionCube-encoded; decision D-8), announcement bar (Module 10 — spec-complete, two cosmetic/a11y fixes), `tools_center` (Module 11 — second pass, reflected XSS and exception-leak fixed).
+
+**Two cross-cutting discoveries from the final items, recorded for follow-up:**
+
+1. **`hostx` (63/63) and `xtreme_currency_rates` (18/18) are 100% ionCube-encrypted** — no readable source, so no review, test or lint is possible for either. `hostx` alone is 47,701 lines: the largest single block of code in the repository and entirely outside every assurance process the project has. Owner decision **D-8**.
+2. **No CI exists.** Fifteen modules have test suites and nothing runs them. See the recommendation in the audit summary.
+
+**Open owner decisions now:** D-2 (deactivation, partially done), D-6 (digitalproducts activation limits), D-7 (routing `/tools/<slug>`), D-8 (policy for the two encoded modules). Plus the pre-existing High items still open in other modules: **P-5** (phoneservices all-tenant API key) and **M-5** (smmaddon client-controlled order quantity).
+
+> The earlier "1 of 11" line understated progress: `customaffiliate`, `hostx_email`,
+> `phoneservices` and `smmaddon` were audited on 2026-10-10 as additional audit
+> items 1–4, above. Corrected 2026-10-10 when `digitalproducts` was added.
 
 ### 1. hostx_tools — audit complete, decision needed
 

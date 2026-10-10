@@ -28,6 +28,7 @@ modules/addons/domainbroker/storage/*
 modules/addons/digitalproducts/storage/*
 !modules/addons/digitalproducts/storage/.gitkeep
 modules/addons/cloudhost247_cart_recovery/node_modules
+modules/addons/CloudHost247_tools/node_modules
 __pycache__/
 
 # CloudHost247 App Cloud (application marketplace / deployment platform)
@@ -41,3 +42,5 @@ modules/addons/cloudhost247apps/cache/
 modules/servers/Smtphosting/storage/config/*.php
 !modules/servers/Smtphosting/storage/config/index.php
 modules/servers/Smtphosting/storage/app/smtp-usage-ratelimit/
+modules/addons/cloudhost247cloudflare/node_modules
+modules/addons/cloudhost247passkey/node_modules

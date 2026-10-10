@@ -12,7 +12,11 @@ class UploadValidator
         $name = (string) ($file['name'] ?? '');
         $tmp = (string) ($file['tmp_name'] ?? '');
         $size = (int) ($file['size'] ?? 0);
-        if ($name === '' || strpos($name, "\0") !== false || preg_match('#(^|[\\/])\.\.?([\\/]|$)#', $name)) throw new ValidationException('Invalid filename.');
+        // Both separators count: a backslash is a directory separator on the
+        // Windows servers WHMCS is often deployed on, and the original name is
+        // later used as a download filename.
+        if ($name === '' || strpos($name, "\0") !== false || preg_match('#(^|[/\\\\])\.\.?([/\\\\]|$)#', $name)) throw new ValidationException('Invalid filename.');
+        if (pathinfo($name, PATHINFO_FILENAME) === '') throw new ValidationException('Invalid filename.');
         if (!is_uploaded_file($tmp) && !defined('DIGITALPRODUCTS_TESTING')) throw new ValidationException('Invalid upload source.');
         if (!is_file($tmp) || $size < 1 || $size > Settings::int('max_upload_size', 524288000)) throw new ValidationException('File is empty or exceeds the configured size limit.');
         $lower = strtolower($name);

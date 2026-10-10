@@ -147,7 +147,9 @@ try {
     
     apiResponse(['success' => true, 'data' => $result]);
 } catch (Exception $e) {
-    // Log error
+    // Log the real detail server-side, and return a generic message. The old
+    // response echoed $e->getMessage() to the caller, which exposed internal
+    // paths and driver text to anyone holding the API token.
     $logFile = __DIR__ . '/logs/error-' . date('Y-m-d') . '.log';
     $logDir = dirname($logFile);
     if (!is_dir($logDir)) {
@@ -155,5 +157,5 @@ try {
     }
     error_log(date('[Y-m-d H:i:s]') . ' ERROR: ' . $e->getMessage() . PHP_EOL, 3, $logFile);
     
-    apiError('Tool execution failed: ' . $e->getMessage(), 500, 'EXECUTION_ERROR');
+    apiError('Tool execution failed. The error has been logged.', 500, 'EXECUTION_ERROR');
 }

@@ -65,18 +65,11 @@
 }
 
 /* Decorative bullet between messages */
-.announcement-bar__item::after {
-    content: "•";
-    position: absolute;
-    right: 0;
-    padding-left: 0;
-    opacity: 0.6;
-    font-size: 0.75rem;
-}
-
-/* Remove bullet from the very last visual item (handled by spacing) */
-
 /* Separator dot styling */
+/* (The earlier ::after bullet was removed: .announcement-bar__item has no
+   position of its own, so the absolute bullet anchored to .announcement-bar
+   and every copy stacked at the bar's right edge. The .announcement-bar__dot
+   span below is the real separator.) */
 .announcement-bar__dot {
     display: inline-block;
     width: 4px;
@@ -139,9 +132,6 @@
     .announcement-bar__dot {
         display: none;
     }
-    .announcement-bar__item::after {
-        display: none;
-    }
 }
 </style>
 
@@ -150,15 +140,18 @@
         {* Render items twice for seamless CSS loop *}
         {section name=loop loop=2}
             {foreach from=$announcements item=announcement}
+                {* The second pass is the seamless-loop duplicate: hide it from
+                   assistive tech so each message is announced once, not twice. *}
+                {if $smarty.section.loop.index > 0}{assign var=dup value=' aria-hidden="true"'}{else}{assign var=dup value=''}{/if}
                 {if isset($announcement.url) && $announcement.url neq ''}
-                    <a href="{$announcement.url|escape:'html'}" class="announcement-bar__item announcement-bar__item--link" {if isset($announcement.external) && $announcement.external}target="_blank" rel="noopener noreferrer"{/if}>
+                    <a href="{$announcement.url|escape:'html'}" class="announcement-bar__item announcement-bar__item--link"{$dup} {if isset($announcement.external) && $announcement.external}target="_blank" rel="noopener noreferrer"{/if}>
                         <span>{$announcement.text|escape:'html'}</span>
                         {if isset($announcement.icon) && $announcement.icon neq ''}
                             <i class="{$announcement.icon|escape:'html'} ml-1" aria-hidden="true"></i>
                         {/if}
                     </a>
                 {else}
-                    <span class="announcement-bar__item">
+                    <span class="announcement-bar__item"{$dup}>
                         {$announcement.text|escape:'html'}
                         {if isset($announcement.icon) && $announcement.icon neq ''}
                             <i class="{$announcement.icon|escape:'html'} ml-1" aria-hidden="true"></i>

@@ -2,6 +2,7 @@
 namespace DigitalProducts;
 
 use DigitalProducts\Core\Csrf;
+use DigitalProducts\Security\DownloadAuthorizer;
 use DigitalProducts\Security\TokenService;
 use WHMCS\Database\Capsule;
 
@@ -19,7 +20,15 @@ class Client
         $entitlement = Capsule::table('mod_digitalproducts_entitlements')->where('id', $entitlementId)->where('client_id', $this->clientId)->where('status', 'active')->first();
         if (!$entitlement) throw new \RuntimeException('Download access could not be verified.');
         $product = Capsule::table('mod_digitalproducts_products')->where('id', $entitlement->product_id)->first();
-        if (!$versionId) $versionId = ($entitlement->access_mode === 'purchase_version' ? (int) $entitlement->purchase_version_id : (int) ($product->current_version_id ?? 0));
+        // One rule decides the permitted release, shared with the download
+        // endpoint, so a link can never be issued for a release that endpoint
+        // would refuse. An explicit version_id is honoured only when it is
+        // that release.
+        $allowed = (new DownloadAuthorizer())->allowedVersionId($entitlement, $product->current_version_id ?? null);
+        if ($versionId && ($allowed === null || (int) $versionId !== $allowed)) {
+            throw new \RuntimeException('This version is no longer available.');
+        }
+        $versionId = $allowed ?: 0;
         $version = Capsule::table('mod_digitalproducts_versions')->where('id', $versionId)->where('product_id', $entitlement->product_id)->where('status', 'active')->first();
         if (!$version) throw new \RuntimeException('This version is no longer available.');
         $issued = (new TokenService())->issue($entitlement->id, $version->id, $this->clientId);

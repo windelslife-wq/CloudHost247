@@ -401,6 +401,15 @@ class CloudHost247ToolsClient
 
         $categoryLabel = ucfirst($toolInfo['category']);
 
+        // Resolve the catalog record so the page knows whether this tool must
+        // run in the browser. exec=client tools have no server endpoint, so the
+        // legacy bundle executes them locally via their route-split module
+        // instead of posting them here.
+        require_once __DIR__ . '/Catalog.php';
+        $registry = CloudHost247ToolsCatalog::byHandler($toolId);
+        $exec = isset($registry['exec']) ? $registry['exec'] : 'server';
+        $slug = isset($registry['slug']) ? $registry['slug'] : $toolId;
+
         return [
             'pagetitle' => $toolInfo['name'],
             'breadcrumb' => [
@@ -416,62 +425,74 @@ class CloudHost247ToolsClient
                 'csrf_token' => CloudHost247_tools_generate_csrf(),
                 'base_url' => $this->baseUrl,
                 'assets_url' => $this->assetsUrl,
+                'tool_id' => $toolId,
+                'tool_slug' => $slug,
+                'tool_exec' => $exec,
             ],
         ];
     }
 
+    /**
+     * Legacy AJAX endpoint: index.php?m=CloudHost247_tools&action=ajax
+     *
+     * The legacy client bundle (assets/js/CloudHost247-tools.js) posts here
+     * from every tool page, so this is a live execution path, not dead code.
+     *
+     * It now delegates to CloudHost247ToolsRunner - the same gate the
+     * /tools/api/<slug> endpoint uses - so tool execution is protected by:
+     *   - the 1 MB request-size cap (Runner::MAX_REQUEST_BYTES)
+     *   - tiered quotas and the global per-IP ceiling (RateLimiter)
+     *   - rejection of exec=client tools, which have no server endpoint
+     *   - redaction of sensitive inputs before anything is logged
+     *   - generic server errors, with detail logged server-side only
+     *   - an execution/socket timeout and the standard security headers
+     *
+     * Two details are deliberately preserved for the legacy caller:
+     *   - CSRF is checked against the legacy session token, because the legacy
+     *     forms carry CloudHost247_tools_generate_csrf(), not the Runner's.
+     *   - The response is translated back to {success,data} / {success,message}
+     *     via Runner::respondLegacy(), which the bundle expects.
+     */
     protected function handleAjax()
     {
-        header('Content-Type: application/json');
+        require_once __DIR__ . '/Runner.php';
 
-        $ip = CloudHost247_tools_get_client_ip();
-        $maxRequests = (int) CloudHost247_tools_get_setting('rate_limit_requests', '60');
+        $toolId = isset($_POST['tool']) ? (string) $_POST['tool'] : '';
+        $token  = isset($_POST['csrf_token']) ? (string) $_POST['csrf_token'] : '';
 
-        if (!CloudHost247_tools_check_rate_limit($ip, $maxRequests)) {
-            echo json_encode(['success' => false, 'message' => 'Rate limit exceeded. Please wait a moment.']);
-            exit;
-        }
-
-        $toolId = $_POST['tool'] ?? '';
-        $token = $_POST['csrf_token'] ?? '';
-
+        // Verified here (legacy token) so the existing pages keep working.
         if (!CloudHost247_tools_verify_csrf($token)) {
-            echo json_encode(['success' => false, 'message' => 'Invalid security token.']);
+            if (!headers_sent()) {
+                http_response_code(419);
+                header('Content-Type: application/json; charset=utf-8');
+                header('X-Content-Type-Options: nosniff');
+                header('Cache-Control: no-store, max-age=0');
+            }
+            echo json_encode(['success' => false, 'message' => 'Your session expired. Please reload the page and try again.']);
             exit;
         }
 
-        if (!$toolId || !CloudHost247_tools_is_tool_enabled($toolId)) {
+        // The admin Tools Manager toggles tools in mod_CloudHost247_tools_status,
+        // which the static catalog registry does not read. Honour that switch
+        // here so delegating to the Runner does not silently re-enable a tool an
+        // administrator has switched off.
+        if ($toolId === '' || !CloudHost247_tools_is_tool_enabled($toolId)) {
+            if (!headers_sent()) {
+                http_response_code(404);
+                header('Content-Type: application/json; charset=utf-8');
+                header('X-Content-Type-Options: nosniff');
+                header('Cache-Control: no-store, max-age=0');
+            }
             echo json_encode(['success' => false, 'message' => 'Tool not found or disabled.']);
             exit;
         }
 
-        // Include tool implementations
-        $category = CloudHost247_tools_get_tool_info($toolId)['category'] ?? '';
-        $toolFile = __DIR__ . '/includes/tools/' . $category . '_tools.php';
+        $envelope = CloudHost247ToolsRunner::run($toolId, $_POST, [
+            'require_csrf' => false,
+            'ip'           => CloudHost247_tools_get_client_ip(),
+        ]);
 
-        if (!file_exists($toolFile)) {
-            echo json_encode(['success' => false, 'message' => 'Tool implementation not found.']);
-            exit;
-        }
-
-        require_once $toolFile;
-
-        $handler = 'CloudHost247_tool_' . str_replace(['-', '.'], '_', $toolId);
-
-        if (!function_exists($handler)) {
-            echo json_encode(['success' => false, 'message' => 'Tool handler not implemented yet: ' . $handler]);
-            exit;
-        }
-
-        try {
-            $result = call_user_func($handler, $_POST);
-            CloudHost247_tools_log($toolId, $_POST, $result, 'success');
-            echo json_encode(['success' => true, 'data' => $result]);
-        } catch (\Exception $e) {
-            CloudHost247_tools_log($toolId, $_POST, '', 'error', $e->getMessage());
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-        }
-
+        CloudHost247ToolsRunner::respondLegacy($envelope);
         exit;
     }
 }
