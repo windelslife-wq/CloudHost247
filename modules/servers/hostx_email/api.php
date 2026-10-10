@@ -1389,21 +1389,79 @@ class HostxEmailAPI
      */
     public function verifyWebhookSignature($provider, $payload, $signature)
     {
+        if (!is_string($signature) || $signature === '') {
+            return false;
+        }
+
         switch ($provider) {
-            case 'microsoft365':
-                // Microsoft uses validation tokens in the notification
-                return true;
-                
             case 'google_workspace':
-                // Google Workspace webhooks include a bearer token
-                return true;
-                
+                // Google push channels echo back the channel token we registered
+                // (X-Goog-Channel-Token). Fail closed if no secret is configured.
+                $expected = $this->getWebhookSecret('hostx_email_google_channel_token');
+                return $expected !== '' && hash_equals($expected, $signature);
+
             case 'professional':
-                $expectedSignature = hash_hmac('sha256', $payload, $this->getProfessionalEmailApiKey());
-                return hash_equals($expectedSignature, $signature);
-                
+                // HMAC-SHA256 of the raw body keyed with the API key.
+                // Fail closed: an empty key would make the HMAC forgeable.
+                $key = $this->getProfessionalEmailApiKey();
+                if ($key === '' || $key === null) {
+                    return false;
+                }
+                $provided = preg_replace('/^sha256=/i', '', $signature);
+                $expectedSignature = hash_hmac('sha256', (string) $payload, $key);
+                return hash_equals($expectedSignature, $provided);
+
+            default:
+                // Microsoft 365 notifications carry no header signature; they are
+                // authenticated per notification by clientState (see webhook.php).
+                return false;
+        }
+    }
+
+    /**
+     * Decide whether an incoming webhook request is authentic.
+     *
+     * Every provider must pass an explicit check. Requests that cannot be
+     * authenticated are rejected, never processed.
+     *
+     * @param string $provider  microsoft365 | google_workspace | professional
+     * @param string $rawBody   Raw request body
+     * @param array  $headers   Lower-cased header name => value
+     * @return bool
+     */
+    public function authenticateWebhook($provider, $rawBody, array $headers)
+    {
+        switch ($provider) {
+            case 'professional':
+                $signature = $headers['x-webhook-signature'] ?? ($headers['x-hub-signature-256'] ?? '');
+                return $this->verifyWebhookSignature('professional', $rawBody, $signature);
+
+            case 'google_workspace':
+                $token = $headers['x-goog-channel-token'] ?? '';
+                return $this->verifyWebhookSignature('google_workspace', $rawBody, $token);
+
+            case 'microsoft365':
+                // Per-notification clientState check runs in handleMicrosoft365Webhook()
+                // and fails closed when the secret is not configured.
+                return true;
+
             default:
                 return false;
         }
+    }
+
+    /**
+     * Read a webhook secret from tblconfiguration.
+     *
+     * @param string $setting
+     * @return string Empty string when unset
+     */
+    private function getWebhookSecret($setting)
+    {
+        $value = \WHMCS\Database\Capsule::table('tblconfiguration')
+            ->where('setting', $setting)
+            ->value('value');
+
+        return is_string($value) ? $value : '';
     }
 }

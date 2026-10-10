@@ -315,6 +315,18 @@ Tests: `tests/CommissionTest.php`, 22 checks, all pass; 10 of them failed on the
 
 Open for the owner: partial refunds still reset the full first-commission flag (documented, conservative). `UpgradeHandler` and the upgrade/downgrade hooks only record notes; re-grouping logic runs only from the manual utility.
 
+## Additional audit item 2 — hostx_email (2026-10-10, in progress)
+
+| ID | Finding | Evidence | Severity |
+|---|---|---|---|
+| H-1 | **Unauthenticated webhooks were processed.** The signature check ran only when a signature header was present. Microsoft 365 and Google Workspace returned `true` unconditionally. The Microsoft `clientState` check was skipped when no secret was configured. Unsigned POSTs could set a customer's WHMCS service to `Terminated` (`tblhosting.domainstatus`). | `webhook.php` (signature gate; `clientState` check); `api.php` `verifyWebhookSignature()` | High → **fixed**: `HostxEmailAPI::authenticateWebhook()` is required for every request and fails closed. Google needs `hostx_email_google_channel_token`; Microsoft needs `hostx_email_ms_client_state`. Professional needs a non-empty API key and a valid HMAC. |
+
+Tests: `tests/WebhookAuthTest.php`, 13 checks, all pass (`node tests/run.mjs`). PHP parse check passes on `webhook.php` and `api.php`. Not run: a live provider webhook, and the baseline on the old code (not run).
+
+Behaviour change: Google and Microsoft webhooks stop working until their secrets are set in `tblconfiguration`. The README documents this.
+
+Still to check in this module (not yet audited): the rate limiter (`hostx_email_check_rate_limit()`) on the API path; AES-256-CBC with no MAC in `functions.php` (~41–80); duplicated webhook logic in `api.php handleWebhook` versus `webhook.php`; the README's Google "Assign License" endpoint against the code.
+
 ## Module 4 — domainbroker (Domain Broker Service)
 
 | Field | Information |
