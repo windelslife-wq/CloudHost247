@@ -29,3 +29,14 @@ If jsdom is missing, the runner prints `[SKIP] UI wiring tests` and does not cou
 
 - Reading a real file in a browser (`FileReader`/`Image`/canvas). jsdom has no canvas, so `decodeFile` is stubbed in the UI tests. Needs a manual browser check.
 - The WHMCS server path (`hooks.php` curl call, `clientarea.php` access check) against a live install.
+
+## External API SSRF guard (T-6, T-7)
+
+`external-api/outbound.php` is covered by `tests/outbound-guard.php` (60 offline checks: address deny-list, URL and scheme rules, redirect resolution, and guard-before-connect for fetches and sockets). Run it with:
+
+```
+node modules/addons/tools_center/tests/run-php-guard.mjs
+```
+
+It uses the php-wasm runtime that is already vendored under `cloudhost247services/node_modules`. Live DNS and network checks are not covered.
+

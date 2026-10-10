@@ -198,6 +198,20 @@ Not changed: `external-api/tools/productivity.php` `qrScanner()` still returns i
 
 
 
+### Module 2 follow-up — `external-api/` audit (open item 4 closed in code)
+
+| ID | Finding | Evidence | Severity |
+|---|---|---|---|
+| T-6 | **SSRF.** The HTTP headers checker, the open-graph/broken-link checker, the link analyzer, the broken-link sample, and the port checker and SMTP test connected to any caller-supplied host, including private ranges and cloud metadata, and followed redirects. | `external-api/tools/developer.php`, `webmaster.php`, `network.php` (before the fix) | High |
+| T-7 | **Unsafe action dispatch.** `api.php` called any method that `method_exists()` found. Private methods raised an uncaught `Error` (not an `Exception`), and magic methods were callable. | `external-api/api.php` | Medium |
+| T-8 | Certificate verification is still off in the page-fetch tools (`SSL_VERIFYPEER => false`, kept to preserve behaviour for sites with broken certificates). Connections are pinned to the validated address, so this affects content integrity in transit only. | `developer.php`, `webmaster.php` | Low (accepted, documented) |
+
+**Fix:** new `external-api/outbound.php`. It accepts only http/https on ports 80/443 with no credentials, resolves the host and rejects any non-public address (deny-list covers IPv4-mapped IPv6, CGNAT, NAT64 and the other reserved ranges), pins the connection to the validated IP, and re-validates every redirect hop (maximum 5). Sockets use `tc_open_public_socket()`. `api.php` dispatches only public, non-magic methods declared on the tool class. A link the guard refuses is reported as unreachable rather than aborting the report.
+
+**Tests:** `tests/outbound-guard.php` (60 offline checks, run with `tests/run-php-guard.mjs` on php-wasm). The PHP syntax check passes on all 19 PHP files. Live DNS and network behaviour is **not run** in the sandbox.
+
+**Still open:** the unused `qrScanner()` and `qrGenerator()` in `external-api/` (owner decision, unchanged); T-8 (owner decision on verification); the external API's wildcard CORS header (`Access-Control-Allow-Origin: *`), which is also unchanged.
+
 ## Module 3 — cloudhost247apps (hosting control plane)
 
 | Field | Information |
