@@ -110,13 +110,49 @@ activation are rate-limited by pseudonymised IP and return generic failure data.
 - **Backup:** back up the WHMCS database and the configured private storage root as one
   application unit. Restore the encryption key with them.
 
+## Activation limits — current state
+
+`License::activateLicense()` enforces `domain_limit` / `activations_limit`, and the
+client area and API both report an activation limit. **The limits cannot be
+configured**: `generateLicense()` is only ever called by `EntitlementService`
+without either value, and no admin field, product column or addon setting exposes
+them. Every license is therefore issued with unlimited activations.
+
+This is a known gap, recorded as decision **D-6** in
+[`MODULE_COMPLETION_TRACKER.md`](MODULE_COMPLETION_TRACKER.md). It was left alone
+deliberately: adding a cap would change business behaviour, so it needs an owner
+decision rather than a unilateral default.
+
 ## Verification commands
 
 ```bash
-node modules/addons/digitalproducts/tests/lint.mjs
+node modules/addons/digitalproducts/tests/run.mjs   # 225 assertions, 8 suites
+node modules/addons/digitalproducts/tests/lint.mjs  # syntax gate
 ```
 
-A staging sign-off should cover a paid order, duplicate payment hook, new release,
+Both run offline under php-wasm against an in-memory SQLite database created from
+the **shipped migrations** — no WHMCS install and no network needed. The suites
+also pass on PHP 7.4.33. `tests/CapsuleShim.php` provides the offline
+`WHMCS\Database\Capsule`; it compiles the query-builder subset the module uses to
+real SQL and throws on any builder method it does not implement, so a test cannot
+pass by silently ignoring a call.
+
+| Suite | Covers |
+|---|---|
+| `00_HarnessTest.php` | Migrations create every table; the grant path works end to end |
+| `01_SecurityTest.php` | CSRF, crypto, private storage root, upload allowlist |
+| `02_DownloadAuthorizerTest.php` | Every download denial path, version binding, download limits |
+| `03_EntitlementTest.php` | Grant guards, lifecycle, order level, counters, audit trail |
+| `04_LicenseTest.php` | Generation, validation, domain binding, activation limits, legacy keys |
+| `05_TokenAndLimitsTest.php` | Token issuance/replay/expiry/purge, rate limiter, permitted-release rule |
+| `06_DownloadTest.php` | The version rule itself (regression for an inverted check) |
+| `07_UploadAndStaticTest.php` | Real ZIP attacks, extension allowlist, static security wiring |
+
+Two mutation checks are part of the record: restoring the pre-fix upload
+filename logic fails 2 assertions, and restoring the pre-fix version selection
+fails 4. Both were reverted and verified byte-identical.
+
+A staging sign-off should still cover a paid order, duplicate payment hook, new release,
 refund/cancellation, wrong-customer token, forged/expired/replayed token, download
 limit, missing file, license validation throttling and direct HTTP access to the
 private storage directory.

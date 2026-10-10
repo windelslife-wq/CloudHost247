@@ -523,12 +523,112 @@ Also fixed in this module: **DNS Lookup** had the same `record_type` bug (every 
 - Executed: PHP suites 464/0; `core` 68/0; `tools` 845/0; `qr` 36/0; PHP syntax check 5/0; mutation check caught; live TCP fallback returned records.
 - Not yet evidence: live UDP resolver queries, browser UI, PHP 7.4 runtime.
 
+## Module 6 — digitalproducts (Digital Products Marketplace)
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/digitalproducts/` (WHMCS addon: products, versioned releases, entitlements, licensing, private downloads, JSON API) |
+| Specification | `docs/DIGITAL_PRODUCTS.md` (operator runbook), `docs/DIGITAL_PRODUCTS_REBUILD.md` (audit and rebuild record), `docs/WHMCS Digital Product Module/Build.txt` (original brief), `SECURITY.md`, `API.md`. |
+| Status | **Audited and code-fixed; owner decision pending on D-6 (activation limits).** Findings G-1 to G-3 fixed in code and covered by tests. G-4 and G-5 are recorded, not changed. Suite went from 17 assertions (2 files) to **225 assertions (8 files, 0 failures)**. No live WHMCS run. |
+
+### Why this module was re-audited
+
+It was the last never-started item from the first five workstreams that had a
+complete rebuild record (`DIGITAL_PRODUCTS_REBUILD.md`) but only 17 offline
+assertions. The gap was assurance, not obviously broken code, so the pass built
+a database-backed harness first and then looked for defects with it.
+
+### Test harness added
+
+There was no way to execute the module's services offline, because every service
+goes through `WHMCS\Database\Capsule` and no test stub existed.
+
+| File | Change |
+|---|---|
+| `tests/CapsuleShim.php` (new) | Offline `WHMCS\Database\Capsule` backed by in-memory SQLite. Compiles the query-builder subset the module uses (select/aliases, joins with aliases, where/whereIn/whereNull/whereDate/nested closures, orderBy, forPage, insert/insertGetId/update/delete/increment/updateOrInsert/paginate, `raw()`, schema DDL) to real SQL. Unsupported builder methods **throw** rather than being ignored, so a test cannot pass by accident. |
+| `tests/bootstrap.php` | Boots the module against the **shipped migrations** (`0001`–`0005`) on SQLite, recreates the WHMCS core tables the module reads (`tblhosting`, `tblorders`, `tblproducts`, `tblclients`, `tblconfiguration`, `tbladdonmodules`), and adds `DPDb` fixtures. |
+
+Migrations run for real, so the suites exercise the production schema — not a
+hand-written approximation of it.
+
+### Findings
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| G-1 | **The permitted-release rule had no shared definition.** `DownloadAuthorizer::versionNotAllowed()` was `protected`, so the client area (`lib/Client.php`) and the API (`api.php`) each re-derived the version themselves and only checked that the requested version was *active and on the product*. Under `purchase_version` mode a client could obtain a download token for any newer active release. The download endpoint then refused it, so nothing leaked — but the module handed out links it knew would fail, and the rule existed in three places. | `lib/Client.php` (`access_mode === 'purchase_version' ? (int) $entitlement->purchase_version_id : …`), `api.php` (same expression) | Medium (consistency, dead links) | **Fixed.** `DownloadAuthorizer::allowedVersionId()` is now the single definition; `versionNotAllowed()` delegates to it, and both callers resolve through it and refuse a requested release that is not the permitted one. |
+| G-2 | **Backslash traversal was not rejected in upload filenames.** The check was `preg_match('#(^|[\/])\.\.?([\/]|$)#', …)`. Inside a character class `[\/]` is only `/`, so `..\..\evil.zip` passed. Separately, a name that was nothing but an extension (`.zip`) was accepted, producing an empty basename. | `lib/Security/UploadValidator.php` `validate()` | Low (defence in depth; the stored object uses an opaque random key, and the original name is only a download filename) | **Fixed.** Both separators are recognised, and an empty basename is rejected. |
+| G-3 | **A legacy `disabled` release could never be published.** Migration `0002_versions_from_files` writes `status = 'disabled'` for legacy rows that were not active. The admin screen only offered *Publish* when `status === 'draft'`, so such a release was undownloadable, invisible in the client area (`whereIn('status', ['active','retired'])`) and could only be retired — never restored to service. | `install/migrations/0002_versions_from_files.php`; `lib/Admin.php` `versions()` | Low (functional gap) | **Fixed.** Publish is offered for any state that is neither active nor retired. |
+| G-4 | **License activation limits are enforced but unreachable.** `License::activateLicense()` honours `domain_limit`/`activations_limit`, but `generateLicense()` is only ever called from `EntitlementService` **without** either value, and there is no admin field, product column or addon setting for them. Every license is therefore issued with unlimited activations. | `lib/License.php` `generateLicense()` / `activateLicense()`; `lib/Services/EntitlementService.php`; grep for `activation_limit` — schema + `api.php` + `Client.php` only, no admin surface | Medium (incomplete feature) | **Open, owner decision (D-6).** Not changed: adding a cap would change business behaviour. Recorded, not silently wired. |
+| G-5 | **The ZIP symlink guard is environment-dependent.** It reads `ZipArchive::statIndex()['external_attributes']`, which this PHP build does not expose at all; `isset()` then skips the check silently. The module never extracts archives (objects are stored as opaque blobs and streamed), so this is defence in depth for downstream consumers. | `lib/Security/UploadValidator.php` `validateArchive()`; probe: `setExternalAttributesName()` with mode `0120777` → `statIndex()` returns no `external_attributes` key | Low, and **not verifiable here** | **Open, recorded.** Deliberately not made fail-closed: on a build without the field that would reject every archive. The suite prints `SKIP` rather than claiming a defence it cannot see. |
+
+### Checked and found sound
+
+- **Download authorisation** (`DownloadAuthorizer::resolve()`): wrong client, expired token, replayed single-use token, revoked/suspended entitlement, inactive product, unpublished version, version from another product, suspended/cancelled service, service owned by another client, service on another package, cancelled order — every path refused, and the version-binding rule refuses superseded and newer releases under both access modes. 26 assertions.
+- **Entitlement lifecycle** (`EntitlementService`): grant is idempotent, pending/cancelled services and draft/unpublished/unlinked products are not granted, suspend/restore/revoke/reactivate all behave, order-level grant and refund revoke work, and grants write audit rows with correlation ids. 24 assertions.
+- **Licensing** (`License`): the raw key is never stored (SHA-256 hash plus an encrypted copy), generation is idempotent per service, unknown/empty/over-long/near-miss keys are refused, suspended and expired keys are refused, expired keys are marked expired, domain binding and activation limits are enforced, and legacy plaintext rows still validate through their hash. 42 assertions.
+- **Tokens and rate limiting**: raw tokens are never stored, forged/malformed/expired/spent tokens do not resolve, single-use replay is refused, multi-use tokens survive consumption, purge keeps live tokens, the limiter allows up to the budget and blocks after it, windows reset, and a missing rate-limit table **fails closed**. 40 assertions.
+- **Storage and uploads**: a storage root inside the document root is refused, keys are opaque, and ZIP traversal (parent, absolute, Windows drive), corrupt archives and a declared 2 GB zip bomb are all refused.
+- **Output escaping**: both client templates escape every user- and database-derived field; `Admin.php` escapes throughout via `e()`.
+- **Endpoint hygiene**: all three entry points include the WHMCS `init.php` at the correct depth (verified by resolving each path — `download.php` and `api.php` use `__DIR__ . '/../../../init.php'`, cron uses `dirname(__DIR__, 4)`, all correct); the API rejects `?api_token=`, emits no CORS wildcard, and sets `nosniff`; `download.php` consumes the single-use token *before* claiming the download limit and marks the response `no-store`.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `lib/Security/DownloadAuthorizer.php` | New public `allowedVersionId()` — the single permitted-release rule. `versionNotAllowed()` now delegates to it, so download-time behaviour is unchanged. |
+| `lib/Client.php` | Resolves the release through `allowedVersionId()`; an explicit `version_id` is honoured only when it is the permitted release. |
+| `api.php` | Same rule, returning `422 invalid_version` instead of issuing a link `download.php` would reject. |
+| `lib/Security/UploadValidator.php` | Backslash treated as a separator in the filename check; empty basename rejected. |
+| `lib/Admin.php` | Publish offered for every non-active, non-retired release (G-3). `allowed_extensions` is now stored through the same allowlist the validator uses, so a hostile value cannot loosen it. |
+| `tests/CapsuleShim.php` (new) | SQLite-backed `WHMCS\Database\Capsule` for offline execution. |
+| `tests/bootstrap.php` | Boots the shipped migrations and WHMCS core tables; adds `DPDb` fixtures. |
+| `tests/00_HarnessTest.php` (new) | 17 checks: every shipped table is created and the grant path works end to end. |
+| `tests/02_DownloadAuthorizerTest.php` (new) | 26 checks: happy path, 14 denial paths, version binding, download limits. |
+| `tests/03_EntitlementTest.php` (new) | 24 checks: grant, guards, lifecycle, order level, counter, audit. |
+| `tests/04_LicenseTest.php` (new) | 42 checks: generation, validation, domain binding, activation limits, legacy keys, crypto. |
+| `tests/05_TokenAndLimitsTest.php` (new) | 40 checks: token issuance/lookup/replay/expiry/purge, rate limiter, permitted-release rule. |
+| `tests/07_UploadAndStaticTest.php` (new) | 59 checks: real ZIP attacks, extension allowlist, and static regression checks on the security wiring. |
+
+No behaviour was invented and no default was changed. The download-time rule is
+byte-for-byte the same decision as before; only its location moved, and the two
+callers that previously re-derived it now use it.
+
+### Tests
+
+| Command | Result |
+|---|---|
+| `node tests/run.mjs` before this pass (2 suites) | 17 PASS, 0 FAIL |
+| `node tests/run.mjs` after this pass (8 suites, PHP 8.3.33, php-wasm) | **225 PASS, 0 FAIL** |
+| Same suites, PHP 7.4.33 (php-wasm) | **225 PASS, 0 FAIL** |
+| `node tests/lint.mjs` | **FILES=35, BAD=0** on PHP 8.3.33 and on PHP 7.4.33 |
+| Mutation check A: pre-fix `UploadValidator` filename logic restored | **Caught:** `backslash traversal is refused`, `empty basename is refused` fail. Files restored and verified byte-identical. |
+| Mutation check B: pre-fix version selection restored in `Client.php` and `api.php` | **Caught:** 4 static wiring checks fail. Files restored and verified byte-identical. |
+| Live WHMCS run (payment hook, email template, real download, admin screens) | **Not run.** No WHMCS install. |
+| Browser check of the client area and admin screens | **Not run.** No browser in the sandbox. |
+
+### Remaining issues / blockers
+
+1. **D-6 (owner decision): license activation limits.** Enforcement exists; configuration does not. Choose one: (a) leave unlimited and document it; (b) add a global default in the addon settings (default 0 = unlimited, so nothing changes until an operator sets it); (c) add a per-product column via a migration plus an admin field. Option (b) or (c) is needed before the feature can be called complete.
+2. **Live WHMCS staging sign-off**, per `docs/DIGITAL_PRODUCTS.md`: a paid order end to end, a duplicate payment hook, a new release, refund/cancellation, a wrong-customer token, a forged/expired/replayed token, a download limit, a missing file, license validation throttling, and direct HTTP access to the private storage directory.
+3. **G-5** stays open and unverifiable here (see Findings).
+4. The suite runs on SQLite, not MySQL. MySQL-only DDL in migrations `0004`/`0005` (`ALTER TABLE … MODIFY`) is skipped by the migrations' own `try/catch`, exactly as on a host where it is unsupported; the resulting column types are therefore not identical to production.
+5. `Settings::validate()` is called before storage-path validation but does not validate `allowed_extensions`; the admin save path now normalises it through `Settings::extensions()`. A direct call to `Settings::set()` elsewhere could still store an unvalidated value.
+
+### Completion evidence
+
+- Source: the files in *Changes made*.
+- Executed: 225/0 on PHP 8.3.33 and PHP 7.4.33; lint 35/0 on both; both mutation checks caught and files restored byte-identical.
+- Not yet evidence: the live WHMCS run and the browser check (items 1–2 above).
 
 ## Additional audit (after workstreams 1–5)
 
 Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools`, `cloudhost247services`, `hostx`, announcement bar, `tools_center`. Each item follows the same workflow and needs approval before the next one starts.
 
-**Progress:** 1 of 11 audited (`hostx_tools`, awaiting a decision). Items 2–11 not started.
+**Progress: 6 of 11 audited.** Done: `hostx_tools` (decision D-2 = retire, deactivation pending), `customaffiliate`, `digitalproducts` (see Module 6 above), `hostx_email`, `phoneservices`, `smmaddon`. **Not started (5):** `CloudHost247_tools`, `cloudhost247services`, `hostx`, announcement bar, `tools_center` (second pass over the remaining `external-api/` tools).
+
+> The earlier "1 of 11" line understated progress: `customaffiliate`, `hostx_email`,
+> `phoneservices` and `smmaddon` were audited on 2026-10-10 as additional audit
+> items 1–4, above. Corrected 2026-10-10 when `digitalproducts` was added.
 
 ### 1. hostx_tools — audit complete, decision needed
 

@@ -8,6 +8,7 @@ use DigitalProducts\Core\Http;
 use DigitalProducts\Core\RateLimiter;
 use DigitalProducts\Core\Settings;
 use DigitalProducts\License;
+use DigitalProducts\Security\DownloadAuthorizer;
 use DigitalProducts\Security\TokenService;
 use WHMCS\Database\Capsule;
 
@@ -73,7 +74,12 @@ try {
         digitalproducts_api_method('POST'); $auth = digitalproducts_api_auth(true); digitalproducts_api_permission($auth, 'download-token'); $entitlementId = (int) ($body['entitlement_id'] ?? 0); $versionId = (int) ($body['version_id'] ?? $body['file_id'] ?? 0);
         $entitlement = Capsule::table('mod_digitalproducts_entitlements as e')->join('mod_digitalproducts_products as p', 'p.id', '=', 'e.product_id')->where('e.id', $entitlementId)->where('e.client_id', $auth['client_id'])->where('e.status', 'active')->select('e.*', 'p.current_version_id')->first();
         if (!$entitlement) digitalproducts_api_reply(['status' => 'error', 'error' => 'not_entitled'], 403);
-        if (!$versionId) $versionId = $entitlement->access_mode === 'purchase_version' ? (int) $entitlement->purchase_version_id : (int) $entitlement->current_version_id;
+        // Same rule as the download endpoint: resolve the permitted release
+        // once, so the API never hands out a link that download.php rejects.
+        $allowed = (new DownloadAuthorizer())->allowedVersionId($entitlement, $entitlement->current_version_id ?? null);
+        if ($allowed === null) digitalproducts_api_reply(['status' => 'error', 'error' => 'invalid_version'], 422);
+        if ($versionId && (int) $versionId !== $allowed) digitalproducts_api_reply(['status' => 'error', 'error' => 'invalid_version'], 422);
+        $versionId = $allowed;
         if (!Capsule::table('mod_digitalproducts_versions')->where('id', $versionId)->where('product_id', $entitlement->product_id)->where('status', 'active')->exists()) digitalproducts_api_reply(['status' => 'error', 'error' => 'invalid_version'], 422);
         $issued = (new TokenService())->issue($entitlement->id, $versionId, $auth['client_id']);
         digitalproducts_api_reply(['status' => 'success', 'data' => ['download_url' => $issued['url'], 'expires_at' => $issued['expires_at']]]);

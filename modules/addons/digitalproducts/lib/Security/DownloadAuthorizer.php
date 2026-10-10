@@ -40,16 +40,40 @@ class DownloadAuthorizer
     }
 
     /**
+     * The single rule that decides which release an entitlement may download.
+     *
+     * purchase_version entitlements are locked to the release bought; every
+     * other entitlement follows the product's current release. Returns null
+     * when the entitlement is not yet bound to a release, which callers must
+     * treat as "refuse" — a missing id must never widen access.
+     *
+     * The client area and the API both call this, so a download link can never
+     * be issued for a release the download endpoint would then reject.
+     *
+     * @param object      $entitlement      Row carrying access_mode and purchase_version_id.
+     * @param string|int|null $currentVersionId The product's current release, when not on the row.
+     * @return int|null
+     */
+    public function allowedVersionId($entitlement, $currentVersionId = null)
+    {
+        if (!is_object($entitlement)) return null;
+        if ($currentVersionId === null) {
+            $currentVersionId = $entitlement->current_version_id ?? null;
+        }
+        if (($entitlement->access_mode ?? 'current_version') === 'purchase_version') {
+            $locked = $entitlement->purchase_version_id ?? null;
+            return $locked === null ? null : (int) $locked;
+        }
+        return $currentVersionId === null ? null : (int) $currentVersionId;
+    }
+
+    /**
      * True when the token's version is NOT the one this entitlement may download.
-     * purchase_version entitlements are locked to the release bought; all others
-     * follow the product's current release. Fails closed when the expected id is
-     * missing (null never equals a real version id).
+     * Fails closed when the expected id is missing (null never equals a real id).
      */
     protected function versionNotAllowed($record)
     {
-        if ($record->access_mode === 'purchase_version') {
-            return $record->purchase_version_id === null || (int) $record->version_id !== (int) $record->purchase_version_id;
-        }
-        return $record->current_version_id === null || (int) $record->version_id !== (int) $record->current_version_id;
+        $allowed = $this->allowedVersionId($record, $record->current_version_id ?? null);
+        return $allowed === null || (int) $record->version_id !== $allowed;
     }
 }
