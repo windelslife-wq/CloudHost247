@@ -298,8 +298,11 @@
         if (!container) return;
 
         if (!data.success) {
-            container.innerHTML = '<div class="tc-alert tc-alert-danger"><i class="fa fa-exclamation-circle"></i> ' + 
-                (data.error || 'An error occurred') + '</div>';
+            // Escape: the API reflects user-controlled input into `error`
+            // (e.g. "Tool category not found: <category>"), so this string must
+            // never reach innerHTML raw. Every other path here already escapes.
+            container.innerHTML = '<div class="tc-alert tc-alert-danger"><i class="fa fa-exclamation-circle"></i> ' +
+                escapeHtml(data.error || 'An error occurred') + '</div>';
             return;
         }
 

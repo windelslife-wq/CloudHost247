@@ -268,6 +268,44 @@ test('the decoded QR text is shown through escaped rendering (no innerHTML of ra
     assert.ok(!/innerHTML/.test(fn[0]), 'decodeQrFromForm must not write raw text to innerHTML');
 });
 
+// ---------- second pass: external-api error handling ----------
+
+test('the API error banner escapes data.error before writing it to innerHTML', () => {
+    const js = read('js/tools-center.js');
+    const fn = /function displayResults[\s\S]*?\n    \}\n/.exec(js);
+    assert.ok(fn, 'displayResults not found');
+
+    // The failure branch writes an alert containing data.error. The API reflects
+    // user-controlled input into that string ("Tool category not found: <x>"),
+    // so it must go through escapeHtml.
+    const branch = /if\s*\(!data\.success\)\s*\{[\s\S]*?return;/.exec(fn[0]);
+    assert.ok(branch, 'the !data.success branch was not found');
+    assert.ok(
+        /escapeHtml\(\s*data\.error/.test(branch[0]),
+        'data.error must be escaped: it carries API-reflected user input'
+    );
+    assert.ok(
+        !/innerHTML\s*=\s*['"][^'"]*'\s*\+\s*\(\s*data\.error/.test(branch[0]),
+        'raw data.error must not be concatenated into innerHTML'
+    );
+});
+
+test('the API does not echo internal exception messages to the caller', () => {
+    const src = read('external-api/api.php');
+    assert.ok(
+        !/'Tool execution failed: '\s*\.\s*\$e->getMessage\(\)/.test(src),
+        'exception text must not be returned to the client'
+    );
+    assert.ok(
+        /error_log\([\s\S]*?\$e->getMessage\(\)/.test(src),
+        'the detail must still be written to the server-side error log'
+    );
+    assert.ok(
+        /'Tool execution failed\. The error has been logged\.'/.test(src),
+        'the client must receive a generic message'
+    );
+});
+
 // ---------- UI wiring (optional: needs jsdom) ----------
 
 let uiSkipReason = null;

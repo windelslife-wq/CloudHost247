@@ -766,11 +766,156 @@ The two that matter most are **`WhmcsGateway`** and **`HttpInfrastructureProvide
 - Mutation checks on S-1, each caught and each restored byte-identical (`diff -q` verified): removing all four `JSON_HEX_*` flags (5 failures) and removing only `JSON_HEX_TAG` (3 failures).
 - Not evidence: no live WHMCS run. The portal assertions are static/wiring checks plus the JSON-LD behavioural test — the admin portal and `WhmcsGateway` are verified by reading, not execution.
 
+## Module 9 — hostx (HostX theme companion)
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/hostx/` — 63 PHP files, 47,701 lines. Page builder, blocks, settings, menus, SEO content, theme assets. `docs/MODULES.md` records it as **required** by the custom landing pages and by `templates/hostx`. |
+| Specification | None in-repo. It is third-party commercial software. |
+| Status | **Cannot be audited — 100% of the source is ionCube-encrypted.** Recorded as **owner decision D-8**. This is a finding about the project, not about the module: it is the largest single block of code in the repository and the only one that no review, test or lint can reach. |
+
+### Finding
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| H-1 | **All 63 PHP files are ionCube-encoded bytecode.** Each file opens with a plain-PHP guard that prints an *"ionCube Loader needs to be installed"* notice and calls `exit(199)` when the Loader extension is missing, followed by base64 ciphertext. There is **no readable source anywhere in the module** — not in `hooks.php`, `includes/`, `classes/`, or the root files. | `for f in $(find modules/addons/hostx -name '*.php'); do head -c 400 "$f" \| grep -q ionCube; done` → **63 of 63** | Informational for the module; **material for the project** | **Open, owner decision (D-8).** Not a defect to fix — a boundary to accept or act on. |
+
+What this means concretely:
+
+- **No source review is possible.** Every technique used in the previous eight audits — reading the request layer, tracing ownership, checking CSRF and escaping — has nothing to read here.
+- **No tests and no lint are possible.** This fully explains why `hostx` was one of the four addons with no test suite; it is not a gap in discipline, it is a property of the artifact.
+- **It is a hard runtime dependency.** The module cannot run at all without the `ionCube Loader` PHP extension on the server. The guard fails loudly and correctly (`exit(199)` with an explanatory message) rather than silently misbehaving, which is the right behaviour for encoded software.
+- **It is 47,701 lines — the largest attack surface in the repo**, larger than `cloudhost247services` (≈21k) and `CloudHost247_tools` (≈4k) combined, and it is entirely outside every assurance process the project has.
+
+### The same applies to `xtreme_currency_rates`
+
+While confirming the extent of the encoding, a second fully-encoded module was found: **`xtreme_currency_rates`, 18 of 18 PHP files**. It was earlier listed (in the coverage survey) as one of four addons with no tests; that is explained by the same cause, not by neglect. It is not on this audit list, so it is recorded here rather than audited.
+
+### What was verified despite the encryption
+
+- The loader guard is present in every file and **fails closed and loudly** — an operator who deploys without the extension gets a clear message and a non-zero exit, not a blank page.
+- No readable PHP anywhere in the module, so no unencoded side-car code was missed.
+
+### Owner decision D-8
+
+Choose one:
+
+1. **Accept** — document that `hostx` and `xtreme_currency_rates` are opaque third-party components, treat them as trusted binaries, and rely on the vendor for fixes. Cheapest, and probably correct: they are commercial products where the source was never available.
+2. **Replace `hostx` with first-party code** — it is a *required* dependency of `templates/hostx` and the custom landing pages, so this is a large project, not a swap.
+3. **Reduce the dependency** — determine exactly which landing pages and template hooks need `hostx`, and decide whether any of that surface can be served without it.
+
+Recommended: **option 1**, with two owner actions — confirm the licences are current and that a vendor support channel exists, and confirm the production PHP runtime has the ionCube Loader installed (otherwise the module is dead weight that fails at runtime).
+
+### Completion evidence
+
+- Executed: the encoding scan above (63/63 and 18/18).
+- Not evidence, and not possible: source review, tests, lint, mutation checks, live run.
+
+## Module 10 — Announcement Bar
+
+| Field | Information |
+|---|---|
+| Deliverable | `templates/hostx/includes/announcementbar.tpl`, integrated into `templates/hostx/header.tpl` immediately after `<body>` (above the navbar). |
+| Specification | `docs/Announcement Bar/Build.txt` (13 numbered requirements) plus `Announcement Bar.pdf`. |
+| Status | **Complete against the specification; two defects found and fixed (AB-1, AB-2).** One informational item recorded (AB-3). No automated tests — see note below. |
+
+### Spec conformance
+
+| Requirement | Met | Evidence |
+|---|---|---|
+| File at `/templates/hostx/includes/announcementbar.tpl` | Yes | File present |
+| Smarty + HTML + CSS only, no JS | Yes | No `<script>` in the template |
+| Integrated into the layout above the navbar | Yes | `header.tpl:14`, first include after `<body>` |
+| Multiple messages from an array, text + optional link | Yes | `{foreach from=$announcements item=announcement}` |
+| Horizontal scroll, smooth infinite loop, CSS `@keyframes` only | Yes | `@keyframes announcement-scroll`, `translateX(0 → -50%)` |
+| No `<marquee>`, no external slider library | Yes | None present |
+| Seamless looping, no gaps or jumps | Yes | Items rendered twice via `{section name=loop loop=2}` with a `-50%` translate |
+| Pause on hover | Yes | `.announcement-bar:hover .announcement-bar__track { animation-play-state: paused; }` |
+| Clickable when a URL is present | Yes | `<a href>` branch vs `<span>` branch |
+| Responsive (mobile / tablet / desktop) | Yes | Breakpoints at 767.98px and 575.98px |
+| Prevent text overflow / layout breaking | Yes | `overflow: hidden`, `white-space: nowrap`, `flex-shrink: 0` |
+
+Good practice already present: every interpolation is escaped (`|escape:'html'` on `url`, `text` and `icon`), external links carry `rel="noopener noreferrer"`, decorative dots and icons are `aria-hidden="true"`, the region has `role="region"` + `aria-label`, and `prefers-reduced-motion` disables the animation.
+
+### Findings
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| AB-1 | **The separator bullet anchored to the wrong element.** `.announcement-bar__item::after` used `position: absolute; right: 0`, but `.announcement-bar__item` has no `position` of its own. The nearest positioned ancestor is `.announcement-bar` (`position: relative`), so every copy of the bullet stacked at the bar's right edge instead of sitting after its item. | `.announcement-bar__item` rule has no `position`; `::after` has `position: absolute; right: 0` | Low (cosmetic) | **Fixed** by deleting the vestigial rule. Adding `position: relative` to the item would have been the wrong fix: the `.announcement-bar__dot` span already renders the intended separator, so keeping the `::after` would have doubled it. The matching `display: none` override in the `prefers-reduced-motion` block was removed with it. |
+| AB-2 | **Screen readers announced every message twice.** The seamless loop renders the item list twice (`{section name=loop loop=2}`), and both copies were exposed to assistive technology. | `{section name=loop loop=2}` wrapping the `{foreach}` | Low (accessibility) | **Fixed** — the second pass is marked `aria-hidden="true"`, so each message is announced once while the visual loop is unchanged. |
+| AB-3 | **`href` accepts any URI scheme.** `\|escape:'html'` does not stop a `javascript:` URL. Not exploitable today: the `$announcements` array is assigned server-side (by a hook, an addon, or statically), not from user input. | `href="{$announcement.url\|escape:'html'}"` | Informational | **Recorded, not changed.** Worth revisiting if announcements ever become admin- or user-editable through a form. |
+
+### Testing note
+
+There is no test harness for `templates/hostx/` anywhere in the repository, and none was added for this item. The template is Smarty rendered inside WHMCS, so both fixes are **static-only and unverified by execution** — they need a visual check on staging (confirm one separator dot between messages, and that the loop is still seamless). This is the weakest assurance of the ten modules and is called out rather than glossed over.
+
+## Module 11 — tools_center (second pass over `external-api/`)
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/tools_center/` — `external-api/` (api.php, auth, cache, config, rate-limit, outbound guard) plus 10 tool classes totalling 5,848 lines. |
+| Specification | `API.md`, `INSTALL.md`, `README.md`. Module 2 covered QR; this is the second pass over the remaining `external-api/` surface. |
+| Status | **Second pass complete; two findings fixed (TC-1, TC-2).** Suite went from **91 to 93 assertions, 0 failures**. No live run. |
+
+### Baseline
+
+| Suite | Result |
+|---|---|
+| `node tests/run-tests.js` | 31 PASS / 0 FAIL (1 SKIP — jsdom not installed) |
+| `node tests/run-php-guard.mjs` (SSRF guard) | 60 PASS / 0 FAIL |
+
+### Findings
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| TC-1 | **Reflected XSS: `data.error` was written to `innerHTML` unescaped.** `displayResults()` rendered the failure banner as `'<div class="tc-alert tc-alert-danger">…' + (data.error \|\| 'An error occurred') + '</div>'`. The API reflects caller-controlled input into that string — `apiError('Tool category not found: ' . $category)` and `apiError('Tool action not found: ' . $action)`, where both values come straight from `$input`/`$_GET`. So `?category=<img src=x onerror=…>` is echoed into the page. Every *other* interpolation in this file already escapes via `escapeHtml`/`escapeAttr`; this was the one path that did not. | `js/tools-center.js:301` `displayResults()`; `external-api/api.php` `apiError('Tool category not found: ' . $category, …)` | Medium | **Fixed** — `escapeHtml(data.error \|\| 'An error occurred')`. |
+| TC-2 | **Raw exception messages were returned to the caller.** The catch block replied `'Tool execution failed: ' . $e->getMessage()`, exposing internal paths, driver text and SQL to anyone holding the API token — and, via TC-1, rendering it into the page. The detail was already being written to the on-disk error log. | `external-api/api.php` catch block | Medium (information disclosure) | **Fixed** — the caller now gets `'Tool execution failed. The error has been logged.'`; the detail still goes to the log file. |
+
+### Severity note on TC-1
+
+Authentication runs **before** category/action resolution, so all three reflected error strings are reachable only with a valid API token — an anonymous attacker gets a static `401 Unauthorized`. That caps this at Medium rather than High. Two things still make it worth fixing promptly:
+
+- The token is a single shared static credential (the WHMCS module calls its own external API with it), so anyone who obtains it gets the XSS.
+- `api.php` sets **`Access-Control-Allow-Origin: *`**, which widens who can drive an authenticated request from a browser context. That wildcard is a pre-existing open item carried from Module 2 and is **unchanged** here — see the note below.
+
+### Checked and found sound
+
+- **SSRF guard** (`outbound.php`): 60 assertions cover `tc_is_public_ip`, `tc_validate_outbound_url`, `tc_resolve_public_ips`, `tc_fetch_url` (the guard runs before any connection), `tc_open_public_socket` and `tc_resolve_redirect`. cURL is pinned to `CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS`, so the token is never forwarded across a redirect.
+- **Action dispatch**: only public, non-magic, non-static methods **declared on the tool class itself** are reachable — verified with `ReflectionMethod::getDeclaringClass()`, which correctly blocks inherited and magic methods. The category filename is filtered through `preg_replace('/[^a-z0-9_-]/i', '', $category)`.
+- **Escaping generally**: the tool classes mostly return data rather than HTML, which is correct — the API emits JSON (`json_encode` + `nosniff`) and the client escapes. Where a class *does* build HTML (`GamingTools::formatMinecraftText()`), it escapes first with `htmlspecialchars($text, ENT_QUOTES)`.
+- **Response hygiene**: `display_errors` is off, `error_reporting(E_ALL)`, and errors are logged to a dated file rather than displayed.
+
+### Pre-existing items referenced, not re-raised
+
+- The external API's `Access-Control-Allow-Origin: *` wildcard (Module 2 open item) — unchanged.
+- The unused `qrScanner()` / `qrGenerator()` in `external-api/` (owner decision) — unchanged.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `js/tools-center.js` | `displayResults()` escapes `data.error` through `escapeHtml()` (TC-1). |
+| `external-api/api.php` | The execution catch returns a generic message and logs the detail server-side (TC-2). |
+| `tests/run-tests.js` | Two new assertions: the error banner escapes `data.error`, and the API does not echo `$e->getMessage()`. |
+
+### Completion evidence
+
+- Executed: **93 assertions, 0 failures** — `run-tests.js` 33 (was 31), `run-php-guard.mjs` 60. One SKIP remains (jsdom not installed).
+- Mutation checks, each caught and each restored byte-identical (`diff -q` verified): removing `escapeHtml()` from the error banner (1 failure) and restoring the exception echo (1 failure).
+- Not evidence: no live run. Both fixes are verified by static assertion only; the XSS needs a staging click-through to confirm end to end.
+
 ## Additional audit (after workstreams 1–5)
 
 Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools`, `cloudhost247services`, `hostx`, announcement bar, `tools_center`. Each item follows the same workflow and needs approval before the next one starts.
 
-**Progress: 8 of 11 audited.** Done: `hostx_tools` (decision D-2 = retire, deactivation pending), `customaffiliate`, `digitalproducts` (see Module 6 above), `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools` (see Module 7 above; decision D-7 pending on routing the `/tools/<slug>` surface), `cloudhost247services` (see Module 8 above — cleanest module so far: no functional defect, one latent JSON-LD hardening fixed). **Not started (3):** `hostx`, announcement bar, `tools_center` (second pass over the remaining `external-api/` tools).
+**Progress: 11 of 11 audited — the list is complete.** Done: `hostx_tools` (decision D-2 = retire, deactivation pending), `customaffiliate`, `digitalproducts` (Module 6), `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools` (Module 7), `cloudhost247services` (Module 8 — cleanest module reviewed: no functional defect, one latent JSON-LD hardening fixed), `hostx` (Module 9 — **cannot be audited**, 63/63 files ionCube-encoded; decision D-8), announcement bar (Module 10 — spec-complete, two cosmetic/a11y fixes), `tools_center` (Module 11 — second pass, reflected XSS and exception-leak fixed).
+
+**Two cross-cutting discoveries from the final items, recorded for follow-up:**
+
+1. **`hostx` (63/63) and `xtreme_currency_rates` (18/18) are 100% ionCube-encrypted** — no readable source, so no review, test or lint is possible for either. `hostx` alone is 47,701 lines: the largest single block of code in the repository and entirely outside every assurance process the project has. Owner decision **D-8**.
+2. **No CI exists.** Fifteen modules have test suites and nothing runs them. See the recommendation in the audit summary.
+
+**Open owner decisions now:** D-2 (deactivation, partially done), D-6 (digitalproducts activation limits), D-7 (routing `/tools/<slug>`), D-8 (policy for the two encoded modules). Plus the pre-existing High items still open in other modules: **P-5** (phoneservices all-tenant API key) and **M-5** (smmaddon client-controlled order quantity).
 
 > The earlier "1 of 11" line understated progress: `customaffiliate`, `hostx_email`,
 > `phoneservices` and `smmaddon` were audited on 2026-10-10 as additional audit
