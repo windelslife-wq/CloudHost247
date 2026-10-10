@@ -28,6 +28,7 @@ modules/addons/domainbroker/storage/*
 modules/addons/digitalproducts/storage/*
 !modules/addons/digitalproducts/storage/.gitkeep
 modules/addons/cloudhost247_cart_recovery/node_modules
+modules/addons/CloudHost247_tools/node_modules
 __pycache__/
 
 # CloudHost247 App Cloud (application marketplace / deployment platform)

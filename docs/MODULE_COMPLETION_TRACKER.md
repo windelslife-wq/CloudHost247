@@ -620,11 +620,93 @@ callers that previously re-derived it now use it.
 - Executed: 225/0 on PHP 8.3.33 and PHP 7.4.33; lint 35/0 on both; both mutation checks caught and files restored byte-identical.
 - Not yet evidence: the live WHMCS run and the browser check (items 1–2 above).
 
+## Module 7 — CloudHost247_tools (Tools Platform)
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/CloudHost247_tools/` (30 PHP files, the authoritative 91-tool registry in `config/cloudhost247-tools.php`, 91 route-split browser modules in `assets/js/tools/`, `includes/{Catalog,Router,Runner,Security,RateLimiter,DnsPropagation}.php`). |
+| Specification | `docs/MODULES.md`, `config/cloudhost247-tools.php` (91 tools, 9 categories, `exec` = client/server/hybrid), `includes/Catalog.php`, `bin/verify-catalog.php`. |
+| Status | **Audited and code-fixed; one owner decision pending (D-7, routing the `/tools/<slug>` surface).** Findings T2-1 to T2-3 fixed in code and pinned by tests; T2-6 (test reproducibility) fixed. Suite went from **1419 to 1481 assertions, 0 failures**. No live WHMCS or browser run. |
+
+### Why this module was audited
+
+It is item 7 in the audit order below, and it is the largest tools module in the
+repo: 91 tools, a purpose-built security layer and a hardened execution gate
+(`CloudHost247ToolsRunner`) that had already been written and heavily tested.
+The question for this pass was whether that gate is what actually executes a
+tool.
+
+It is not.
+
+### Findings
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| T2-1 | **The live execution path bypassed the hardened Runner.** `index.php?m=CloudHost247_tools&action=ajax` reaches `CloudHost247ToolsClient::handleAjax()`, which called `call_user_func($handler, $_POST)` directly. `hooks.php` loads `assets/js/CloudHost247-tools.js` on every addon page and `templates/client/tool.tpl` calls `CloudHost247RenderToolForm`, whose submit handler posts to this endpoint — so it is the live path, **not** dead code. It skipped every Runner guarantee: the 1 MB request-size cap, the tiered quotas and global per-IP ceiling, the `exec=client` rejection, input redaction, generic error messages, the execution/socket timeout, and the `nosniff` / `no-store` / `Referrer-Policy` headers. | `includes/classes.php` `handleAjax()` (pre-fix); `assets/js/CloudHost247-tools.js:1111` | High | **Fixed.** `handleAjax()` now delegates to `CloudHost247ToolsRunner::run()` and emits through `Runner::respondLegacy()`. |
+| T2-2 | **The privacy guarantee for `exec=client` tools was contradicted by the live path.** The catalog registers 46 tools as `exec=client`, and the Runner tells the user *"This tool runs entirely in your browser and has no server endpoint. Your data is never transmitted to CloudHost247."* All 46 nevertheless have a server handler function, and the legacy bundle has **no client-side execution at all** (no `run()` in the bundle; it posts every form). So all 46 ran on the server. 39 are reachable from the legacy UI's `toolFields`, including **`credit_card_validator`**. Worse, the legacy path logged **raw `$_POST` with no redaction** into `mod_CloudHost247_tools_logs`, so card numbers and passwords were retained in plaintext in the database. | probe: 46 client tools, 46 with a server handler; `toolFields` ∩ client-exec = 39; `CloudHost247_tools_log($toolId, $_POST, …)` (pre-fix) | High (privacy + data retention) | **Fixed.** The server refuses all 46 by slug *and* by legacy handler id; the 39 exposed by the legacy UI now execute in the browser via their existing route-split module; all logging goes through `Runner::redact()`. |
+| T2-3 | **Raw exception messages were returned to the browser.** The legacy `catch` echoed `$e->getMessage()`, exposing internals (paths, SQL, driver text) to any caller. The Runner already logged detail server-side and returned a generic message. | `includes/classes.php` (pre-fix) | Medium (information disclosure) | **Fixed** — the delegation inherits the Runner's generic `server_error` text. |
+| T2-4 | **The `/tools/<slug>` surface is built and tested but has no request entry point in this repo.** `CloudHost247ToolsRouter` and `CloudHost247ToolsRunner` are referenced only by their own definitions, `tests/`, and `bin/verify-catalog.php`. `api/index.php` is a `die()` placeholder, and there is no `.htaccess` or front controller for the pretty routes. So the modern surface — and the Runner's protections — guard no traffic today; the 531 PHP assertions test code that no request reaches. | `grep -rn CloudHost247ToolsRunner\|Router` across the repo | Medium (incomplete wiring) | **Open, owner decision (D-7).** Needs a root-level rewrite rule plus a front controller. Not added unilaterally: it creates a new public URL namespace and a new deployment dependency. |
+| T2-5 | **A cross-module note in this tracker was wrong.** It recorded the legacy AJAX path as *"reachable but not used by the front end."* It is used by every tool page. | `hooks.php:20`, `templates/client/tool.tpl` | Low (documentation) | **Corrected** by this section. |
+| T2-6 | **`tests/tools.test.mjs` was not reproducible on a clean checkout.** It reads the 91-tool registry as JSON from `/tmp/tools.json`, and nothing in the repo produced that file, so the 845-assertion suite could only run on a machine where the file already existed. | `tests/tools.test.mjs` | Low (assurance) | **Fixed** — `tests/dump-catalog.php` + `tests/dump-catalog.mjs` generate it, and the suite generates it on demand when absent. |
+
+### Checked and found sound
+
+- **H-1 (carried over from `hostx_tools`) is already fixed here.** `CloudHost247_tools_get_client_ip()` ignores `X-Forwarded-For` / `CF-Connecting-IP` unless `REMOTE_ADDR` is in `CLOUDHOST247_TRUSTED_PROXIES`; `tests/ClientIpTest.php` pins it with 6 assertions, including that three spoofed requests collapse to one rate-limit bucket. Verified, **not** re-fixed.
+- **SSRF and URL rules** (`includes/Security.php`, 703 lines): 95 assertions cover the IPv4/IPv6 CIDR blocklist, internal-hostname rejection, scheme/port/credential rejection, IDN normalisation and output escaping.
+- **Catalog integrity**: 57 assertions over 91 tools and 9 categories — unique ids, slugs, routes and handlers, route format, SEO field lengths, no "coming soon" placeholders, sensitive tools pinned client-side.
+- **Routing**: 84 assertions — all 100 routes resolve, alias 301s, API parsing, fuzzy 404s, canonical/robots, JSON-LD with no fabricated ratings, sitemap exclusions.
+- **Handlers**: 72 assertions prove all 91 catalog handlers resolve to a callable, plus behaviour of the newly written ones.
+- **Rate limiting**: 17 assertions over per-tool and per-IP buckets, tiers, the global ceiling, bucket isolation and CSRF issue/validate/reject.
+- **DNS propagation and IPv6**: 95 and 44 assertions respectively.
+- **The 91 browser modules**: `tools.test.mjs` (845 assertions) executes all 46 client `run()` functions and exercises all 45 server `render()` paths.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `includes/Runner.php` | New `respondLegacy()` — emits the legacy `{success,data}` / `{success,message}` shape with the same security headers as `respond()`, so the existing bundle keeps working while inheriting every Runner protection. |
+| `includes/classes.php` | `handleAjax()` now verifies the legacy CSRF token, honours the admin enable/disable switch, then delegates to `CloudHost247ToolsRunner::run()` and `respondLegacy()`. `renderToolPage()` resolves the catalog record and exposes `tool_exec` / `tool_slug` / `tool_id` to the template. |
+| `templates/client/tool.tpl` | Loads `assets/js/tools-core.js` and declares `CloudHost247ToolExec`, `CloudHost247ToolSlug`, `CloudHost247AssetsUrl`. |
+| `assets/js/CloudHost247-tools.js` | New `CloudHost247LoadToolModule()` (loads `assets/js/tools/<slug>.js` once, stubbing `ToolPage`/`ready` during load so nothing re-renders the page) and `CloudHost247RunClientTool()`. `CloudHost247SubmitTool` branches on `exec=client` and runs those tools locally **before** any XHR, so their input never leaves the device. |
+| `tests/LegacyAjaxTest.php` | New — 62 assertions (see below). |
+| `tests/dump-catalog.php`, `tests/dump-catalog.mjs` | New — render the registry to JSON so `tools.test.mjs` is reproducible. |
+| `tests/tools.test.mjs` | Generates `/tmp/tools.json` on demand when it is absent. |
+| `tests/README.md` | Coverage row for `LegacyAjaxTest.php` and fixture-regeneration instructions. |
+| `.gitignore` | Ignore the `CloudHost247_tools/node_modules` symlink. |
+
+### What `LegacyAjaxTest.php` pins (62 assertions)
+
+- All 46 `exec=client` tools are refused by slug **and** by the legacy handler id the bundle posts — asserted per tool, so a regression names the tool.
+- The refusal is HTTP 400 / `client_only`, states the browser guarantee, and carries no `data`.
+- Every client tool ships a browser module at `assets/js/tools/<slug>.js`.
+- `Runner::redact()` masks password / pass / passphrase / cvv / card_number / cc / private_key / api_key / token, recurses into arrays, truncates long values, drops `csrf_token` entirely, and leaves no plaintext card number or password in the encoded payload.
+- `respondLegacy()` preserves the `{success,data}` / `{success,message}` contract and never emits internals.
+- Static guarantees on the live path: it delegates to `Runner::run` and `respondLegacy`, verifies the legacy CSRF token, honours the admin enable/disable switch, passes the resolved client IP, and contains no `call_user_func`, no `$e->getMessage()`, no unredacted logging of raw `$_POST`, no flat rate limit and no direct handler-file include.
+- Static guarantees on the front end: the tool page loads `tools-core.js` and declares the exec mode; the submit handler's client branch runs **before** `xhr.send`; the loader restores `CH.ToolPage` after load and handles an async `run()`.
+
+### Behaviour changes worth knowing
+
+- **Rate limits are now tiered, not flat.** The `rate_limit_requests` addon setting (default 60/min) no longer applies to this endpoint; the Runner's tiers do — server 30/min, hybrid 60/min, heavy 10/min (`traceroute`, `ping`, `dns-propagation-checker`, `blacklist-check`, `broken-links-checker`, `image-to-text`, `website-crawl-test`, `port-checker`, `smtp-test`, `page-rank`, `website-status`, `reverse-image-search`, `speed-test`), with a 120/min global ceiling per IP.
+- **Request bodies are capped at 1 MB** (`Runner::MAX_REQUEST_BYTES`).
+- **The 39 client-exec tools now render through their modern module**, not the legacy `resultRenderers` — richer output, and no server round trip.
+- **Errors returned to the browser are generic**; the detail is logged server-side only.
+
+### Completion evidence
+
+- Executed: **1481 assertions, 0 failures** — PHP suites 532 (9 files), `core.test.mjs` 68, `tools.test.mjs` 845, `qr.test.mjs` 36. The PHP suites were re-run on **PHP 7.4.33** as well as 8.3: 532/0 on both.
+- Lint: 31 PHP files clean on 8.3 and 7.4 (`token_get_all(…, TOKEN_PARSE)`), plus `node --check` on both changed JS files.
+- Mutation checks, each caught and each restored byte-identical: allowing client-only tools to execute (6 failures), disabling `Runner::redact()` (14), and calling handlers directly again (1).
+- Not evidence: no live WHMCS run, no browser run. The browser-execution wiring in particular is verified only by static assertions and by the existing module tests — it needs a click-through on staging.
+
+### Still open (owner)
+
+- **D-7** — whether to add the root-level rewrite and front controller that would make the `/tools/<slug>` Router surface live. Until then the Runner protects the legacy endpoint only, and `api/index.php` remains a placeholder.
+
 ## Additional audit (after workstreams 1–5)
 
 Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools`, `cloudhost247services`, `hostx`, announcement bar, `tools_center`. Each item follows the same workflow and needs approval before the next one starts.
 
-**Progress: 6 of 11 audited.** Done: `hostx_tools` (decision D-2 = retire, deactivation pending), `customaffiliate`, `digitalproducts` (see Module 6 above), `hostx_email`, `phoneservices`, `smmaddon`. **Not started (5):** `CloudHost247_tools`, `cloudhost247services`, `hostx`, announcement bar, `tools_center` (second pass over the remaining `external-api/` tools).
+**Progress: 7 of 11 audited.** Done: `hostx_tools` (decision D-2 = retire, deactivation pending), `customaffiliate`, `digitalproducts` (see Module 6 above), `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools` (see Module 7 above; decision D-7 pending on routing the `/tools/<slug>` surface). **Not started (4):** `cloudhost247services`, `hostx`, announcement bar, `tools_center` (second pass over the remaining `external-api/` tools).
 
 > The earlier "1 of 11" line understated progress: `customaffiliate`, `hostx_email`,
 > `phoneservices` and `smmaddon` were audited on 2026-10-10 as additional audit

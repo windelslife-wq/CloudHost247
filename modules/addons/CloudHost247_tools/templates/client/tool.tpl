@@ -92,7 +92,15 @@
     </div>
 </div>
 
+<script src="{$assets_url}js/tools-core.js?v=226"></script>
 <script>
+{* Tools registered as exec=client have no server endpoint: the Runner refuses
+   them, so the legacy bundle executes them in the browser using the same
+   route-split module the modern /tools/<slug> page loads. *}
+window.CloudHost247ToolExec = '{$tool_exec}';
+window.CloudHost247ToolSlug = '{$tool_slug}';
+window.CloudHost247AssetsUrl = '{$assets_url}';
+
 document.addEventListener('DOMContentLoaded', function() {
     CloudHost247RenderToolForm('{$tool.id}', '{$tool.category}');
 });

@@ -1096,6 +1096,134 @@
         }
     };
 
+    /**
+     * Load assets/js/tools/<slug>.js once and hand back its ToolPage config.
+     *
+     * A per-tool module calls CH247Tools.ToolPage(...) inside
+     * CH247Tools.ready(...). Both are stubbed for the duration of the load so
+     * the module registers nothing into this page - we only want its run() and
+     * render() functions.
+     */
+    var ch247ModuleConfigs = {};
+
+    window.CloudHost247LoadToolModule = function(slug, done, fail) {
+        if (ch247ModuleConfigs[slug]) { done(ch247ModuleConfigs[slug]); return; }
+
+        var CH = window.CH247Tools;
+        if (!CH || !CH.ToolPage) {
+            fail('This tool is unavailable because the tools core script did not load.');
+            return;
+        }
+
+        var realToolPage = CH.ToolPage;
+        var realReady = CH.ready;
+        var captured = null;
+        var settled = false;
+
+        var restore = function() {
+            CH.ToolPage = realToolPage;
+            CH.ready = realReady;
+        };
+
+        CH.ToolPage = function(config) { if (!captured) { captured = config; } };
+        CH.ready = function(fn) { try { fn(); } catch (e) { /* keep loading */ } };
+
+        var script = document.createElement('script');
+        script.onload = function() {
+            restore();
+            if (settled) { return; }
+            settled = true;
+            if (!captured) { fail('This tool could not be loaded.'); return; }
+            ch247ModuleConfigs[slug] = captured;
+            done(captured);
+        };
+        script.onerror = function() {
+            restore();
+            if (settled) { return; }
+            settled = true;
+            fail('This tool could not be loaded. Check your connection and reload the page.');
+        };
+
+        script.src = (window.CloudHost247AssetsUrl || 'modules/addons/CloudHost247_tools/assets/')
+            + 'js/tools/' + slug + '.js';
+        document.head.appendChild(script);
+    };
+
+    /**
+     * Run an exec=client tool entirely in the browser.
+     *
+     * Tools registered as exec=client have no server endpoint - the Runner
+     * refuses them - so they are executed here with the same route-split
+     * module the /tools/<slug> page loads. Their input never leaves the
+     * device, which is the guarantee the catalog makes for them.
+     */
+    window.CloudHost247RunClientTool = function(form, toolId, formData, ui) {
+        var slug = window.CloudHost247ToolSlug || toolId;
+
+        var finish = function() { if (ui.loading) { ui.loading.style.display = 'none'; } };
+        var fail = function(msg) {
+            finish();
+            if (ui.errorDiv) { ui.errorDiv.textContent = msg; ui.errorDiv.style.display = 'block'; }
+        };
+
+        CloudHost247LoadToolModule(slug, function(cfg) {
+            if (!cfg || typeof cfg.run !== 'function') {
+                fail('This tool is not available in your browser. Please reload the page.');
+                return;
+            }
+
+            var values = {};
+            if (formData && formData.forEach) {
+                formData.forEach(function(value, key) { values[key] = value; });
+            } else if (form && form.elements) {
+                for (var i = 0; i < form.elements.length; i++) {
+                    var el = form.elements[i];
+                    if (el.name) { values[el.name] = el.value; }
+                }
+            }
+
+            var show = function(data) {
+                finish();
+                if (data && data.error) { fail(String(data.error)); return; }
+
+                if (ui.resultContent) {
+                    ui.resultContent.innerHTML = '';
+                    var rendered = null;
+                    if (cfg.render) {
+                        try { rendered = cfg.render(data); } catch (e) { rendered = null; }
+                    }
+                    if (rendered && rendered.nodeType) {
+                        ui.resultContent.appendChild(rendered);
+                    } else if (typeof rendered === 'string') {
+                        ui.resultContent.innerHTML = rendered;
+                    } else {
+                        ui.resultContent.innerHTML = '<pre><code>'
+                            + escapeHtml(JSON.stringify(data, null, 2))
+                            + '</code></pre>';
+                    }
+                }
+                if (ui.result) { ui.result.style.display = 'block'; }
+            };
+
+            var data;
+            try {
+                data = cfg.run(values);
+            } catch (e) {
+                fail('This tool could not run: ' + ((e && e.message) ? e.message : e));
+                return;
+            }
+
+            if (data && typeof data.then === 'function') {
+                data.then(show, function(e) {
+                    fail('This tool could not run: ' + ((e && e.message) ? e.message : e));
+                });
+                return;
+            }
+
+            show(data);
+        }, fail);
+    };
+
     window.CloudHost247SubmitTool = function(form, toolId) {
         var loading = document.getElementById('CloudHost247-tool-loading');
         var result = document.getElementById('CloudHost247-tool-result');
@@ -1107,6 +1235,19 @@
         if (errorDiv) errorDiv.style.display = 'none';
 
         var formData = new FormData(form);
+
+        // exec=client tools have no server endpoint: run them in the browser
+        // rather than posting their input to the server.
+        if (window.CloudHost247ToolExec === 'client') {
+            CloudHost247RunClientTool(form, toolId, formData, {
+                loading: loading,
+                result: result,
+                resultContent: resultContent,
+                errorDiv: errorDiv
+            });
+            return;
+        }
+
         var xhr = new XMLHttpRequest();
         xhr.open('POST', window.location.href.split('?')[0] + '?m=CloudHost247_tools&action=ajax', true);
         xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');

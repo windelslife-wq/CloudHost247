@@ -296,6 +296,46 @@ class CloudHost247ToolsRunner
     }
 
     /**
+     * Emit the legacy AJAX response shape ({success,data} or {success,message})
+     * while keeping the same security headers as respond().
+     *
+     * The legacy client bundle (assets/js/CloudHost247-tools.js) reads
+     * response.data on success and response.message on failure, so the modern
+     * envelope is translated rather than replaced. Server-side behaviour is
+     * identical either way.
+     */
+    public static function respondLegacy(array $envelope)
+    {
+        $status = $envelope['success'] ? 200 : (int) ($envelope['http_status'] ?? 400);
+
+        if (!headers_sent()) {
+            http_response_code($status);
+            header('Content-Type: application/json; charset=utf-8');
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: no-store, max-age=0');
+            header('Referrer-Policy: strict-origin-when-cross-origin');
+            if (isset($envelope['retry_after'])) {
+                header('Retry-After: ' . (int) $envelope['retry_after']);
+            }
+        }
+
+        if ($envelope['success']) {
+            echo json_encode(
+                ['success' => true, 'data' => $envelope['data']],
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+            );
+            return;
+        }
+
+        echo json_encode(
+            ['success' => false, 'message' => isset($envelope['error']['message'])
+                ? (string) $envelope['error']['message']
+                : 'This tool could not complete your request.'],
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+        );
+    }
+
+    /**
      * Emit a JSON response for the AJAX endpoint.
      */
     public static function respond(array $envelope)

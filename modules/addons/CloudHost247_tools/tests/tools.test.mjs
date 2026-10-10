@@ -12,6 +12,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
+import { execFileSync } from 'child_process';
 
 const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -133,6 +134,12 @@ function sampleFor(field) {
   }
 }
 
+// The registry is authoritative in PHP, so it is rendered to JSON by
+// tests/dump-catalog.mjs. Generate it on demand so this suite is runnable on a
+// clean checkout instead of depending on a file baked into someone's /tmp.
+if (!fs.existsSync('/tmp/tools.json')) {
+  execFileSync(process.execPath, [path.join(here, 'dump-catalog.mjs')], { stdio: 'inherit' });
+}
 const registry = JSON.parse(fs.readFileSync('/tmp/tools.json', 'utf8'));
 const bySlug = Object.fromEntries(registry.map((t) => [t.slug, t]));
 const files = fs.readdirSync(path.join(root, 'assets/js/tools')).filter((f) => f.endsWith('.js')).sort();
