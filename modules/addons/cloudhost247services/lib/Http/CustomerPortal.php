@@ -114,6 +114,13 @@ class CustomerPortal extends Controller
         if (!Http::isPost()) {
             Http::json(['ok' => false, 'error' => 'POST required'], 405);
         }
+        // C-3: the request must carry this session's token (X-CSRF-Token header
+        // or _chs_token field), so a cross-site page cannot write consent records.
+        try {
+            Csrf::verifyRequest();
+        } catch (\Throwable $e) {
+            Http::json(['ok' => false, 'error' => 'Session token missing or stale. Refresh the page.'], 403);
+        }
         try {
             $saved = (new ConsentService())->record(
                 Http::post('status'),

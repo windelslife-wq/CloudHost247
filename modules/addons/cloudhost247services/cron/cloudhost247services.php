@@ -13,6 +13,14 @@
  * @package Chs
  */
 
+// C-6: this job must only run from the command line (php -q). Refuse web
+// requests before WHMCS is bootstrapped or any task is run.
+if (php_sapi_name() !== 'cli') {
+    http_response_code(403);
+    header('Content-Type: text/plain; charset=utf-8');
+    exit("Forbidden: this script runs from the command line only.\n");
+}
+
 define('CHS_CRON', true);
 
 $whmcsInit = dirname(__DIR__, 4) . '/init.php';
@@ -30,10 +38,6 @@ use Chs\Workflow\DomainJobTypes;
 use Chs\Workflow\InfraJobTypes;
 use Chs\Workflow\Worker;
 use Chs\Workflow\JobQueue;
-
-if (php_sapi_name() !== 'cli' && !defined('WHMCS')) {
-    die('This file cannot be accessed directly');
-}
 
 $started = Clock::now();
 $results = [];

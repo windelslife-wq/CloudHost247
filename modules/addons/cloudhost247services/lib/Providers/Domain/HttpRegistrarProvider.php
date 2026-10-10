@@ -273,6 +273,9 @@ class HttpRegistrarProvider extends AbstractDomainProvider
             CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_HTTPHEADER     => $headers,
             CURLOPT_SSL_VERIFYPEER => true,
+            // C-5: only http(s) — never file://, gopher://, etc., including on redirect.
+            CURLOPT_PROTOCOLS      => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
             CURLOPT_SSL_VERIFYHOST => 2,
         ]);
         if ($body !== null) {

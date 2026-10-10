@@ -24,6 +24,17 @@ use Chs\Services\ClubService;
 
 /* ------------------------------------------------------------- assets ---- */
 
+// C-3: the public cookie-consent endpoint checks this per-session token. The
+// banner runs on every theme page, so the token is emitted site-wide.
+add_hook('ClientAreaHeadOutput', 1, function () {
+    try {
+        return '<meta name="chs-csrf-token" content="'
+            . htmlspecialchars(\Chs\Core\Csrf::token(), ENT_QUOTES, 'UTF-8') . '">';
+    } catch (\Throwable $e) {
+        return '';
+    }
+});
+
 add_hook('ClientAreaHeadOutput', 1, function ($vars) {
     $module = isset($_GET['m']) ? (string) $_GET['m'] : '';
     $template = isset($vars['templatefile']) ? (string) $vars['templatefile'] : '';

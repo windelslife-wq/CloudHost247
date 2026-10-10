@@ -44,15 +44,25 @@ class Identity
         return self::clientId() !== null && self::adminId() !== null;
     }
 
-    /** Test seam. */
+    /** Test seam: refuses to run outside the offline test harness (C-4). */
     public static function setClient($clientId)
     {
+        self::assertTestContext('setClient');
         self::$forcedClient = $clientId === null ? null : (int) $clientId;
     }
 
-    /** Test seam. */
+    /** Test seam: refuses to run outside the offline test harness (C-4). */
     public static function setAdmin($adminId)
     {
+        self::assertTestContext('setAdmin');
         self::$forcedAdmin = $adminId === null ? null : (int) $adminId;
+    }
+
+    /** Seams may only be used by the offline test harness, never in a live request. */
+    private static function assertTestContext($name)
+    {
+        if (!defined('CHS_TESTING') || CHS_TESTING !== true) {
+            throw new \LogicException('Identity::' . $name . '() is a test seam and is disabled outside the test harness.');
+        }
     }
 }
