@@ -957,11 +957,62 @@ CF-1 was found by the new assertion suite rather than by reading: the first vers
 
 The module's DB-backed surface has **no tests**: `Http/AdminPortal.php`, `Http/ClientPortal.php`, `Service/ProvisioningService.php`, `Service/Worker.php`, `Service/JobQueue.php`, and the three repositories. There is no offline `Db` shim for this module (unlike `digitalproducts`' `CapsuleShim`), so covering them means building one first.
 
+## Module 13 — soyoustart (WGS OVH / SoYouStart admin addon)
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/soyoustart/` — 34 PHP files, 8,857 lines. **Vendored third-party code** (`WGS-OVH-v8.0.8-Sourcecode.zip`): OVH API consumer setup, product/price settings, order management, existing-server import, server status, email templates. |
+| Specification | `docs/MODULES.md` lines 29, 37, 49, 52. |
+| Status | **Audited; two findings recorded and NOT patched (SO-1, SO-2).** No test suite exists and none was added. No live run. |
+
+This is the second of the six addons with no completion record. It was prioritised because it is the largest of them with **zero tests** and it handles OVH API credentials and server provisioning.
+
+### A deliberate decision: record, do not patch
+
+`soyoustart` is **vendored third-party code**, unlike every module audited before it. Editing it means forking upstream, and the next vendor drop silently reverts or conflicts with any local fix. Both findings below are therefore **recorded rather than patched**, for owner action. This is a change of approach from Modules 6–12 and is stated so the difference is visible rather than looking like an omission.
+
+If the owner prefers fixes in-tree, the work is small and described per finding — but it should be a conscious choice to fork this module.
+
+### Findings
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| SO-1 | **Hardcoded OVH application keys in source.** Two literal application keys are committed: `t7r8jC5iiznmTNNm` in **7** header constructions, and `iE3vL3mgAtLZg00l` in a further one (`classes/ApiCall.php:264`). The module has a correct, configuration-driven path — `createHeader()` reads `application_key` from the `mod_soyoustart` table — but these call sites bypass it and send a fixed key instead. | `classes/ApiCall.php` lines 142, 163, 185, 207, 237, 251, 328, and 264; contrast with line 380 `trim($authData->application_key)` | Medium | **Open, recorded.** Rotation requires a code change, and these calls ignore the operator's configured OVH application entirely — so they are also very likely *broken*, not merely untidy. |
+| SO-2 | **`$endPoint` is interpolated into a URL without validation.** `getOs($endPoint)` builds `"https://ca.api.ovh.com/1.0/dedicated/installationTemplate/{$endPoint}"` with no format check, so a value containing `../`, `?` or `#` alters the request path. | `classes/ApiCall.php:265` | Low | **Open, recorded.** The host is a hardcoded literal, so this cannot reach a non-OVH host — it is path manipulation within OVH's API, not SSRF. |
+
+**Important qualifier on SO-1:** the **signing secret is not exposed.** It is read from the database (`$authData->secret_key`) and never hardcoded, and `generateSignature()` implements OVH's scheme correctly (`'$1$' . sha1(secret + consumer + method + url + data + time)`). OVH's application key is an identifier, not a signing credential, so possession of these literals alone does **not** permit forging signed requests or taking over an account. The severity rests on **non-rotation and bypass of configuration**, not on credential compromise.
+
+### Verified, including a documentation claim
+
+`docs/MODULES.md` states that *"the legacy OVH transport verifies TLS and restricts signed requests to trusted OVH API endpoints."* That claim was checked against the code and **holds**:
+
+- `CURLOPT_SSL_VERIFYPEER => true` and `CURLOPT_SSL_VERIFYHOST => 2` — TLS is verified.
+- `CURLOPT_FOLLOWLOCATION => false` — redirects are not followed, so the `X-Ovh-Signature` header cannot be forwarded to a redirect target.
+- `CURLOPT_CONNECTTIMEOUT => 20`, `CURLOPT_TIMEOUT => 60`.
+- API hosts are hardcoded OVH literals (`api.us.ovhcloud.com`, `eu.api.ovh.com`, `ca.api.ovh.com`, `api.ovh.com`); no request host is derived from user input.
+
+Also checked and sound:
+
+- **No SQL injection surface anywhere in the module.** There is no raw SQL string interpolation and no direct `mysql_*`/`PDO::query()` call; all persistence goes through the WHMCS `Capsule` schema and query builders (`classes/CustomDatabase.php` is schema DDL only).
+- **Credential storage**: the application key, consumer key and secret are held in the `mod_soyoustart` table and read per request, rather than being derived from a public value — so this module does **not** repeat the `hostx_email` H-4 pattern.
+
+### Testing note
+
+No test suite exists and **none was added.** Every other module audited in this programme got one, and the omission is deliberate for two reasons: this is vendored code that the owner may replace wholesale, and a meaningful suite would need an offline OVH API harness plus a `Capsule` shim. That is a real gap and is recorded as such — the assertions that would matter most are "no hardcoded credentials" and "every request host is an OVH literal", both of which are cheap to add if the owner wants them.
+
+### Recommended owner action
+
+1. Rotate the OVH application credentials, and confirm whether the 7 hardcoded call sites are currently failing (they bypass the configured application, so they may already be broken).
+2. Decide fork-vs-replace for this module. If replacing, the findings resolve themselves; if forking, both are small, well-localised changes.
+3. Confirm with the vendor whether a newer WGS-OVH release already addresses SO-1.
+
 ## Additional audit (after workstreams 1–5)
 
 Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools`, `cloudhost247services`, `hostx`, announcement bar, `tools_center`. Each item follows the same workflow and needs approval before the next one starts.
 
-**Progress: the original 11-item list is complete; 12 modules now have completion records.** Six addons had **no completion record at all** and so were unfinished under the original definition — `cloudhost247ai`, `cloudhost247cart_recovery`, `cloudhost247cloudflare`, `cloudhost247marketing`, `cloudhost247passkey`, `soyoustart` (roughly 57,600 lines between them). Of those six, **`cloudhost247cloudflare` is now audited** (Module 12). **Five remain: `cloudhost247ai`, `cloudhost247_cart_recovery`, `cloudhost247marketing`, `cloudhost247passkey`, `soyoustart`.** Four have test suites already (`cloudhost247ai`, `cloudhost247_cart_recovery`, `cloudhost247marketing`, `cloudhost247passkey`); **`soyoustart` (8,857 lines) has none.**
+**Progress: the original 11-item list is complete; 12 modules now have completion records.** Six addons had **no completion record at all** and so were unfinished under the original definition — `cloudhost247ai`, `cloudhost247cart_recovery`, `cloudhost247cloudflare`, `cloudhost247marketing`, `cloudhost247passkey`, `soyoustart` (roughly 57,600 lines between them). Of those six, **`cloudhost247cloudflare` (Module 12) and `soyoustart` (Module 13) are now audited**. **Four remain: `cloudhost247ai`, `cloudhost247_cart_recovery`, `cloudhost247marketing`, `cloudhost247passkey`** — all four already have test suites, so each needs a verification pass rather than a suite built from scratch. `soyoustart` was taken first because it is vendored, credential-bearing and had no tests.
+
+**Note on method:** `soyoustart` is vendored third-party code, so its findings are **recorded rather than patched** (forking upstream creates upgrade pain). That is a deliberate departure from Modules 6–12 and is stated in the Module 13 section.
 
 Original 11-item list — all done: `hostx_tools` (decision D-2 = retire, deactivation pending), `customaffiliate`, `digitalproducts` (Module 6), `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools` (Module 7), `cloudhost247services` (Module 8 — cleanest module reviewed: no functional defect, one latent JSON-LD hardening fixed), `hostx` (Module 9 — **cannot be audited**, 63/63 files ionCube-encoded; decision D-8), announcement bar (Module 10 — spec-complete, two cosmetic/a11y fixes), `tools_center` (Module 11 — second pass, reflected XSS and exception-leak fixed).
 
