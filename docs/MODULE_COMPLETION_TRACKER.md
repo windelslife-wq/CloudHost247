@@ -1006,6 +1006,43 @@ No test suite exists and **none was added.** Every other module audited in this 
 2. Decide fork-vs-replace for this module. If replacing, the findings resolve themselves; if forking, both are small, well-localised changes.
 3. Confirm with the vendor whether a newer WGS-OVH release already addresses SO-1.
 
+## Module 14 — the last four addons (baseline verified, targeted review)
+
+| Module | Lines | Assertions | Ratio | Baseline |
+|---|---|---|---|---|
+| `cloudhost247ai` | 13,989 | 1,126 (15 suites) | 1 per 12 | **PASS / 0 FAIL** |
+| `cloudhost247marketing` | 15,039 | 674 (8 suites) | 1 per 22 | **PASS / 0 FAIL** |
+| `cloudhost247passkey` | 11,871 | 200 (11 phases) | 1 per 59 | **PASS / 0 FAIL** |
+| `cloudhost247_cart_recovery` | 4,653 | 61 | 1 per 76 | **PASS / 0 FAIL** |
+
+**Total: 2,061 assertions, 0 failures.** All four were the remaining addons with no completion record. With this entry, **every addon in `MODULES.md` now has a completion record.**
+
+### Scope — stated precisely
+
+These four already shipped substantial test suites, so they did **not** need suites built from scratch. What they needed was a verification pass. Given that they total ~45,500 lines, this entry is:
+
+- **Baseline verification** — all four suites executed and confirmed green.
+- **A targeted security review of the highest-risk surface in the thinnest-covered module** (`cloudhost247_cart_recovery`, see below).
+
+It is **not** a line-by-line audit of 45,500 lines comparable to Modules 6–13. That is recorded rather than implied. If the owner wants that depth, `cloudhost247passkey` (authentication) and `cloudhost247ai` (agent/tool execution over live data) are the two worth prioritising.
+
+### `cloudhost247_cart_recovery` — recovery-link security (checked, sound)
+
+Chosen because it has the weakest coverage ratio (1 assertion per 76 lines) and handles the module's highest-risk asset: hashed cart-recovery links.
+
+- **Generation**: `bin2hex(random_bytes(32))` — a 256-bit token.
+- **Storage**: only `hash('sha256', 'cloudhost247-cart-recovery:' . $token)` is persisted (`RecoveryService.php:117`); the raw token is never stored.
+- **Lookup**: records are found by `token_hash` (`RecoveryService.php:239`), not by the raw token, so a 256-bit value must be guessed — enumeration is not feasible.
+- **Comparison**: `hash_equals()` (constant time) via `TokenService::equals()` (`lib/TokenService.php:47`).
+- **Expiry**: enforced on both the recovery path (`RecoveryService.php:248`) and the reminder path (`ReminderService.php:72`), against `token_expires_at` set from `SettingsRepository::int('token_lifetime')`.
+- **Domain separation**: unsubscribe tokens use distinct hash prefixes (`cloudhost247-cart-unsubscribe:`, `…-lookup:`), so a recovery token cannot be replayed as an unsubscribe token or vice versa.
+
+No defect found. The design matches what `docs/MODULES.md` describes (256-bit hashed links with expiry).
+
+### Note on the four node_modules symlinks
+
+`cloudhost247ai`, `cloudhost247_cart_recovery`, `cloudhost247marketing` and `cloudhost247passkey` each needed `node_modules` for the php-wasm runners. That directory is a symlink to `cloudhost247services/node_modules` and is **gitignored for `CloudHost247_tools` and `cloudhost247cloudflare` only**. The four symlinks created here are untracked and were not committed — a fresh clone needs `npm i @php-wasm/node` in each module. Worth adding to `.gitignore` alongside the existing two entries.
+
 ## Additional audit (after workstreams 1–5)
 
 Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools`, `cloudhost247services`, `hostx`, announcement bar, `tools_center`. Each item follows the same workflow and needs approval before the next one starts.
