@@ -156,7 +156,7 @@ validation handshake (`validationToken`) only echoes the token and changes nothi
 ### Security
 - **Encrypted Credentials**: AES-256 encryption for API keys
 - **Input Validation**: All user inputs sanitized and validated
-- **Rate Limiting**: Not enforced. `hostx_email_check_rate_limit()` exists but is not called anywhere; see the tracker (H-5).
+- **Rate Limiting**: Not implemented in this module. Webhooks are authenticated (see above); add throttling at the web server or WAF if needed.
 - **Webhook Verification**: Every webhook is authenticated before processing (see Webhook authentication above)
 - **Audit Logging**: All API calls logged with sanitized credentials
 
