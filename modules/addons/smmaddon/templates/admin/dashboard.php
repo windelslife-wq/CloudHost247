@@ -2,8 +2,8 @@
     <h2>SMM Panel Dashboard</h2>
 
     <?php if ($flash): ?>
-    <div class="alert alert-<?php echo $flash['type'] === 'success' ? 'success' : 'danger'; ?>">
-        <?php echo $flash['message']; ?>
+    <div class="alert alert-<?php echo htmlspecialchars((string) ($flash['type'] === 'success' ? 'success' : 'danger'), ENT_QUOTES, 'UTF-8'); ?>">
+        <?php echo htmlspecialchars((string) ($flash['message']), ENT_QUOTES, 'UTF-8'); ?>
     </div>
     <?php endif; ?>
 
@@ -12,7 +12,7 @@
             <div class="panel panel-primary">
                 <div class="panel-heading">Total Services</div>
                 <div class="panel-body text-center">
-                    <h3><?php echo $stats['total_services']; ?></h3>
+                    <h3><?php echo htmlspecialchars((string) ($stats['total_services']), ENT_QUOTES, 'UTF-8'); ?></h3>
                 </div>
             </div>
         </div>
@@ -20,7 +20,7 @@
             <div class="panel panel-success">
                 <div class="panel-heading">Active Services</div>
                 <div class="panel-body text-center">
-                    <h3><?php echo $stats['active_services']; ?></h3>
+                    <h3><?php echo htmlspecialchars((string) ($stats['active_services']), ENT_QUOTES, 'UTF-8'); ?></h3>
                 </div>
             </div>
         </div>
@@ -28,7 +28,7 @@
             <div class="panel panel-info">
                 <div class="panel-heading">Total Orders</div>
                 <div class="panel-body text-center">
-                    <h3><?php echo $stats['total_orders']; ?></h3>
+                    <h3><?php echo htmlspecialchars((string) ($stats['total_orders']), ENT_QUOTES, 'UTF-8'); ?></h3>
                 </div>
             </div>
         </div>
@@ -36,7 +36,7 @@
             <div class="panel panel-warning">
                 <div class="panel-heading">Pending</div>
                 <div class="panel-body text-center">
-                    <h3><?php echo $stats['pending_orders']; ?></h3>
+                    <h3><?php echo htmlspecialchars((string) ($stats['pending_orders']), ENT_QUOTES, 'UTF-8'); ?></h3>
                 </div>
             </div>
         </div>
@@ -44,7 +44,7 @@
             <div class="panel panel-default">
                 <div class="panel-heading">Processing</div>
                 <div class="panel-body text-center">
-                    <h3><?php echo $stats['processing_orders']; ?></h3>
+                    <h3><?php echo htmlspecialchars((string) ($stats['processing_orders']), ENT_QUOTES, 'UTF-8'); ?></h3>
                 </div>
             </div>
         </div>
@@ -52,7 +52,7 @@
             <div class="panel panel-success">
                 <div class="panel-heading">Completed</div>
                 <div class="panel-body text-center">
-                    <h3><?php echo $stats['completed_orders']; ?></h3>
+                    <h3><?php echo htmlspecialchars((string) ($stats['completed_orders']), ENT_QUOTES, 'UTF-8'); ?></h3>
                 </div>
             </div>
         </div>
@@ -80,20 +80,20 @@
                 <tbody>
                     <?php foreach ($recentOrders as $order): ?>
                     <tr>
-                        <td><?php echo $order->id; ?></td>
-                        <td><?php echo $order->smm_order_id; ?></td>
-                        <td><?php echo $order->smm_service_id; ?></td>
-                        <td><?php echo $order->quantity; ?></td>
-                        <td><?php echo substr($order->link, 0, 50); ?>...</td>
+                        <td><?php echo htmlspecialchars((string) ($order->id), ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars((string) ($order->smm_order_id), ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars((string) ($order->smm_service_id), ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars((string) ($order->quantity), ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars((string) (substr($order->link, 0, 50)), ENT_QUOTES, 'UTF-8'); ?>...</td>
                         <td>
                             <span class="label label-<?php
                                 echo ($order->status === 'completed') ? 'success' :
                                      (($order->status === 'pending') ? 'warning' :
                                      (($order->status === 'canceled' || $order->status === 'error') ? 'danger' : 'info'));
-                            ?>"><?php echo ucfirst($order->status); ?></span>
+                            ?>"><?php echo htmlspecialchars((string) (ucfirst($order->status)), ENT_QUOTES, 'UTF-8'); ?></span>
                         </td>
-                        <td><?php echo $order->last_check ?: 'Never'; ?></td>
-                        <td><?php echo $order->created_at; ?></td>
+                        <td><?php echo htmlspecialchars((string) ($order->last_check ?: 'Never'), ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars((string) ($order->created_at), ENT_QUOTES, 'UTF-8'); ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>

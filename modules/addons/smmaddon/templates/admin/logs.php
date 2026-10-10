@@ -2,14 +2,15 @@
     <h2>API Logs</h2>
 
     <?php if ($flash): ?>
-    <div class="alert alert-<?php echo $flash['type'] === 'success' ? 'success' : 'danger'; ?>">
-        <?php echo $flash['message']; ?>
+    <div class="alert alert-<?php echo htmlspecialchars((string) ($flash['type'] === 'success' ? 'success' : 'danger'), ENT_QUOTES, 'UTF-8'); ?>">
+        <?php echo htmlspecialchars((string) ($flash['message']), ENT_QUOTES, 'UTF-8'); ?>
     </div>
     <?php endif; ?>
 
     <div class="row" style="margin-bottom:20px;">
         <div class="col-sm-6">
-            <form method="post" action="<?php echo $modulelink; ?>&action=clear_logs" class="form-inline">
+            <form method="post" action="<?php echo htmlspecialchars((string) ($modulelink), ENT_QUOTES, 'UTF-8'); ?>
+<input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8'); ?>">&action=clear_logs" class="form-inline">
                 <input type="hidden" name="action" value="clear_logs">
                 <div class="form-group">
                     <label>Delete logs older than </label>
@@ -46,13 +47,13 @@
                 <tbody>
                     <?php foreach ($logs as $log): ?>
                     <tr>
-                        <td><?php echo $log->id; ?></td>
-                        <td><?php echo $log->action; ?></td>
-                        <td><?php echo substr($log->endpoint, 0, 60); ?>...</td>
-                        <td><?php echo $log->http_code; ?></td>
+                        <td><?php echo htmlspecialchars((string) ($log->id), ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars((string) ($log->action), ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars((string) (substr($log->endpoint, 0, 60)), ENT_QUOTES, 'UTF-8'); ?>...</td>
+                        <td><?php echo htmlspecialchars((string) ($log->http_code), ENT_QUOTES, 'UTF-8'); ?></td>
                         <td>
                             <?php if ($log->error): ?>
-                            <span class="label label-danger"><?php echo substr($log->error, 0, 50); ?></span>
+                            <span class="label label-danger"><?php echo htmlspecialchars((string) (substr($log->error, 0, 50)), ENT_QUOTES, 'UTF-8'); ?></span>
                             <?php else: ?>
                             <span class="label label-success">OK</span>
                             <?php endif; ?>
@@ -63,7 +64,7 @@
                         <td>
                             <pre style="max-width:200px;max-height:100px;overflow:auto;"><?php echo htmlspecialchars(substr($log->response, 0, 500)); ?></pre>
                         </td>
-                        <td><?php echo $log->created_at; ?></td>
+                        <td><?php echo htmlspecialchars((string) ($log->created_at), ENT_QUOTES, 'UTF-8'); ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>

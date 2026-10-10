@@ -347,6 +347,22 @@ Tests: `tests/WebhookVerifierTest.php`, 20 checks, all pass (`node tests/run.mjs
 
 Not run: live Twilio or Vonage requests, the WHMCS bootstrap, and a before/after run on the old code. Twilio's docs recommend the SDK's `RequestValidator` over hand-written validation. The SDK is already declared in `composer.json`, so switching is an option if you prefer it.
 
+## Additional audit item 4 — smmaddon (2026-10-10)
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| M-1 | **Stored XSS in the admin area.** The client-supplied order link (a custom field), provider error text, the flash message and provider names were echoed raw into admin pages. A client could run script in an admin's browser. | `templates/admin/*.php` (79 echoes) | High | **Fixed:** every template echo is escaped with `htmlspecialchars`. Tested with hostile values (`AdminSecurityTest.php`). |
+| M-2 | **No CSRF token on admin POST actions.** Settings (including API URL and key), order cancel and refresh, service mapping and log clearing all accepted any POST. A forged settings POST could point the module at an attacker's API URL, which would then receive the real key. Modern SameSite defaults limit this, but the module must not rely on them. | `lib/AdminDispatcher.php` `dispatch()`; 7 forms | High | **Fixed:** per-session token, checked before any admin POST; hidden field in all 7 forms. **Open:** AJAX actions (`ajax=1`) still accept GET and include state changes (`sync_services`, `refresh_order`). |
+| M-3 | **The API key was written to the log table in plaintext** when debug mode was on (the request parameters include `key`). | `lib/ApiClient.php` `request()` | Medium | **Fixed:** logged as `***`. |
+| M-4 | **Duplicate provider orders.** `AfterModuleCreate` placed an order each time it ran, with no check for an existing order for the service. A provisioning retry could buy twice. | `hooks.php` `AfterModuleCreate` | Medium | **Fixed:** skip when a non-error order already exists for the service. Retries after an error still place the order. |
+| M-5 | **Client controls the order quantity.** The quantity comes from a custom field that the client can edit. The provider order uses it, not the price paid. When `smm_max` is 0 there is no cap. The minimum clamp can raise it above what the client asked for. | `hooks.php` `AfterModuleCreate`; `smm_max` from `AdminDispatcher` sync | High (financial) | **Open, owner decision:** derive quantity from the product or config option that was paid for, and enforce `smm_max` even when it is 0. |
+| M-6 | **`api_url` is not restricted to HTTPS.** It is sanitised with `FILTER_SANITIZE_URL` only. The request uses cURL with peer verification on, but other URL schemes are not blocked. | `lib/AdminDispatcher.php` settings; `lib/ApiClient.php` | Low (admin only) | **Open:** require `https://` and restrict cURL to HTTP(S). |
+| M-7 | **Provider API key stored in `mod_smm_config` and read raw.** Same question as P-6 in phoneservices: confirm how WHMCS stores addon password fields, and whether the key should be encrypted at rest. | `lib/Helper.php` `getServerConfig()` | Medium, to verify | **Open:** check on a live install. |
+
+Tests: `tests/AdminSecurityTest.php`, 13 checks, all pass (`node tests/run.mjs`). PHP parse check passes on the changed PHP files and all admin templates.
+
+Not run: live admin sessions and a real CSRF attempt, a live SMM provider, and a before/after run on the old code.
+
 ## Module 4 — domainbroker (Domain Broker Service)
 
 | Field | Information |

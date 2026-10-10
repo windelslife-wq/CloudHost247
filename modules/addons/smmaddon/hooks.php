@@ -43,6 +43,15 @@ add_hook('AfterModuleCreate', 1, function ($vars) {
             return;
         }
 
+        // Idempotency: a provisioning re-run must not place a second provider order.
+        $alreadyOrdered = Capsule::table('mod_smm_orders')
+            ->where('whmcs_service_id', $serviceId)
+            ->where('status', '!=', 'error')
+            ->exists();
+        if ($alreadyOrdered) {
+            return;
+        }
+
         // Find mapped SMM service
         $smmService = Capsule::table('mod_smm_services')
             ->where('whmcs_product_id', $productId)
