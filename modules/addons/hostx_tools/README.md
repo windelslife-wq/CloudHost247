@@ -4,9 +4,11 @@
 > which provides the same WHOIS, IP WHOIS, DNS lookup and domain search tools
 > (and 87 more). Deactivate it in WHMCS: **System Settings > Addon Modules >
 > HostX Tools > Deactivate**. Until it is deactivated, its client-IP handling
-> can be spoofed to bypass the rate limit (see `docs/MODULE_COMPLETION_TRACKER.md`,
-> Additional audit item 1, finding H-1). No code has been removed; the files are
-> kept so the module can be restored if needed.
+> was spoofable to bypass the rate limit (finding H-1). That is now fixed in code:
+> `SecurityManager::getClientIp()` trusts forwarding headers only from a configured
+> proxy (`CLOUDHOST247_TRUSTED_PROXIES`), with tests in `tests/` (run
+> `node modules/addons/hostx_tools/tests/run.mjs`). No other code has been removed;
+> the files are kept so the module can be restored if needed.
 
 A comprehensive WHMCS addon module providing professional networking tools for domain analysis, IP intelligence, and DNS diagnostics. Built specifically for HostX v2.2.6 theme compatibility.
 

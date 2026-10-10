@@ -476,7 +476,7 @@ Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phon
 |---|---|
 | Module | `modules/addons/hostx_tools` (21 files, about 3,800 lines PHP, **no tests directory**). |
 | Specification | `docs/All DNS Checker/All DNS Checker Build.txt` names this module. It asks for about 100 tools across nine categories (DNS, IP, developer, designer, webmaster, network, security, productivity, gaming). |
-| Status | **Decision D-2 = A (retire). Awaiting your approval of this item.** Owner action pending: deactivate the addon in WHMCS. No code removed. |
+| Status | **Decision D-2 = A (retire), approved.** H-1 fixed in code (`SecurityManager::getClientIp()` now trusts forwarding headers only from `CLOUDHOST247_TRUSTED_PROXIES`); 6 regression checks in `tests/ClientIpTest.php` (fail on the old code). Owner action pending: deactivate the addon in WHMCS. No other code removed. |
 
 **Scope.** The module's own README lists four tools: domain WHOIS, IP lookup, DNS lookup, domain availability. The spec asks for about 100. That is a scope gap of about 96 tools.
 
