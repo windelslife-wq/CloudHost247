@@ -292,17 +292,24 @@ function CloudHost247_tools_cache_set($key, $value, $minutes = null)
  */
 function CloudHost247_tools_get_client_ip()
 {
-    $keys = ['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR'];
-    foreach ($keys as $key) {
-        if (!empty($_SERVER[$key])) {
-            $ips = explode(',', $_SERVER[$key]);
-            $ip = trim($ips[0]);
-            if (filter_var($ip, FILTER_VALIDATE_IP)) {
-                return $ip;
+    // Same rule as CloudHost247ToolsSecurity::clientIp(): the connection address
+    // is authoritative. Forwarded headers are read only when REMOTE_ADDR is a
+    // configured trusted proxy (CLOUDHOST247_TRUSTED_PROXIES, comma-separated).
+    // Trusting client-supplied headers let a caller pick a new IP per request
+    // and bypass the per-IP rate limit.
+    $remote = $_SERVER['REMOTE_ADDR'] ?? '';
+    $trusted = getenv('CLOUDHOST247_TRUSTED_PROXIES');
+    if ($trusted && filter_var($remote, FILTER_VALIDATE_IP)
+        && in_array($remote, array_map('trim', explode(',', $trusted)), true)) {
+        $fwd = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
+        if ($fwd !== '') {
+            $first = trim(explode(',', $fwd)[0]);
+            if (filter_var($first, FILTER_VALIDATE_IP)) {
+                return $first;
             }
         }
     }
-    return '0.0.0.0';
+    return filter_var($remote, FILTER_VALIDATE_IP) ? $remote : '0.0.0.0';
 }
 
 /**
