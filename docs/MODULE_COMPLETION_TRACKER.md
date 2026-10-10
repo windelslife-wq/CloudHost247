@@ -204,7 +204,7 @@ Not changed: `external-api/tools/productivity.php` `qrScanner()` still returns i
 |---|---|
 | Module | `modules/addons/cloudhost247apps` (WHMCS addon: control plane, catalog, billing gate, deployments, agent, cPanel/WHM adapter boundary, cron) |
 | Specification | `docs/HOSTING_CONTROL_PLANE_AUDIT.md` (post-audit status), `docs/APP_PLATFORM_PLAN.md` §5 (rules 5 and 7) and §20 (payment rule), `docs/PHASE2_…` to `docs/PHASE11_…`. Documented deliberate gaps: no production infrastructure adapter; customer VM provisioning disabled; Phase 3 is metadata-only; Phase 4–8 UAPI calls default off; cPanel staging runbook not executed. |
-| Status | **Audit complete; code findings fixed and tested. Gate open pending two owner-held runs** (cPanel staging runbook, live WHMCS payment check) and your acceptance. Not closed by the agent. |
+| Status | **Accepted by the user (gate closed) with owner items pending:** the cPanel staging runbook, the live WHMCS payment check, and the decision on A-8. Code findings A-1 to A-7 are fixed and tested. |
 
 ### Audit findings
 
@@ -289,7 +289,68 @@ Creation-time rules after A-6: a customer install needs a plan. Free plans (pric
 - Executed: full suite 2215/0; lint 110/0; suite 04 confirmed to fail on the old code (5 failures, see Tests).
 - Not yet evidence: the cPanel staging runbook and the live WHMCS payment check (see Remaining issues 1 and 2).
 
-## Module 4 — domainbroker — Not started
+## Module 4 — domainbroker (Domain Broker Service)
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/domainbroker` (WHMCS addon, 114 files), public page `domain-broker.php`, template `templates/hostx/domainbroker-landing.tpl` |
+| Specification | `docs/DOMAIN_BROKER.md` (the module's completion report, §1–§10 and the stated limitations). Governing rules from the directive: do not represent a registrar transfer as completed without registrar evidence; never enable unverified financial actions; no fake completion. |
+| Status | **In audit, blocked on a policy decision (D-1).** Suite and lint pass. One reflected-XSS finding fixed. The transfer-completion and fund-release gate needs your decision before the module can be accepted. |
+
+### Audit findings
+
+| ID | Finding | Evidence | Severity |
+|---|---|---|---|
+| B-1 | **Transfer completion rests on a broker's free-text note.** `TransferService::markCompleted()` sets the transfer to COMPLETED when `evidence` (or `note`) is a non-empty string. Nothing checks the registry or the WHMCS domain record. The customer then sees the transfer as completed. | `lib/Services/TransferService.php` `markCompleted()`; test `05_TransferTest.php` line ~192 | **High, policy (D-1).** See decision below. |
+| B-2 | **Fund release depends on the same attested status.** `PaymentService::releaseFunds()` requires transfer COMPLETED and all required verification items approved. The verification items are approved by an administrator, but the transfer status itself is the broker's note (B-1). Money leaves escrow on that basis. | `lib/Services/PaymentService.php` `releaseFunds()` | **High, policy (D-1).** |
+| B-3 | **Registrar verification exists but is not tied to the transfer.** A required "Registrar verification" checklist item must be approved by an administrator before acquisition or release. It is a human approval, not a registry read. `DomainIntelService` can read the sponsoring registrar via RDAP, but only when `rdap_enabled` is on (default off), and no completion path calls it. | `lib/Services/VerificationService.php` `ALWAYS_REQUIRED`; `lib/Services/DomainIntelService.php` `applyRdap()` | Info, part of D-1 |
+| B-4 | **Reflected XSS on the public landing page.** `?domain=` was echoed into the form's `value` attribute without escaping. The template did not use `|escape`, unlike the 22 other templates that do. A crafted link could run script in a visitor's browser. | `domain-broker.php` line 43; `templates/hostx/domainbroker-landing.tpl` line 40 | Medium. **Fixed:** the page accepts only a hostname-shaped string (labels of 1–63 characters, 2+ letter TLD); the template escapes the value. |
+| B-5 | The internal escrow provider is honest: it records the operator's own release and makes no external call (documented). The status "released" means the operator has recorded a release; the disbursement happens offline. | `lib/Escrow/InternalEscrowProvider.php` header | Info (verified). Wording check for the UI. |
+| B-6 | Escrow webhook is sound: HMAC over timestamp and body, tolerance window, `hash_equals`, replay deduplication by provider and event ID, and only verified payloads are parsed. | `lib/Escrow/HttpEscrowProvider.php`; `lib/Services/PaymentService.php` webhook handler | Info (verified) |
+| B-7 | Cron entry point refuses non-CLI execution. Payment refund and release are idempotent and permissioned (`PAYMENT_REFUND`, `PAYMENT_RELEASE`). Customer surfaces are scoped to the signed-in client. Covered by suites 06 and 09. | `cron/domainbroker.php`; suites 06, 09 | Info (verified) |
+| B-8 | `lint.php` reads `$argv` on the web-style runtime and emits a warning. Cosmetic; the lint still passes. | Module lint output | Low |
+
+### Decision D-1 (needed from you)
+
+Your rule is: do not show a registrar transfer as completed without registrar evidence. Today, completion takes a note. Choose how strict it should be:
+
+- **Option A: keep the attestation model.** A broker records the registrar's confirmation as a note. Add a required structured field for the registrar's reference, and restrict completion and release to `admin_finance` or `admin_super`. Documents the trust boundary. No registry call.
+- **Option B: automated registry check.** Before COMPLETED, read the sponsoring registrar via RDAP and require it to match the gaining registrar. Refuse otherwise. This needs `rdap_enabled` and a reachable RDAP endpoint, so completion is blocked until the owner enables it. Recommended for money release.
+- **Option C: both.** B when RDAP is enabled. A, with admin-only rights, as the fallback. Every completion records which basis was used.
+
+I have not changed this gate. Each option changes behaviour, and B and C need an owner setting.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `domain-broker.php` | `?domain=` accepted only as a hostname-shaped string; anything else is dropped (B-4). |
+| `templates/hostx/domainbroker-landing.tpl` | The prefill value is escaped with `|escape:'html'` (B-4). |
+
+No regression test was added for B-4. The root landing page is outside the module directory, which the PHP runner mounts, so the module suite cannot read it. Verified instead by: (1) checking the regex against 11 inputs with Python `re` (equivalent for this pattern): 3 hostnames kept, 8 hostile or malformed inputs dropped, including a 70-character label; (2) grep confirming the single-backslash regex in the file and the `|escape` in the template. A PHP-runtime run of the regex was attempted and hung in the sandbox, so it was not completed.
+
+### Tests
+
+| Command | Result |
+|---|---|
+| `node tests/run.mjs` (module suite, PHP 8.3 php-wasm, run with a symlinked `node_modules`, removed afterwards) | **1009 PASS, 0 FAIL, exit 0** across 9 suites (matches the module's report) |
+| `node tests/lint.mjs` | FILES=85, BAD=0 |
+| Landing page prefill (B-4) | Ad hoc checks only (see above). Not in a persisted suite. |
+| Live WHMCS run, escrow provider, RDAP lookup | **Not run.** No WHMCS install, escrow endpoint, or RDAP access from the sandbox. |
+
+### Remaining issues / blockers
+
+1. **D-1 (blocking):** choose option A, B or C. The gate cannot close until this is decided.
+2. Live checks needed from the owner: a WHMCS install with a test gateway; and, if option B or C, `rdap_enabled` on with an RDAP endpoint.
+3. B-5 wording: the UI should say "release recorded" for the internal provider, not "paid to seller".
+4. B-8: cosmetic lint warning.
+
+### Completion evidence
+
+- Source: the files in *Changes made*.
+- Executed: module suite 1009/0; lint 85/0.
+- Not yet evidence: B-4 is covered by ad hoc checks only; the live and RDAP checks are not run.
+
 
 ## Module 5 — dnschecker specification reconciliation — Not started
 

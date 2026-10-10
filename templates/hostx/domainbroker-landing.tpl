@@ -37,7 +37,7 @@
                                 <div class="input-group input-group-lg">
                                     <label class="sr-only" for="db-landing-domain">Domain name</label>
                                     <input type="text" class="form-control" id="db-landing-domain" name="domain"
-                                           value="{$dbPrefillDomain}" placeholder="example.com"
+                                           value="{$dbPrefillDomain|escape:'html'}" placeholder="example.com"
                                            autocomplete="off" spellcheck="false" required>
                                     <span class="input-group-btn">
                                         <button class="btn btn-primary btn-lg" type="submit">
