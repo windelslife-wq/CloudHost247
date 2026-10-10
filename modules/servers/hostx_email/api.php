@@ -228,7 +228,10 @@ class HostxEmailAPI
             if (!empty($data['plan'])) {
                 $licenseSku = $this->getMicrosoft365LicenseSku($data['plan']);
                 if ($licenseSku) {
-                    $this->assignMicrosoft365License($userId, $licenseSku);
+                    $licenseResult = $this->assignMicrosoft365License($userId, $licenseSku);
+                    if (empty($licenseResult['success'])) {
+                        logModuleCall('hostx_email', 'Create-LicenseFailed', $licenseResult['message'] ?? 'License assignment failed', ['user' => $userId, 'sku' => $licenseSku], null, null);
+                    }
                 }
             }
             
@@ -647,7 +650,10 @@ class HostxEmailAPI
             
             // Assign license if plan specified
             if (!empty($data['plan'])) {
-                $this->assignGoogleWorkspaceLicense($emailAddress, $data['plan']);
+                $licenseResult = $this->assignGoogleWorkspaceLicense($emailAddress, $data['plan']);
+                if (empty($licenseResult['success'])) {
+                    logModuleCall('hostx_email', 'Create-LicenseFailed', $licenseResult['message'] ?? 'License assignment failed', ['user' => $emailAddress], null, null);
+                }
             }
             
             return [
@@ -694,8 +700,8 @@ class HostxEmailAPI
             ];
         }
         
-        // Use Google Licensing API
-        $url = 'https://licensing.googleapis.com/apps/licensing/v1/product/Google-Apps/users/' . $skuId . '/' . $userEmail;
+        // Licensing API "insert": POST /product/{productId}/sku/{skuId}/user
+        $url = 'https://licensing.googleapis.com/apps/licensing/v1/product/Google-Apps/sku/' . rawurlencode($skuId) . '/user';
         
         $tokenResult = $this->getGoogleWorkspaceAccessToken();
         
@@ -704,7 +710,7 @@ class HostxEmailAPI
         }
         
         $result = hostx_email_curl_execute($url, [
-            CURLOPT_PUT => true,
+            CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode(['userId' => $userEmail]),
             CURLOPT_HTTPHEADER => [
                 'Authorization: Bearer ' . $tokenResult['token'],
@@ -712,7 +718,8 @@ class HostxEmailAPI
             ],
         ]);
         
-        if ($result['http_code'] === 200 || $result['http_code'] === 201) {
+        // 409 = the user already holds this license; treat as assigned.
+        if (in_array($result['http_code'], [200, 201, 409], true)) {
             return [
                 'success' => true,
                 'message' => 'License assigned successfully',
@@ -1199,185 +1206,10 @@ class HostxEmailAPI
      * ================================
      * WEBHOOK HANDLING
      * ================================
+     *
+     * Incoming webhooks are processed only by webhook.php, which authenticates
+     * each request via authenticateWebhook() before it handles the payload.
      */
-    
-    /**
-     * Handle incoming webhook from providers
-     * 
-     * @param string $provider
-     * @param array $payload
-     * @return array
-     */
-    public function handleWebhook($provider, array $payload)
-    {
-        switch ($provider) {
-            case 'microsoft365':
-                return $this->handleMicrosoft365Webhook($payload);
-                
-            case 'google_workspace':
-                return $this->handleGoogleWorkspaceWebhook($payload);
-                
-            case 'professional':
-                return $this->handleProfessionalEmailWebhook($payload);
-                
-            default:
-                return [
-                    'success' => false,
-                    'message' => 'Unknown provider: ' . $provider,
-                ];
-        }
-    }
-    
-    /**
-     * Handle Microsoft 365 webhook
-     * 
-     * @param array $payload
-     * @return array
-     */
-    private function handleMicrosoft365Webhook(array $payload)
-    {
-        // Handle Microsoft Graph change notifications
-        if (isset($payload['value'])) {
-            foreach ($payload['value'] as $notification) {
-                $userId = $notification['resourceData']['id'] ?: '';
-                $changeType = $notification['changeType'] ?: '';
-                
-                // Find and update corresponding WHMCS service
-                try {
-                    $account = Capsule::table('mod_hostx_email_accounts')
-                        ->where('external_id', $userId)
-                        ->where('provider', 'microsoft365')
-                        ->first();
-                    
-                    if ($account) {
-                        switch ($changeType) {
-                            case 'updated':
-                                hostx_email_syncAccountStatus([
-                                    'serviceid' => $account->service_id,
-                                    'configoption1' => 'microsoft365',
-                                    'username' => explode('@', $account->email_address)[0],
-                                    'domain' => explode('@', $account->email_address)[1],
-                                ]);
-                                break;
-                                
-                            case 'deleted':
-                                hostx_email_update_account_status($account->service_id, 'terminated');
-                                break;
-                        }
-                    }
-                } catch (Exception $e) {
-                    logModuleCall('hostx_email', 'Webhook-Error', $e->getMessage(), $payload, null, null);
-                }
-            }
-        }
-        
-        // Respond to validation request
-        if (isset($payload['validationToken'])) {
-            return [
-                'success' => true,
-                'response' => $payload['validationToken'],
-            ];
-        }
-        
-        return ['success' => true];
-    }
-    
-    /**
-     * Handle Google Workspace webhook
-     * 
-     * @param array $payload
-     * @return array
-     */
-    private function handleGoogleWorkspaceWebhook(array $payload)
-    {
-        // Handle Google Workspace notifications
-        if (isset($payload['events'])) {
-            foreach ($payload['events'] as $event) {
-                $userEmail = $event['userEmail'] ?: '';
-                $eventType = $event['eventType'] ?: '';
-                
-                try {
-                    $account = Capsule::table('mod_hostx_email_accounts')
-                        ->where('email_address', $userEmail)
-                        ->where('provider', 'google_workspace')
-                        ->first();
-                    
-                    if ($account) {
-                        switch ($eventType) {
-                            case 'SUSPENDED':
-                                hostx_email_update_account_status($account->service_id, 'suspended');
-                                break;
-                                
-                            case 'UNSUSPENDED':
-                                hostx_email_update_account_status($account->service_id, 'active');
-                                break;
-                                
-                            case 'DELETED':
-                                hostx_email_update_account_status($account->service_id, 'terminated');
-                                break;
-                        }
-                    }
-                } catch (Exception $e) {
-                    logModuleCall('hostx_email', 'Webhook-Error', $e->getMessage(), $payload, null, null);
-                }
-            }
-        }
-        
-        return ['success' => true];
-    }
-    
-    /**
-     * Handle Professional Email webhook
-     * 
-     * @param array $payload
-     * @return array
-     */
-    private function handleProfessionalEmailWebhook(array $payload)
-    {
-        if (isset($payload['event']) && isset($payload['email'])) {
-            $event = $payload['event'];
-            $email = $payload['email'];
-            
-            try {
-                $account = Capsule::table('mod_hostx_email_accounts')
-                    ->where('email_address', $email)
-                    ->where('provider', 'professional')
-                    ->first();
-                
-                if ($account) {
-                    switch ($event) {
-                        case 'mailbox.suspended':
-                            hostx_email_update_account_status($account->service_id, 'suspended');
-                            break;
-                            
-                        case 'mailbox.activated':
-                            hostx_email_update_account_status($account->service_id, 'active');
-                            break;
-                            
-                        case 'mailbox.deleted':
-                            hostx_email_update_account_status($account->service_id, 'terminated');
-                            break;
-                            
-                        case 'mailbox.password_changed':
-                            // Log password change event
-                            logModuleCall(
-                                'hostx_email',
-                                'Webhook-PasswordChanged',
-                                'Password changed for ' . $email,
-                                $payload,
-                                null,
-                                null
-                            );
-                            break;
-                    }
-                }
-            } catch (Exception $e) {
-                logModuleCall('hostx_email', 'Webhook-Error', $e->getMessage(), $payload, null, null);
-            }
-        }
-        
-        return ['success' => true];
-    }
     
     /**
      * Verify webhook signature

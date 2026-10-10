@@ -156,7 +156,7 @@ validation handshake (`validationToken`) only echoes the token and changes nothi
 ### Security
 - **Encrypted Credentials**: AES-256 encryption for API keys
 - **Input Validation**: All user inputs sanitized and validated
-- **Rate Limiting**: API request throttling to prevent abuse
+- **Rate Limiting**: Not enforced. `hostx_email_check_rate_limit()` exists but is not called anywhere; see the tracker (H-5).
 - **Webhook Verification**: Every webhook is authenticated before processing (see Webhook authentication above)
 - **Audit Logging**: All API calls logged with sanitized credentials
 
@@ -177,7 +177,7 @@ validation handshake (`validationToken`) only echoes the token and changes nothi
 | Function | Endpoint | Method |
 |----------|----------|--------|
 | Create User | `/users` | POST |
-| Assign License | Licensing API | PUT |
+| Assign License | `/apps/licensing/v1/product/Google-Apps/sku/{skuId}/user` (Licensing API) | POST |
 | Suspend User | `/users/{email}` | PUT |
 | Delete User | `/users/{email}` | DELETE |
 | Change Password | `/users/{email}` | PUT |

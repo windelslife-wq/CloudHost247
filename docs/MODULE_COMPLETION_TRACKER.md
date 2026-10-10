@@ -315,17 +315,20 @@ Tests: `tests/CommissionTest.php`, 22 checks, all pass; 10 of them failed on the
 
 Open for the owner: partial refunds still reset the full first-commission flag (documented, conservative). `UpgradeHandler` and the upgrade/downgrade hooks only record notes; re-grouping logic runs only from the manual utility.
 
-## Additional audit item 2 — hostx_email (2026-10-10, in progress)
+## Additional audit item 2 — hostx_email (2026-10-10)
 
-| ID | Finding | Evidence | Severity |
-|---|---|---|---|
-| H-1 | **Unauthenticated webhooks were processed.** The signature check ran only when a signature header was present. Microsoft 365 and Google Workspace returned `true` unconditionally. The Microsoft `clientState` check was skipped when no secret was configured. Unsigned POSTs could set a customer's WHMCS service to `Terminated` (`tblhosting.domainstatus`). | `webhook.php` (signature gate; `clientState` check); `api.php` `verifyWebhookSignature()` | High → **fixed**: `HostxEmailAPI::authenticateWebhook()` is required for every request and fails closed. Google needs `hostx_email_google_channel_token`; Microsoft needs `hostx_email_ms_client_state`. Professional needs a non-empty API key and a valid HMAC. |
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| H-1 | **Unauthenticated webhooks were processed.** The signature check ran only when a header was present. Microsoft 365 and Google returned `true` unconditionally. The Microsoft `clientState` check was skipped when no secret was set. Unsigned POSTs could set a customer's WHMCS service to `Terminated`. | `webhook.php`; `api.php` `verifyWebhookSignature()` | High | **Fixed** (`dee0cfe`). `authenticateWebhook()` is required for every request. Google needs `hostx_email_google_channel_token`; Microsoft needs `hostx_email_ms_client_state`; Professional needs a non-empty API key and a valid HMAC. |
+| H-2 | **Google license assignment never worked.** The code sent `PUT .../product/Google-Apps/users/{sku}/{email}`. That path does not exist, and PUT reassigns an existing license, so a new user could not receive one. The create path ignored the failure. | `api.php` `assignGoogleWorkspaceLicense()`; Google Licensing API `licenseAssignments.insert` | High (functional) | **Fixed.** Now `POST .../product/Google-Apps/sku/{skuId}/user` with `{userId}`. 409 (already licensed) counts as success. Both create paths log `Create-LicenseFailed` on failure. Not run live. |
+| H-3 | **A second, unused webhook implementation** in `api.php` (`handleWebhook` and three private handlers) kept the old fail-open auth. A future caller would bypass H-1. | `api.php` (no callers) | Medium (latent) | **Fixed:** removed (184 lines). `webhook.php` is the only entry point. |
+| H-4 | **Stored credentials use a key that is not secret.** The key is `sha256(SystemURL . 'HostXEmail_v1.0.0')`. Anyone with DB read access who knows the SystemURL (usually public) can decrypt. Changing SystemURL makes all stored credentials unreadable. | `functions.php` `hostx_email_get_encryption_key()`, `hostx_email_encrypt/decrypt()` | Medium | **Open, owner decision.** Fix: move to WHMCS's own encryption key with a versioned ciphertext and a one-time migration. This is not a one-line change because existing rows must be migrated. |
+| H-5 | **Rate limiter is dead code, but the README claimed rate limiting.** `hostx_email_check_rate_limit()` has no callers. It is file-based, not atomic, and fails open. | `functions.php` ~725 | Low | **README corrected** (no longer claims enforcement). **Open, owner decision:** wire it to the webhook endpoint, or delete it. |
+| H-6 | **AES-256-CBC without a MAC.** Ciphertext can be modified without detection. Decrypt returns an empty string on failure, so there is no padding oracle. | `functions.php` encrypt/decrypt | Low | **Open**; address with H-4. |
 
-Tests: `tests/WebhookAuthTest.php`, 13 checks, all pass (`node tests/run.mjs`). PHP parse check passes on `webhook.php` and `api.php`. Not run: a live provider webhook, and the baseline on the old code (not run).
+Tests: `tests/WebhookAuthTest.php`, 13 checks, all pass (`node tests/run.mjs`). The test file loads `api.php`, so the edited class parses. PHP parse check passes on `webhook.php` and `api.php`. Not run: live provider webhooks, a live Google license assignment, and a before/after run on the old code.
 
-Behaviour change: Google and Microsoft webhooks stop working until their secrets are set in `tblconfiguration`. The README documents this.
-
-Still to check in this module (not yet audited): the rate limiter (`hostx_email_check_rate_limit()`) on the API path; AES-256-CBC with no MAC in `functions.php` (~41–80); duplicated webhook logic in `api.php handleWebhook` versus `webhook.php`; the README's Google "Assign License" endpoint against the code.
+Behaviour changes: (1) Google and Microsoft webhooks stop working until their secrets are set (H-1). (2) Google licences are now actually assigned on create (H-2), which is a real change for existing Google deployments.
 
 ## Module 4 — domainbroker (Domain Broker Service)
 
