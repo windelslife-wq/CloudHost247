@@ -109,7 +109,7 @@ class Service
                 'optionName'       => $option->optionname,
                 'subOptionName'    => $option->subname,
                 'subOptionNameRaw' => $this->configOptionNameToRaw($option->subname) ?: $option->subname,
-                'value'            => $option->optiontype == 4 ? $option->qty : $this->configOptionNameToRaw($option->subname) ?: $option->subname
+                'value'            => ($option->optiontype == 4 ? $option->qty : $this->configOptionNameToRaw($option->subname)) ?: $option->subname
             ];
         }
 
