@@ -1039,6 +1039,20 @@ Chosen because it has the weakest coverage ratio (1 assertion per 76 lines) and 
 
 No defect found. The design matches what `docs/MODULES.md` describes (256-bit hashed links with expiry).
 
+### Follow-up (2026-10-10): `cloudhost247passkey` authentication core — audited at depth, sound
+
+Taken first of the four because authentication is the highest-consequence surface in the module. Scope: the WebAuthn ceremony and challenge lifecycle (`lib/Core/WebAuthnService.php`, `lib/Core/CeremonyChallengeStore.php`). **No defect found.** The controls that matter are all present:
+
+- **Cryptography is delegated** to the audited `web-auth/webauthn-lib` (`loadAndCheckAttestationResponse` / `loadAndCheckAssertionResponse`), with the algorithm set constrained to `['ES256','RS256']`. Not hand-rolled.
+- **Fails closed when dependencies are absent** — `assertRuntimeAvailable()` throws unless the library classes exist.
+- **Single-use challenge, consumed atomically.** `consume()` performs a compare-and-swap (`UPDATE … SET consumed_at = ? WHERE consumed_at IS NULL`) and rejects when `$changed !== 1`, so two concurrent assertions cannot both succeed. This closes the TOCTOU replay race that simpler `SELECT`-then-`DELETE` implementations leave open.
+- **Challenge is bound to everything that matters**, each compared with `hash_equals`: challenge type, `user_type`, `user_id`, a **session binding hash**, the RP ID and the origin. TTL is 300 seconds. Stored options are additionally cross-checked against the raw challenge.
+- **Ownership is re-verified *after* signature verification**, not assumed from it: `findOwnerByHandle($source->getUserHandle())` must resolve, and the owner's `user_type` must match the scope and (when a specific user was requested) the `user_id` must match. This is the control that stops a valid credential for one account authenticating as another, and it is applied on both the registration and authentication paths.
+- Usernameless (discoverable) login is handled by the same post-verification owner check rather than by a separate weaker path.
+- Registration requires `none` attestation, and the returned user handle must match the local identity.
+
+Not covered by this pass: `lib/Admin.php` (1,534 lines), `lib/Http/PasskeyHttpKernel.php` (1,052), `lib/Core/ExternalIdentityLinkService.php`, `lib/Core/PasskeyActionConfirmationService.php`, and the client templates.
+
 ### Note on the four node_modules symlinks
 
 `cloudhost247ai`, `cloudhost247_cart_recovery`, `cloudhost247marketing` and `cloudhost247passkey` each needed `node_modules` for the php-wasm runners. That directory is a symlink to `cloudhost247services/node_modules` and is **gitignored for `CloudHost247_tools` and `cloudhost247cloudflare` only**. The four symlinks created here are untracked and were not committed — a fresh clone needs `npm i @php-wasm/node` in each module. Worth adding to `.gitignore` alongside the existing two entries.
@@ -1049,7 +1063,9 @@ Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phon
 
 **Progress: the original 11-item list is complete, and every addon in `MODULES.md` now has a completion record.** Six addons had **no completion record at all** and so were unfinished under the original definition — `cloudhost247ai`, `cloudhost247cart_recovery`, `cloudhost247cloudflare`, `cloudhost247marketing`, `cloudhost247passkey`, `soyoustart` (~57,600 lines between them). All six are now recorded: `cloudhost247cloudflare` (Module 12), `soyoustart` (Module 13), and the remaining four (Module 14).
 
-**Depth varies, and is stated per module rather than averaged away:** Modules 6–13 were audited line by line against their specs. Module 14's four addons (~45,500 lines) received **baseline verification plus a targeted review of the highest-risk surface** — not a full audit. See the Module 14 section.
+**Depth varies, and is stated per module rather than averaged away:** Modules 6–13 were audited line by line against their specs. Module 14's four addons (~45,500 lines) initially received **baseline verification plus a targeted review of the highest-risk surface** — not a full audit.
+
+**Now upgrading those four one by one.** `cloudhost247passkey`'s authentication core (WebAuthn ceremonies + challenge lifecycle) has since been audited at full depth and found **sound** — atomic single-use challenge consumption, session/RP/origin/identity binding, and post-verification ownership checks. See the Module 14 follow-up. **Remaining at baseline depth: `cloudhost247ai`, `cloudhost247marketing`, `cloudhost247_cart_recovery`.** `cloudhost247ai` is next (agent tool execution over live WHMCS data).
 
 **Open owner decisions:** D-2 (deactivation, partially done), D-6 (`digitalproducts` activation limits), D-7 (routing `/tools/<slug>`), D-8 (policy for the two 100% ionCube-encoded modules). Plus the pre-existing High items: **P-5** (`phoneservices` all-tenant API key) and **M-5** (`smmaddon` client-controlled order quantity).
 
