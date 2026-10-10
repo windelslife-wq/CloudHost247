@@ -276,3 +276,4 @@ cf_ok(
 );
 
 echo "\nPASS=$pass FAIL=$fail\n";
+exit($fail > 0 ? 1 : 0);

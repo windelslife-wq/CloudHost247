@@ -9,8 +9,10 @@
 require_once dirname(__DIR__) . '/autoload.php';
 
 // Phases 11–13 reuse the legacy Cloudflare API boundary and add the App Cloud DNS bridge.
-if (is_file('/cloudflare/autoload.php')) {
-    require_once '/cloudflare/autoload.php';
+// Sibling addon root: absolute php-wasm mount first, native-checkout relative path fallback (CI runs native PHP).
+$ch247CfLint = is_file('/cloudflare/autoload.php') ? '/cloudflare' : dirname(__DIR__) . '/../cloudhost247cloudflare';
+if (is_file($ch247CfLint . '/autoload.php')) {
+    require_once $ch247CfLint . '/autoload.php';
     foreach ([
         'CloudHost247\\Cloudflare\\Provider\\CloudflareClient',
         'CloudHost247\\Cloudflare\\Provider\\CloudflareApi',

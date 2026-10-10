@@ -151,3 +151,4 @@ foreach (['credit-card-checker', 'password-generator', 'password-strength', 'not
 }
 
 echo "\nPASS=$pass FAIL=$fail\n";
+exit($fail > 0 ? 1 : 0);

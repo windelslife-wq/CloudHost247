@@ -1,9 +1,11 @@
 <?php
 require __DIR__ . '/bootstrap.php';
 // Parse-checks every admin view + root landing page (not covered by lint.mjs).
+// Repo root: absolute php-wasm mount first, native-checkout relative path fallback (CI runs native PHP).
+$ch247RepoRoot = is_dir('/repo') ? '/repo' : dirname(__DIR__, 4);
 $files = array_merge(
     glob(__DIR__ . '/../templates/admin/*.phtml'),
-    glob('/repo/*.php')
+    glob($ch247RepoRoot . '/*.php')
 );
 $bad = [];
 foreach ($files as $f) {

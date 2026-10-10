@@ -1179,3 +1179,47 @@ Original options, for reference:
 - Source read: `hostx_tools.php`, `includes/*.php`, `api/*.php` (search for execution, escaping and CSRF), `assets/js/hostx-tools.js`, templates.
 - Executed: the IP-spoofing reproduction for both modules (PHP 8.3 via php-wasm). No change made in this item.
 - Not run: no suite exists for this module.
+
+---
+
+## E-1 — CI pipeline (project gap, closed 2026-10-11)
+
+| Field | Information |
+|---|---|
+| Gap | `docs/UNFINISHED_MODULES.md` E-1: 17 test suites existed and nothing ran them — no `.github/` directory, no workflow files. |
+| Status | **Complete.** `.github/workflows/ci.yml` runs on every push and pull request: full PHP matrix on 8.3 (17 suites, one step per module, plus load/parse gates and the root-landing check), legacy 7.4 leg for the three 7.4-supported modules, Node 22 suites incl. jsdom UI wiring, a repo-wide `php -l` sweep (ionCube modules excluded, D-8), and the Python static checks. Runbook: `docs/CI.md`. |
+
+### Design
+
+CI executes the same `tests/*.php` files as the committed `run.mjs`
+wrappers, but on native PHP instead of php-wasm: faster, more faithful
+(real SQLite/OpenSSL/ZIP), no npm dependency. The wasm wrappers keep
+working — every touched suite resolves paths absolute-mount-first with a
+checkout-relative fallback. Drivers live in `ci/` (`run-php.sh`,
+`run-js.sh`, `php-lint.sh`) and are also the local entry points, so CI
+and local runs cannot drift.
+
+### Test-only changes (no production code)
+
+- Path fallbacks: `cloudhost247apps` tests 10/11/12/13/17 + `lint.php`,
+  `cloudhost247services` test 21.
+- Fixed dead fallback: `cloudhost247services` tests 11/12 used
+  `dirname(__DIR__, 3)` (the `modules/` dir) instead of the repo root —
+  now `CHS_ROOT`. Only reachable on native runs, so invisible until now.
+- Exit codes: 13 files that printed `FAIL=` but always exited 0 now
+  `exit($fail ? 1 : 0)`.
+- Flake fix: `cloudhost247apps` test 25 freezes `Clock` around the
+  retention section (cutoff-edge fixture + second boundary = observed
+  34/3 failure in pre-push validation).
+
+### Completion evidence
+
+- Pre-push validation in-sandbox (php-wasm, committed-runner-identical
+  mounts): **126/126 suite files green**, plus Node `core` 68/0, `qr`
+  36/0, `tools` 845/0, `tools_center` 43/43 with jsdom 24, Python
+  static 15/15 — every count matches this tracker.
+- Post-push: GitHub Actions run on the branch must be green (validates
+  the native 7.4/8.3 legs, composer install, and fixture keygen, which
+  the sandbox cannot run).
+- Not covered (unchanged): E-2 live runs; group C modules with no
+  suites; D-8 encoded modules.

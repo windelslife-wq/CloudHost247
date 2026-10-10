@@ -64,11 +64,14 @@ namespace {
         if (!defined($constant)) define($constant, 1000 + $index);
     }
     if (!defined('WHMCS')) define('WHMCS', true);
-    require_once '/soyoustart/lib/Helper.php';
-    require_once '/soyoustart/classes/ApiCall.php';
-    require_once '/soyoustart/classes/Configuration.php';
-    require_once '/soyoustart/lib/SafeLog.php';
-    require_once '/soyoustart/lib/Admin/apicall.php';
+    // Legacy module roots: absolute php-wasm mounts first, native-checkout relative paths fallback (CI runs native PHP).
+    $ch247SoyRoot = is_dir('/soyoustart') ? '/soyoustart' : dirname(__DIR__, 3) . '/addons/soyoustart';
+    $ch247SoyVpsRoot = is_dir('/soyoustart_vps') ? '/soyoustart_vps' : dirname(__DIR__, 3) . '/servers/soyoustart_vps';
+    require_once $ch247SoyRoot . '/lib/Helper.php';
+    require_once $ch247SoyRoot . '/classes/ApiCall.php';
+    require_once $ch247SoyRoot . '/classes/Configuration.php';
+    require_once $ch247SoyRoot . '/lib/SafeLog.php';
+    require_once $ch247SoyRoot . '/lib/Admin/apicall.php';
 
     use WHMCS\Module\Addon\Soyoustart\TrustedEndpoint;
     use WGSModule\Soyoustart\classes\ApiCall;
@@ -185,14 +188,14 @@ namespace {
     T::is('Google OAuth verifies TLS hostname', 2, $GLOBALS['catalogCurlOptions'][CURLOPT_SSL_VERIFYHOST]);
     T::is('Google OAuth refuses redirects', false, $GLOBALS['catalogCurlOptions'][CURLOPT_FOLLOWLOCATION]);
     section('Legacy billing and provisioning logs contain only non-secret metadata');
-    foreach (['/soyoustart_vps/soyoustart_vps.php', '/soyoustart_vps/hooks.php',
-        '/soyoustart/classes/ExistingServer.php', '/soyoustart/lib/SafeLog.php'] as $file) {
+    foreach ([$ch247SoyVpsRoot . '/soyoustart_vps.php', $ch247SoyVpsRoot . '/hooks.php',
+        $ch247SoyRoot . '/classes/ExistingServer.php', $ch247SoyRoot . '/lib/SafeLog.php'] as $file) {
         T::nothrow('changed legacy PHP parses: ' . basename($file), function () use ($file) {
             token_get_all(file_get_contents($file), TOKEN_PARSE);
         });
     }
     T::notContains('server lifecycle does not log raw WHMCS params', 'logModuleCall(',
-        file_get_contents('/soyoustart_vps/soyoustart_vps.php'));
+        file_get_contents($ch247SoyVpsRoot . '/soyoustart_vps.php'));
     SafeLog::failure('soyoustart_vps', 'CreateAccount',
         ['serviceid' => 123, 'password' => 'fake-super-secret'],
         new \Exception('fake-secret-in-error'));

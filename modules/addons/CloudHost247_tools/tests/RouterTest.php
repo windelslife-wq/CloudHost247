@@ -151,3 +151,4 @@ ok('different tool loads different js', $a['js'] !== $a2['js']);
 ok('no monolithic bundle', count(array_filter($a['js'], function ($j) { return strpos($j, 'CloudHost247-tools.js') !== false; })) === 0);
 
 echo "\nPASS=$pass FAIL=$fail\n";
+exit($fail > 0 ? 1 : 0);

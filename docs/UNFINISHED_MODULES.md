@@ -9,7 +9,7 @@ Two independent methods were used, and a module/artifact appears below if **eith
    recorded in `docs/MODULE_COMPLETION_TRACKER.md`, plus modules in `docs/MODULES.md`
    that have **no completion record at all**.
 
-Summary: **7 stub-code artifacts** (incl. 2 missing adapter classes and 4 empty theme templates), **18 partially complete modules**, **7 modules with no completion record**, **2 unauditable modules**, **2 project-level gaps**.
+Summary: **7 stub-code artifacts** (incl. 2 missing adapter classes and 4 empty theme templates), **18 partially complete modules**, **7 modules with no completion record**, **2 unauditable modules**, **1 project-level gap** (E-1 done 2026-10-11; E-2 live validation remains).
 
 ---
 
@@ -96,7 +96,7 @@ The tracker's own rule counts them as unfinished.
 
 | # | Gap | Evidence |
 |---|---|---|
-| E-1 | **No CI.** 17 test suites exist in the repo and nothing runs them — no `.github/` directory, no workflow files. | `ls .github` → absent |
+| E-1 | **Done 2026-10-11 — CI added.** `.github/workflows/ci.yml` runs all 17 PHP suites (8.3 full matrix + 7.4 legacy leg), the Node suites, a repo-wide `php -l` sweep and the Python static checks on every push/PR. See `docs/CI.md`. | workflow + `ci/` drivers + this line |
 | E-2 | **No live validation anywhere.** Every module's record ends with "no live WHMCS run" / "no browser run" / "no live provider call"; the sandbox cannot reach a WHMCS install, cPanel staging host, or any provider API. Owner-run checks are the standing blocker for 10+ modules. | tracker "Tests" sections |
 
 ---

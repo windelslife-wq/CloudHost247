@@ -45,3 +45,4 @@ $_SERVER = [];
 ipchk('no REMOTE_ADDR', CloudHost247_tools_get_client_ip(), '0.0.0.0');
 
 echo "\nPASS=$pass FAIL=$fail\n";
+exit($fail > 0 ? 1 : 0);

@@ -74,6 +74,10 @@ T::throws('source tag cannot attach to health data', ValidationException::class,
         ['uptime_seconds' => 1, 'health' => 'healthy'], null, 'server', ServerService::METRIC_SOURCE_AGENT_UPTIME); });
 
 section('Opt-in prune is bounded, strictly older and source-scoped');
+// Freeze the clock: the cutoff-edge fixture is exactly 30 days old, so a
+// second boundary crossed between fixture setup and prune() would push it
+// over the edge and flake the "rows remain" assertions (E-1 CI hardening).
+Clock::freeze();
 $old = Clock::at(-31 * 86400);
 $edge = Clock::at(-30 * 86400);
 for ($n = 0; $n < 205; $n++) {
@@ -118,4 +122,5 @@ $cronSource = file_get_contents(dirname(__DIR__) . '/cron/cloudhost247apps.php')
 T::contains('cron registers a separate uptime task', "'agent_uptime_pruned'", $cronSource);
 T::contains('cron uses system actor for uptime retention', 'new UptimeRetention($actor)', $cronSource);
 
+Clock::unfreeze();
 exit(T::summary());

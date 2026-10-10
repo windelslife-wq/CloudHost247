@@ -1,0 +1,143 @@
+# CloudHost247 CI — closes gap E-1 (docs/UNFINISHED_MODULES.md).
+#
+# Every offline suite in the repo runs here on native PHP + Node (no php-wasm:
+# the committed run.mjs wrappers remain for developers without a local PHP
+# binary, but CI uses the faster, more faithful native runtimes).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php-83:
+    name: PHP suites (8.3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, sqlite3, mbstring, curl, openssl, intl, bcmath, simplexml, zip
+          coverage: none
+
+      - name: Install passkey WebAuthn dependencies
+        run: composer install --working-dir modules/addons/cloudhost247passkey --no-interaction --no-progress --prefer-dist
+
+      - name: tools (CloudHost247_tools)
+        run: ci/run-php.sh tools
+      - name: apps (cloudhost247apps)
+        run: ci/run-php.sh apps
+      - name: services (cloudhost247services)
+        run: ci/run-php.sh services
+      - name: ai (cloudhost247ai)
+        run: ci/run-php.sh ai
+      - name: marketing (cloudhost247marketing)
+        run: ci/run-php.sh marketing
+      - name: broker (domainbroker)
+        run: ci/run-php.sh domainbroker
+      - name: digital (digitalproducts)
+        run: ci/run-php.sh digital
+      - name: cloudflare (cloudhost247cloudflare)
+        run: ci/run-php.sh cloudflare
+      - name: affiliate (customaffiliate)
+        run: ci/run-php.sh affiliate
+      - name: phones (phoneservices)
+        run: ci/run-php.sh phones
+      - name: smm (smmaddon)
+        run: ci/run-php.sh smm
+      - name: email (hostx_email)
+        run: ci/run-php.sh hostxemail
+      - name: hostxtools (hostx_tools)
+        run: ci/run-php.sh hostxtools
+      - name: toolscenter (tools_center outbound guard)
+        run: ci/run-php.sh toolscenter
+      - name: smtp (Smtphosting)
+        run: ci/run-php.sh smtphosting
+      - name: cart (cloudhost247_cart_recovery)
+        run: ci/run-php.sh cartrecovery
+      - name: passkey (cloudhost247passkey)
+        run: ci/run-php.sh passkey
+      - name: load/parse gates + root landings
+        run: ci/run-php.sh lint
+
+  php-74:
+    name: PHP suites (7.4, legacy-supported modules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 7.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          extensions: pdo_sqlite, sqlite3, mbstring, curl, openssl, zip
+          coverage: none
+
+      # Only the modules with documented PHP 7.4 support run here (each was
+      # executed green on 7.4.33 during its audit). Everything else is 8.x.
+      - name: legacy-supported suites
+        run: ci/run-php.sh legacy74
+
+  js:
+    name: JS suites (Node 22)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up PHP 8.3 (catalog dump only)
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Install jsdom (tools_center UI wiring)
+        run: npm install --prefix /tmp/tc-jsdom --no-save jsdom@24
+
+      - name: JS suites + bundle syntax gate
+        run: ci/run-js.sh
+        env:
+          NODE_PATH: /tmp/tc-jsdom/node_modules
+
+  php-lint:
+    name: PHP syntax sweep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: php -l over the repo (ionCube modules excluded)
+        run: ci/php-lint.sh
+
+  python-static:
+    name: Python static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: cart_recovery static invariants
+        run: python3 modules/addons/cloudhost247_cart_recovery/tests/test_static.py

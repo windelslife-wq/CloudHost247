@@ -13,7 +13,9 @@ use CloudHost247\Cloudflare\Repository\ServiceRepository;
 use CloudHost247\Cloudflare\Service\DnsInventoryService;
 
 require_once __DIR__ . '/bootstrap.php';
-require_once '/cloudflare/autoload.php';
+// Sibling addon root: absolute php-wasm mount first, native-checkout relative path fallback (CI runs native PHP).
+$ch247CfRoot = is_file('/cloudflare/autoload.php') ? '/cloudflare' : dirname(__DIR__) . '/../cloudhost247cloudflare';
+require_once $ch247CfRoot . '/autoload.php';
 
 class Phase13CloudflareDnsBridgeTransport implements TransportInterface
 {

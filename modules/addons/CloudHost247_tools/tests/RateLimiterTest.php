@@ -59,3 +59,4 @@ foreach(CloudHost247ToolsCatalog::tools() as $s=>$t){
 }
 ok('all 91 limits sane: '.implode(', ',array_slice($bad,0,5)), empty($bad));
 echo "\nPASS=$pass FAIL=$fail\n";
+exit($fail > 0 ? 1 : 0);
