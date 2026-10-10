@@ -111,8 +111,16 @@ class Landing
             }
         }
         if (!empty(self::$seo['jsonld']) && is_array(self::$seo['jsonld'])) {
+            // JSON_HEX_TAG/AMP/APOS/QUOT are required: without them a value
+            // containing "</script>" is emitted literally and breaks out of the
+            // tag. UNESCAPED_SLASHES/UNICODE are kept so URLs and non-ASCII
+            // text stay readable, which is all the SEO payload needs.
             $out[] = '<script type="application/ld+json">'
-                . json_encode(self::$seo['jsonld'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+                . json_encode(
+                    self::$seo['jsonld'],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                    | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+                )
                 . '</script>';
         }
         return implode("\n", $out);

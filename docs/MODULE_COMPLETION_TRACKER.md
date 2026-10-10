@@ -702,11 +702,75 @@ It is not.
 
 - **D-7** — whether to add the root-level rewrite and front controller that would make the `/tools/<slug>` Router surface live. Until then the Runner protects the legacy endpoint only, and `api/index.php` remains a placeholder.
 
+## Module 8 — cloudhost247services (Domain & Infrastructure Platform)
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/cloudhost247services/` — 87 lib files, ~21k lines. Domain platform (search, bulk search, transfers, client DNS CRUD, auto-renewal, registration, auctions, valuation, club, TLD catalog, WHOIS, service requests, Logo Studio, AI builder shell, unified inbox) plus the v1.2.0 infrastructure layer (OS catalog, provider image mappings, server provisioning, reinstall, server actions). |
+| Specification | `docs/DOMAIN_SERVICES.md`, `docs/INFRASTRUCTURE.md`, `docs/OPERATIONS.md`, `docs/MODULES.md`. |
+| Status | **Audited. No functional defect found; one latent hardening issue fixed (S-1).** This is the best-built module reviewed so far: it already carried 1,396 assertions across 29 suites, all green before any change. Suite now **1,428 assertions (30 files, 0 failures)**. No live WHMCS run. |
+
+### Why this module is different from the previous seven
+
+The prior audits each found the live path bypassing or mis-implementing its own
+guard. This module does not have that shape. Its request layer is sound, so the
+pass produced one hardening fix rather than a set of severity findings. A clean
+result is only meaningful if the checks were real, so the deliverable here is
+mostly **regression tests that pin what was verified by reading** — 32 new
+assertions covering the surfaces that had no dedicated suite.
+
+### Findings
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| S-1 | **JSON-LD was emitted without `JSON_HEX_TAG`.** `Landing::headMarkup()` encoded with `JSON_UNESCAPED_SLASHES \| JSON_UNESCAPED_UNICODE` only. Neither flag escapes `<` or `>`, so a payload containing `</script>` is emitted literally and closes the tag. **Not exploitable today**: `seo['jsonld']` is never populated anywhere in the module — it is dead configuration. It is a latent trap waiting for the first person to assign user-derived SEO data. | `lib/Http/Landing.php` `headMarkup()`; probe: `json_encode(['name'=>'</script><script>alert(1)</script>'], JSON_UNESCAPED_SLASHES\|JSON_UNESCAPED_UNICODE)` emits the tag literally | Low (latent), defence in depth | **Fixed.** Added `JSON_HEX_TAG\|JSON_HEX_AMP\|JSON_HEX_APOS\|JSON_HEX_QUOT`, keeping `UNESCAPED_SLASHES`/`UNICODE` so URLs and non-ASCII SEO text stay readable (verified: `héllo` survives). |
+
+### Checked and found sound
+
+- **Admin portal** (1,055 lines, previously untested): `render()` requires `Identity::adminId()` before anything else and returns *"Administrator session required"*; `checkToken()` runs **before** `handlePost()` for **any** POST, so every mutation is covered by one central call rather than per-case discipline; `checkToken()` prefers WHMCS's `check_token('WHMCS.admin.default')` and falls back to `Csrf::verifyRequest()`; hand-built error/success boxes escape through `chs_h()`; mutations write `Audit::admin()` rows.
+- **Customer portal** (1,140 lines): every handler that reads `Http::post()`/`$_POST` calls `Csrf::verifyRequest()`, and does so **before** the first state-changing service call (verified per-handler, 19 handlers). The 12 handlers without a verify call are provably read-only — GET-only listings, ownership-scoped lookups, or JSON config endpoints.
+- **IDOR**: every `*Detail` handler passes the session `$clientId` into the service call (`detail($id, $clientId)`, `placeBid($clientId, $id, …)`, `export($clientId, …)`, `requestAction($clientId, $id, $do)`), so one client cannot address another's auction, request, server or domain.
+- **Output escaping**: notification `subject`/`body` are escaped in both feeds (`dashboard.tpl`, `notifications.tpl`) — worth pinning because those strings embed user-supplied domain names, and the pre-existing `28_TemplateEscapeTest` only greps `flash`/`prefill`. Every mutation form carries `{$csrf_field}`. The unescaped `{$var}` occurrences are trusted literals (`$modulelink`, `$csrf_field`, `$WEB_ROOT`), integer ids, or loop variables over literal arrays and server-defined enums.
+- **Notification links** are not user-controlled: every `notify()` call passes either an internal `index.php?m=…&id=<int>` URL or `Platform::gateway()->invoiceUrl(<int>)`.
+- **`WhmcsGateway`** (460 lines, untested — the real money path) fails closed outside WHMCS (`function_exists('localAPI')` → throws) and builds invoice amounts from integer minor units via `Money::toDecimal((int) $item['amount_minor'], …)`.
+- **`Controller::guard()`** maps each domain exception to an honest screen and collapses `\Throwable` to a generic message with the detail logged server-side — the same discipline the other modules needed adding.
+
+### Remaining coverage gaps (recorded, not fixed)
+
+These files have **no test coverage at all** and were reviewed by reading only. They are the natural next pass if this module is revisited:
+
+`Http/AdminPortal.php` (1,055), `Http/Controller.php`, `Http/Landing.php` (now partly pinned by `30_PortalSecurityTest`), `Http/functions.php`, `Providers/Whmcs/WhmcsGateway.php` (460 — real invoice/order creation; tests use `FakeGateway`), `Providers/Infrastructure/HttpInfrastructureProvider.php` (357 — real provisioning; tests use `FakeInfrastructureProvider`), `Workflow/InfraWorker.php`, `Core/{Audit,Blueprint,I18n,Logger}.php`, `Admin/BlockonomicsFactory.php`, `Services/{DomainEventService,SitemapService}.php`.
+
+The two that matter most are **`WhmcsGateway`** and **`HttpInfrastructureProvider`**: both are the *real* implementations behind fakes, both touch money or external infrastructure, and neither has a single assertion.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `lib/Http/Landing.php` | `json_encode()` for the JSON-LD payload now sets `JSON_HEX_TAG\|JSON_HEX_AMP\|JSON_HEX_APOS\|JSON_HEX_QUOT` (S-1). Slashes and Unicode remain unescaped. |
+| `tests/30_PortalSecurityTest.php` | New — 32 assertions covering the four surfaces above (see below). |
+
+### What `30_PortalSecurityTest.php` pins (32 assertions)
+
+- **Customer portal CSRF**: every handler reading POST input calls `Csrf::verifyRequest()`, and does so before its first state-changing service call (a mutator-name regex, so it cannot pass off a comment); the GET-only handlers are enumerated; `pageLogoApi` and `pageOrderConfig` are asserted to be read-only JSON endpoints with no write call.
+- **IDOR**: every `*Detail` handler passes `$clientId` into a service call.
+- **Admin portal**: the staff gate precedes `handlePost`, `checkToken()` precedes `handlePost`, both token paths exist, and the hand-built HTML escapes through `chs_h()`.
+- **JSON-LD (S-1)**: all four `JSON_HEX_*` flags present **inside the `json_encode()` call** (not merely in the docblock), plus behavioural proof that `</script><script>alert(1)</script>` is escaped, that non-ASCII SEO text survives, and that a meta description containing `"quoted" & <tagged>` is HTML-escaped.
+- **Notification escaping** in both templates, and CSRF fields on both mutation forms.
+- **Gateway fail-closed** on `WhmcsGateway`.
+
+### Completion evidence
+
+- Executed: **1,428 assertions, 0 failures** (30 files) — up from 1,396/0 before any change.
+- Lint: `node tests/lint.mjs` → 105 files, 0 bad.
+- Mutation checks on S-1, each caught and each restored byte-identical (`diff -q` verified): removing all four `JSON_HEX_*` flags (5 failures) and removing only `JSON_HEX_TAG` (3 failures).
+- Not evidence: no live WHMCS run. The portal assertions are static/wiring checks plus the JSON-LD behavioural test — the admin portal and `WhmcsGateway` are verified by reading, not execution.
+
 ## Additional audit (after workstreams 1–5)
 
 Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools`, `cloudhost247services`, `hostx`, announcement bar, `tools_center`. Each item follows the same workflow and needs approval before the next one starts.
 
-**Progress: 7 of 11 audited.** Done: `hostx_tools` (decision D-2 = retire, deactivation pending), `customaffiliate`, `digitalproducts` (see Module 6 above), `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools` (see Module 7 above; decision D-7 pending on routing the `/tools/<slug>` surface). **Not started (4):** `cloudhost247services`, `hostx`, announcement bar, `tools_center` (second pass over the remaining `external-api/` tools).
+**Progress: 8 of 11 audited.** Done: `hostx_tools` (decision D-2 = retire, deactivation pending), `customaffiliate`, `digitalproducts` (see Module 6 above), `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools` (see Module 7 above; decision D-7 pending on routing the `/tools/<slug>` surface), `cloudhost247services` (see Module 8 above — cleanest module so far: no functional defect, one latent JSON-LD hardening fixed). **Not started (3):** `hostx`, announcement bar, `tools_center` (second pass over the remaining `external-api/` tools).
 
 > The earlier "1 of 11" line understated progress: `customaffiliate`, `hostx_email`,
 > `phoneservices` and `smmaddon` were audited on 2026-10-10 as additional audit
