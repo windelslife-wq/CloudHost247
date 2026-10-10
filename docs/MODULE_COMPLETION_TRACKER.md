@@ -295,7 +295,7 @@ Creation-time rules after A-6: a customer install needs a plan. Free plans (pric
 |---|---|
 | Module | `modules/addons/domainbroker` (WHMCS addon), public page `domain-broker.php`, template `templates/hostx/domainbroker-landing.tpl` |
 | Specification | `docs/DOMAIN_BROKER.md` (the module's completion report, §1–§10 and the stated limitations). Governing rules from the directive: do not represent a registrar transfer as completed without registrar evidence; never enable unverified financial actions; no fake completion. |
-| Status | **Implemented under decision D-1 option C; suite and lint pass. Awaiting your review (Approve step) and the owner items below.** Not yet accepted. |
+| Status | **Accepted (you said "continue") with owner items pending:** B-9 (`rdap_enabled` default), a live WHMCS run, and a real RDAP lookup. Implementation: D-1 option C. |
 
 ### Audit findings
 
@@ -371,7 +371,84 @@ Implementation details, as built:
 - Not yet evidence: live WHMCS run, real RDAP lookup, and the B-4 landing-page check in a persisted suite.
 
 
-## Module 5 — dnschecker specification reconciliation — Not started
+## Module 5 — dnschecker specification reconciliation
+
+| Field | Information |
+|---|---|
+| Module | The DNS checker is delivered inside `modules/addons/CloudHost247_tools` (`docs/MODULES.md`: the standalone `dnschecker` addon was not installed, because its functionality is contained in `CloudHost247_tools`). Changed: `includes/DnsPropagation.php` (new), `includes/tools/dns_tools.php`, `CloudHost247_tools.php` (admin setting), `assets/js/tools/dns-propagation-checker.js`, `assets/js/tools/dns-lookup.js`, `tests/DnsPropagationTest.php` (new). |
+| Specification | `docs/All DNS Checker/DNS Checker Build.txt` (the propagation checker, the primary spec here) and the DNS category of `docs/All DNS Checker/All DNS Checker Build.txt`. Two specs name different modules (`dnschecker`, `hostx_tools`); the reconciliation maps both onto the shipped module. |
+| Status | **Implemented; suite and PHP syntax check pass. Awaiting your review (Approve step).** The live UDP path is not verified in this sandbox (see Remaining issues). |
+
+### Spec reconciliation (`DNS Checker Build.txt`)
+
+| # | Requirement | Before | After |
+|---|---|---|---|
+| 1 | Domain input, sanitised and validated | Met | Met |
+| 2 | Check A, MX, NS, TXT, CNAME propagation | **Broken.** The form sent `record_type`; the handler read `type`, so every check ran as **A**. The form also offered SOA, SRV, CAA, PTR and ANY, which the handler rejected. | **Fixed.** Handler reads `record_type` (with `type` as fallback). Form offers the six supported types. |
+| 3 | Results from multiple global DNS servers | Met (10 resolvers) | Met (same 10 resolvers, queried in parallel) |
+| 4 | Show status: propagated / not propagated | **Missing.** Per-resolver rows only. | **Added.** `status`, `propagated`, `summary`. Four states: `propagated`, `partial`, `not_propagated`, `unknown`. Two states would misreport resolver failures as "not propagated", so `partial` and `unknown` are added. |
+| 5 | Use Capsule or safe PHP functions; no `shell_exec` | **Not met.** Ran `dig` via `shell_exec`. If `dig` is missing, the shell's "dig: not found" text counted as a resolved record (**false positive**). If `shell_exec` is disabled, every resolver showed "not resolved" (**false negative**). | **Fixed.** Pure-PHP DNS client over sockets (UDP, with TCP for truncated answers). No shell. Errors are reported as errors, never as records. |
+| 6 | Admin option to select record types | **Missing.** | **Added:** `propagation_record_types` (comma-separated text; WHMCS addon config has no multi-select). Unknown names are ignored; an empty list means all six. |
+| 7 | Clean responsive UI, AJAX, loading indicator | Present (`ToolPage`, unchanged) | Unchanged. **Not browser-checked in this sandbox.** |
+| 8 | Module loads without errors; no redeclaration | Met | Met. New functions are prefixed `CloudHost247_dns_`; `DnsPropagation.php` is loaded with `require_once`. |
+| 9 | Admin enable/disable | Met (existing tool status table) | Met |
+
+### Spec reconciliation (`All DNS Checker Build.txt`, category A: DNS tools)
+
+All 14 named DNS tools exist in the catalog. Four names differ only in wording: "DMARC Lookup & Validator" = `DMARC Checker`; "DNS Health Checker" = `Domain DNS Health Checker`; "DMARC Generator" = `DMARC Record Generator`; "DS Record Lookup" = `DS Lookup`.
+
+Also fixed in this module: **DNS Lookup** had the same `record_type` bug (every lookup ran as A), and its form offered `ANY`, which the handler rejects. Fixed both.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `includes/DnsPropagation.php` (new) | Query builder; name and RDATA decoder with pointer-loop guard; response parser (id check, RCODE, truncation, bounds checks); outcome mapping; classifier; UDP fan-out with one shared deadline; TCP retry for truncated answers. Compatible with PHP 7.4. |
+| `includes/tools/dns_tools.php` | Propagation handler rewritten (type allowlist, status fields, no shell). DNS Lookup reads `record_type`. |
+| `CloudHost247_tools.php` | Admin setting `propagation_record_types` (default `A,AAAA,MX,TXT,NS,CNAME`). |
+| `assets/js/tools/dns-propagation-checker.js` | Record-type options trimmed to the six supported types. |
+| `assets/js/tools/dns-lookup.js` | Removed `ANY` (handler rejects it). |
+| `tests/DnsPropagationTest.php` (new) | 95 checks. Real captured DNS responses from 8.8.8.8 (UDP and TCP), decoded by a separate Python implementation, plus malformed, looping, mismatched and error packets. |
+
+### Security review
+
+- **Shell removed** from the propagation path. The input reaches no command line.
+- **Input:** domain validated (`validate_domain`) and labels re-validated when building the packet (length, character set). Record type must be in the allowlist. Admin setting parsed through the same allowlist.
+- **Response trust:** 16-bit random query id is checked. The UDP socket is connected (`udp://`), so the kernel discards datagrams from other sources.
+- **Parser:** every offset is bounds-checked. Compression-pointer chains are capped at 20 hops. Malformed packets become errors, not warnings or crashes (tested).
+- **Resource bounds:** at most 10 UDP sockets, one shared 3-second deadline, TCP retry at most once per resolver with a 2-second timeout. Worst case is about 23 seconds if every resolver is silent and truncates.
+- **Output:** the UI renders records via `textContent` (unchanged), so resolver data is not HTML.
+- **Rate limit:** the tool stays in the "heavy" bucket (`RateLimiter::HEAVY_TOOLS`).
+
+### Tests
+
+| Command | Result |
+|---|---|
+| `node tests/run.mjs` (PHP suites, php-wasm 8.3) | **TOTAL PASS=464, FAIL=0** across 7 suites (baseline 369 across 6; new suite `DnsPropagationTest.php` adds 95). |
+| `node tests/core.test.mjs` | PASS=68, FAIL=0 (unchanged) |
+| `node tests/tools.test.mjs` | PASS=845, FAIL=0. Needs a catalog dump to `/tmp/tools.json`, generated from `includes/Catalog.php` via php-wasm (the repo has no step that writes it). |
+| `node tests/qr.test.mjs` | PASS=36, FAIL=0 (unchanged) |
+| PHP syntax check (`token_get_all` with `TOKEN_PARSE`) on the five changed or related PHP files | FILES=5, BAD=0. This module has no lint script. |
+| Mutation check: TC-flag mask changed in a temporary copy | **Caught:** 3 failures. File restored, verified byte-for-byte. |
+| Live TCP fallback (php-wasm, real network): `cloudflare.com` TXT via 8.8.8.8 over TCP | **29 records returned** in ~0.1 s. The truncated-answer path works end to end. |
+| Live UDP path (php-wasm, 3 resolvers) | **Not verified.** php-wasm UDP never delivers a reply here, so every resolver reports "no reply before the timeout" after 3.0 s. This confirms the timeout and error reporting, not a successful UDP query. |
+| Native UDP from this sandbox (Python) | Reachable to 8.8.8.8 only; 1.1.1.1 and 9.9.9.9 time out from here. Used only to capture fixtures. |
+
+### Remaining issues / blockers
+
+1. **Owner live check (blocking for acceptance):** on the production host, run the propagation checker for a known domain and confirm the 10 resolvers answer over UDP, and that a truncated TXT returns records. This sandbox cannot run PHP UDP sockets.
+2. **Caching decision (owner):** the All-DNS spec asks for DNS results cached 5–15 minutes. The propagation checker is not cached, because a cached answer would hide the change being checked. Other DNS tools use the existing cache. Say if you want the propagation results cached.
+3. **Worst-case latency:** the TCP fallback runs one resolver at a time. Parallelising it would cut the worst case from about 23 s to about 5 s. Not done yet.
+4. **CAA on older PHP (unverified):** `dns_query()` uses `constant('DNS_' . $type)`. If `DNS_CAA` is undefined on a host's PHP version, CAA lookups fail with an error (the runner catches it; no crash). Not checked on PHP 7.4.
+5. **Browser check:** the propagation form, its loading state and the new status line are not checked in a browser.
+6. **Spec items not covered by this module:** the rest of the All-DNS list (IP, developer, designer and other categories) belongs to the "Additional audit" workstream.
+
+### Completion evidence
+
+- Source: the files in *Changes made*.
+- Executed: PHP suites 464/0; `core` 68/0; `tools` 845/0; `qr` 36/0; PHP syntax check 5/0; mutation check caught; live TCP fallback returned records.
+- Not yet evidence: live UDP resolver queries, browser UI, PHP 7.4 runtime.
+
 
 ## Additional audit (after workstreams 1–5) — Not started
 

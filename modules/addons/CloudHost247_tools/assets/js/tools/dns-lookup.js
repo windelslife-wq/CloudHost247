@@ -13,7 +13,7 @@
         new CH.ToolPage({
             slug: "dns-lookup",
             exec: "server",
-            fields: [{"name": "domain", "label": "Domain name", "placeholder": "example.com", "hint": "Enter a domain without http:// or a path.", "width": "full", "required": true, "spellcheck": false}, {"name": "record_type", "label": "Record type", "type": "select", "value": "A", "options": [{"value": "A", "label": "A"}, {"value": "AAAA", "label": "AAAA"}, {"value": "CNAME", "label": "CNAME"}, {"value": "MX", "label": "MX"}, {"value": "NS", "label": "NS"}, {"value": "TXT", "label": "TXT"}, {"value": "SOA", "label": "SOA"}, {"value": "SRV", "label": "SRV"}, {"value": "CAA", "label": "CAA"}, {"value": "PTR", "label": "PTR"}, {"value": "ANY", "label": "ANY"}]}],
+            fields: [{"name": "domain", "label": "Domain name", "placeholder": "example.com", "hint": "Enter a domain without http:// or a path.", "width": "full", "required": true, "spellcheck": false}, {"name": "record_type", "label": "Record type", "type": "select", "value": "A", "options": [{"value": "A", "label": "A"}, {"value": "AAAA", "label": "AAAA"}, {"value": "CNAME", "label": "CNAME"}, {"value": "MX", "label": "MX"}, {"value": "NS", "label": "NS"}, {"value": "TXT", "label": "TXT"}, {"value": "SOA", "label": "SOA"}, {"value": "SRV", "label": "SRV"}, {"value": "CAA", "label": "CAA"}, {"value": "PTR", "label": "PTR"}]}],
             render: function (d) {
                 var wrap = CH.el('div');
                 if (!d || typeof d !== 'object') {
