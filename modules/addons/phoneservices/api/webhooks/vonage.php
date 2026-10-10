@@ -7,8 +7,27 @@
 use PhoneServices\Services\SmsService;
 use PhoneServices\Services\VoipService;
 use PhoneServices\Core\Logger;
+use PhoneServices\Core\Config;
+use PhoneServices\Security\WebhookVerifier;
+
+// Bootstrap WHMCS (select_query, full_query, ...). Fail closed if it is missing.
+$whmcsInit = dirname(__DIR__, 5) . '/init.php';
+if (!file_exists($whmcsInit)) {
+    http_response_code(500);
+    exit;
+}
+require_once $whmcsInit;
 
 require_once __DIR__ . '/../../autoload.php';
+
+// Reject requests without a valid Vonage signed-webhook JWT before any handler runs.
+$authorization = $_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+if (!WebhookVerifier::vonageJwt((string) Config::get('vonage_signature_secret', ''), $authorization)) {
+    Logger::warning('Vonage webhook rejected: invalid or missing signature');
+    http_response_code(403);
+    echo 'Forbidden';
+    exit;
+}
 
 $input = file_get_contents('php://input');
 $data = json_decode($input, true);

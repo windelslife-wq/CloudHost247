@@ -7,8 +7,35 @@
 use PhoneServices\Services\SmsService;
 use PhoneServices\Services\VoipService;
 use PhoneServices\Core\Logger;
+use PhoneServices\Core\Config;
+use PhoneServices\Security\WebhookVerifier;
+
+// Bootstrap WHMCS (select_query, full_query, ...). Fail closed if it is missing.
+$whmcsInit = dirname(__DIR__, 5) . '/init.php';
+if (!file_exists($whmcsInit)) {
+    http_response_code(500);
+    exit;
+}
+require_once $whmcsInit;
 
 require_once __DIR__ . '/../../autoload.php';
+
+// Reject unsigned or wrongly signed requests before any handler runs.
+$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+    ? 'https'
+    : 'http';
+$requestUrl = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? '') . ($_SERVER['REQUEST_URI'] ?? '');
+if (!WebhookVerifier::twilio(
+    (string) Config::get('twilio_auth_token', ''),
+    $requestUrl,
+    $_POST,
+    $_SERVER['HTTP_X_TWILIO_SIGNATURE'] ?? ''
+)) {
+    Logger::warning('Twilio webhook rejected: invalid signature', ['url' => $requestUrl]);
+    http_response_code(403);
+    echo 'Forbidden';
+    exit;
+}
 
 $type = $_GET['type'] ?? 'sms';
 

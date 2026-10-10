@@ -330,6 +330,23 @@ Tests: `tests/WebhookAuthTest.php`, 13 checks, all pass (`node tests/run.mjs`). 
 
 Behaviour changes: (1) Google and Microsoft webhooks stop working until their secrets are set (H-1). (2) Google licences are now actually assigned on create (H-2), which is a real change for existing Google deployments.
 
+## Additional audit item 3 — phoneservices (2026-10-10)
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| P-1 | **Provider webhooks accepted unsigned requests.** Anyone could post a fake inbound SMS into a customer's inbox (matched by number), or rewrite call status and cost. | `api/webhooks/twilio.php`, `api/webhooks/vonage.php` | High | **Fixed.** Twilio: `X-Twilio-Signature` (HMAC-SHA1, documented algorithm). Vonage: HS256 JWT in `Authorization: Bearer`, checked with the signature secret and `exp`. Both fail closed. |
+| P-2 | **REST API and webhooks never loaded WHMCS.** Neither file included `init.php`, so `select_query()` and the session would be undefined. | `api/rest.php`, `api/webhooks/*.php` | High (functional) | **Fixed:** WHMCS bootstrap added; fails closed (500) if `init.php` is missing. Not run live. |
+| P-3 | **Path-based auth bypass.** `AuthMiddleware` skipped auth for any path containing `webhooks`. No route used it, but any future route would be open. | `lib/API/Middleware/AuthMiddleware.php` | Medium (latent) | **Fixed:** bypass removed. |
+| P-4 | **JWT with `sub` = 0 acted as "no user".** The ownership checks skip when the user ID is 0, so such a token saw all tenants. | `AuthMiddleware::validateJwt()`; `NumbersController` and others | Medium | **Fixed:** only `sub` > 0 is accepted. |
+| P-5 | **The shared API key is all-tenant access.** `validateApiKey()` sets no user ID, so every ownership check is skipped. A key holder can list all customers' numbers (`getAllNumbers`) and suspend or release any number. This is undocumented, and the key cannot be set from the admin UI. | `lib/API/Middleware/AuthMiddleware.php`; `NumbersController`; `Config.php` | High | **Open, owner decision:** keep the key as an admin credential (document it and restrict it), or scope it to a user or role. Not changed. |
+| P-6 | **Stored secrets may be encrypted.** `Config::get()` reads `tbladdonmodules` raw, and nothing decrypts. If WHMCS encrypts password-type addon settings, the provider credentials and the new webhook secrets read as ciphertext. The verifier then fails closed, and the existing Twilio/Vonage calls fail too. | `lib/Core/Config.php`; `phoneservices.php` | High, to verify | **Open:** check on a live install. |
+| P-7 | **`mysql_fetch_assoc()` is used in `Database`, `Config`, `Logger` and three services.** This function was removed in PHP 7. It works only if the target WHMCS provides a compatibility shim. | `lib/Core/Database.php` and others | Medium, to verify | **Open:** check against the target WHMCS and PHP versions. |
+| P-8 | **Status callbacks and DLRs only log.** Twilio `type=status` and Vonage `type=dlr` never update the message record. | `api/webhooks/*.php` | Low (functional) | **Open.** |
+
+Tests: `tests/WebhookVerifierTest.php`, 20 checks, all pass (`node tests/run.mjs`). The Twilio known answer was computed independently (Node crypto) from Twilio's documented algorithm. The Vonage checks use real HS256 tokens. PHP parse check passes on all six changed PHP files.
+
+Not run: live Twilio or Vonage requests, the WHMCS bootstrap, and a before/after run on the old code. Twilio's docs recommend the SDK's `RequestValidator` over hand-written validation. The SDK is already declared in `composer.json`, so switching is an option if you prefer it.
+
 ## Module 4 — domainbroker (Domain Broker Service)
 
 | Field | Information |

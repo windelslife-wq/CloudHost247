@@ -20,11 +20,8 @@ class AuthMiddleware
         $headers = getallheaders();
         $authHeader = $headers['Authorization'] ?? '';
         
-        // Skip auth for public webhooks
-        $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-        if (strpos($path, 'webhooks') !== false) {
-            return;
-        }
+        // Webhooks are not routed through this REST middleware. They authenticate
+        // themselves (api/webhooks/*.php). No path-based bypass exists here.
         
         // Check WHMCS session auth for browser requests
         if (isset($_SESSION['uid']) && $_SESSION['uid'] > 0) {
@@ -66,7 +63,8 @@ class AuthMiddleware
             }
             
             $decoded = JWT::decode($token, new Key($secret, 'HS256'));
-            if (isset($decoded->sub)) {
+            // Only a positive user ID is accepted. sub=0 would otherwise act as "no user".
+            if (isset($decoded->sub) && (int) $decoded->sub > 0) {
                 $_SESSION['api_user_id'] = $decoded->sub;
                 return true;
             }
