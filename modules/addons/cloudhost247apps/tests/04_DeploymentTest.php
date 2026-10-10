@@ -316,6 +316,58 @@ $claimedPaid = $customerInstalls->create([
 T::is('a customer claiming "I paid" is ignored', true, $claimedPaid['awaiting_payment']);
 T::is('and their installation still waits', 'unpaid', $claimedPaid['installation']['payment_status']);
 
+/* ------------------------------------- payment rules at creation time -- */
+
+// A customer install with no plan has no price and no invoice, so nothing could
+// ever confirm payment. It must be refused, not provisioned for free.
+$noPlanInstalls = Db::count('installations', ['customer_id' => 42]);
+$noPlanInput = $wizardInput;
+unset($noPlanInput['plan_id']);
+$noPlanInput['idempotency_key'] = 'wizard-42-noplan';
+$noPlanInput['domain'] = 'noplan.example.test';
+T::throws('a customer install without a plan is refused', ValidationException::class,
+    function () use ($customerInstalls, $noPlanInput) {
+        $customerInstalls->create($noPlanInput);
+    });
+T::is('and no installation row is created for it', $noPlanInstalls,
+    Db::count('installations', ['customer_id' => 42]));
+
+// bypass_payment in a request body must not skip payment for a customer.
+$bypassOrder = Harness::$gateway->createOrder([
+    'clientid' => 42, 'pid' => (int) $paidPlan['whmcs_product_id'], 'billingcycle' => 'Monthly',
+]);
+$customerBypass = $customerInstalls->create([
+    'application_id' => (int) $app['id'],
+    'application_version_id' => (int) $version['id'],
+    'server_id' => (int) $node['id'],
+    'plan_id' => (int) $paidPlan['id'],
+    'domain' => 'bypass.example.test',
+    'whmcs_order_id' => $bypassOrder['order_id'],
+    'whmcs_invoice_id' => $bypassOrder['invoice_id'],
+    'bypass_payment' => true,
+    'idempotency_key' => 'wizard-42-bypass',
+]);
+T::is('a customer bypass_payment flag is ignored: the install still waits', true,
+    $customerBypass['awaiting_payment']);
+T::is('and it is still unpaid', 'unpaid', $customerBypass['installation']['payment_status']);
+T::is('and nothing is queued', null, $customerBypass['job']);
+
+// An administrator who manages plans may bypass payment deliberately.
+$adminActor = Actor::admin(1, Actor::ROLE_SUPER_ADMIN, 'Root Admin', ['ip' => '198.51.100.4']);
+$adminBypass = (new InstallationService($adminActor))->create([
+    'customer_id' => 42,
+    'application_id' => (int) $app['id'],
+    'application_version_id' => (int) $version['id'],
+    'server_id' => (int) $node['id'],
+    'plan_id' => (int) $paidPlan['id'],
+    'domain' => 'admin-bypass.example.test',
+    'bypass_payment' => true,
+    'idempotency_key' => 'admin-42-bypass',
+]);
+T::is('an administrator bypass is honoured and provisioning starts', false, $adminBypass['awaiting_payment']);
+T::is('and the payment status records that payment was not required', 'not_required',
+    $adminBypass['installation']['payment_status']);
+
 /* ------------------------------------------------------- the payment gate -- */
 
 section('The payment gate');

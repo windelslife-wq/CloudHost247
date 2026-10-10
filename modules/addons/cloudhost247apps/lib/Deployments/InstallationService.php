@@ -131,6 +131,14 @@ class InstallationService
         // the payment gate can check it without re-reading the catalog row.
         $requiresApprovalColumn = $needsApproval ? 1 : 0;
 
+        // Without a plan there is no price and no invoice, so nothing could ever
+        // confirm payment. Customers must choose a plan; administrators may still
+        // create plan-less installations for support work.
+        if (empty($input['plan_id']) && !$this->actor->can(Rbac::PLAN_MANAGE)) {
+            throw new ValidationException('Choose a hosting plan before installing.', [
+                'errors' => ['plan_id' => 'Required'], 'error_code' => 'PLAN_REQUIRED',
+            ]);
+        }
         $plan = $this->resolvePlan($input, $manifest);
         $requirements = $this->requirementsFrom($manifest, $plan);
         $hostingType = isset($input['hosting_type']) ? (string) $input['hosting_type'] : null;
@@ -156,11 +164,12 @@ class InstallationService
             || (!empty($values['whmcs_invoice_id']) && !empty($input['invoice_paid']))
             || (isset($input['payment_status']) && strtolower((string) $input['payment_status']) === 'paid')
         );
+        // Only an administrator who manages plans may skip payment for a priced plan.
+        // Any other value of bypass_payment is ignored, so a request body cannot
+        // release provisioning without an invoice.
+        $bypassPayment = $this->actor->can(Rbac::PLAN_MANAGE) && !empty($input['bypass_payment']);
         $requiresPayment = (int) (isset($plan['price_minor']) ? $plan['price_minor'] : 0) > 0
-            && empty($input['bypass_payment']);
-        if ($requiresPayment && !$paid && !$this->actor->can(Rbac::PLAN_MANAGE)) {
-            $paid = false;
-        }
+            && !$bypassPayment;
 
         $engine = $manifest->engine();
         $adapter = $engine === 'kubernetes' ? 'kubernetes' : ($engine === 'cpanel' ? 'cpanel' : 'docker');

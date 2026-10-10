@@ -203,63 +203,91 @@ Not changed: `external-api/tools/productivity.php` `qrScanner()` still returns i
 | Field | Information |
 |---|---|
 | Module | `modules/addons/cloudhost247apps` (WHMCS addon: control plane, catalog, billing gate, deployments, agent, cPanel/WHM adapter boundary, cron) |
-| Specification | `docs/HOSTING_CONTROL_PLANE_AUDIT.md` (post-audit status), `docs/APP_PLATFORM_PLAN.md` §5 (non-negotiable rules), `docs/PHASE2_…` to `docs/PHASE11_…`. Documented deliberate gaps: no production infrastructure adapter; customer VM provisioning disabled; Phase 3 is metadata-only; Phase 4–8 UAPI calls default off; cPanel staging runbook not executed. |
-| Status | **In audit (gate open).** Suite and lint pass. Security review covers the items below. Not yet verified: the full payment-gate path end to end, health and metrics provenance, and the live cPanel/WHM staging run. |
+| Specification | `docs/HOSTING_CONTROL_PLANE_AUDIT.md` (post-audit status), `docs/APP_PLATFORM_PLAN.md` §5 (rules 5 and 7) and §20 (payment rule), `docs/PHASE2_…` to `docs/PHASE11_…`. Documented deliberate gaps: no production infrastructure adapter; customer VM provisioning disabled; Phase 3 is metadata-only; Phase 4–8 UAPI calls default off; cPanel staging runbook not executed. |
+| Status | **Audit complete; code findings fixed and tested. Gate open pending two owner-held runs** (cPanel staging runbook, live WHMCS payment check) and your acceptance. Not closed by the agent. |
 
 ### Audit findings
 
 | ID | Finding | Evidence | Severity |
 |---|---|---|---|
-| A-1 | **CSRF token could be supplied in the URL.** `Csrf::matches()` fell back to `$_REQUEST`, which includes query parameters, and `InfrastructureApi` did the same. A token in a URL can leak through server logs and Referer headers. | `lib/Core/Csrf.php` line 62; `lib/Api/InfrastructureApi.php` line 74. A new test first failed on the old code (query-string token accepted). | Medium (hygiene). **Fixed:** both now read `$_POST` (form) or the `X-CSRF-Token` header (API). |
-| A-2 | **Dead branch in `AdapterFactory::forEngine`.** `if (isDryRun() && $fake === null)` can never be true, because `isDryRun()` requires an installed fake. | `lib/Adapters/AdapterFactory.php`, `isDryRun()` | Low. **Fixed:** branch removed. Behaviour unchanged; the second check is now `if (isDryRun())`. |
-| A-3 | **Legacy claim that `KubernetesAdapter` is implemented is false.** No such file exists and it has no git history. `ENGINES` maps `kubernetes` to the missing class, but the `class_exists` guard fails closed with `ADAPTER_NOT_INSTALLED`. | Repository search; `AdapterFactory::forEngine` | Info. **Covered by a new test** that pins the fail-closed behaviour. |
-| A-4 | The "not implemented" messages in `lib/ControlPanels/CpanelWhmClient.php` are intended fail-closed allowlist rejections, not fake features. | Source review | Info (verified) |
-| A-5 | `FakeAdapter` is reachable only through `setFake`, which only tests call. `Settings::override` is in-memory, so a database setting cannot enable the fake. | `grep setFake`; `Settings::override` | Info (verified) |
+| A-1 | **CSRF token could be supplied in the URL.** `Csrf::matches()` fell back to `$_REQUEST`, and `InfrastructureApi` did the same. | `lib/Core/Csrf.php`; `lib/Api/InfrastructureApi.php`. A new test failed on the old code. | Medium (hygiene). **Fixed:** read from `$_POST` (form) or the `X-CSRF-Token` header (API). |
+| A-2 | **Dead branch in `AdapterFactory::forEngine`.** `isDryRun() && $fake === null` can never be true. | `lib/Adapters/AdapterFactory.php` | Low. **Fixed:** removed; behaviour unchanged. |
+| A-3 | **Legacy claim that `KubernetesAdapter` is implemented is false.** The class does not exist and has no git history. The `class_exists` guard fails closed with `ADAPTER_NOT_INSTALLED`. | Repository search; `AdapterFactory::forEngine` | Info. **Covered by a new test.** |
+| A-4 | The "not implemented" messages in `lib/ControlPanels/CpanelWhmClient.php` are intended fail-closed allowlist rejections. | Source review | Info (verified) |
+| A-5 | `FakeAdapter` is reachable only through `setFake`, which only tests call. `Settings::override` is in-memory, so a database setting cannot enable it. | `grep setFake`; `Settings::override` | Info (verified) |
+| A-6 | **Provisioning could skip payment in two ways.** (a) An installation with no `plan_id` has no price, so `requiresPayment` was false and it provisioned with no invoice. This breaks §20 ("provisioning only from a server-verified invoice"). (b) `bypass_payment` in the input was honoured for any actor, including customers. No HTTP route currently exposes `InstallationService::create`, so this was latent, but it is one route away from being live. | `lib/Deployments/InstallationService.php` `create()` | **High (latent).** **Fixed:** customers must supply `plan_id` (`ValidationException`, `PLAN_REQUIRED`). `bypass_payment` is honoured only for `PLAN_MANAGE` actors. On the old code, four of the new checks fail, and so does one existing count check (\"provisions exactly one installation\"), which the old bypass broke. |
+| A-7 | `DockerAdapter::health()` and `dispatch()` reported `attempts = 1` when the agent did not report a count, asserting a value nobody measured. Nothing in production reads it. | `lib/Adapters/DockerAdapter.php` lines 458 and 581 | Low. **Fixed:** reports `null` when not reported. Covered only by the full suite, not a dedicated assertion. |
+| A-8 | `install_requires_paid_order` (default `1`) is read by no code. Payment is enforced by price, not by this setting. The setting is misleading. | `grep install_requires_paid_order`: only `Settings.php` and tests | Low. **Not removed** (backward compatibility). Owner decision: delete or wire. Wiring it to disable payment would be a financial bypass, so the agent did not do so. |
 
-### Security review (source-verified in this pass)
+### Payment gate: verified end to end (source plus tests)
 
-- **Webhook verification** (`lib/Billing/PaymentGate.php`): HMAC-SHA256 with `hash_equals`; a timestamp tolerance window (`WEBHOOK_TIMESTAMP_SKEW`); base64 and hex signatures; missing signatures rejected; replay detection through the event-ID ledger.
-- **API tokens** (`lib/Core/Identity.php`): stored as SHA-256 hashes (plaintext never stored); expiry, revocation, IP allowlist, and optional scopes enforced.
-- **Ownership:** customer-facing Deployment, Environment and Installation services compare `customer_id` with the authenticated actor. Customer installs take their client ID from the actor, not from input.
-- **CSRF:** enforced on state-changing admin POST handlers and on non-bearer API writes. Bearer-token callers are exempt by design, because browsers do not attach them automatically.
-- **Agent** (`lib/Servers/AgentAuthenticator.php`): HMAC over method, path, timestamp and nonce; a nonce of 16–128 characters; nonce uniqueness inside the window, so captured requests cannot be replayed.
-- **Cron** (`cron/cloudhost247apps.php`): refuses non-CLI execution. Runs as the SYSTEM actor, which may observe and maintain but not approve, publish or refund.
-- **Output and CORS:** no `Access-Control-Allow-Origin` wildcard in the module. No unescaped `echo` found in `lib/Http`, `lib/Api` or `api/` by grep. This is a grep-based check, not a full template review.
+Order of checks on a provider webhook (`lib/Billing/PaymentGate.php`):
+1. Signature: HMAC-SHA256 with `hash_equals`; timestamp window; missing or invalid signatures are rejected; a missing secret fails closed.
+2. Replay: event ID recorded in `payment_events`.
+3. Event type: only paid types confirm payment; failure types mark unpaid; other types are ignored.
+4. **WHMCS authority:** `confirmInvoicePaid()` calls `gateway->isInvoicePaid()`. If WHMCS says no, or the call throws, it fails closed with `PAYMENT_NOT_CONFIRMED`.
+5. Exactly once: an order-link compare-and-set on `provisioning_triggered`.
+6. Provisioning: `markPaid()` then `provision()`. Installations that need approval stop at approval.
+
+Creation-time rules after A-6: a customer install needs a plan. Free plans (price 0) provision without payment, by design. Priced plans wait for payment. A customer's `paid`, `payment_status` or `invoice_paid` input is ignored (tested). Administrators with `PLAN_MANAGE` may mark an install paid or bypass payment on purpose. That is an intentional, permissioned override, not a customer path.
+
+### Health and metrics: no fabricated values (verified)
+
+- Production health (`DockerAdapter::health`): any agent failure or unrecognised state returns `unknown`. Tested by suites 03 and 24.
+- Production metrics (`DockerAdapter::metrics`): failure returns `null`. Server metrics use `isset ? round : null` (`ServerService`), and `metrics_known` is false until a real sample arrives. Tested in 03.
+- A stale server reports `unknown`, not the last known state (tested in 03).
+- `FakeAdapter` returns a fixed `healthy` state and CPU 4.2. It is installed only by tests (A-5), so it cannot reach production.
+
+### Security review (source-verified)
+
+- **Webhook verification:** see the payment gate section above.
+- **API tokens** (`lib/Core/Identity.php`): stored as SHA-256 hashes. Expiry, revocation, IP allowlists and scopes enforced.
+- **Ownership:** customer-facing Deployment, Environment and Installation services compare `customer_id` with the authenticated actor. Customer installs take their client ID from the actor.
+- **CSRF:** enforced on state-changing admin POST handlers and non-bearer API writes. Bearer tokens are exempt by design.
+- **Agent** (`lib/Servers/AgentAuthenticator.php`): HMAC over method, path, timestamp and nonce; nonce of 16–128 characters; nonce uniqueness inside the window, so captured requests cannot be replayed (suite 22).
+- **Cron** (`cron/cloudhost247apps.php`): refuses non-CLI execution; runs as the SYSTEM actor, which may maintain but not approve, publish or refund.
+- **Output and CORS:** no `Access-Control-Allow-Origin` wildcard. No unescaped `echo` found in `lib/Http`, `lib/Api` or `api/` by grep. This is a grep check, not a full template review.
 
 ### Changes made
 
 | File | Change |
 |---|---|
-| `lib/Core/Csrf.php` | Token read from `$_POST` (not `$_REQUEST`) when no explicit token is passed. |
-| `lib/Api/InfrastructureApi.php` | Form-token fallback read from `$_POST`. |
+| `lib/Core/Csrf.php` | Token read from `$_POST` (not `$_REQUEST`) (A-1). |
+| `lib/Api/InfrastructureApi.php` | Form-token fallback read from `$_POST` (A-1). |
 | `lib/Adapters/AdapterFactory.php` | Dead branch removed (A-2). |
-| `tests/06_ModuleBoundaryTest.php` | 3 checks added: a query-string token is rejected; a POST-body token is accepted (A-1). |
-| `tests/26_AdapterFactoryTest.php` (new) | 8 checks: kubernetes and unknown engines fail closed; dry-run precedence; fake installed but dry-run off stays fail-closed (A-2, A-3). |
+| `lib/Deployments/InstallationService.php` | Customers without `plan_id` refused (`PLAN_REQUIRED`). `bypass_payment` honoured only for `PLAN_MANAGE`. No-op `paid = false` block removed (A-6). |
+| `lib/Adapters/DockerAdapter.php` | `attempts` is `null` when not reported (A-7). |
+| `tests/06_ModuleBoundaryTest.php` | 3 checks: query-string CSRF rejected, POST-body CSRF accepted (A-1). |
+| `tests/04_DeploymentTest.php` | 7 checks: plan-less customer refused and no row created; customer `bypass_payment` ignored; administrator bypass honoured (A-6). |
+| `tests/26_AdapterFactoryTest.php` (new) | 8 checks: kubernetes and unknown engines fail closed; dry-run precedence (A-2, A-3). |
 
 ### Tests
 
 | Command | Result |
 |---|---|
-| `node tests/run.mjs` (full suite, PHP 8.3 php-wasm), before this pass | 2198 PASS, 0 FAIL |
-| `node tests/run.mjs ModuleBoundary`, after the A-1 change (new checks first failed on the old code) | 49/49 |
+| Full suite, before this pass | 2208 PASS, 0 FAIL |
+| `node tests/run.mjs ModuleBoundary` (after A-1) | 49/49 |
 | `node tests/run.mjs AdapterFactory` | 8/8 |
-| `node tests/run.mjs` (full suite), after this pass | **2208 PASS, 0 FAIL, exit 0** (17.9 s) |
+| `node tests/run.mjs Deployment` (after A-6) | 214/214 |
+| Suite 04 against the **old** `InstallationService.php` | 5 FAIL, 209 PASS: four new checks plus one existing count check fail, confirming the defect; restored and re-run to 214/214 |
+| **Full suite, after this pass** | **2215 PASS, 0 FAIL, exit 0** (17.5 s) |
 | `node tests/lint.mjs` | FILES=110, BAD=0 |
-| Live WHMCS run, live payment webhook, live cPanel/WHM staging | **Not run.** No WHMCS install or upstream access in the sandbox. |
+| cPanel staging runbook | **Not run.** Needs a staging WHM and owner access. |
+| Live WHMCS invoice and webhook run | **Not run.** Needs a WHMCS install with a test gateway. |
 
-### Remaining issues / blockers
+### Remaining issues / blockers (owner-held)
 
-1. Finish Step 1 of the audit: verify that provisioning is blocked for unpaid orders end to end, and that health and metrics values are never fabricated (the grep check was inconclusive).
-2. The cPanel staging runbook has not been executed (documented gap; owner or staging access needed).
-3. Documented gaps stay as they are: no production infrastructure adapter, customer VM provisioning disabled, Phase 3 metadata-only, Phase 4–8 UAPI calls default off.
-4. Gate is not closed until items 1–2 are either verified or accepted by the user as documented gaps.
+1. **cPanel staging runbook** (`docs/PHASE4`–`PHASE8`, runbook not executed). Blocker: needs a staging WHM host and credentials from the owner. Next step: the owner runs it, or provides access.
+2. **Live WHMCS payment check.** Blocker: needs a WHMCS install with a test gateway. Next step: the owner runs it. Expected: a paid invoice provisions once; an unpaid or unverifiable one does not.
+3. **A-8, owner decision:** delete `install_requires_paid_order` or wire it. Do not wire it to disable payment.
+4. Documented gaps stay as designed: no production infrastructure adapter; customer VM provisioning disabled; Phase 3 metadata-only; Phase 4–8 UAPI calls default off.
+5. Behaviour change for review: customer installs without `plan_id` are now refused. Admins are unaffected.
 
 ### Completion evidence
 
 - Source: the files in *Changes made*.
-- Executed: full suite 2208/0 and lint 110/0 (see Tests). The new checks were run after the change.
-- Not yet evidence: live WHMCS, payment webhook and staging runs (see Remaining issues).
-
+- Executed: full suite 2215/0; lint 110/0; suite 04 confirmed to fail on the old code (5 failures, see Tests).
+- Not yet evidence: the cPanel staging runbook and the live WHMCS payment check (see Remaining issues 1 and 2).
 
 ## Module 4 — domainbroker — Not started
 
