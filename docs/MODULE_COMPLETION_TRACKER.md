@@ -377,7 +377,7 @@ Implementation details, as built:
 |---|---|
 | Module | The DNS checker is delivered inside `modules/addons/CloudHost247_tools` (`docs/MODULES.md`: the standalone `dnschecker` addon was not installed, because its functionality is contained in `CloudHost247_tools`). Changed: `includes/DnsPropagation.php` (new), `includes/tools/dns_tools.php`, `CloudHost247_tools.php` (admin setting), `assets/js/tools/dns-propagation-checker.js`, `assets/js/tools/dns-lookup.js`, `tests/DnsPropagationTest.php` (new). |
 | Specification | `docs/All DNS Checker/DNS Checker Build.txt` (the propagation checker, the primary spec here) and the DNS category of `docs/All DNS Checker/All DNS Checker Build.txt`. Two specs name different modules (`dnschecker`, `hostx_tools`); the reconciliation maps both onto the shipped module. |
-| Status | **Implemented; suite and PHP syntax check pass. Awaiting your review (Approve step).** The live UDP path is not verified in this sandbox (see Remaining issues). |
+| Status | **Accepted (you said "continue") with owner items pending:** the live UDP resolver check on a production host, the caching decision, and a browser check. Suite and PHP syntax check pass. |
 
 ### Spec reconciliation (`DNS Checker Build.txt`)
 
@@ -436,7 +436,7 @@ Also fixed in this module: **DNS Lookup** had the same `record_type` bug (every 
 
 ### Remaining issues / blockers
 
-1. **Owner live check (blocking for acceptance):** on the production host, run the propagation checker for a known domain and confirm the 10 resolvers answer over UDP, and that a truncated TXT returns records. This sandbox cannot run PHP UDP sockets.
+1. **Owner live check (accepted as an owner item):** on the production host, run the propagation checker for a known domain and confirm the 10 resolvers answer over UDP, and that a truncated TXT returns records. This sandbox cannot run PHP UDP sockets.
 2. **Caching decision (owner):** the All-DNS spec asks for DNS results cached 5–15 minutes. The propagation checker is not cached, because a cached answer would hide the change being checked. Other DNS tools use the existing cache. Say if you want the propagation results cached.
 3. **Worst-case latency:** the TCP fallback runs one resolver at a time. Parallelising it would cut the worst case from about 23 s to about 5 s. Not done yet.
 4. **CAA on older PHP (unverified):** `dns_query()` uses `constant('DNS_' . $type)`. If `DNS_CAA` is undefined on a host's PHP version, CAA lookups fail with an error (the runner catches it; no crash). Not checked on PHP 7.4.
@@ -450,7 +450,61 @@ Also fixed in this module: **DNS Lookup** had the same `record_type` bug (every 
 - Not yet evidence: live UDP resolver queries, browser UI, PHP 7.4 runtime.
 
 
-## Additional audit (after workstreams 1–5) — Not started
+## Additional audit (after workstreams 1–5)
 
-- `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phoneservices`, `smmaddon`
-- `CloudHost247_tools`, `cloudhost247services`, `hostx`, announcement bar, `tools_center` against their specifications
+Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools`, `cloudhost247services`, `hostx`, announcement bar, `tools_center`. Each item follows the same workflow and needs approval before the next one starts.
+
+**Progress:** 1 of 11 audited (`hostx_tools`, awaiting a decision). Items 2–11 not started.
+
+### 1. hostx_tools — audit complete, decision needed
+
+| Field | Information |
+|---|---|
+| Module | `modules/addons/hostx_tools` (21 files, about 3,800 lines PHP, **no tests directory**). |
+| Specification | `docs/All DNS Checker/All DNS Checker Build.txt` names this module. It asks for about 100 tools across nine categories (DNS, IP, developer, designer, webmaster, network, security, productivity, gaming). |
+| Status | **Audit complete. Blocked on decision D-2 (scope and duplication).** Nothing changed in this item. |
+
+**Scope.** The module's own README lists four tools: domain WHOIS, IP lookup, DNS lookup, domain availability. The spec asks for about 100. That is a scope gap of about 96 tools.
+
+**Duplication.** All four tools are already in `CloudHost247_tools`, which has 91 tools and is the recommended tools addon in `docs/MODULES.md`: `domain-whois`, `ip-whois`, `dns-lookup`, `domain-search`. Running both gives two WHMCS addons doing the same job, which the directive rules out.
+
+### Findings
+
+| ID | Finding | Evidence | Severity |
+|---|---|---|---|
+| H-1 | **Rate limit can be bypassed by spoofing the client IP.** `SecurityManager::getClientIp()` takes the first address from `HTTP_CF_CONNECTING_IP`, `HTTP_X_FORWARDED_FOR` and similar headers, before `REMOTE_ADDR`. Each request can pick a new "client", so the per-IP limit (default 30/min) does not apply. The limit protects paid API quotas (IPinfo, WhatIsMyIP). | `includes/SecurityManager.php` lines 273–302. **Reproduced in the PHP runtime:** three requests with three spoofed `X-Forwarded-For` values gave three rate-limit keys; the real address was `203.0.113.50`. | Medium |
+| H-2 | Scope: four tools against about 100 in the spec (see above). | `README.md`; `docs/All DNS Checker/All DNS Checker Build.txt` | High (scope), decision D-2 |
+| H-3 | Duplicates `CloudHost247_tools` (four of its tools). | Catalog slugs `domain-whois`, `ip-whois`, `dns-lookup`, `domain-search` | Policy, decision D-2 |
+| H-4 | No automated tests. Nothing in this module can be verified by a suite. | No `tests/` directory | Medium |
+
+**Checked and found sound:**
+- **CSRF:** a random 32-byte token per session, compared with `hash_equals`. POST only.
+- **No shell execution.** The only `exec` hits are `curl_exec`.
+- **Output escaping:** the client script escapes server data (`escapeHtml`) in the WHOIS, DNS and availability tables. The DNS form posts `type`, which matches the handler, so the `record_type` bug from Module 5 does not occur here.
+- **Server-side rendering:** the templates are static shells. The client script fills them.
+- **WHOIS:** the server for each TLD comes from a fixed map, so user input cannot choose a host.
+- **File cache:** keys are MD5 hashes, so no user input reaches a file name.
+- **Input:** domains and IPs are validated before use.
+
+### Cross-module note (for the `CloudHost247_tools` item)
+
+`CloudHost247_tools` has the same IP spoofing problem in its **legacy** AJAX path (`includes/classes.php`, `CloudHost247ToolsClient::handleAjax()`, reached via `index.php?m=CloudHost247_tools&action=ajax`). It is keyed on `CloudHost247_tools_get_client_ip()`, which trusts `X-Forwarded-For`. Reproduced: three spoofed headers gave three keys. The legacy path also calls tool handlers directly with raw `$_POST`, so it skips the runner's request-size cap, heavy-tier limit and global per-IP ceiling. The current front end posts to `/tools/api/<slug>`, which goes through the runner and is safe. The legacy path is reachable but not used by the front end. The safe function `CloudHost247ToolsSecurity::clientIp()` already exists and only trusts forwarded headers behind a configured trusted proxy (`CLOUDHOST247_TRUSTED_PROXIES`).
+
+### Decision D-2 (needed from you)
+
+- **A. Retire `hostx_tools`.** Deactivate it and document it as superseded by `CloudHost247_tools`. No new code. The H-1 issue then needs no fix here. Recommended by the duplication rule. Reversible, nothing is deleted.
+- **B. Finish `hostx_tools` to the spec.** About 96 more tools, duplicating `CloudHost247_tools`. Large, and the duplication stays.
+- **C. Keep it as it is.** Fix H-1 and add tests. The duplication stays and is documented.
+
+**H-1 fix design (needed for option B or C):** trust forwarded headers only when `REMOTE_ADDR` is in a configured trusted-proxy list, the same rule as `CloudHost247ToolsSecurity::clientIp()`. Default: `REMOTE_ADDR` only. Behind Cloudflare, `REMOTE_ADDR` is a Cloudflare edge address, so without the Cloudflare ranges configured every visitor would share one rate-limit bucket. That is a deployment decision.
+
+### Remaining issues / blockers
+
+1. **D-2 decision** (A, B or C), and the trusted-proxy list if B or C.
+2. The `CloudHost247_tools` legacy AJAX path (cross-module note above), to be fixed in that item.
+
+### Completion evidence
+
+- Source read: `hostx_tools.php`, `includes/*.php`, `api/*.php` (search for execution, escaping and CSRF), `assets/js/hostx-tools.js`, templates.
+- Executed: the IP-spoofing reproduction for both modules (PHP 8.3 via php-wasm). No change made in this item.
+- Not run: no suite exists for this module.
