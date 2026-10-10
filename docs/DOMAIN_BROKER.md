@@ -229,7 +229,7 @@ sufficient for broker-scoped data — ownership is asserted separately.
 - **Support tickets** — escalations and disputes can raise a ticket through `localAPI`.
 - **Cron** — `cron/domainbroker.php` runs seven tasks (prune rate limits, prune idempotency keys, expire requests, expire offers, expire pending payments, expire stalled transfers, retry failed notifications), each isolated so one failure cannot stop the rest.
 - **Escrow** — `EscrowManager` behind `EscrowProviderInterface`, with internal, HTTP and manual providers, swappable by configuration; webhooks are signature-verified.
-- **Domain intelligence** — availability, registration status, TLD, registrar, creation/expiry, transfer status and DNS via a pluggable resolver; RDAP/WHOIS is off by default (`rdap_enabled=0`) and only surfaces what the registry permits.
+- **Domain intelligence** — availability, registration status, TLD, registrar, creation/expiry, transfer status and DNS via a pluggable resolver; RDAP is on by default in code (`Settings.php` seeds `rdap_enabled='1'`; no migration changes it), so fresh installs perform live RDAP lookups. The test bootstrap sets it to `'0'`. Whether the default should be off is an open owner decision (tracker item B-9). RDAP only surfaces what the registry permits.
 
 ---
 
@@ -281,9 +281,11 @@ Both success and failure paths are asserted throughout.
    states). `HttpEscrowProvider` is the integration point for a third-party
    escrow service; its endpoint and credentials are configuration, not code.
 5. **Domain intelligence resolver.** `DomainIntelService` ships with a DNS/
-   registry-data resolver and RDAP disabled. Enable `rdap_enabled` only where
-   the registry permits it, and point the resolver at your registrar module if
-   you want authoritative registrar/expiry data.
+   registry-data resolver and RDAP enabled (`rdap_enabled='1'` in `Settings.php`;
+   see tracker item B-9). Disable `rdap_enabled` where the registry does not
+   permit lookups. With RDAP off, transfer completion falls back to the
+   admin-only attestation path, which needs a registrar reference. Point the
+   resolver at your registrar module if you want authoritative registrar/expiry data.
 6. **Main navigation.** The hostx mega menu is stored in the theme's database
    settings, not in template files, so the landing page link was added to both
    footer blocks and to the client-area navbar/sidebar via hooks. Add

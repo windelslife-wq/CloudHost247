@@ -293,63 +293,82 @@ Creation-time rules after A-6: a customer install needs a plan. Free plans (pric
 
 | Field | Information |
 |---|---|
-| Module | `modules/addons/domainbroker` (WHMCS addon, 114 files), public page `domain-broker.php`, template `templates/hostx/domainbroker-landing.tpl` |
+| Module | `modules/addons/domainbroker` (WHMCS addon), public page `domain-broker.php`, template `templates/hostx/domainbroker-landing.tpl` |
 | Specification | `docs/DOMAIN_BROKER.md` (the module's completion report, §1–§10 and the stated limitations). Governing rules from the directive: do not represent a registrar transfer as completed without registrar evidence; never enable unverified financial actions; no fake completion. |
-| Status | **In audit, blocked on a policy decision (D-1).** Suite and lint pass. One reflected-XSS finding fixed. The transfer-completion and fund-release gate needs your decision before the module can be accepted. |
+| Status | **Implemented under decision D-1 option C; suite and lint pass. Awaiting your review (Approve step) and the owner items below.** Not yet accepted. |
 
 ### Audit findings
 
-| ID | Finding | Evidence | Severity |
-|---|---|---|---|
-| B-1 | **Transfer completion rests on a broker's free-text note.** `TransferService::markCompleted()` sets the transfer to COMPLETED when `evidence` (or `note`) is a non-empty string. Nothing checks the registry or the WHMCS domain record. The customer then sees the transfer as completed. | `lib/Services/TransferService.php` `markCompleted()`; test `05_TransferTest.php` line ~192 | **High, policy (D-1).** See decision below. |
-| B-2 | **Fund release depends on the same attested status.** `PaymentService::releaseFunds()` requires transfer COMPLETED and all required verification items approved. The verification items are approved by an administrator, but the transfer status itself is the broker's note (B-1). Money leaves escrow on that basis. | `lib/Services/PaymentService.php` `releaseFunds()` | **High, policy (D-1).** |
-| B-3 | **Registrar verification exists but is not tied to the transfer.** A required "Registrar verification" checklist item must be approved by an administrator before acquisition or release. It is a human approval, not a registry read. `DomainIntelService` can read the sponsoring registrar via RDAP, but only when `rdap_enabled` is on (default off), and no completion path calls it. | `lib/Services/VerificationService.php` `ALWAYS_REQUIRED`; `lib/Services/DomainIntelService.php` `applyRdap()` | Info, part of D-1 |
-| B-4 | **Reflected XSS on the public landing page.** `?domain=` was echoed into the form's `value` attribute without escaping. The template did not use `|escape`, unlike the 22 other templates that do. A crafted link could run script in a visitor's browser. | `domain-broker.php` line 43; `templates/hostx/domainbroker-landing.tpl` line 40 | Medium. **Fixed:** the page accepts only a hostname-shaped string (labels of 1–63 characters, 2+ letter TLD); the template escapes the value. |
-| B-5 | The internal escrow provider is honest: it records the operator's own release and makes no external call (documented). The status "released" means the operator has recorded a release; the disbursement happens offline. | `lib/Escrow/InternalEscrowProvider.php` header | Info (verified). Wording check for the UI. |
-| B-6 | Escrow webhook is sound: HMAC over timestamp and body, tolerance window, `hash_equals`, replay deduplication by provider and event ID, and only verified payloads are parsed. | `lib/Escrow/HttpEscrowProvider.php`; `lib/Services/PaymentService.php` webhook handler | Info (verified) |
-| B-7 | Cron entry point refuses non-CLI execution. Payment refund and release are idempotent and permissioned (`PAYMENT_REFUND`, `PAYMENT_RELEASE`). Customer surfaces are scoped to the signed-in client. Covered by suites 06 and 09. | `cron/domainbroker.php`; suites 06, 09 | Info (verified) |
-| B-8 | `lint.php` reads `$argv` on the web-style runtime and emits a warning. Cosmetic; the lint still passes. | Module lint output | Low |
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| B-1 | **Transfer completion rests on a broker's free-text note.** `TransferService::markCompleted()` set the transfer to COMPLETED when `evidence` (or `note`) was a non-empty string. Nothing checked the registry or the WHMCS domain record. | `lib/Services/TransferService.php` `markCompleted()`; `tests/05_TransferTest.php`; `tests/10_TransferCompletionTest.php` | High, policy (D-1) | **Fixed (source and tests).** With RDAP on, completion needs the registry to show the gaining registrar as sponsor. With RDAP off, only `admin_finance` or `admin_super` may attest, with a registrar reference. A broker is refused on the attested path. |
+| B-2 | **Fund release depended on the same attested status.** `PaymentService::releaseFunds()` checked only status and verification items. | `lib/Services/PaymentService.php` `releaseFunds()` | High, policy (D-1) | **Fixed (source and tests).** Release is refused with `COMPLETION_BASIS_MISSING` when `completion_basis` is empty. Release still needs `PAYMENT_RELEASE` (finance). |
+| B-3 | **Registrar verification was a human checkbox, not tied to the transfer.** | `lib/Services/VerificationService.php` `ALWAYS_REQUIRED`; `lib/Services/DomainIntelService.php` | Info, part of D-1 | **Addressed.** The required checklist item still exists. Completion now also needs the registry check (RDAP on) or a finance attestation with reference (RDAP off). |
+| B-4 | **Reflected XSS on the public landing page.** `?domain=` was echoed into the form's `value` attribute without escaping. | `domain-broker.php`; `templates/hostx/domainbroker-landing.tpl` | Medium | **Fixed** (commit `e2f2922`). Only hostname-shaped input is accepted, and the template escapes the value. Verified by ad hoc checks only (see Tests). |
+| B-5 | The internal escrow provider records the operator's own release and makes no external call. | `lib/Escrow/InternalEscrowProvider.php` | Info | Open: UI should say "release recorded", not "paid to seller". |
+| B-6 | Escrow webhook: HMAC over timestamp and body, tolerance window, `hash_equals`, replay deduplication. | `lib/Escrow/HttpEscrowProvider.php`; `lib/Services/PaymentService.php` | Info (verified) | No change needed. |
+| B-7 | Cron entry point refuses non-CLI execution. Refund and release are idempotent and permissioned. | `cron/domainbroker.php`; suites 06, 09 | Info (verified) | No change needed. |
+| B-8 | `lint.php` reads `$argv` on the web-style runtime and emits a warning. | Lint output | Low | Open, cosmetic. Lint still passes. |
+| B-9 | **`rdap_enabled` default conflicts with the spec.** `Settings.php` seeds `rdap_enabled='1'`, and migrations seed nothing, so fresh installs make live RDAP lookups. The spec said "off by default", and the test bootstrap sets `'0'`. | `lib/Core/Settings.php` line 63; `tests/bootstrap.php` line 182; `docs/DOMAIN_BROKER.md` (corrected in this change) | Medium, owner decision | **Open.** The code default was not changed. Owner to choose: keep on (live lookups by default) or set to off (completion then uses the attestation path). |
 
-### Decision D-1 (needed from you)
+### Decision D-1 (decided by you: option C)
 
-Your rule is: do not show a registrar transfer as completed without registrar evidence. Today, completion takes a note. Choose how strict it should be:
+RDAP sponsoring-registrar match when `rdap_enabled` is on. Otherwise an admin-only attestation fallback (finance-level, with registrar reference). Each completion records its basis. Refuse on RDAP mismatch. Fail closed when RDAP is enabled but inconclusive.
 
-- **Option A: keep the attestation model.** A broker records the registrar's confirmation as a note. Add a required structured field for the registrar's reference, and restrict completion and release to `admin_finance` or `admin_super`. Documents the trust boundary. No registry call.
-- **Option B: automated registry check.** Before COMPLETED, read the sponsoring registrar via RDAP and require it to match the gaining registrar. Refuse otherwise. This needs `rdap_enabled` and a reachable RDAP endpoint, so completion is blocked until the owner enables it. Recommended for money release.
-- **Option C: both.** B when RDAP is enabled. A, with admin-only rights, as the fallback. Every completion records which basis was used.
-
-I have not changed this gate. Each option changes behaviour, and B and C need an owner setting.
+Implementation details, as built:
+- `DomainIntelService::registryRegistrar()` returns `checked=false` when RDAP is disabled, the domain is invalid, or the registry is unreachable. A 404 returns `checked=true, registered=false`.
+- Match rule: IANA IDs decide when both are known. Otherwise normalised names must be equal. Unknown on either side is a mismatch (fail closed).
+- Unreachable or inconclusive registry with RDAP on: `ConflictException` (`REGISTRY_UNCONFIRMED`). Nothing is completed.
+- Registry mismatch: `ConflictException` (`REGISTRAR_MISMATCH`). Nothing is completed.
+- With RDAP on, a broker may complete when the registry matches. Funds are still released only by finance (`PAYMENT_RELEASE`). The broker's role is the milestone, not the money.
+- Attestation fallback (RDAP off): `PAYMENT_RELEASE` plus a non-empty `registrar_reference`. Basis recorded as `attested_finance`.
+- Migration `0007_transfer_completion_basis.php` adds `completion_basis`, `registrar_reference`, `registry_check` to `transfers`.
 
 ### Changes made
 
 | File | Change |
 |---|---|
-| `domain-broker.php` | `?domain=` accepted only as a hostname-shaped string; anything else is dropped (B-4). |
-| `templates/hostx/domainbroker-landing.tpl` | The prefill value is escaped with `|escape:'html'` (B-4). |
-
-No regression test was added for B-4. The root landing page is outside the module directory, which the PHP runner mounts, so the module suite cannot read it. Verified instead by: (1) checking the regex against 11 inputs with Python `re` (equivalent for this pattern): 3 hostnames kept, 8 hostile or malformed inputs dropped, including a 70-character label; (2) grep confirming the single-backslash regex in the file and the `|escape` in the template. A PHP-runtime run of the regex was attempted and hung in the sandbox, so it was not completed.
+| `lib/Services/TransferService.php` | `markCompleted()` basis branching (registry or attestation); `BASIS_REGISTRY`/`BASIS_ATTESTED`; `registrarMatches()`; `normaliseRegistrarName()`. Top permission accepts `MILESTONE_MARK` or `PAYMENT_RELEASE`. |
+| `lib/Services/DomainIntelService.php` | `parseRegistrar()` helper extracted; `registryRegistrar($domain)` added. `applyRdap()` uses the helper. |
+| `lib/Services/PaymentService.php` | `releaseFunds()` refuses on empty `completion_basis`. |
+| `install/migrations/0007_transfer_completion_basis.php` | New columns on `transfers`. |
+| `tests/05_TransferTest.php` | Broker-only completion replaced: broker refused on attested path; finance without reference refused; finance with reference completes as `attested_finance`. |
+| `tests/08_ApiTest.php` | Broker completion is refused with 403. Completion goes through the admin path with a registrar reference. |
+| `tests/10_TransferCompletionTest.php` | New (16 checks): RDAP match; name mismatch; unreachable registry; unregistered domain; unnamed gaining registrar (fail closed); broker refused on attested path; finance attestation; release refused without basis. |
+| `domain-broker.php`, `templates/hostx/domainbroker-landing.tpl` | B-4 fix (commit `e2f2922`). |
+| `docs/DOMAIN_BROKER.md` | Corrected RDAP default statement to match code; B-9 referenced. |
 
 ### Tests
 
 | Command | Result |
 |---|---|
-| `node tests/run.mjs` (module suite, PHP 8.3 php-wasm, run with a symlinked `node_modules`, removed afterwards) | **1009 PASS, 0 FAIL, exit 0** across 9 suites (matches the module's report) |
-| `node tests/lint.mjs` | FILES=85, BAD=0 |
-| Landing page prefill (B-4) | Ad hoc checks only (see above). Not in a persisted suite. |
-| Live WHMCS run, escrow provider, RDAP lookup | **Not run.** No WHMCS install, escrow endpoint, or RDAP access from the sandbox. |
+| `node tests/run.mjs` (module suite, run with a symlinked `node_modules`, removed afterwards) | **1031 PASS, 0 FAIL, exit 0** across 10 suites. Baseline before this change: 1009 / 0 across 9 suites. |
+| `node tests/lint.mjs` | **FILES=86, BAD=0** (one cosmetic `$argv` warning, B-8). |
+| Suite 10 and 05 against the HEAD versions of the three service files | Both fail. Suite 05 aborts at the broker-attestation check (the B-1 bug). Suite 10 fatals on the missing `BASIS_REGISTRY` constant. This shows the tests detect the old behaviour. It is not a per-behaviour comparison. |
+| Landing page prefill (B-4) | Ad hoc only: Python `re` check on 11 inputs (3 hostnames kept; 8 hostile or malformed dropped), and grep confirming the regex and `|escape`. The root page sits outside the PHP runner's mount, so it is not in a persisted suite. A PHP-runtime run of the regex hung in the sandbox and was not completed. |
+| Live WHMCS run, escrow provider, RDAP endpoint | **Not run.** No WHMCS install, escrow endpoint, or RDAP access from the sandbox. |
 
-### Remaining issues / blockers
+### Security review
 
-1. **D-1 (blocking):** choose option A, B or C. The gate cannot close until this is decided.
-2. Live checks needed from the owner: a WHMCS install with a test gateway; and, if option B or C, `rdap_enabled` on with an RDAP endpoint.
-3. B-5 wording: the UI should say "release recorded" for the internal provider, not "paid to seller".
-4. B-8: cosmetic lint warning.
+- Completion cannot be claimed from free text alone (B-1). Broker completion requires the registry to confirm the gaining registrar when RDAP is on.
+- Release cannot happen without a recorded completion basis (B-2).
+- Registry failure fails closed (no completion).
+- B-4 XSS fixed; landing page input is validated and escaped.
+- Webhook, cron and idempotency checks (B-6, B-7) reviewed and unchanged.
+
+### Remaining issues / blockers (owner-held)
+
+1. **B-9 (owner decision):** keep `rdap_enabled` on by default, or set it off. The spec now reflects the code, not the old claim.
+2. **Live checks:** a WHMCS install with a test gateway; and an RDAP endpoint check (`https://rdap.org` by default) from a machine with internet access.
+3. **B-5:** UI wording for the internal escrow provider.
+4. **B-8:** cosmetic lint warning.
+5. The registry lookup depends on a single RDAP endpoint (`rdap.org`); no failover is configured.
 
 ### Completion evidence
 
 - Source: the files in *Changes made*.
-- Executed: module suite 1009/0; lint 85/0.
-- Not yet evidence: B-4 is covered by ad hoc checks only; the live and RDAP checks are not run.
+- Executed: module suite 1031 PASS / 0 FAIL (10 suites); lint 86 files, 0 bad.
+- Not yet evidence: live WHMCS run, real RDAP lookup, and the B-4 landing-page check in a persisted suite.
 
 
 ## Module 5 — dnschecker specification reconciliation — Not started

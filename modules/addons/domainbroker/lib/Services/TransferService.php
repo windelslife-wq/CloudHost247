@@ -39,6 +39,12 @@ use DomainBroker\Workflow\TransferStatus;
 
 class TransferService
 {
+    /** Completion proven by the registry (RDAP sponsoring registrar matched). */
+    const BASIS_REGISTRY = 'registry_rdap';
+
+    /** Completion attested by a finance administrator (registry checking off). */
+    const BASIS_ATTESTED = 'attested_finance';
+
     /** @var RequestService */
     protected $requests;
 
@@ -422,7 +428,11 @@ class TransferService
      */
     public function markCompleted(Actor $actor, $transferId, array $options = [])
     {
-        Rbac::assert($actor, Rbac::MILESTONE_MARK);
+        // Brokers (milestones) and finance (release rights) may confirm completion.
+        // Which of them is enough depends on the evidence basis, checked below.
+        if (!$actor->can(Rbac::MILESTONE_MARK) && !$actor->can(Rbac::PAYMENT_RELEASE)) {
+            Rbac::assert($actor, Rbac::MILESTONE_MARK);
+        }
         $transfer = $this->findOrFail($transferId);
         $request = $this->requests->findForActor($actor, $transfer['request_id']);
         $this->assertBrokerOwnsRequest($actor, $request);
@@ -445,12 +455,49 @@ class TransferService
             );
         }
 
+        // How completion is proven. With the registry check on, the registry (RDAP)
+        // must show the gaining registrar as sponsor: a broker's note is not enough.
+        // With it off, only a finance administrator may attest, and must give the
+        // registrar's reference.
+        $registrarReference = Str::cleanText(isset($options['registrar_reference']) ? $options['registrar_reference'] : '', 190);
+        $registryCheck = null;
+        if (Settings::bool('rdap_enabled', false)) {
+            $check = (new DomainIntelService())->registryRegistrar($transfer['domain']);
+            if (!$check['checked']) {
+                throw new ConflictException(
+                    'The registry could not be reached to confirm who now sponsors this domain. Try again later.',
+                    ['error_code' => 'REGISTRY_UNCONFIRMED', 'reason' => $check['reason']]
+                );
+            }
+            if (!$this->registrarMatches($check, $transfer)) {
+                throw new ConflictException(
+                    'The registry does not show the gaining registrar as the sponsor of this domain.',
+                    ['error_code' => 'REGISTRAR_MISMATCH', 'registry_registrar' => $check['registrar'],
+                        'registry_iana' => $check['registrar_iana'], 'gaining_registrar' => $transfer['gaining_registrar']]
+                );
+            }
+            $basis = self::BASIS_REGISTRY;
+            $registryCheck = json_encode($check);
+        } else {
+            Rbac::assert($actor, Rbac::PAYMENT_RELEASE);
+            if ($registrarReference === '') {
+                throw new ValidationException(
+                    'Record the registrar reference that confirms the transfer.',
+                    ['errors' => ['registrar_reference' => 'Required.']]
+                );
+            }
+            $basis = self::BASIS_ATTESTED;
+        }
+
         $now = Clock::now();
         $updates = [
             'status' => TransferStatus::COMPLETED,
             'completed_at' => $now,
             'last_checked_at' => $now,
             'registrar_notes' => Str::clip(trim((string) $transfer['registrar_notes'] . "\n" . $evidence), 2000),
+            'completion_basis' => $basis,
+            'registrar_reference' => $registrarReference !== '' ? $registrarReference : null,
+            'registry_check' => $registryCheck,
             'updated_at' => $now,
         ];
         if (!empty($options['whmcs_domain_id'])) {
@@ -472,7 +519,7 @@ class TransferService
             'entity_type' => 'transfer',
             'entity_id' => (int) $transfer['id'],
             'previous' => ['transfer_status' => $transfer['status']],
-            'new' => ['transfer_status' => TransferStatus::COMPLETED],
+            'new' => ['transfer_status' => TransferStatus::COMPLETED, 'completion_basis' => $basis],
             'reason' => $evidence,
             'visibility' => Audit::VIS_CUSTOMER,
         ]);
@@ -492,6 +539,26 @@ class TransferService
         );
 
         return $this->findOrFail($transfer['id']);
+    }
+
+    /**
+     * Does the registry's sponsoring registrar match the gaining registrar?
+     * IANA IDs decide when both are known; otherwise the normalised names must
+     * be equal. Unknown on either side is a mismatch (fail closed).
+     */
+    protected function registrarMatches(array $check, array $transfer)
+    {
+        $gainingIana = trim((string) $transfer['gaining_registrar_iana']);
+        if ($gainingIana !== '' && !empty($check['registrar_iana'])) {
+            return $gainingIana === (string) $check['registrar_iana'];
+        }
+        $gaining = self::normaliseRegistrarName($transfer['gaining_registrar']);
+        return $gaining !== '' && $gaining === self::normaliseRegistrarName($check['registrar']);
+    }
+
+    protected static function normaliseRegistrarName($name)
+    {
+        return trim((string) preg_replace('/[^a-z0-9]+/', ' ', strtolower(trim((string) $name))));
     }
 
     public function markFailed(Actor $actor, $transferId, $status, $reason)

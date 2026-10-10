@@ -573,6 +573,14 @@ class PaymentService
         if (!$verified) {
             throw new InvalidTransitionException('Funds cannot be released before the domain transfer is confirmed complete.');
         }
+        // Completion must carry its evidence basis (registry check or finance attestation).
+        // Transfers completed before the basis was recorded are refused until re-confirmed.
+        if (empty($transfer['completion_basis'])) {
+            throw new InvalidTransitionException(
+                'Funds cannot be released: this transfer has no recorded completion evidence. Confirm completion again.',
+                ['error_code' => 'COMPLETION_BASIS_MISSING']
+            );
+        }
         $missing = (new VerificationService())->outstandingRequirements($request);
         if ($missing) {
             throw new InvalidTransitionException(

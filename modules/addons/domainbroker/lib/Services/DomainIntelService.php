@@ -257,6 +257,25 @@ class DomainIntelService
         }
 
         // The sponsoring registrar is public, non-personal data.
+        $this->parseRegistrar($data, $report);
+
+        // Registrant/admin/tech entities are deliberately NOT copied across.
+        // Where a registry publishes them, republishing is still a decision
+        // the operator must make knowingly.
+        if (Settings::bool('rdap_include_contacts', false)) {
+            $report['notice'] = 'Registrant data is shown as published by the registry and must be used only '
+                . 'in accordance with the registry\'s access policy.';
+        }
+
+        $report['sources'][] = 'rdap';
+    }
+
+    /**
+     * Read the sponsoring registrar from RDAP entities into the report.
+     * Shared by the lookup and by the registry check used for completion.
+     */
+    protected function parseRegistrar(array $data, array &$report)
+    {
         if (!empty($data['entities']) && is_array($data['entities'])) {
             foreach ($data['entities'] as $entity) {
                 $roles = isset($entity['roles']) && is_array($entity['roles']) ? $entity['roles'] : [];
@@ -274,16 +293,52 @@ class DomainIntelService
                 }
             }
         }
+    }
 
-        // Registrant/admin/tech entities are deliberately NOT copied across.
-        // Where a registry publishes them, republishing is still a decision
-        // the operator must make knowingly.
-        if (Settings::bool('rdap_include_contacts', false)) {
-            $report['notice'] = 'Registrant data is shown as published by the registry and must be used only '
-                . 'in accordance with the registry\'s access policy.';
+    /**
+     * The sponsoring registrar as the registry publishes it, read from RDAP
+     * only. WHMCS records are deliberately NOT consulted: the operator writes
+     * those, so they cannot evidence what the registry holds.
+     *
+     * @return array{checked:bool, reason:string, registered:?bool, registrar:?string, registrar_iana:?string, checked_at:string}
+     */
+    public function registryRegistrar($domain)
+    {
+        $result = [
+            'checked' => false, 'reason' => '', 'registered' => null,
+            'registrar' => null, 'registrar_iana' => null, 'checked_at' => Clock::now(),
+        ];
+        $normalised = DomainName::normalise($domain);
+        if ($normalised === null) {
+            $result['reason'] = 'invalid_domain';
+            return $result;
         }
-
-        $report['sources'][] = 'rdap';
+        if (!Settings::bool('rdap_enabled', false)) {
+            $result['reason'] = 'rdap_disabled';
+            return $result;
+        }
+        $data = $this->resolveRdap(DomainName::registrable($normalised));
+        if ($data === null) {
+            $result['reason'] = 'registry_unreachable';
+            return $result;
+        }
+        if (!empty($data['_not_found'])) {
+            // The registry says the name is not registered: no sponsoring registrar.
+            $result['checked'] = true;
+            $result['reason'] = 'not_registered';
+            $result['registered'] = false;
+            return $result;
+        }
+        $report = ['registrar' => null, 'registrar_iana' => null];
+        $this->parseRegistrar($data, $report);
+        $result['checked'] = true;
+        $result['reason'] = 'ok';
+        $result['registered'] = true;
+        $result['registrar'] = $report['registrar'] !== null && $report['registrar'] !== ''
+            ? (string) $report['registrar'] : null;
+        $result['registrar_iana'] = $report['registrar_iana'] !== null && $report['registrar_iana'] !== ''
+            ? (string) $report['registrar_iana'] : null;
+        return $result;
     }
 
     /* --------------------------------------------------------- resolvers */

@@ -363,9 +363,16 @@ T::ok('only a masked hint comes back', substr(data($authCode)['auth_code_hint'],
 
 call('POST', 'transfers/' . $transferId . '/status', ['status' => 'initiated'], ['as' => $broker]);
 call('POST', 'transfers/' . $transferId . '/status', ['status' => 'pending'], ['as' => $broker]);
-$done = call('POST', 'transfers/' . $transferId . '/complete', [
+// The registry check is off in tests, so completion is an attestation: a broker
+// is refused, and finance (here the super admin) attests with the reference.
+$brokerAttempt = call('POST', 'transfers/' . $transferId . '/complete', [
     'evidence' => 'Registry confirmed the transfer on 2026-10-06.',
 ], ['as' => $broker]);
+T::is('a broker cannot attest the transfer complete', 403, $brokerAttempt->status);
+$done = call('POST', 'transfers/' . $transferId . '/complete', [
+    'evidence' => 'Registry confirmed the transfer on 2026-10-06.',
+    'registrar_reference' => 'TUCOWS-API-1',
+], ['as' => $admin]);
 T::is('the transfer completes', 200, $done->status);
 T::is('the request is in verification, not completed', RequestStatus::TRANSFER_VERIFICATION,
     Db::first('requests', ['id' => (int) $requestId])['status']);
