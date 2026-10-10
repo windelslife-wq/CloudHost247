@@ -462,7 +462,7 @@ Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phon
 |---|---|
 | Module | `modules/addons/hostx_tools` (21 files, about 3,800 lines PHP, **no tests directory**). |
 | Specification | `docs/All DNS Checker/All DNS Checker Build.txt` names this module. It asks for about 100 tools across nine categories (DNS, IP, developer, designer, webmaster, network, security, productivity, gaming). |
-| Status | **Audit complete. Blocked on decision D-2 (scope and duplication).** Nothing changed in this item. |
+| Status | **Decision D-2 = A (retire). Awaiting your approval of this item.** Owner action pending: deactivate the addon in WHMCS. No code removed. |
 
 **Scope.** The module's own README lists four tools: domain WHOIS, IP lookup, DNS lookup, domain availability. The spec asks for about 100. That is a scope gap of about 96 tools.
 
@@ -473,7 +473,7 @@ Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phon
 | ID | Finding | Evidence | Severity |
 |---|---|---|---|
 | H-1 | **Rate limit can be bypassed by spoofing the client IP.** `SecurityManager::getClientIp()` takes the first address from `HTTP_CF_CONNECTING_IP`, `HTTP_X_FORWARDED_FOR` and similar headers, before `REMOTE_ADDR`. Each request can pick a new "client", so the per-IP limit (default 30/min) does not apply. The limit protects paid API quotas (IPinfo, WhatIsMyIP). | `includes/SecurityManager.php` lines 273–302. **Reproduced in the PHP runtime:** three requests with three spoofed `X-Forwarded-For` values gave three rate-limit keys; the real address was `203.0.113.50`. | Medium |
-| H-2 | Scope: four tools against about 100 in the spec (see above). | `README.md`; `docs/All DNS Checker/All DNS Checker Build.txt` | High (scope), decision D-2 |
+| H-2 | **Two specs share the name.** `docs/MODULES.md` maps the `WHMCS Domain Lookup` zip to `hostx_tools`, and the module matches that spec (WHOIS, IP WHOIS, availability, DNS). The `All DNS Checker Build.txt` spec also names `hostx_tools` and asks for about 100 tools. Corrected: the module is not short of its own spec; the 100-tool spec is a different requirement and duplicates `CloudHost247_tools`. | `docs/MODULES.md` line 17; `docs/WHMCS Domain Lookup/Build.txt`; `docs/All DNS Checker/All DNS Checker Build.txt` | Info (corrected), decision D-2 |
 | H-3 | Duplicates `CloudHost247_tools` (four of its tools). | Catalog slugs `domain-whois`, `ip-whois`, `dns-lookup`, `domain-search` | Policy, decision D-2 |
 | H-4 | No automated tests. Nothing in this module can be verified by a suite. | No `tests/` directory | Medium |
 
@@ -490,7 +490,13 @@ Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phon
 
 `CloudHost247_tools` has the same IP spoofing problem in its **legacy** AJAX path (`includes/classes.php`, `CloudHost247ToolsClient::handleAjax()`, reached via `index.php?m=CloudHost247_tools&action=ajax`). It is keyed on `CloudHost247_tools_get_client_ip()`, which trusts `X-Forwarded-For`. Reproduced: three spoofed headers gave three keys. The legacy path also calls tool handlers directly with raw `$_POST`, so it skips the runner's request-size cap, heavy-tier limit and global per-IP ceiling. The current front end posts to `/tools/api/<slug>`, which goes through the runner and is safe. The legacy path is reachable but not used by the front end. The safe function `CloudHost247ToolsSecurity::clientIp()` already exists and only trusts forwarded headers behind a configured trusted proxy (`CLOUDHOST247_TRUSTED_PROXIES`).
 
-### Decision D-2 (needed from you)
+### Decision D-2 — decided: option A (retire)
+
+You chose A. Recorded as done in documentation only. The Cloudflare question was answered "not sure", so the H-1 fix (if ever needed) defaults to the connection address with a trusted-proxy setting.
+
+Owner action: deactivate HostX Tools in WHMCS (System Settings > Addon Modules). Until then H-1 remains exploitable.
+
+Original options, for reference:
 
 - **A. Retire `hostx_tools`.** Deactivate it and document it as superseded by `CloudHost247_tools`. No new code. The H-1 issue then needs no fix here. Recommended by the duplication rule. Reversible, nothing is deleted.
 - **B. Finish `hostx_tools` to the spec.** About 96 more tools, duplicating `CloudHost247_tools`. Large, and the duplication stays.
