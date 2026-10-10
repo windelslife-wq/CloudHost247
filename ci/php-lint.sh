@@ -22,9 +22,13 @@ bad=0
 
 while IFS= read -r file; do
     checked=$((checked + 1))
-    if ! "$PHP_BIN" -l "$file" > /dev/null 2>&1; then
+    lint_out="$("$PHP_BIN" -l "$file" 2>&1)"
+    if [ "$?" -ne 0 ]; then
         echo "SYNTAX FAIL: $file"
-        "$PHP_BIN" -l "$file" 2>&1 | head -n 3
+        printf '%s\n' "$lint_out" | head -n 3
+        # Surface file-level annotations in the GitHub UI / checks API.
+        first_line="$(printf '%s\n' "$lint_out" | head -n 1 | tr '\n' ' ')"
+        echo "::error file=${file#./}::php -l failed: $first_line"
         bad=$((bad + 1))
     fi
 done < <(find . -name '*.php' -not -path './modules/addons/hostx/*' -not -path './modules/addons/xtreme_currency_rates/*' -not -path '*/vendor/*' -not -path '*/node_modules/*' | sort)
