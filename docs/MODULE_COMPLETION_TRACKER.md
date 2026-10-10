@@ -122,13 +122,13 @@ and Addon controller paths are covered by regression tests.
 
 ---
 
-## Module 2 — tools_center (QR decoding)
+## Module 2 — tools_center (QR decoding and generation)
 
 | Field | Information |
 |---|---|
 | Module | `modules/addons/tools_center` (WHMCS addon; PHP addon plus `external-api/` service, JS, templates) |
 | Specification | No standalone Build.txt. Basis: the directive ("tools_center (QR decoding)"); `docs/MODULES.md` (alternative to `CloudHost247_tools`, proxies to a separate API); the module's own `API.md`/`README.md`; and the DNS Checker build spec, which lists **"QR Scanner (JS)"** under Productivity tools (`docs/All DNS Checker/All DNS Checker Build.txt`). The JS wording sets the requirement: decode in the browser. |
-| Status | **Code complete and tested; browser file-read check and gate approval pending.** Hardening findings T-1 and T-2 are fixed. |
+| Status | **Accepted by the user (gate closed) with owner follow-ups:** a browser check of file upload and a live WHMCS check. Findings T-1 to T-4 are fixed in code. |
 
 ### Audit findings
 
@@ -137,7 +137,7 @@ and Addon controller paths are covered by regression tests.
 | T-1 | **QR decoding was a placeholder.** The QR Scanner tool posted a URL to the external API, which returned a note and a third-party `decode_url`. It decoded nothing. | `external-api/tools/productivity.php` `qrScanner()` (line ~51-66) | High (functional gap) |
 | T-2 | **Outbound API call followed redirects.** `tools_center_api_request()` used `CURLOPT_FOLLOWLOCATION => true` while sending the API token in an `X-API-Token` header. A redirect to another host could receive the token. The call also allowed any protocol. | `hooks.php` `tools_center_api_request()` | Medium (security) |
 | T-3 | `apiToken` was assigned to the client-area template. No template used it, but it puts the secret where a future template could print it. | `clientarea.php` (removed) | Low (hygiene) |
-| T-4 | The external `qrGenerator` builds an image URL on `api.qrserver.com` that contains the user's data. The browser then requests it, so the data goes to a third party. | `external-api/tools/productivity.php` `qrGenerator()` | Medium (privacy). **Not changed; owner decision (see Remaining issues).** |
+| T-4 | The external `qrGenerator` builds an image URL on `api.qrserver.com` that contains the user's data. The browser then requests it, so the data goes to a third party. | `external-api/tools/productivity.php` `qrGenerator()` | Medium (privacy). **Fixed:** the page now generates the code in the browser (vendored MIT library); no request leaves the site. Owner decision: local generator, approved by the user. |
 | T-5 | Token handling is otherwise sound. The browser never receives the token: the page posts to `index.php?m=tools_center`, and the server calls the API after the access check. | `clientarea.php` AJAX branch; `tools_center_check_access()` | Info (verified) |
 
 ### Changes made
@@ -148,10 +148,15 @@ and Addon controller paths are covered by regression tests.
 | `js/vendor/jsQR-1.4.0.js` (new) | Vendored jsQR 1.4.0 (Apache-2.0, free, no runtime dependencies). SHA-256 recorded in `js/vendor/README.md`; licence in `jsQR-1.4.0.LICENSE`. |
 | `js/tools-center.js` | `LOCAL_TOOL_HANDLERS` (qrScanner → local decode). Both submit paths (modal and page) check it before any XHR call. The `accept` attribute is passed to file inputs. Decoded text is rendered with the existing escaped `renderObject`. |
 | `templates/tools/tool.tpl` | QR Scanner field changed from "QR Image URL" to a file input, with a note that decoding happens in the browser. |
-| `hooks.php` | T-2: `CURLOPT_FOLLOWLOCATION => false`, `CURLOPT_PROTOCOLS` and `CURLOPT_REDIR_PROTOCOLS` set to HTTPS only. Loads `jsQR`, `qr-scanner.js`, then `tools-center.js`. |
+| `hooks.php` | T-2: `CURLOPT_FOLLOWLOCATION => false`, `CURLOPT_PROTOCOLS` and `CURLOPT_REDIR_PROTOCOLS` set to HTTPS only. Loads jsQR, both qrcode-generator files, `qr-scanner.js`, `qr-generator.js`, then `tools-center.js`. |
 | `clientarea.php` | T-3: `apiToken` no longer assigned to the template. |
-| `API.md` | `qrScanner` row updated: not a server call; decoding runs in the browser. |
+| `API.md` | `qrScanner` and `qrGenerator` rows updated: neither is a server call from the page. |
+| `js/qr-generator.js` (new) | Browser QR generation with the vendored qrcode-generator. Returns an SVG (no scripts, numbers only) and the module matrix. Limits: 2000 characters, size clamped to 100–1000 px, unknown ECC level falls back to M. |
+| `js/vendor/qrcode-generator-2.0.4.js`, `…-utf8.js`, `…LICENSE` (new) | Vendored qrcode-generator 2.0.4, MIT (free, no runtime dependencies). The UTF-8 file makes non-ASCII text encode correctly. Checksums in `js/vendor/README.md`. |
+| `js/tools-center.js` | `qrGenerator` added to `LOCAL_TOOL_HANDLERS`. Result view shows the SVG image and a download link. Only the local SVG data URI is accepted for display. Attribute escaping added. |
 | `tests/` (new) | `run-tests.js` (runner), `ui-wiring.js` (jsdom UI tests), `fixtures/qr-fixtures.json`, `README.md`. |
+
+Behaviour change: the QR generator input limit is now 2000 characters (was 4000 on the external API). 4000 characters cannot be encoded at any ECC level above L: the QR byte capacity is about 2300 bytes at ECC M. The new limit is the largest that fits reliably; longer or multi-byte input shows an explicit error.
 
 Not changed: `external-api/tools/productivity.php` `qrScanner()` still returns its note. The page no longer calls it. Left in place to avoid changing the external API contract. It is listed as an open item.
 
@@ -159,34 +164,36 @@ Not changed: `external-api/tools/productivity.php` `qrScanner()` still returns i
 
 | Command | Result |
 |---|---|
-| `node modules/addons/tools_center/tests/run-tests.js` (no jsdom) | 21/21 passed; UI wiring (8) **skipped**, printed as SKIP |
-| Same, with jsdom 24 (`NODE_PATH` set to a jsdom install outside the repo) | **29/29 passed**, 0 failed |
-| Same tests on the original code (HEAD) | 16/29 passed, 13 failed. All 13 are the intended regressions (static checks and UI tests). The one non-local-tool regression test passes on both. |
+| `node modules/addons/tools_center/tests/run-tests.js` (no jsdom) | 31 unit/static tests passed; the 10 UI tests are **skipped** and printed as SKIP |
+| Same, with jsdom 24 (`NODE_PATH` set to a jsdom install outside the repo) | **41/41 passed**, 0 failed |
+| Same tests on the original shipped files (HEAD) | 25/41 passed, 16 failed. All 16 are the intended regressions. The non-local-tool regression test passes on both. |
 | PHP lint, `tools_center` (18 files), PHP 8.3.33 and 7.4.33 (php-wasm) | 0 syntax errors on both |
+| QR generation round trip | Generated codes (ECC L, M, Q, H; UTF-8 text; 604 characters) are decoded by the independent jsQR decoder back to the same text. |
 | Real QR decoding | Three fixture codes (ECC L, M, H; versions 4 and 6) decode to the exact text. An inverted code decodes too. A blank image reports "no QR code". |
 | Browser file reading (`FileReader`, `Image`, canvas) | **Not run.** No browser in the sandbox. The UI tests stub only this step. |
+| UI wiring in jsdom (real `tool.tpl` definitions and `tools-center.js`) | Run: QR Scanner (page and modal), QR Generator (SVG image, download link), error cases, and non-local tools. |
 | WHMCS live run (curl path, access check) | **Not run.** No WHMCS install. |
 
 ### Security review
 
 - The API token is still never sent to the browser (T-5). The redirect and protocol fix (T-2) stops the token from being forwarded.
-- QR decoding runs in the browser. The uploaded image is never sent to the server, and no third-party service is used (T-1 closed, T-4 not affected by this tool).
-- The decoded text is rendered as text (tested with an HTML payload).
+- QR decoding and generation both run in the browser. Uploaded images and typed data are never sent to a server or a third party (T-1 and T-4 closed).
+- The generated image is an SVG built from numbers and fixed element names. It is shown in an `<img>` tag, so it cannot run script.
+- Decoded text and any other displayed value are rendered as text (tested with an HTML payload). Attribute values use escaping.
 - Upload limits: type allowlist, 5 MB, 1600 px downscale before decoding.
-- Open: T-4 (`qrGenerator` sends user data to a third-party host). Needs an owner decision; not changed.
+- The API token is still never sent to the browser, and the outbound call does not follow redirects.
 
 ### Remaining issues / blockers
 
-1. **Browser check (required before closing):** load the QR Scanner tool in a real browser, upload a PNG and a JPG QR code, and confirm the decoded text appears. Also confirm an oversized or non-image file is rejected.
-2. **WHMCS check:** on a live install, confirm the Tools Center page loads the three scripts, and that a tool call still reaches the external API over HTTPS.
-3. **Owner decision (T-4):** keep `qrGenerator` on api.qrserver.com (external, data leaves the site), or replace it with a local generator (new dependency, needs approval).
-4. The external `qrScanner()` placeholder in `external-api/` is unused by the page. Remove it, or keep it for other clients. Owner decision.
-5. Other tools in `external-api/` were not audited in this pass (scope: QR decoding and the proxy path). They belong to the additional audit list.
+1. **Browser check (owner follow-up):** in a real browser, upload a PNG and a JPG QR code to the QR Scanner and confirm the text appears. Confirm an oversized or non-image file is rejected. Generate a QR code and download the SVG.
+2. **WHMCS check (owner follow-up):** on a live install, confirm the Tools Center page loads the scripts without console errors, and that a server-side tool still reaches the external API over HTTPS.
+3. The external `qrScanner()` and `qrGenerator()` in `external-api/` are no longer called by the page. Remove them, or keep them for other clients. Owner decision.
+4. Other tools in `external-api/` were not audited in this pass (scope: QR and the proxy path). They belong to the additional audit list.
 
 ### Completion evidence
 
 - Source: the files in *Changes made*.
-- Executed: `node modules/addons/tools_center/tests/run-tests.js`, 29/29 with jsdom 24; PHP lint 0 errors on 8.3 and 7.4.
+- Executed: `node modules/addons/tools_center/tests/run-tests.js`, 41/41 with jsdom 24; PHP lint 0 errors on 8.3 and 7.4.
 - Not yet evidence: browser file reading and the live WHMCS run (items 1 and 2 above).
 
 

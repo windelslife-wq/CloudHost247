@@ -46,8 +46,12 @@ module.exports = function buildUiTests(ctx) {
             this.send = function () {};
         };
         w.eval(defsSource);
+        // Same order as hooks.php loads them.
         w.eval(read('js/vendor/jsQR-1.4.0.js'));
+        w.eval(read('js/vendor/qrcode-generator-2.0.4.js'));
+        w.eval(read('js/vendor/qrcode-generator-2.0.4-utf8.js'));
         w.eval(read('js/qr-scanner.js'));
+        w.eval(read('js/qr-generator.js'));
         w.eval(read('js/tools-center.js'));
         // Stub only the browser file-reading step; decodeImageData and validateFile stay real.
         w.ToolsCenterQR.decodeFile = function (file, callback) {
@@ -160,6 +164,35 @@ module.exports = function buildUiTests(ctx) {
                 submit(w, form);
                 const out = w.document.getElementById('modalResults').textContent;
                 assert.ok(out.includes(pagePng().text), 'modal did not show decoded text: ' + out.slice(0, 200));
+                assert.equal(w.__xhrCalls, 0);
+            }
+        },
+        {
+            name: 'UI: QR Generator builds the code in the browser (SVG image + download link), no request',
+            fn() {
+                const w = makeWindow();
+                w.renderToolForm('productivity', 'qrGenerator');
+                const form = w.document.querySelector('#toolForm form');
+                form.querySelector('input[name="data"]').value = 'https://cloudhost247.example/renew?service=42';
+                form.querySelector('select[name="level"]').value = 'Q';
+                submit(w, form);
+                const box = w.document.getElementById('resultsContent');
+                const img = box.querySelector('img');
+                assert.ok(img, 'QR image missing');
+                assert.ok(img.getAttribute('src').indexOf('data:image/svg+xml;charset=utf-8,') === 0, 'image must be a local SVG data URI');
+                const link = box.querySelector('a[download]');
+                assert.ok(link && link.getAttribute('download') === 'qr-code.svg', 'download link missing');
+                assert.equal(w.__xhrCalls, 0, 'QR generation must not send a request');
+            }
+        },
+        {
+            name: 'UI: QR Generator reports empty data without a request',
+            fn() {
+                const w = makeWindow();
+                w.renderToolForm('productivity', 'qrGenerator');
+                const form = w.document.querySelector('#toolForm form');
+                submit(w, form);
+                assert.match(w.document.getElementById('resultsContent').textContent, /Data is required/);
                 assert.equal(w.__xhrCalls, 0);
             }
         },

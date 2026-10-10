@@ -124,11 +124,15 @@ test('validateFile accepts supported images within the limit (type is case-insen
 
 // ---------- vendored library integrity ----------
 
-test('vendored jsQR matches the SHA-256 recorded in js/vendor/README.md', () => {
-    const digest = crypto.createHash('sha256').update(fs.readFileSync(jsQRPath)).digest('hex');
-    const recorded = /SHA-256 of `jsQR-1\.4\.0\.js`: `([0-9a-f]{64})`/.exec(read('js/vendor/README.md'));
-    assert.ok(recorded, 'checksum line missing from vendor README');
-    assert.equal(digest, recorded[1]);
+test('every vendored file matches the SHA-256 recorded in js/vendor/README.md', () => {
+    const readme = read('js/vendor/README.md');
+    const entries = [...readme.matchAll(/SHA-256 of `([^`]+\.js)`: `([0-9a-f]{64})`/g)];
+    assert.ok(entries.length >= 3, 'expected checksums for jsQR and both qrcode-generator files');
+    for (const [, file, recorded] of entries) {
+        const digest = crypto.createHash('sha256')
+            .update(fs.readFileSync(path.join(moduleDir, 'js', 'vendor', file))).digest('hex');
+        assert.equal(digest, recorded, 'checksum mismatch for ' + file);
+    }
 });
 
 test('vendored jsQR ships its Apache-2.0 licence text', () => {
@@ -141,6 +145,60 @@ test('fixtures are well-formed square module matrices', () => {
         c.rows.forEach((r) => assert.equal(r.length, c.size));
         assert.match(c.rows.join(''), /^[01]+$/);
     });
+});
+
+// ---------- QR generation (encoder checked by the independent decoder) ----------
+
+global.qrcode = require(path.join(moduleDir, 'js', 'vendor', 'qrcode-generator-2.0.4.js'));
+require(path.join(moduleDir, 'js', 'vendor', 'qrcode-generator-2.0.4-utf8.js'));
+const QRGen = require(path.join(moduleDir, 'js', 'qr-generator.js'));
+
+[
+    ['https://cloudhost247.example/renew?service=42', 'L'],
+    ['https://cloudhost247.example/renew?service=42', 'M'],
+    ['https://cloudhost247.example/renew?service=42', 'Q'],
+    ['https://cloudhost247.example/renew?service=42', 'H'],
+    ['Zürich ✓ 北京 — UTF-8 payload', 'M'],
+    ['x'.repeat(600) + ' end', 'L']
+].forEach(([text, ecc]) => {
+    test(`generated ${ecc} code (${text.length} chars) is decoded back to the same text`, () => {
+        const gen = QRGen.generate(text, ecc, 300);
+        assert.equal(gen.ok, true, gen.error);
+        assert.equal(gen.error_correction, ecc);
+        const img = renderRgba(gen.modules, 4, false);
+        const dec = QR.decodeImageData(img.data, img.width, img.height);
+        assert.equal(dec.ok, true, dec.error);
+        assert.equal(dec.text, text);
+    });
+});
+
+test('generated SVG is a fixed-size image with no scripts or event attributes', () => {
+    const gen = QRGen.generate('<script>alert(1)</script>', 'M', 300);
+    assert.equal(gen.ok, true);
+    assert.ok(gen.svg.startsWith('<svg '), 'output must be an SVG element');
+    assert.equal(/<script/i.test(gen.svg), false);
+    assert.equal(/\son[a-z]+\s*=/i.test(gen.svg), false, 'no event-handler attributes');
+    assert.ok(gen.svg.includes(`width="${gen.size_px}px"`), 'SVG width must match size_px');
+});
+
+test('generation rejects empty and oversize data with clear messages', () => {
+    assert.deepEqual(QRGen.generate('', 'M', 300), { ok: false, error: 'Data is required.' });
+    assert.deepEqual(QRGen.generate(undefined, 'M', 300), { ok: false, error: 'Data is required.' });
+    assert.equal(QRGen.generate('x'.repeat(2001), 'M', 300).error, 'Data too long (max 2000 characters).');
+    assert.equal(QRGen.generate('x'.repeat(2000), 'M', 300).ok, true, 'exactly 2000 characters is allowed');
+    // 2000 three-byte characters exceed QR capacity: must fail with an explicit error, not a crash.
+    const wide = QRGen.generate('\u4e2d'.repeat(2000), 'H', 300);
+    assert.equal(wide.ok, false);
+    assert.equal(wide.error, 'The data could not be encoded as a QR code.');
+});
+
+test('size is clamped to 100..1000 px and an unknown error-correction level falls back to M', () => {
+    assert.equal(QRGen.clampSize(5), 100);
+    assert.equal(QRGen.clampSize(99999), 1000);
+    assert.equal(QRGen.clampSize('abc'), 300);
+    assert.equal(QRGen.normaliseEcc('z'), 'M');
+    assert.equal(QRGen.normaliseEcc('h'), 'H');
+    assert.equal(QRGen.generate('a', 'z', 300).error_correction, 'M');
 });
 
 // ---------- hardening checks on the shipped code ----------
@@ -158,12 +216,28 @@ test('outbound API call does not follow redirects (the token is never forwarded)
     assert.ok(/CURLOPT_REDIR_PROTOCOLS\s*=>\s*CURLPROTO_HTTPS/.test(src), 'CURLOPT_REDIR_PROTOCOLS must be HTTPS only');
 });
 
-test('the tools page loads the vendored decoder before the tools script', () => {
+test('the tools page loads the QR libraries, then the Tools Center script that uses them', () => {
     const src = read('hooks.php');
-    const lib = src.indexOf('vendor/jsQR-1.4.0.js');
-    const qr = src.indexOf('js/qr-scanner.js');
-    const tools = src.indexOf('js/tools-center.js');
-    assert.ok(lib > 0 && qr > lib && tools > qr, 'expected jsQR, then qr-scanner, then tools-center');
+    const order = [
+        'vendor/jsQR-1.4.0.js',
+        'vendor/qrcode-generator-2.0.4.js',
+        'vendor/qrcode-generator-2.0.4-utf8.js',
+        'js/qr-scanner.js',
+        'js/qr-generator.js',
+        'js/tools-center.js'
+    ];
+    const idx = order.map((f) => src.indexOf(f));
+    idx.forEach((i, n) => assert.ok(i > 0, 'missing script tag for ' + order[n]));
+    for (let n = 1; n < idx.length; n++) {
+        assert.ok(idx[n] > idx[n - 1], order[n] + ' must load after ' + order[n - 1]);
+    }
+});
+
+test('the QR generator tool is generated locally (no server call, no third-party image URL)', () => {
+    const js = read('js/tools-center.js');
+    assert.ok(/qrGenerator:\s*generateQrFromForm/.test(js), 'qrGenerator must be a local tool');
+    assert.equal(/api\.qrserver\.com/.test(js + read('templates/tools/tool.tpl')), false,
+        'the page must not reference the third-party QR service');
 });
 
 test('the QR scanner tool takes an uploaded file, not a URL, and does not post it to the server', () => {

@@ -199,7 +199,7 @@ X-RateLimit-Reset: 1699999999
 
 | Action | Parameters | Description |
 |--------|-----------|-------------|
-| `qrGenerator` | `data`, `size`, `level` (L/M/Q/H) | QR code generation |
+| `qrGenerator` | `data`, `size`, `level` (L/M/Q/H) | Not used by the Tools Center page. Generation runs in the browser (`js/qr-generator.js`, vendored qrcode-generator). The server version returns a third-party image URL, which the page no longer uses. |
 | `qrScanner` | — (no server call) | Not used by the Tools Center page. QR decoding runs in the browser (`js/qr-scanner.js`, vendored jsQR). The external endpoint returns a note and does not decode. |
 | `loremIpsum` | `type` (paragraphs/sentences/words/lists), `count`, `html` | Placeholder text |
 | `timeCard` | `entries` (JSON array), `hourly_rate` | Work hours calculation |

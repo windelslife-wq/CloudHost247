@@ -90,7 +90,10 @@ add_hook('ClientAreaHeadOutput', 1, function ($vars) {
     
     $css = '<link rel="stylesheet" href="modules/addons/tools_center/css/tools-center.css" />';
     $js = '<script src="modules/addons/tools_center/js/vendor/jsQR-1.4.0.js"></script>' . "\n"
+        . '<script src="modules/addons/tools_center/js/vendor/qrcode-generator-2.0.4.js"></script>' . "\n"
+        . '<script src="modules/addons/tools_center/js/vendor/qrcode-generator-2.0.4-utf8.js"></script>' . "\n"
         . '<script src="modules/addons/tools_center/js/qr-scanner.js"></script>' . "\n"
+        . '<script src="modules/addons/tools_center/js/qr-generator.js"></script>' . "\n"
         . '<script src="modules/addons/tools_center/js/tools-center.js"></script>';
     
     return $css . "\n" . $js;

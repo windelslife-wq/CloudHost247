@@ -13,13 +13,50 @@
 
     // Tools that run entirely in the browser. They never send anything to the server.
     var LOCAL_TOOL_HANDLERS = {
-        qrScanner: decodeQrFromForm
+        qrScanner: decodeQrFromForm,
+        qrGenerator: generateQrFromForm
     };
+
+    var SVG_DATA_URI_PREFIX = 'data:image/svg+xml;charset=utf-8,';
 
     function getLocalHandler(action) {
         return Object.prototype.hasOwnProperty.call(LOCAL_TOOL_HANDLERS, action)
             ? LOCAL_TOOL_HANDLERS[action]
             : null;
+    }
+
+    /**
+     * Generate a QR code in the browser from the form fields (data, level, size).
+     * The data never leaves the page.
+     */
+    function generateQrFromForm(form, showResult) {
+        if (!window.ToolsCenterQRGen) {
+            showResult({ success: false, error: 'The QR generator is not loaded. Reload the page and try again.' });
+            return;
+        }
+        var field = function (name) {
+            var el = form.querySelector('[name="' + name + '"]');
+            return el ? el.value : '';
+        };
+        var result = window.ToolsCenterQRGen.generate(field('data'), field('level'), field('size'));
+        if (!result.ok) {
+            showResult({ success: false, error: result.error });
+            return;
+        }
+        showResult({
+            success: true,
+            data: {
+                error_correction: result.error_correction,
+                size_px: result.size_px,
+                characters: result.characters,
+                format: 'SVG'
+            },
+            local_image: {
+                src: SVG_DATA_URI_PREFIX + encodeURIComponent(result.svg),
+                filename: 'qr-code.svg'
+            },
+            response_time_ms: 0
+        });
     }
 
     /**
@@ -270,6 +307,17 @@
         html += '<div class="tc-result-section">';
         html += '<h4><i class="fa fa-check-circle"></i> Result</h4>';
 
+        // Images generated in the browser (QR Generator). Only the local SVG data URI is accepted.
+        if (data.local_image && typeof data.local_image.src === 'string' &&
+            data.local_image.src.indexOf(SVG_DATA_URI_PREFIX) === 0) {
+            html += '<div class="tc-qr-preview" style="margin-bottom:10px;">';
+            html += '<img alt="QR code" src="' + escapeAttr(data.local_image.src) + '" ' +
+                'style="max-width:100%;background:#fff;padding:8px;border:1px solid #ddd;">';
+            html += '</div>';
+            html += '<p><a class="btn btn-default" href="' + escapeAttr(data.local_image.src) + '" download="' +
+                escapeAttr(data.local_image.filename || 'qr-code.svg') + '"><i class="fa fa-download"></i> Download SVG</a></p>';
+        }
+
         // Render data based on type
         if (typeof data.data === 'object' && data.data !== null) {
             html += renderObject(data.data);
@@ -397,6 +445,16 @@
         var div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    /** Escape a value for use inside a double-quoted HTML attribute. */
+    function escapeAttr(text) {
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
     }
 
     /**
