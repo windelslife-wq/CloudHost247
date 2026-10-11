@@ -626,7 +626,7 @@ callers that previously re-derived it now use it.
 |---|---|
 | Module | `modules/addons/CloudHost247_tools/` (30 PHP files, the authoritative 91-tool registry in `config/cloudhost247-tools.php`, 91 route-split browser modules in `assets/js/tools/`, `includes/{Catalog,Router,Runner,Security,RateLimiter,DnsPropagation}.php`). |
 | Specification | `docs/MODULES.md`, `config/cloudhost247-tools.php` (91 tools, 9 categories, `exec` = client/server/hybrid), `includes/Catalog.php`, `bin/verify-catalog.php`. |
-| Status | **Audited and code-fixed; one owner decision pending (D-7, routing the `/tools/<slug>` surface).** Findings T2-1 to T2-3 fixed in code and pinned by tests; T2-6 (test reproducibility) fixed. Suite went from **1419 to 1481 assertions, 0 failures**. No live WHMCS or browser run. |
+| Status | **Audited and code-fixed; owner decision D-7 taken (A-6, 2026-10-11 — the `/tools/*` surface is live, see below).** Findings T2-1 to T2-3 fixed in code and pinned by tests; T2-6 (test reproducibility) fixed. Suite went from **1419 to 1481 assertions, 0 failures** at audit time. No live WHMCS or browser run. |
 
 ### Why this module was audited
 
@@ -645,7 +645,7 @@ It is not.
 | T2-1 | **The live execution path bypassed the hardened Runner.** `index.php?m=CloudHost247_tools&action=ajax` reaches `CloudHost247ToolsClient::handleAjax()`, which called `call_user_func($handler, $_POST)` directly. `hooks.php` loads `assets/js/CloudHost247-tools.js` on every addon page and `templates/client/tool.tpl` calls `CloudHost247RenderToolForm`, whose submit handler posts to this endpoint — so it is the live path, **not** dead code. It skipped every Runner guarantee: the 1 MB request-size cap, the tiered quotas and global per-IP ceiling, the `exec=client` rejection, input redaction, generic error messages, the execution/socket timeout, and the `nosniff` / `no-store` / `Referrer-Policy` headers. | `includes/classes.php` `handleAjax()` (pre-fix); `assets/js/CloudHost247-tools.js:1111` | High | **Fixed.** `handleAjax()` now delegates to `CloudHost247ToolsRunner::run()` and emits through `Runner::respondLegacy()`. |
 | T2-2 | **The privacy guarantee for `exec=client` tools was contradicted by the live path.** The catalog registers 46 tools as `exec=client`, and the Runner tells the user *"This tool runs entirely in your browser and has no server endpoint. Your data is never transmitted to CloudHost247."* All 46 nevertheless have a server handler function, and the legacy bundle has **no client-side execution at all** (no `run()` in the bundle; it posts every form). So all 46 ran on the server. 39 are reachable from the legacy UI's `toolFields`, including **`credit_card_validator`**. Worse, the legacy path logged **raw `$_POST` with no redaction** into `mod_CloudHost247_tools_logs`, so card numbers and passwords were retained in plaintext in the database. | probe: 46 client tools, 46 with a server handler; `toolFields` ∩ client-exec = 39; `CloudHost247_tools_log($toolId, $_POST, …)` (pre-fix) | High (privacy + data retention) | **Fixed.** The server refuses all 46 by slug *and* by legacy handler id; the 39 exposed by the legacy UI now execute in the browser via their existing route-split module; all logging goes through `Runner::redact()`. |
 | T2-3 | **Raw exception messages were returned to the browser.** The legacy `catch` echoed `$e->getMessage()`, exposing internals (paths, SQL, driver text) to any caller. The Runner already logged detail server-side and returned a generic message. | `includes/classes.php` (pre-fix) | Medium (information disclosure) | **Fixed** — the delegation inherits the Runner's generic `server_error` text. |
-| T2-4 | **The `/tools/<slug>` surface is built and tested but has no request entry point in this repo.** `CloudHost247ToolsRouter` and `CloudHost247ToolsRunner` are referenced only by their own definitions, `tests/`, and `bin/verify-catalog.php`. `api/index.php` is a `die()` placeholder, and there is no `.htaccess` or front controller for the pretty routes. So the modern surface — and the Runner's protections — guard no traffic today; the 531 PHP assertions test code that no request reaches. | `grep -rn CloudHost247ToolsRunner\|Router` across the repo | Medium (incomplete wiring) | **Open, owner decision (D-7).** Needs a root-level rewrite rule plus a front controller. Not added unilaterally: it creates a new public URL namespace and a new deployment dependency. |
+| T2-4 | **The `/tools/<slug>` surface was built and tested but had no request entry point in this repo.** `CloudHost247ToolsRouter` and `CloudHost247ToolsRunner` were referenced only by their own definitions, `tests/`, and `bin/verify-catalog.php`. `api/index.php` was a `die()` placeholder, and there was no `.htaccess` or front controller for the pretty routes. | `grep -rn CloudHost247ToolsRunner\|Router` across the repo (at audit time) | Medium (incomplete wiring) | **Fixed by A-6 (2026-10-11).** Root `.htaccess` rule plus `front.php` added; D-7 decided (proceed). |
 | T2-5 | **A cross-module note in this tracker was wrong.** It recorded the legacy AJAX path as *"reachable but not used by the front end."* It is used by every tool page. | `hooks.php:20`, `templates/client/tool.tpl` | Low (documentation) | **Corrected** by this section. |
 | T2-6 | **`tests/tools.test.mjs` was not reproducible on a clean checkout.** It reads the 91-tool registry as JSON from `/tmp/tools.json`, and nothing in the repo produced that file, so the 845-assertion suite could only run on a machine where the file already existed. | `tests/tools.test.mjs` | Low (assurance) | **Fixed** — `tests/dump-catalog.php` + `tests/dump-catalog.mjs` generate it, and the suite generates it on demand when absent. |
 
@@ -700,7 +700,7 @@ It is not.
 
 ### Still open (owner)
 
-- **D-7** — whether to add the root-level rewrite and front controller that would make the `/tools/<slug>` Router surface live. Until then the Runner protects the legacy endpoint only, and `api/index.php` remains a placeholder.
+- **D-7** — decided 2026-10-11 (A-6): the root-level rewrite and front controller are added, the `/tools/*` surface is live, and `api/index.php` is a real endpoint. Nothing still open here.
 
 ## Module 8 — cloudhost247services (Domain & Infrastructure Platform)
 
@@ -1191,7 +1191,7 @@ Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phon
 
 **Remaining at baseline depth: `cloudhost247_cart_recovery` only** (4,653 lines). Its recovery-link security was already reviewed and found sound, so what remains is the rest of the module rather than a known-weak area.
 
-**Open owner decisions:** D-2 (deactivation, partially done), D-6 (`digitalproducts` activation limits), D-7 (routing `/tools/<slug>`), D-8 (policy for the two 100% ionCube-encoded modules). Plus the pre-existing High items: **P-5** (`phoneservices` all-tenant API key) and **M-5** (`smmaddon` client-controlled order quantity).
+**Open owner decisions:** D-2 (deactivation, partially done), D-6 (`digitalproducts` activation limits), D-7 (routing `/tools/<slug>` — decided via A-6 2026-10-11), D-8 (policy for the two 100% ionCube-encoded modules). Plus the pre-existing High items: **P-5** (`phoneservices` all-tenant API key) and **M-5** (`smmaddon` client-controlled order quantity).
 
 **Not done anywhere in this programme:** no CI (fifteen suites, nothing runs them), and no live WHMCS or browser run.
 
@@ -1204,7 +1204,7 @@ Original 11-item list — all done: `hostx_tools` (decision D-2 = retire, deacti
 1. **`hostx` (63/63) and `xtreme_currency_rates` (18/18) are 100% ionCube-encrypted** — no readable source, so no review, test or lint is possible for either. `hostx` alone is 47,701 lines: the largest single block of code in the repository and entirely outside every assurance process the project has. Owner decision **D-8**.
 2. **No CI exists.** Fifteen modules have test suites and nothing runs them. See the recommendation in the audit summary.
 
-**Open owner decisions now:** D-2 (deactivation, partially done), D-6 (digitalproducts activation limits), D-7 (routing `/tools/<slug>`), D-8 (policy for the two encoded modules). Plus the pre-existing High items still open in other modules: **P-5** (phoneservices all-tenant API key) and **M-5** (smmaddon client-controlled order quantity).
+**Open owner decisions now:** D-2 (deactivation, partially done), D-6 (digitalproducts activation limits), D-7 (routing `/tools/<slug>` — decided via A-6 2026-10-11), D-8 (policy for the two encoded modules). Plus the pre-existing High items still open in other modules: **P-5** (phoneservices all-tenant API key) and **M-5** (smmaddon client-controlled order quantity).
 
 > The earlier "1 of 11" line understated progress: `customaffiliate`, `hostx_email`,
 > `phoneservices` and `smmaddon` were audited on 2026-10-10 as additional audit
@@ -1405,3 +1405,66 @@ and local runs cannot drift.
   settings (free keys at ocr.space/ocrapi/freekey), upload a clear
   photo with the consent box ticked, and expect extracted text; the
   provider's shared `helloworld` key works for a one-off smoke test.
+
+## A-6 — `/tools/*` request entry point (closed 2026-10-11)
+
+| Field | Information |
+|---|---|
+| Gap | `docs/UNFINISHED_MODULES.md` A-6 / finding T2-4: the Router/Runner surface had no request entry point — `api/index.php` was a `die()` placeholder, no `.htaccess`, no front controller — so hundreds of assertions guarded traffic that never arrived. Owner decision D-7. |
+| Status | **Complete. D-7 decided: proceed.** The surface is live behind a minimal rewrite rule; all route types dispatch, execute and render through one tested front controller. |
+
+### Resolution
+
+- New `modules/addons/CloudHost247_tools/front.php`: bootstraps WHMCS
+  (`init.php`, when deployed over WHMCS) and emits the response. The
+  route comes from `?route=` (the rewrite target), `PATH_INFO`, or the
+  raw request URI, in that order.
+- New `includes/Front.php` (`CloudHost247ToolsFront::dispatch`, pure
+  and offline-testable): resolves via `Router::resolve` and serves
+  every route type — tool/category/index/search/disclaimer pages,
+  sitemap XML, 301 aliases, 404s with suggestions, and the POST-only
+  `/tools/api/<slug>` JSON endpoint through `Runner::run` with
+  `require_csrf`. Page shells carry the ToolPage mount nodes, the
+  session CSRF token, per-route assets, breadcrumbs, JSON-LD, and
+  absolute canonicals (WHMCS SystemURL preferred, strictly validated
+  request host as fallback, relative URLs when neither is safe).
+- Both enable switches are honoured on pages and the API: the
+  registry `enabled` flag and the Tools-Manager switch in
+  `mod_CloudHost247_tools_status` (fail-closed, like the legacy path;
+  the registry decides alone without a database).
+- `api/index.php` is now a real endpoint: a thin alias that delegates
+  to the same dispatch (`?tool=<slug>` + JSON/form body).
+- New root `.htaccess` (the repo had none): a single self-contained
+  `/tools/*` rewrite block, documented to stay above any WHMCS
+  friendly-URL rules. Without mod_rewrite the same pages work via
+  `front.php?route=`. Nginx equivalent (server config, not shippable
+  from this repo):
+  `location /tools { try_files $uri $uri/ /modules/addons/CloudHost247_tools/front.php?route=$uri&$args; }`
+- Found and fixed while wiring: `Router::assets()` listed a
+  `tools-browse.js` that never existed (404 on every browse page).
+  Removed — `tools-core.js` already initialises the filter, FAQ and
+  nav on every page. A test now asserts every emitted asset URL
+  exists on disk, for all 91 tool routes plus the browse pages.
+- Known limitation (pre-existing Router design, out of scope):
+  generated links and canonicals are root-absolute, so pretty URLs
+  assume a root WHMCS install, not a subdirectory.
+
+### Completion evidence
+
+- New `tests/FrontTest.php`: 88 assertions — dispatch for every route
+  type, page shells (mount nodes, CSRF shape, module scripts, badges,
+  related/suggestions), API success through a real handler plus every
+  failure envelope (405/400/419/422/404), enablement matrix, site-URL
+  derivation incl. Host-header rejection, `jsonResponse` byte-parity
+  with `Runner::respond`, live execution of both entry files with
+  output capture, and static pins on the rewrite rule, the api alias
+  and on-disk assets. Full PHP suite 689/689; JS suites unchanged and
+  green (845/68/36). One mutation probe (forced enablement) failed
+  exactly the disabled-path tests; file restored byte-identical.
+- Manual QA path: with the checkout deployed over WHMCS, visit
+  `/tools`, `/tools/dns`, `/tools/dns-lookup` (run a lookup),
+  `/tools/search?q=ssl`, `/tools/disclaimer`, `/tools/sitemap.xml`,
+  a renamed URL (301) and a bogus URL (404 with suggestions); POST to
+  `/tools/api/my-ip` without a token (419) and via a page submit
+  (200). If mod_rewrite is off, the same pages answer at
+  `modules/addons/CloudHost247_tools/front.php?route=<path>`.

@@ -382,9 +382,11 @@ class CloudHost247ToolsRouter
 
         if ($route['type'] === 'tool') {
             $js[] = '/modules/addons/CloudHost247_tools/assets/js/tools/' . $route['tool']['slug'] . '.js';
-        } elseif (in_array($route['type'], ['index', 'category', 'search'], true)) {
-            $js[] = '/modules/addons/CloudHost247_tools/assets/js/tools-browse.js';
         }
+        // Browse pages (index/category/search) need no extra script: the live
+        // filter, FAQ accordions and menus are initialised by tools-core.js
+        // itself on every page. (A tools-browse.js URL was listed here before
+        // A-6, but the file never existed, so it 404'd on every browse page.)
 
         return ['css' => $css, 'js' => $js];
     }
