@@ -386,32 +386,69 @@ class CommissionManager
     }
 
     /**
-     * Handle invoice refund - reverse commission
+     * Handle invoice refund - reverse commission proportionally.
+     *
+     * A full refund reverses the whole commission and resets the first-paid
+     * flag (as before); a partial refund reverses only the refunded share and
+     * leaves the flag set. Reversals are cumulative per invoice, so repeated
+     * or split refunds can never reverse more than was paid.
      *
      * @param int $invoiceId
+     * @param float|null $refundAmount Refunded amount, when the hook provides it.
      * @return bool
      */
-    public function handleInvoiceRefund($invoiceId)
+    public function handleInvoiceRefund($invoiceId, $refundAmount = null)
     {
         $this->logDebug('Processing refund for invoice', ['invoice_id' => $invoiceId]);
 
         try {
+            $fraction = $this->refundFraction($invoiceId, $refundAmount);
+
             // Find commission records linked to this invoice
             $records = Capsule::table('mod_customaffiliate_commissions')
                 ->where('first_commission_invoice_id', $invoiceId)
                 ->get();
 
             foreach ($records as $record) {
-                // Mark first commission as refunded by resetting flag
-                // Note: We reset first_commission_paid so if client repays, commission applies again
-                Capsule::table('mod_customaffiliate_commissions')
-                    ->where('id', $record->id)
-                    ->update([
-                        'first_commission_paid'    => false,
-                        'first_commission_paid_at' => null,
-                        'first_commission_invoice_id' => null,
-                        'notes'                    => $this->appendNote($record->notes, 'First commission refunded on ' . date('Y-m-d H:i:s')),
-                    ]);
+                $original = round((float) $record->first_commission_amount, 2);
+                $already = 0.0;
+                foreach (Capsule::table('mod_customaffiliate_log')
+                    ->where('service_id', $record->service_id)
+                    ->where('affiliate_id', $record->affiliate_id)
+                    ->where('invoice_id', $invoiceId)
+                    ->where('action', 'refund')
+                    ->get() as $row) {
+                    $already += abs((float) $row->amount);
+                }
+                $already = round($already, 2);
+                $remaining = round($original - $already, 2);
+                if ($remaining <= 0) {
+                    continue;
+                }
+                $reverse = min(round($fraction * $original, 2), $remaining);
+                if ($reverse <= 0) {
+                    continue;
+                }
+                $fullyReversed = round($remaining - $reverse, 2) <= 0;
+
+                if ($fullyReversed) {
+                    // Mark first commission as refunded by resetting flag
+                    // Note: We reset first_commission_paid so if client repays, commission applies again
+                    Capsule::table('mod_customaffiliate_commissions')
+                        ->where('id', $record->id)
+                        ->update([
+                            'first_commission_paid'    => false,
+                            'first_commission_paid_at' => null,
+                            'first_commission_invoice_id' => null,
+                            'notes'                    => $this->appendNote($record->notes, 'First commission refunded on ' . date('Y-m-d H:i:s')),
+                        ]);
+                } else {
+                    Capsule::table('mod_customaffiliate_commissions')
+                        ->where('id', $record->id)
+                        ->update([
+                            'notes' => $this->appendNote($record->notes, 'First commission partially reversed ($' . number_format($reverse, 2, '.', '') . ' of $' . number_format($original, 2, '.', '') . ') on ' . date('Y-m-d H:i:s')),
+                        ]);
+                }
 
                 // Log the refund action
                 Capsule::table('mod_customaffiliate_log')->insert([
@@ -419,19 +456,21 @@ class CommissionManager
                     'affiliate_id' => $record->affiliate_id,
                     'invoice_id'   => $invoiceId,
                     'action'       => 'refund',
-                    'amount'       => -$record->first_commission_amount,
+                    'amount'       => -$reverse,
                     'percentage'   => 0,
-                    'description'  => 'First commission reversed due to refund',
+                    'description'  => $fullyReversed && $already == 0
+                        ? 'First commission reversed due to refund'
+                        : 'First commission partially reversed ($' . number_format($reverse, 2, '.', '') . ' of $' . number_format($original, 2, '.', '') . ')',
                 ]);
 
                 $this->logDebug('First commission reversed for refund', [
                     'service_id' => $record->service_id,
                     'affiliate_id' => $record->affiliate_id,
-                    'amount' => $record->first_commission_amount,
+                    'amount' => $reverse,
                 ]);
             }
 
-            $this->reverseRecurringForInvoice($invoiceId);
+            $this->reverseRecurringForInvoice($invoiceId, $fraction);
 
             return true;
         } catch (Exception $e) {
@@ -441,6 +480,51 @@ class CommissionManager
             ]);
             return false;
         }
+    }
+
+    /**
+     * Refunded share of an invoice, 0..1.
+     *
+     * Uses the hook-supplied amount when present, else the money-out
+     * transactions booked against the invoice, else 1.0 (full reversal, the
+     * historical behaviour when the refunded amount is unknown).
+     *
+     * @param int $invoiceId
+     * @param float|null $refundAmount
+     * @return float
+     */
+    private function refundFraction($invoiceId, $refundAmount)
+    {
+        $refunded = null;
+        if ($refundAmount !== null && (float) $refundAmount > 0) {
+            $refunded = (float) $refundAmount;
+        } else {
+            try {
+                $sum = 0.0;
+                foreach (Capsule::table('tblaccounts')->where('invoiceid', $invoiceId)->get() as $txn) {
+                    if ((float) ($txn->amountout ?? 0) > 0) {
+                        $sum += (float) $txn->amountout;
+                    }
+                }
+                if ($sum > 0) {
+                    $refunded = $sum;
+                }
+            } catch (Exception $e) {
+                $refunded = null;
+            }
+        }
+        if ($refunded === null) {
+            return 1.0;
+        }
+        $total = 0.0;
+        $invoice = $this->getInvoiceData($invoiceId);
+        if ($invoice) {
+            $total = (float) $invoice['total'];
+        }
+        if ($total <= 0) {
+            return 1.0;
+        }
+        return min(1.0, max(0.0, $refunded / $total));
     }
 
     /**
@@ -468,14 +552,16 @@ class CommissionManager
     }
 
     /**
-     * Reverse recurring commissions recorded against an invoice. Idempotent:
-     * each recurring log entry is reversed at most once, keyed by a
-     * 'refund_recurring' log row that names the original entry.
+     * Reverse recurring commissions recorded against an invoice, proportional
+     * to the refunded share. Idempotent and cumulative: each entry is reversed
+     * at most to its original amount across any number of refund events, keyed
+     * by prior 'refund_recurring' rows that name the original log entry.
      *
      * @param int $invoiceId
+     * @param float $fraction Refunded share of the invoice, 0..1.
      * @return void
      */
-    private function reverseRecurringForInvoice($invoiceId)
+    private function reverseRecurringForInvoice($invoiceId, $fraction = 1.0)
     {
         $entries = Capsule::table('mod_customaffiliate_log')
             ->where('invoice_id', $invoiceId)
@@ -483,17 +569,28 @@ class CommissionManager
             ->get();
 
         foreach ($entries as $entry) {
-            $marker = 'Recurring commission reversed (log #' . $entry->id . ')';
-            $already = Capsule::table('mod_customaffiliate_log')
+            $original = round((float) $entry->amount, 2);
+            $tag = '(log #' . $entry->id . ')';
+            $already = 0.0;
+            foreach (Capsule::table('mod_customaffiliate_log')
                 ->where('invoice_id', $invoiceId)
                 ->where('action', 'refund_recurring')
-                ->where('description', $marker)
-                ->exists();
-            if ($already) {
+                ->get() as $row) {
+                if (strpos((string) $row->description, $tag) !== false) {
+                    $already += abs((float) $row->amount);
+                }
+            }
+            $already = round($already, 2);
+            $remaining = round($original - $already, 2);
+            if ($remaining <= 0) {
                 continue;
             }
+            $reverse = min(round($fraction * $original, 2), $remaining);
+            if ($reverse <= 0) {
+                continue;
+            }
+            $fullyReversed = round($remaining - $reverse, 2) <= 0;
 
-            $amount = round((float) $entry->amount, 2);
             $record = Capsule::table('mod_customaffiliate_commissions')
                 ->where('service_id', $entry->service_id)
                 ->where('affiliate_id', $entry->affiliate_id)
@@ -504,29 +601,37 @@ class CommissionManager
                 'affiliate_id' => $entry->affiliate_id,
                 'invoice_id'   => $invoiceId,
                 'action'       => 'refund_recurring',
-                'amount'       => -$amount,
+                'amount'       => -$reverse,
                 'percentage'   => 0,
-                'description'  => $marker,
+                'description'  => 'Recurring commission reversed ' . $tag . ': $' . number_format($reverse, 2, '.', '') . ' of $' . number_format($original, 2, '.', ''),
             ]);
 
             if ($record) {
+                $update = [
+                    'total_recurring_commission' => max(0, round((float) $record->total_recurring_commission - $reverse, 2)),
+                    'notes'                      => $this->appendNote($record->notes, 'Recurring commission reversed ($' . number_format($reverse, 2, '.', '') . ' of $' . number_format($original, 2, '.', '') . ') on refund of invoice ' . $invoiceId),
+                ];
+                if ($fullyReversed) {
+                    $update['recurring_count'] = max(0, (int) $record->recurring_count - 1);
+                }
                 Capsule::table('mod_customaffiliate_commissions')
                     ->where('id', $record->id)
-                    ->update([
-                        'total_recurring_commission' => max(0, round((float) $record->total_recurring_commission - $amount, 2)),
-                        'recurring_count'            => max(0, (int) $record->recurring_count - 1),
-                        'notes'                      => $this->appendNote($record->notes, 'Recurring commission reversed on refund of invoice ' . $invoiceId),
-                    ]);
+                    ->update($update);
             }
 
             $this->logDebug('Recurring commission reversed for refund', [
-                'invoice_id' => $invoiceId, 'service_id' => $entry->service_id, 'amount' => $amount,
+                'invoice_id' => $invoiceId, 'service_id' => $entry->service_id, 'amount' => $reverse,
             ]);
         }
     }
 
     /**
-     * Handle service upgrade/downgrade
+     * Handle service upgrade/downgrade.
+     *
+     * Runs the package-change logic for every commission record on the
+     * service: the stored product is regrouped to the live one, and a move
+     * into the hosting group resets first-commission tracking so the next
+     * payment earns the first rate again.
      *
      * @param int $serviceId
      * @param string $type 'upgrade' or 'downgrade'
@@ -542,21 +647,142 @@ class CommissionManager
                 return;
             }
 
-            // Check if new product is still in web hosting group
-            $newGroupId = $this->getProductGroupId($service['packageid']);
-            if ((int)$newGroupId !== (int)$this->productGroupId) {
-                // Service moved out of web hosting group - we keep the record
-                // but future commissions won't apply due to group check
-                $this->appendNoteForService($serviceId, 'Product changed to non-hosting on ' . date('Y-m-d H:i:s'));
-            } else {
-                // Still in hosting group - maintain existing commission logic
-                $this->appendNoteForService($serviceId, 'Service ' . $type . ' on ' . date('Y-m-d H:i:s'));
+            $newProductId = (int) $service['packageid'];
+            $records = Capsule::table('mod_customaffiliate_commissions')
+                ->where('service_id', $serviceId)
+                ->get();
+            if (!$records) {
+                $this->logDebug('No commission records for service - nothing to regroup', ['service_id' => $serviceId]);
+                return;
+            }
+
+            $olds = [];
+            foreach ($records as $record) {
+                $olds[(int) $record->product_id] = true;
+            }
+            foreach (array_keys($olds) as $oldProductId) {
+                $this->processPackageChange($serviceId, $oldProductId, $newProductId);
             }
         } catch (Exception $e) {
             $this->logDebug('Error processing service change', [
                 'error' => $e->getMessage(),
                 'service_id' => $serviceId,
                 'type' => $type,
+            ]);
+        }
+    }
+
+    /**
+     * Process a package change for an existing service.
+     *
+     * The single home of the upgrade/downgrade rules (previously duplicated
+     * between here and UpgradeHandler, which now delegates to this method).
+     * Every branch regroups the stored product to the live one; only a move
+     * into the hosting group resets first-commission tracking.
+     *
+     * @param int $serviceId
+     * @param int $oldProductId
+     * @param int $newProductId
+     * @return array Result details
+     */
+    public function processPackageChange($serviceId, $oldProductId, $newProductId)
+    {
+        $oldProductId = (int) $oldProductId;
+        $newProductId = (int) $newProductId;
+        $oldIsHosting = $this->isWebHostingProduct($oldProductId);
+        $newIsHosting = $this->isWebHostingProduct($newProductId);
+
+        $result = [
+            'service_id' => $serviceId,
+            'old_product_id' => $oldProductId,
+            'new_product_id' => $newProductId,
+            'old_is_hosting' => $oldIsHosting,
+            'new_is_hosting' => $newIsHosting,
+            'action_taken' => 'none',
+            'records_updated' => 0,
+        ];
+
+        if ($oldProductId === $newProductId) {
+            // Config-only change: grouping already correct, nothing to reset.
+            $this->appendNoteForService($serviceId, "Service change recorded (product unchanged: {$newProductId})");
+            $result['action_taken'] = 'unchanged';
+            $result['message'] = 'Product unchanged. Commission tracking untouched.';
+        } elseif ($oldIsHosting && $newIsHosting) {
+            // Stayed in hosting group - preserve first commission status
+            $result['records_updated'] = $this->updateServiceProduct($serviceId, $newProductId);
+            $this->appendNoteForService($serviceId, "Product changed within hosting group: {$oldProductId} -> {$newProductId}");
+            $result['action_taken'] = 'preserved';
+            $result['message'] = 'First commission status preserved. Recurring commissions continue at configured rate.';
+        } elseif ($oldIsHosting && !$newIsHosting) {
+            // Moved out of hosting group
+            $result['records_updated'] = $this->updateServiceProduct($serviceId, $newProductId);
+            $this->appendNoteForService($serviceId, "Product moved OUT of hosting group: {$oldProductId} -> {$newProductId}. Future commissions blocked.");
+            $result['action_taken'] = 'blocked';
+            $result['message'] = 'Product moved out of hosting group. Future commissions will not apply.';
+        } elseif (!$oldIsHosting && $newIsHosting) {
+            // Moved INTO hosting group - treat as new service for commission purposes
+            $result['records_updated'] = $this->updateServiceProduct($serviceId, $newProductId);
+            $this->resetFirstCommissionForService($serviceId);
+            $this->appendNoteForService($serviceId, "Product moved INTO hosting group: {$oldProductId} -> {$newProductId}. Commission tracking reset.");
+            $result['action_taken'] = 'reset';
+            $result['message'] = 'Product moved into hosting group. Next payment will be treated as first payment (50% commission).';
+        } else {
+            // Was not hosting, still not hosting - regroup only, no payout impact
+            $result['records_updated'] = $this->updateServiceProduct($serviceId, $newProductId);
+            $this->appendNoteForService($serviceId, "Product changed outside hosting group: {$oldProductId} -> {$newProductId}. No commission impact.");
+            $result['action_taken'] = 'ignored';
+            $result['message'] = 'Neither old nor new product is in hosting group. No commission impact.';
+        }
+
+        $this->logDebug('Processed package change', $result);
+        return $result;
+    }
+
+    /**
+     * Regroup every commission row for a service onto a new product.
+     *
+     * @param int $serviceId
+     * @param int $newProductId
+     * @return int Rows updated.
+     */
+    private function updateServiceProduct($serviceId, $newProductId)
+    {
+        $updated = 0;
+        foreach (Capsule::table('mod_customaffiliate_commissions')->where('service_id', $serviceId)->get() as $row) {
+            if ((int) $row->product_id === (int) $newProductId) {
+                continue;
+            }
+            $updated += Capsule::table('mod_customaffiliate_commissions')
+                ->where('id', $row->id)
+                ->update(['product_id' => (int) $newProductId]);
+        }
+        return $updated;
+    }
+
+    /**
+     * Reset first-commission tracking for a service (recurring totals kept).
+     *
+     * @param int $serviceId
+     * @return void
+     */
+    private function resetFirstCommissionForService($serviceId)
+    {
+        try {
+            // Recurring totals are left as they are; only the first-payment flag is reset.
+            foreach (Capsule::table('mod_customaffiliate_commissions')->where('service_id', $serviceId)->get() as $row) {
+                Capsule::table('mod_customaffiliate_commissions')
+                    ->where('id', $row->id)
+                    ->update([
+                        'first_commission_paid' => false,
+                        'first_commission_paid_at' => null,
+                        'first_commission_invoice_id' => null,
+                        'notes' => self::appendNote($row->notes, 'Commission tracking reset on ' . date('Y-m-d H:i:s')),
+                    ]);
+            }
+        } catch (Exception $e) {
+            $this->logDebug('Error resetting commission status', [
+                'error' => $e->getMessage(),
+                'service_id' => $serviceId,
             ]);
         }
     }

@@ -119,7 +119,7 @@ add_hook('InvoiceRefunded', 1, function($vars) {
     ]);
 
     try {
-        $manager->handleInvoiceRefund($invoiceId);
+        $manager->handleInvoiceRefund($invoiceId, $refundAmount ? (float) $refundAmount : null);
     } catch (Exception $e) {
         $manager->logDebug('Exception in InvoiceRefunded hook', [
             'error' => $e->getMessage(),
