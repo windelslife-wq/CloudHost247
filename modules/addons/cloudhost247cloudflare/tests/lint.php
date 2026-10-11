@@ -16,3 +16,4 @@ foreach ($files as $p) {
     catch (\Throwable $e) { $bad++; echo "PARSE FAIL: " . str_replace($root . '/', '', $p) . ': ' . $e->getMessage() . "\n"; }
 }
 echo "FILES=" . count($files) . "\nBAD=$bad\n";
+exit($bad > 0 ? 1 : 0);

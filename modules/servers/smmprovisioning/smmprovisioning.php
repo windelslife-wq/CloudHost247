@@ -15,6 +15,50 @@ require_once __DIR__ . '/../../addons/smmaddon/lib/ApiClient.php';
 use SmmAddon\Helper;
 use SmmAddon\ApiClient;
 
+
+/**
+ * Normalise the panel endpoint from the server record.
+ * Returns array($url, $key, $error); $error is null on success.
+ */
+function smmprovisioning_apiEndpoint(array $params)
+{
+    $host = isset($params['serverhostname']) ? trim((string) $params['serverhostname']) : '';
+    $ip = isset($params['serverip']) ? trim((string) $params['serverip']) : '';
+    $url = $host !== '' ? $host : $ip;
+    $key = isset($params['serverpassword']) ? (string) $params['serverpassword'] : '';
+    if ($url === '' || $key === '') {
+        return array(null, null, 'API URL and API Key are required.');
+    }
+    if (!preg_match('#^https?://#i', $url)) {
+        $url = 'https://' . $url;
+    }
+    return array($url, $key, null);
+}
+
+/**
+ * Pick a custom-field value: exact configured name (before any "|label") wins,
+ * then first substring-needle hit. $pairs is array(array($name, $value), ...).
+ */
+function smmprovisioning_matchField(array $pairs, $configuredName, array $needles)
+{
+    $want = strtolower(trim((string) $configuredName));
+    foreach ($pairs as $pair) {
+        $name = strtolower(trim((string) explode('|', (string) $pair[0])[0]));
+        if ($name !== '' && $name === $want) {
+            return $pair[1];
+        }
+    }
+    foreach ($pairs as $pair) {
+        $name = strtolower((string) $pair[0]);
+        foreach ($needles as $needle) {
+            if ($needle !== '' && strpos($name, $needle) !== false) {
+                return $pair[1];
+            }
+        }
+    }
+    return null;
+}
+
 /**
  * Module Metadata
  */
@@ -86,19 +130,12 @@ function smmprovisioning_ConfigOptions()
 function smmprovisioning_TestConnection(array $params)
 {
     try {
-        $apiUrl = $params['serverhostname'] ?: $params['serverip'];
-        $apiKey = $params['serverpassword'];
-
-        if (empty($apiUrl) || empty($apiKey)) {
+        list($apiUrl, $apiKey, $endpointError) = smmprovisioning_apiEndpoint($params);
+        if ($endpointError !== null) {
             return array(
                 'success' => false,
-                'error'   => 'API URL and API Key are required.',
+                'error'   => $endpointError,
             );
-        }
-
-        // Ensure URL has scheme
-        if (strpos($apiUrl, 'http') !== 0) {
-            $apiUrl = 'https://' . $apiUrl;
         }
 
         $client = new ApiClient($apiUrl, $apiKey, true);
@@ -136,6 +173,12 @@ function smmprovisioning_CreateAccount(array $params)
         $orderId   = $params['orderid'];
         $userId    = $params['clientsdetails']['userid'];
 
+        // Idempotency (mirrors M-4): a re-run must not place a second provider order.
+        $existingOrder = Helper::getOrderByServiceId($serviceId);
+        if ($existingOrder && (!isset($existingOrder->status) || $existingOrder->status !== 'error')) {
+            return 'success';
+        }
+
         // Get SMM service mapping
         $smmServiceId = $params['configoption1'] ?? '';
         $minQty = (int) ($params['configoption3'] ?? 100);
@@ -157,18 +200,22 @@ function smmprovisioning_CreateAccount(array $params)
             return 'SMM Service ID ' . $smmServiceId . ' not found or not mapped.';
         }
 
-        // Get custom field values from params
+        // Get custom field values from params (exact configured name wins, fuzzy fallback)
         $link = '';
         $quantity = 0;
 
-        if (!empty($params['customfields'])) {
+        if (!empty($params['customfields']) && is_array($params['customfields'])) {
+            $pairs = array();
             foreach ($params['customfields'] as $fieldName => $fieldValue) {
-                if (strcasecmp($fieldName, $linkFieldName) === 0 || stripos($fieldName, 'link') !== false || stripos($fieldName, 'url') !== false) {
-                    $link = $fieldValue;
-                }
-                if (strcasecmp($fieldName, $qtyFieldName) === 0 || stripos($fieldName, 'quantity') !== false || stripos($fieldName, 'count') !== false) {
-                    $quantity = (int) $fieldValue;
-                }
+                $pairs[] = array($fieldName, $fieldValue);
+            }
+            $foundLink = smmprovisioning_matchField($pairs, $linkFieldName, array('link', 'url'));
+            if ($foundLink !== null && $foundLink !== '') {
+                $link = $foundLink;
+            }
+            $foundQty = smmprovisioning_matchField($pairs, $qtyFieldName, array('quantity', 'count', 'amount'));
+            if ($foundQty !== null && $foundQty !== '') {
+                $quantity = (int) $foundQty;
             }
         }
 
@@ -180,13 +227,20 @@ function smmprovisioning_CreateAccount(array $params)
                 ->select('tblcustomfields.fieldname', 'tblcustomfieldsvalues.value')
                 ->get();
 
+            $pairs = array();
             foreach ($customFields as $cf) {
-                $name = strtolower(trim($cf->fieldname));
-                if (strpos($name, strtolower($linkFieldName)) !== false || strpos($name, 'link') !== false || strpos($name, 'url') !== false) {
-                    $link = $cf->value;
+                $pairs[] = array($cf->fieldname, $cf->value);
+            }
+            if (empty($link)) {
+                $foundLink = smmprovisioning_matchField($pairs, $linkFieldName, array('link', 'url'));
+                if ($foundLink !== null && $foundLink !== '') {
+                    $link = $foundLink;
                 }
-                if (strpos($name, strtolower($qtyFieldName)) !== false || strpos($name, 'quantity') !== false || strpos($name, 'count') !== false || strpos($name, 'amount') !== false) {
-                    $quantity = (int) $cf->value;
+            }
+            if ($quantity < 1) {
+                $foundQty = smmprovisioning_matchField($pairs, $qtyFieldName, array('quantity', 'count', 'amount'));
+                if ($foundQty !== null && $foundQty !== '') {
+                    $quantity = (int) $foundQty;
                 }
             }
         }
@@ -209,11 +263,9 @@ function smmprovisioning_CreateAccount(array $params)
         }
 
         // Use server-specific config if available
-        $apiUrl = $params['serverhostname'] ?: $params['serverip'];
-        $apiKey = $params['serverpassword'];
-
-        if (strpos($apiUrl, 'http') !== 0) {
-            $apiUrl = 'https://' . $apiUrl;
+        list($apiUrl, $apiKey, $endpointError) = smmprovisioning_apiEndpoint($params);
+        if ($endpointError !== null) {
+            return $endpointError;
         }
 
         $debug = Helper::getConfig('debug_mode') === 'on';
@@ -236,11 +288,16 @@ function smmprovisioning_CreateAccount(array $params)
                 'updated_at'       => date('Y-m-d H:i:s'),
             ]);
 
-            // Update service notes
+            // Append to service notes (never clobber admin notes)
+            $priorNotes = \Illuminate\Database\Capsule\Manager::table('tblhosting')
+                ->where('id', $serviceId)
+                ->value('notes');
+            $notes = trim((string) $priorNotes);
+            $notes .= ($notes === '' ? '' : "\n") . 'SMM Order ID: ' . $result['order'];
             \Illuminate\Database\Capsule\Manager::table('tblhosting')
                 ->where('id', $serviceId)
                 ->update([
-                    'notes' => 'SMM Order ID: ' . $result['order'],
+                    'notes' => $notes,
                 ]);
 
             return 'success';
@@ -280,21 +337,24 @@ function smmprovisioning_SuspendAccount(array $params)
         $order = Helper::getOrderByServiceId($serviceId);
 
         if ($order && !empty($order->smm_order_id)) {
-            $apiUrl = $params['serverhostname'] ?: $params['serverip'];
-            $apiKey = $params['serverpassword'];
-            if (strpos($apiUrl, 'http') !== 0) {
-                $apiUrl = 'https://' . $apiUrl;
+            list($apiUrl, $apiKey, $endpointError) = smmprovisioning_apiEndpoint($params);
+            if ($endpointError === null) {
+                $debug = Helper::getConfig('debug_mode') === 'on';
+                $client = new ApiClient($apiUrl, $apiKey, $debug);
+                $cancelResult = $client->cancelOrder($order->smm_order_id);
+                if (is_array($cancelResult) && !isset($cancelResult['error'])) {
+                    \Illuminate\Database\Capsule\Manager::table('mod_smm_orders')
+                        ->where('id', $order->id)
+                        ->update([
+                            'status' => 'canceled',
+                            'updated_at' => date('Y-m-d H:i:s'),
+                        ]);
+                } else {
+                    logActivity('SMM Provisioning ' . __FUNCTION__ . ': panel cancel rejected for order ' . $order->smm_order_id);
+                }
+            } else {
+                logActivity('SMM Provisioning ' . __FUNCTION__ . ': ' . $endpointError);
             }
-            $debug = Helper::getConfig('debug_mode') === 'on';
-            $client = new ApiClient($apiUrl, $apiKey, $debug);
-            $client->cancelOrder($order->smm_order_id);
-
-            \Illuminate\Database\Capsule\Manager::table('mod_smm_orders')
-                ->where('id', $order->id)
-                ->update([
-                    'status' => 'canceled',
-                    'updated_at' => date('Y-m-d H:i:s'),
-                ]);
         }
 
         return 'success';
@@ -322,21 +382,24 @@ function smmprovisioning_TerminateAccount(array $params)
         $order = Helper::getOrderByServiceId($serviceId);
 
         if ($order && !empty($order->smm_order_id)) {
-            $apiUrl = $params['serverhostname'] ?: $params['serverip'];
-            $apiKey = $params['serverpassword'];
-            if (strpos($apiUrl, 'http') !== 0) {
-                $apiUrl = 'https://' . $apiUrl;
+            list($apiUrl, $apiKey, $endpointError) = smmprovisioning_apiEndpoint($params);
+            if ($endpointError === null) {
+                $debug = Helper::getConfig('debug_mode') === 'on';
+                $client = new ApiClient($apiUrl, $apiKey, $debug);
+                $cancelResult = $client->cancelOrder($order->smm_order_id);
+                if (is_array($cancelResult) && !isset($cancelResult['error'])) {
+                    \Illuminate\Database\Capsule\Manager::table('mod_smm_orders')
+                        ->where('id', $order->id)
+                        ->update([
+                            'status' => 'canceled',
+                            'updated_at' => date('Y-m-d H:i:s'),
+                        ]);
+                } else {
+                    logActivity('SMM Provisioning ' . __FUNCTION__ . ': panel cancel rejected for order ' . $order->smm_order_id);
+                }
+            } else {
+                logActivity('SMM Provisioning ' . __FUNCTION__ . ': ' . $endpointError);
             }
-            $debug = Helper::getConfig('debug_mode') === 'on';
-            $client = new ApiClient($apiUrl, $apiKey, $debug);
-            $client->cancelOrder($order->smm_order_id);
-
-            \Illuminate\Database\Capsule\Manager::table('mod_smm_orders')
-                ->where('id', $order->id)
-                ->update([
-                    'status' => 'canceled',
-                    'updated_at' => date('Y-m-d H:i:s'),
-                ]);
         }
 
         return 'success';

@@ -68,3 +68,4 @@ check('vonage: malformed token rejected', !WebhookVerifier::vonageJwt($vSecret, 
 
 echo "\nwebhook verifier: PASS=$pass FAIL=$fail\n";
 echo "FAIL=$fail\n";
+exit($fail > 0 ? 1 : 0);

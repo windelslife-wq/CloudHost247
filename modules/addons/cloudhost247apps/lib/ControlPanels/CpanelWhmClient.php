@@ -29,6 +29,13 @@ class CpanelWhmClient
         'uapi_domain_aliases' => 'uapi_cpanel',
         'uapi_quota_info' => 'uapi_cpanel',
         'uapi_bandwidth_stats' => 'uapi_cpanel',
+        // Fixed Mysql bridge operations for the deployment adapter. Each is a
+        // single documented function with fixed module/function names; callers
+        // cannot use this proxy to invoke arbitrary UAPI methods.
+        'uapi_mysql_create_database' => 'uapi_cpanel',
+        'uapi_mysql_create_user' => 'uapi_cpanel',
+        'uapi_mysql_set_privileges' => 'uapi_cpanel',
+        'uapi_mysql_delete_database' => 'uapi_cpanel',
         'create_account' => 'createacct',
         'suspend_account' => 'suspendacct',
         'unsuspend_account' => 'unsuspendacct',
@@ -74,6 +81,14 @@ class CpanelWhmClient
             $parameters = $this->uapiQuotaInfoParameters($parameters);
         } elseif ($operation === 'uapi_bandwidth_stats') {
             $parameters = $this->uapiBandwidthStatsParameters($parameters);
+        } elseif ($operation === 'uapi_mysql_create_database') {
+            $parameters = $this->uapiMysqlCreateDatabaseParameters($parameters);
+        } elseif ($operation === 'uapi_mysql_create_user') {
+            $parameters = $this->uapiMysqlCreateUserParameters($parameters);
+        } elseif ($operation === 'uapi_mysql_set_privileges') {
+            $parameters = $this->uapiMysqlSetPrivilegesParameters($parameters);
+        } elseif ($operation === 'uapi_mysql_delete_database') {
+            $parameters = $this->uapiMysqlDeleteDatabaseParameters($parameters);
         }
 
         $query = ['api.version' => 1];
@@ -299,6 +314,147 @@ class CpanelWhmClient
             'cpanel.function' => (string) $expectedFunction,
             'hide_temporary_domains' => 1,
         ];
+    }
+
+    /** Validate the one fixed Mysql::create_database call; never expose a generic UAPI tunnel. */
+    private function uapiMysqlCreateDatabaseParameters(array $parameters)
+    {
+        $allowed = ['cpanel.user', 'cpanel.module', 'cpanel.function', 'name'];
+        $this->assertExactParameters($parameters, $allowed, 'The requested cPanel UAPI database operation is not implemented.');
+        $username = $this->uapiUsername($parameters['cpanel.user']);
+        $name = $this->uapiMysqlName($parameters['name']);
+        if ((string) $parameters['cpanel.module'] !== 'Mysql'
+            || (string) $parameters['cpanel.function'] !== 'create_database') {
+            throw new CpanelException('The requested cPanel UAPI database operation is not implemented.', [
+                'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+            ]);
+        }
+        return [
+            'cpanel.user' => $username,
+            'cpanel.module' => 'Mysql',
+            'cpanel.function' => 'create_database',
+            'name' => $name,
+        ];
+    }
+
+    /** Validate the one fixed Mysql::create_user call; never expose a generic UAPI tunnel. */
+    private function uapiMysqlCreateUserParameters(array $parameters)
+    {
+        $allowed = ['cpanel.user', 'cpanel.module', 'cpanel.function', 'name', 'password'];
+        $this->assertExactParameters($parameters, $allowed, 'The requested cPanel UAPI database-user operation is not implemented.');
+        $username = $this->uapiUsername($parameters['cpanel.user']);
+        $name = $this->uapiMysqlName($parameters['name'], 32);
+        $password = isset($parameters['password']) ? (string) $parameters['password'] : '';
+        if ($password === '' || strlen($password) > 1024 || preg_match('/[\\r\\n\\x00]/', $password)) {
+            throw new CpanelException('The database user password is invalid.', [
+                'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+            ]);
+        }
+        if ((string) $parameters['cpanel.module'] !== 'Mysql'
+            || (string) $parameters['cpanel.function'] !== 'create_user') {
+            throw new CpanelException('The requested cPanel UAPI database-user operation is not implemented.', [
+                'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+            ]);
+        }
+        return [
+            'cpanel.user' => $username,
+            'cpanel.module' => 'Mysql',
+            'cpanel.function' => 'create_user',
+            'name' => $name,
+            'password' => $password,
+        ];
+    }
+
+    /** Validate the one fixed Mysql::set_privileges_on_database call with full rights on one database. */
+    private function uapiMysqlSetPrivilegesParameters(array $parameters)
+    {
+        $allowed = ['cpanel.user', 'cpanel.module', 'cpanel.function', 'user', 'database', 'privileges'];
+        $this->assertExactParameters($parameters, $allowed, 'The requested cPanel UAPI privilege operation is not implemented.');
+        $username = $this->uapiUsername($parameters['cpanel.user']);
+        $user = $this->uapiMysqlName($parameters['user'], 32);
+        $database = $this->uapiMysqlName($parameters['database']);
+        if ((string) $parameters['cpanel.module'] !== 'Mysql'
+            || (string) $parameters['cpanel.function'] !== 'set_privileges_on_database'
+            || (string) $parameters['privileges'] !== 'ALL PRIVILEGES') {
+            throw new CpanelException('The requested cPanel UAPI privilege operation is not implemented.', [
+                'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+            ]);
+        }
+        return [
+            'cpanel.user' => $username,
+            'cpanel.module' => 'Mysql',
+            'cpanel.function' => 'set_privileges_on_database',
+            'user' => $user,
+            'database' => $database,
+            'privileges' => 'ALL PRIVILEGES',
+        ];
+    }
+
+    /** Validate the one fixed Mysql::delete_database call; never expose a generic UAPI tunnel. */
+    private function uapiMysqlDeleteDatabaseParameters(array $parameters)
+    {
+        $allowed = ['cpanel.user', 'cpanel.module', 'cpanel.function', 'name'];
+        $this->assertExactParameters($parameters, $allowed, 'The requested cPanel UAPI database operation is not implemented.');
+        $username = $this->uapiUsername($parameters['cpanel.user']);
+        $name = $this->uapiMysqlName($parameters['name']);
+        if ((string) $parameters['cpanel.module'] !== 'Mysql'
+            || (string) $parameters['cpanel.function'] !== 'delete_database') {
+            throw new CpanelException('The requested cPanel UAPI database operation is not implemented.', [
+                'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+            ]);
+        }
+        return [
+            'cpanel.user' => $username,
+            'cpanel.module' => 'Mysql',
+            'cpanel.function' => 'delete_database',
+            'name' => $name,
+        ];
+    }
+
+    private function assertExactParameters(array $parameters, array $allowed, $message)
+    {
+        if (count($parameters) !== count($allowed)) {
+            throw new CpanelException($message, [
+                'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+            ]);
+        }
+        foreach ($allowed as $key) {
+            if (!array_key_exists($key, $parameters)) {
+                throw new CpanelException($message, [
+                    'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+                ]);
+            }
+        }
+    }
+
+    private function uapiUsername($value)
+    {
+        $username = strtolower(trim((string) $value));
+        if (!preg_match('/^[a-z][a-z0-9]{0,15}$/', $username)) {
+            throw new CpanelException('The requested cPanel UAPI operation is not implemented.', [
+                'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+            ]);
+        }
+        return $username;
+    }
+
+    /**
+     * Short (unprefixed) MySQL database or user name.
+     *
+     * Lowercase only: MySQL identifier case handling varies by host, and a
+     * name cPanel lowercases on write would no longer match the name the
+     * platform recorded. No underscores: each one costs two characters of
+     * cPanel's 64-character database-name limit.
+     */
+    private function uapiMysqlName($value, $maxLength = 48)
+    {
+        $name = strtolower(trim((string) $value));
+        if ($name === '' || strlen($name) > (int) $maxLength || !preg_match('/^[a-z0-9]+$/', $name)) {
+            throw new CpanelException('The requested cPanel UAPI operation is not implemented.', [
+                'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
+            ]);
+        }
+        return $name;
     }
 
     private function parameters(array $parameters)

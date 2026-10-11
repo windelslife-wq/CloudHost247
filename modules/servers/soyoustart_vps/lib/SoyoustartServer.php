@@ -21,6 +21,11 @@ class SoyoustartServer extends Helper
         $this->addonHelper = new Helper();
     }
 
+    public static function escapeHtml($value)
+    {
+        return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+    }
+
     public function getServiceConfigs($serviceID)
     {
         try {
@@ -32,7 +37,7 @@ class SoyoustartServer extends Helper
 
             return $serviceConfigs;
         } catch (\Throwable $th) {
-            //throw $th;
+            return [];
         }
     }
 
@@ -44,14 +49,14 @@ class SoyoustartServer extends Helper
             <h5 class="card-header">' . $LANG["serviceInfo"] . '</h5>
             <div class="card-body " id="serverInfo">';
         if (isset($serverInfo["httpcode"]) && $serverInfo["httpcode"] != 200) {
-            $html = '<div class="alert alert-danger" role="alert">Error: ' . $serverInfo["result"]->message . '</div>';
+            $html = '<div class="alert alert-danger" role="alert">Error: ' . self::escapeHtml($serverInfo["result"]->message) . '</div>';
             return $html;
         } elseif ($cardBody) {
             $serverInfo = $serverInfo["result"];
             $html = '
                 <div class="adminServerInfo">
                         <div class="">Server ' . $LANG["vpsservide_name"] . '</div>
-                        <div class="">' . ucwords($ovhCustomHostname == "" ? $serverInfo->name : $ovhCustomHostname) . '</div>
+                        <div class="">' . self::escapeHtml(ucwords($ovhCustomHostname == "" ? $serverInfo->name : $ovhCustomHostname)) . '</div>
                 </div>
                 <div class="adminServerInfo">
                 <div class="">' . $LANG["vpsservide_ipaddress"] . '</div>
@@ -60,34 +65,34 @@ class SoyoustartServer extends Helper
 
                 <div class="adminServerInfo">
                         <div class="">' . $LANG["vpsservide_cluster"] . '</div>
-                        <div class="">' . $serverInfo->cluster . '</div>
+                        <div class="">' . self::escapeHtml($serverInfo->cluster) . '</div>
                 </div>  
                 <div class="adminServerInfo">
                         <div class="">' . $LANG["vpsservide_netboot"] . '</div>
-                        <div class="">' . ucfirst($serverInfo->netbootMode) . '</div>
+                        <div class="">' . self::escapeHtml(ucfirst($serverInfo->netbootMode)) . '</div>
                 </div>
                 <div class="adminServerInfo">
                         <div class="">' . $LANG["vpsservide_zone"] . '</div>
-                        <div class="">' . $serverInfo->zone . '</div>
+                        <div class="">' . self::escapeHtml($serverInfo->zone) . '</div>
                 </div>
                 
                 <div class="adminServerInfo">
                         <div class="">' . ucfirst($LANG["vpsservide_state"]) . '</div>';
 
             if ($serverInfo->state == "ok" || $serverInfo->state == "running") {
-                $html .= '<div><span class="badge badge-success">' . ucfirst($serverInfo->state) . '</span></div>';
+                $html .= '<div><span class="badge badge-success">' . self::escapeHtml(ucfirst($serverInfo->state)) . '</span></div>';
             } else {
-                $html .= '<div><span class="badge badge-danger">' . ucfirst($serverInfo->state) . '</span></div>';
+                $html .= '<div><span class="badge badge-danger">' . self::escapeHtml(ucfirst($serverInfo->state)) . '</span></div>';
             }
             $html .= '
                 </div>
                 <div class="adminServerInfo">
                         <div class="">' . $LANG["vpsservide_vcore"] . '</div>
-                        <div class="">' . $serverInfo->model->vcore . '</div>
+                        <div class="">' . self::escapeHtml($serverInfo->model->vcore) . '</div>
                 </div>
                 <div class="adminServerInfo">
                         <div class="">' . $LANG["vpsservide_offtertype"] . '</div>
-                        <div class="">' . strtoupper($serverInfo->offerType) . '</div>
+                        <div class="">' . self::escapeHtml(strtoupper($serverInfo->offerType)) . '</div>
                 </div>
                 <div class="adminServerInfo">
                 <div class="">' . $LANG["vpsservide_slamonitoring"] . '</div>
@@ -106,11 +111,11 @@ class SoyoustartServer extends Helper
                 </div>
                 <div class="adminServerInfo">
                         <div class="">' . $LANG["vpsservide_memory_limit"] . '</div>
-                        <div class="">' . ($serverInfo->memoryLimit > 1024 ? $serverInfo->memoryLimit / 1024 . "GB" : $serverInfo->memoryLimit . "MB") . '</div>
+                        <div class="">' . self::escapeHtml($serverInfo->memoryLimit > 1024 ? $serverInfo->memoryLimit / 1024 . "GB" : $serverInfo->memoryLimit . "MB") . '</div>
                 </div>
                 <div class="adminServerInfo">
                         <div class="">' . $LANG["vpsservide_disk"] . '</div>
-                        <div class="">' . $serverInfo->model->disk . 'GB</div>
+                        <div class="">' . self::escapeHtml($serverInfo->model->disk) . 'GB</div>
                 </div>';
             return $html;
         }
@@ -129,7 +134,7 @@ class SoyoustartServer extends Helper
             <div class="card-body" id="serviceMonitoring">';
 
         if (isset($monitoringStatus["httpcode"]) && $monitoringStatus["httpcode"] != 200) {
-            $html= '<div class="alert alert-danger" role="alert">Error: ' . $monitoringStatus["result"]->message . '</div>';
+            $html= '<div class="alert alert-danger" role="alert">Error: ' . self::escapeHtml($monitoringStatus["result"]->message) . '</div>';
             return $html;
         } elseif ($cardBody) {
             $monitoringStatus = $monitoringStatus["result"];
@@ -296,7 +301,7 @@ class SoyoustartServer extends Helper
             <h5 class="card-header">' . $LANG["disk"] . '</h5>
             <div class="card-body">';
         if ($diskErrors != "") {
-            $html = '<div class="alert alert-danger" role="alert">Error: ' . $diskErrors . '</div>';
+            $html = '<div class="alert alert-danger" role="alert">Error: ' . self::escapeHtml($diskErrors) . '</div>';
             return $html;
         } else {
             $html .= '<table id="disk_vps" style="width:100%">
@@ -316,11 +321,11 @@ class SoyoustartServer extends Helper
                 foreach ($sdisktInfo as $key => $sdisktInfo) {
                     $html .= '
                                    <tr>
-                                       <td>' . $sdisktInfo->id . '</td>
-                                       <td>' . $sdisktInfo->type . ' </td>
-                                       <td>' . $sdisktInfo->size . '</td>
-                                       <td>' . $sdisktInfo->bandwidthLimit . ' </td>
-                                       <td>' . $sdisktInfo->lowFreeSpaceThreshold . '</td>';
+                                       <td>' . self::escapeHtml($sdisktInfo->id) . '</td>
+                                       <td>' . self::escapeHtml($sdisktInfo->type) . ' </td>
+                                       <td>' . self::escapeHtml($sdisktInfo->size) . '</td>
+                                       <td>' . self::escapeHtml($sdisktInfo->bandwidthLimit) . ' </td>
+                                       <td>' . self::escapeHtml($sdisktInfo->lowFreeSpaceThreshold) . '</td>';
                     if ($sdisktInfo->state == "connected") {
                         $html .= '<td class="badge badge-success mt-2">' . $LANG["disk_connected"] . ' </td>';
                     } elseif ($sdisktInfo->state == "disconnected") {
@@ -363,7 +368,7 @@ class SoyoustartServer extends Helper
                     </div>
                     <div class="modal-footer">
                         <div class="partial-buttons">
-                            <button type="button" class="btn btn-success reverse_ip" data-ipAddress="' . $iptInfo->ipAddress . '" id="" >' . $LANG["save_change"] . '</button>
+                            <button type="button" class="btn btn-success reverse_ip" data-ipAddress="" id="" >' . $LANG["save_change"] . '</button>
                             <button type="button" class="btn btn-secondary" data-dismiss="modal">' . $LANG["close"] . '</button>
                         </div>
                     </div>
@@ -375,7 +380,7 @@ class SoyoustartServer extends Helper
             <h5 class="card-header">' . $LANG["vps_ip_head"] . '</h5>
             <div class="card-body">';
         if ($ipsErrors != "") {
-            $html = '<div class="alert alert-danger" role="alert">Error: ' . $ipsErrors . '</div>';
+            $html = '<div class="alert alert-danger" role="alert">Error: ' . self::escapeHtml($ipsErrors) . '</div>';
             return $html;
         } else {
             $html .= '<table id="ipaddress_vps" style="width:100%">
@@ -396,21 +401,21 @@ class SoyoustartServer extends Helper
                 foreach ($iptInfo as $key => $iptInfo) {
                     $html .= '
                                             <tr>
-                                                <td>' . $iptInfo->ipAddress . '</td>
-                                                <td>' . $iptInfo->version . ' </td>
-                                                <td>' . $iptInfo->type . '</td>
-                                                <td>' . $iptInfo->geolocation . ' </td>';
+                                                <td>' . self::escapeHtml($iptInfo->ipAddress) . '</td>
+                                                <td>' . self::escapeHtml($iptInfo->version) . ' </td>
+                                                <td>' . self::escapeHtml($iptInfo->type) . '</td>
+                                                <td>' . self::escapeHtml($iptInfo->geolocation) . ' </td>';
                     if ($iptInfo->macAddress != "") {
-                        $html .= '<td>' . $iptInfo->macAddress . ' </td>';
+                        $html .= '<td>' . self::escapeHtml($iptInfo->macAddress) . ' </td>';
                     } else {
                         $html .= '<td> - </td>';
                     }
                     if ($iptInfo->reverse != "") {
-                        $html .= '<td>' . $iptInfo->reverse . ' </td>';
+                        $html .= '<td>' . self::escapeHtml($iptInfo->reverse) . ' </td>';
                     } else {
                         $html .= '<td> - </td>';
                     }
-                    $html .= '<td><a class="ip-reverse" data-target="#forip-reverse" data-toggle="modal" data-ipAddress="' . $iptInfo->ipAddress . '"><i class="fas fa-exchange-alt"></i>
+                    $html .= '<td><a class="ip-reverse" data-target="#forip-reverse" data-toggle="modal" data-ipAddress="' . self::escapeHtml($iptInfo->ipAddress) . '"><i class="fas fa-exchange-alt"></i>
                         </a></td>
                             </tr>';
                 }
@@ -436,17 +441,18 @@ class SoyoustartServer extends Helper
         foreach ($enableSettings as $key => $value) {
             $enableSettingsResult[$value->key] = !empty($value) ? json_decode($value->value, true) : [];
         }
-        $enableSettingsResult = $enableSettingsResult["servicePageAclSettings_$serviceId"];
+        $enableSettingsResult = isset($enableSettingsResult["servicePageAclSettings_$serviceId"]) ? $enableSettingsResult["servicePageAclSettings_$serviceId"] : [];
         $html = '
         <div class="card">
             <h5 class="card-header">Hide clientarea features for this service</h5>
             <div class="card-body">
                 <div class="row">';
         foreach ($features as $key => $value) {
-            $checked = (($enableSettingsResult[str_replace(' ', '_', $value)] == "on") ? "checked" : "");
+            $flag = str_replace(' ', '_', $value);
+            $checked = ((isset($enableSettingsResult[$flag]) && $enableSettingsResult[$flag] == "on") ? "checked" : "");
             $html .= '
                             <div class="col-md-4">
-                                <div class="form-group"><input type="checkbox" name="' . $value . '" ' . $checked . '> ' . $value . '
+                                <div class="form-group"><input type="checkbox" name="' . self::escapeHtml($value) . '" ' . $checked . '> ' . self::escapeHtml($value) . '
                                 </div>
                             </div>';
         }
@@ -463,6 +469,7 @@ class SoyoustartServer extends Helper
     public function getDiskData($diskid, $ovhServerName, $accountId, $location)
     {
         $apiCall = new ApiCall();
+        $diskErrors = '';
         $diskdata = [];
         foreach ($diskid["result"] as $value) {
             $diskInfo = $apiCall->get("/vps/{$ovhServerName}/disks/$value", $accountId, $location, "Get diskInfo Status", true);
@@ -478,6 +485,7 @@ class SoyoustartServer extends Helper
     public function getipData($ips, $ovhServerName, $accountId, $location)
     {
         $apiCall = new ApiCall();
+        $ipsErrors = '';
         $ipdata = [];
         foreach ($ips as $value) {
             $iptInfo = $apiCall->get("/vps/{$ovhServerName}/ips/$value", $accountId, $location, "Get IP Address Info", true);
@@ -559,10 +567,10 @@ class SoyoustartServer extends Helper
         $html = '';
         if (!empty($orderStatus) && !isset($snapshotInfo["result"]->creationDate)) {
             if ($orderStatus["httpcode"] != 200) {
-                $html .= '<div class="alert alert-warning" role="alert">Order has been placed. order status(' . ($orderStatus["result"]->message) . ')</div>';
+                $html .= '<div class="alert alert-warning" role="alert">Order has been placed. order status(' . (self::escapeHtml($orderStatus["result"]->message)) . ')</div>';
             } else {
                 if ($orderStatus["result"] != "delivered") {
-                    $html .= '<div class="alert alert-success" role="alert">Order has been placed. order status(' . ($orderStatus["result"]) . ')</div>';
+                    $html .= '<div class="alert alert-success" role="alert">Order has been placed. order status(' . (self::escapeHtml($orderStatus["result"])) . ')</div>';
                 } else {
                     $html .= ' <p class="snapshotCreateMsg">' . $LANG["snapshotCreateMsg"] . ' </p>
                     <button class="btn btn-success snapshotCreateBtn"  data-toggle="modal" data-target="#snapshotCreateBtn">' . $LANG["snapshotCreateBtn"] . '
@@ -592,11 +600,11 @@ class SoyoustartServer extends Helper
                  </thead>
                  <tbody>
                      <tr >
-                         <td>' . $snapshotInfo["result"]->region . '</td>
+                         <td>' . self::escapeHtml($snapshotInfo["result"]->region) . '</td>
                          <td>' . $readableFormat . '</td>
-                         <td>' . $snapshotInfo["result"]->description . '</td>
+                         <td>' . self::escapeHtml($snapshotInfo["result"]->description) . '</td>
                          <td>
-                             <button><i class="fas fa-pen editSnapshot" data-desc="' . $snapshotInfo["result"]->description . '" data-toggle="modal" data-target="#editSnapshot"></i></button>
+                             <button><i class="fas fa-pen editSnapshot" data-desc="' . self::escapeHtml($snapshotInfo["result"]->description) . '" data-toggle="modal" data-target="#editSnapshot"></i></button>
                              <button><i class="fas fa-redo revertSnapshot" data-toggle="modal" data-target="#revertSnapshot"></i></button>
                              <button><i class="fas fa-trash deleteSnapshot" data-toggle="modal" data-target="#deleteSnapshot"></i></button>
                          </td>
@@ -642,16 +650,16 @@ class SoyoustartServer extends Helper
             $ip_detail = $apiCall->getIpDetails($location, $ovhServerName, $accountId, $ips);
 
             if ($response["httpcode"] != 200) {
-                $html .= '<tr><td colspan="4">' . $response["result"]->message . '</td></tr>';
+                $html .= '<tr><td colspan="4">' . self::escapeHtml($response["result"]->message) . '</td></tr>';
                 continue;
             }
             $ipDetail = $response["result"];
             $ip_details = $ip_detail["result"];
 
-            $html .= '<tr data-ip="' . $ipDetail->ipAddress . '">
-            <td>' . $ipDetail->ipAddress . '</td>';
+            $html .= '<tr data-ip="' . self::escapeHtml($ipDetail->ipAddress) . '">
+            <td>' . self::escapeHtml($ipDetail->ipAddress) . '</td>';
             if ($ipDetail->reverse != "") {
-                $html .= '<td>' . $ipDetail->reverse . ' </td>';
+                $html .= '<td>' . self::escapeHtml($ipDetail->reverse) . ' </td>';
             } else {
                 $html .= '<td> - </td>';
             }
@@ -681,12 +689,12 @@ class SoyoustartServer extends Helper
                 <button><i class="fa fa-eye viewIpDetails" data-toggle="modal" data-target="#viewIpDetails"></i></button>
                 <button><i class="fas fa-ellipsis-h ipAction"></i></button>
         
-                <div class="ipActionLists" data-ipBlock="' . $ip_details->ip . '">
+                <div class="ipActionLists" data-ipBlock="' . self::escapeHtml($ip_details->ip) . '">
                     <ul>';
                 if ($ip_details->description) {
-                    $html .= '<li data-toggle="modal" data-target="#addIpDescriptions" data-desc="' . $ip_details->description . '">Edit a description</li>';
+                    $html .= '<li data-toggle="modal" data-target="#addIpDescriptions" data-desc="' . self::escapeHtml($ip_details->description) . '">Edit a description</li>';
                 } else {
-                    $html .= '<li data-toggle="modal" data-target="#addIpDescriptions" data-desc="' . $ip_details->description . '" >Add a description</li>';
+                    $html .= '<li data-toggle="modal" data-target="#addIpDescriptions" data-desc="' . self::escapeHtml($ip_details->description) . '" >Add a description</li>';
                 }
                 $html .= '
                         <li ata-toggle="modal" data-target="#addReverseIp6">Select an IPv6</li>
@@ -696,16 +704,16 @@ class SoyoustartServer extends Helper
                 $html .= ' 
                 <button><i class="fa fa-eye viewIpDetails" data-toggle="modal" data-target="#viewIpDetails"></i></button>
                 <button><i class="fas fa-ellipsis-h ipAction"></i></button>
-                <div class="ipActionLists" data-ipBlock="' . $ip_details->ip . '">
+                <div class="ipActionLists" data-ipBlock="' . self::escapeHtml($ip_details->ip) . '">
                 <ul>';
                 if ($ip_details->description) {
-                    $html .= '<li data-toggle="modal" data-target="#addIpDescriptions" data-desc="' . $ip_details->description . '">Edit a description</li>';
+                    $html .= '<li data-toggle="modal" data-target="#addIpDescriptions" data-desc="' . self::escapeHtml($ip_details->description) . '">Edit a description</li>';
                 } else {
-                    $html .= '<li data-toggle="modal" data-target="#addIpDescriptions" data-desc="' . $ip_details->description . '">Add a description</li>';
+                    $html .= '<li data-toggle="modal" data-target="#addIpDescriptions" data-desc="' . self::escapeHtml($ip_details->description) . '">Add a description</li>';
                 }
                 $html .= '
                         <li data-toggle="modal" data-target="#addReverseIp">Modify the reverse path</li>
-                        <li class="enableMitigration" data-mitigration="enableMitigration" data-mitigrationIp="' . $ip_details->mitigationIp . '">Scrubbling Center: permanent</li>';
+                        <li class="enableMitigration" data-mitigration="enableMitigration" data-mitigrationIp="' . self::escapeHtml($ip_details->mitigationIp) . '">Scrubbling Center: permanent</li>';
 
                 if (!isset($ip_details->firewallDetails->message)) {
                     $html .= ' <li class="deleteFirewall">Delete Network Firewall</li>
@@ -729,9 +737,9 @@ class SoyoustartServer extends Helper
     {
 
         if ($ipDetail["httpcode"] != 200) {
-            return '<div class="alert alert-warning" role="alert">' . $ipDetail["result"]->message . '</div>';
+            return '<div class="alert alert-warning" role="alert">' . self::escapeHtml($ipDetail["result"]->message) . '</div>';
         } elseif ($ipfirewall["httpcode"] != 200) {
-            return '<div class="alert alert-warning" role="alert">' . $ipfirewall["result"]->message . '</div>';
+            return '<div class="alert alert-warning" role="alert">' . self::escapeHtml($ipfirewall["result"]->message) . '</div>';
         }
 
         $ipDetail = $ipDetail["result"];
@@ -739,31 +747,31 @@ class SoyoustartServer extends Helper
 
         $html = '<div class="row">
             <div class="col-3"><strong>' . $LANG["ipDetailModalIp"] . '</strong></div>
-            <div class="col"><span>' . $ipfirewall->ip . '</span></div>
+            <div class="col"><span>' . self::escapeHtml($ipfirewall->ip) . '</span></div>
         </div>
         <div class="row">
             <div class="col-3"><strong>' . $LANG["ipDetailModalVersion"] . '</strong></div>
-            <div class="col"><span>IP' . $ipDetail->version . '</span></div>
+            <div class="col"><span>IP' . self::escapeHtml($ipDetail->version) . '</span></div>
         </div>
         <div class="row">
             <div class="col-3"><strong>' . $LANG["ipDetailModalDesc"] . '</strong></div>
-            <div class="col"><span>' . $ipfirewall->description . '</span></div>
+            <div class="col"><span>' . self::escapeHtml($ipfirewall->description) . '</span></div>
         </div>
         <div class="row">
             <div class="col-3"><strong>' . $LANG["ipDetailModalCampus"] . '</strong></div>
-            <div class="col"><span>' . $ipfirewall->campus . '</span></div>
+            <div class="col"><span>' . self::escapeHtml($ipfirewall->campus) . '</span></div>
         </div>
         <div class="row">
             <div class="col-3"><strong>' . $LANG["ipDetailModalResion"] . '</strong></div>
-            <div class="col"><span>' . $ipfirewall->regions[0] . '</span></div>
+            <div class="col"><span>' . self::escapeHtml($ipfirewall->regions[0]) . '</span></div>
         </div>
         <div class="row">
             <div class="col-3"><strong>' . $LANG["ipDetailModalType"] . '</strong></div>
-            <div class="col"><span>' . strtoupper($ipfirewall->type) . '</span></div>
+            <div class="col"><span>' . self::escapeHtml(strtoupper($ipfirewall->type)) . '</span></div>
         </div>
         <div class="row">
             <div class="col-3"><strong>' . $LANG["ipDetailModalMacaddress"] . '</strong></div>
-            <div class="col"><span>' . (empty($ipDetail->macaddress) ? "No Mac Address" : ($ipDetail->macaddress)) . '</span></div>
+            <div class="col"><span>' . (empty($ipDetail->macaddress) ? "No Mac Address" : self::escapeHtml($ipDetail->macaddress)) . '</span></div>
         </div>
         <div class="row">
             <div class="col-3"><strong>' . $LANG["ipDetailModalFirewall"] . '</strong></div>';
@@ -829,11 +837,11 @@ class SoyoustartServer extends Helper
         foreach ($diskDetail as $key => $sdisktInfo) {
             $html .= '
                                 <tr>
-                                    <td>' . $sdisktInfo->id . '</td>
-                                    <td>' . $sdisktInfo->type . ' </td>
-                                    <td>' . $sdisktInfo->size . '</td>
-                                    <td>' . $sdisktInfo->bandwidthLimit . ' </td>
-                                    <td>' . $sdisktInfo->lowFreeSpaceThreshold . '</td>';
+                                    <td>' . self::escapeHtml($sdisktInfo->id) . '</td>
+                                    <td>' . self::escapeHtml($sdisktInfo->type) . ' </td>
+                                    <td>' . self::escapeHtml($sdisktInfo->size) . '</td>
+                                    <td>' . self::escapeHtml($sdisktInfo->bandwidthLimit) . ' </td>
+                                    <td>' . self::escapeHtml($sdisktInfo->lowFreeSpaceThreshold) . '</td>';
             if ($sdisktInfo->state == "connected") {
                 $html .= '<td class="badge badge-success mt-2 p-1">' . $LANG["disk_connected"] . ' </td>';
             } elseif ($sdisktInfo->state == "disconnected") {
@@ -867,7 +875,7 @@ class SoyoustartServer extends Helper
         try {
             $response = Capsule::table($table_name)->insert($data);
             return $response;
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             throw new \Exception('Error in inserting/updating data: ' . $e->getMessage());
         }
     }

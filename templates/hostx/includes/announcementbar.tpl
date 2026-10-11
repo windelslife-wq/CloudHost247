@@ -1,8 +1,11 @@
 {* Announcement Bar Template for HostX Theme *}
-{* Usage: Assign announcements array before including this template *}
-{* Example: $announcements = [['text'=>'Message 1','url'=>'/promo'], ['text'=>'Message 2']] *}
+{* Usage: Assign an $announcementBarMessages array before including this template *}
+{* (deliberately NOT $announcements: WHMCS core assigns $announcements on the   *}
+{* announcements page with a different item shape; sharing the name made the bar *}
+{* swallow page content — see finding AB-4.)                                     *}
+{* Example: $announcementBarMessages = [['text'=>'Message 1','url'=>'/promo'], ['text'=>'Message 2']] *}
 
-{if isset($announcements) && is_array($announcements) && count($announcements) > 0}
+{if isset($announcementBarMessages) && is_array($announcementBarMessages) && count($announcementBarMessages) > 0}
 <style>
 /* ─── Announcement Bar ─── */
 .announcement-bar {
@@ -139,7 +142,7 @@
     <div class="announcement-bar__track">
         {* Render items twice for seamless CSS loop *}
         {section name=loop loop=2}
-            {foreach from=$announcements item=announcement}
+            {foreach from=$announcementBarMessages item=announcement}
                 {* The second pass is the seamless-loop duplicate: hide it from
                    assistive tech so each message is announced once, not twice. *}
                 {if $smarty.section.loop.index > 0}{assign var=dup value=' aria-hidden="true"'}{else}{assign var=dup value=''}{/if}

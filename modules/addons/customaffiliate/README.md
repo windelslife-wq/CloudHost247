@@ -166,23 +166,31 @@ This module reads that relationship to determine which affiliate should receive 
 ## Edge Cases Handled
 
 ### Upgrades / Downgrades
-When a client upgrades or downgrades their hosting service:
-- The module logs the change in the notes field
-- If the new product is still in the Web Hosting group, commissions continue normally
-- If the new product moves to a different group, future commissions are blocked (group check fails)
-- Existing first-commission-paid status is preserved
+When a client upgrades or downgrades their hosting service, the
+`AfterModuleUpgrade`/`AfterModuleDowngrade` hooks regroup every commission
+record on the service onto the live product and log the change in notes:
+- Within the Web Hosting group: first-commission status is preserved and recurring continues.
+- Out of the group: the record is kept but future commissions are blocked (group check fails).
+- Into the group: first-commission tracking resets, so the next payment earns the first rate again.
+- Outside the group both before and after: regrouped, no payout impact.
+- Config-only change (same product): noted, nothing regrouped or reset.
 
 ### Refunds
 When an invoice is refunded:
-- The `InvoiceRefunded` hook fires
-- The module finds the linked commission record
-- The `first_commission_paid` flag is reset to allow re-commissioning if the client pays again
-- A negative audit log entry is created
-- Recurring commissions recorded against that invoice are reversed too: the
-  recurring total and count drop, and a `refund_recurring` log entry is written.
-  Each recurring entry is reversed at most once, so a repeated hook does not
-  double-reverse.
-- Note: For partial refunds, the full first commission flag is reset (conservative approach)
+- The `InvoiceRefunded` hook fires with the refunded amount when WHMCS provides it.
+- Commissions reverse proportionally: a half-refunded invoice reverses half of
+  each commission recorded against it. The share comes from the hook amount,
+  else the money-out transactions booked against the invoice, else a full
+  reversal when the amount is unknown.
+- The `first_commission_paid` flag resets only once the first commission is
+  fully reversed; a partial reversal keeps the flag and the invoice link.
+- Recurring commissions recorded against that invoice reverse the same way:
+  the total drops by each reversed share and the count drops only for entries
+  that become fully reversed. Reversals are cumulative per entry, so repeated
+  or split refunds can never reverse more than was paid.
+- Reversals are final per refund event: if the client pays again, the
+  duplicate guard treats the invoice as already recorded, so a repayment does
+  not re-credit the reversed share.
 
 ### Duplicate Prevention
 Before recording any commission:

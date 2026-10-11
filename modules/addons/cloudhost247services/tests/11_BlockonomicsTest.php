@@ -1,7 +1,7 @@
 <?php
 
 require __DIR__ . '/bootstrap.php';
-require_once (is_dir('/repo') ? '/repo' : dirname(__DIR__, 3)) . '/modules/gateways/blockonomics/cloudhost247/autoload.php';
+require_once (is_dir('/repo') ? '/repo' : CHS_ROOT) . '/modules/gateways/blockonomics/cloudhost247/autoload.php';
 
 use CloudHost247\Blockonomics\CapsuleStore;
 use CloudHost247\Blockonomics\ConnectionTester;
@@ -431,7 +431,7 @@ T::section('Governed currency list stays in sync with the gateway');
 // future upstream merge adds a coin to getSupportedCurrencies() without
 // adding it here, it would be silently unpayable — fail loudly instead.
 $gatewaySrc = file_get_contents(
-    (is_dir('/repo') ? '/repo' : dirname(__DIR__, 3)) . '/modules/gateways/blockonomics/blockonomics.php'
+    (is_dir('/repo') ? '/repo' : CHS_ROOT) . '/modules/gateways/blockonomics/blockonomics.php'
 );
 $supportedBlock = '';
 if (preg_match('/function getSupportedCurrencies\(\)(.*?)\n    \}/s', $gatewaySrc, $mm)) {

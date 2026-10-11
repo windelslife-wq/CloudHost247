@@ -4,7 +4,7 @@
 <div class="ch247-admin-dashboard">
     <div class="ch247-admin-header">
         <h2><i class="fas fa-wifi"></i> CloudHost247 LTE Proxy Admin</h2>
-        <span class="ch247-admin-version">v{$moduleVersion}</span>
+        <span class="ch247-admin-version">v{$moduleVersion|escape}</span>
     </div>
 
     {* Stats Cards *}
@@ -12,28 +12,28 @@
         <div class="ch247-admin-stat">
             <i class="fas fa-network-wired"></i>
             <div>
-                <span class="ch247-admin-stat-value">{$stats.totalServices|default:0}</span>
+                <span class="ch247-admin-stat-value">{$stats.totalServices|default:0|escape}</span>
                 <span class="ch247-admin-stat-label">Total Services</span>
             </div>
         </div>
         <div class="ch247-admin-stat">
             <i class="fas fa-check-circle"></i>
             <div>
-                <span class="ch247-admin-stat-value">{$stats.activeServices|default:0}</span>
+                <span class="ch247-admin-stat-value">{$stats.activeServices|default:0|escape}</span>
                 <span class="ch247-admin-stat-label">Active</span>
             </div>
         </div>
         <div class="ch247-admin-stat">
             <i class="fas fa-exclamation-triangle"></i>
             <div>
-                <span class="ch247-admin-stat-value">{$stats.suspendedServices|default:0}</span>
+                <span class="ch247-admin-stat-value">{$stats.suspendedServices|default:0|escape}</span>
                 <span class="ch247-admin-stat-label">Suspended</span>
             </div>
         </div>
         <div class="ch247-admin-stat">
             <i class="fas fa-dollar-sign"></i>
             <div>
-                <span class="ch247-admin-stat-value">{$apiBalance|default:'$0.00'}</span>
+                <span class="ch247-admin-stat-value">{$apiBalance|default:'$0.00'|escape}</span>
                 <span class="ch247-admin-stat-label">API Balance</span>
             </div>
         </div>
@@ -61,18 +61,18 @@
                     {if $recentServices}
                         {foreach from=$recentServices item=svc}
                         <tr>
-                            <td>{$svc.id}</td>
-                            <td>{$svc.clientName}</td>
-                            <td><code>{$svc.orderId}</code></td>
+                            <td>{$svc.id|escape}</td>
+                            <td>{$svc.clientName|escape}</td>
+                            <td><code>{$svc.orderId|escape}</code></td>
                             <td>
                                 <span class="ch247-badge ch247-badge-{if $svc.status == 'Active'}success{elseif $svc.status == 'Suspended'}warning{else}danger{/if}">
-                                    {$svc.status}
+                                    {$svc.status|escape}
                                 </span>
                             </td>
-                            <td>{$svc.proxyCount}</td>
-                            <td>{$svc.createdAt}</td>
+                            <td>{$svc.proxyCount|escape}</td>
+                            <td>{$svc.createdAt|escape}</td>
                             <td>
-                                <a href="clientsservices.php?userid={$svc.clientId}&id={$svc.id}" class="ch247-btn ch247-btn-sm ch247-btn-secondary">
+                                <a href="clientsservices.php?userid={$svc.clientId|escape}&id={$svc.id|escape}" class="ch247-btn ch247-btn-sm ch247-btn-secondary">
                                     <i class="fas fa-eye"></i> View
                                 </a>
                             </td>
@@ -99,15 +99,15 @@
         <div class="ch247-api-info">
             <div class="ch247-info-row">
                 <span>API Base URL:</span>
-                <code>{$apiBaseUrl}</code>
+                <code>{$apiBaseUrl|escape}</code>
             </div>
             <div class="ch247-info-row">
                 <span>API Key:</span>
-                <code>{$maskedApiKey}</code>
+                <code>{$maskedApiKey|escape}</code>
             </div>
             <div class="ch247-info-row">
                 <span>Response Time:</span>
-                <span>{$apiResponseTime}ms</span>
+                <span>{$apiResponseTime|escape}ms</span>
             </div>
         </div>
     </div>

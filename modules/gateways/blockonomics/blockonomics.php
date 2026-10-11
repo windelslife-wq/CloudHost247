@@ -330,6 +330,8 @@ class Blockonomics
 
         curl_setopt($ch, CURLOPT_URL, 'https://' . $subdomain . '.blockonomics.co/api/new_address' . $get_params);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
 
         $header = 'Authorization: Bearer ' . $api_key;
@@ -366,10 +368,13 @@ class Blockonomics
         return $gatewayParams['Margin'];
     }
 
-    private function fetchPrice($url) {
+    // Protected (not private) so the offline suite can stub the price feed.
+    protected function fetchPrice($url) {
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         $contents = curl_exec($ch);
         if (curl_errno($ch)) {
             exit('Error:' . curl_error($ch));
@@ -474,8 +479,13 @@ class Blockonomics
     /**
      * Decrypts a string using the application secret.
      *
-     * @param  $hash
-     * @return object
+     * Format: 64 hex chars of HMAC-SHA256 (keyed by the callback secret)
+     * over the raw ciphertext, then the hex ciphertext (AES-128-CBC).
+     * Anything else - including pre-C-7 hashes without a MAC - fails
+     * closed with null.
+     *
+     * @param string $hash
+     * @return stdClass|null
      */
     public function decryptHash($hash)
     {
@@ -483,12 +493,19 @@ class Blockonomics
         $hashing_algorith = 'sha256';
         $secret = $this->getCallbackSecret();
         // prevent decrypt failing when $hash is not hex or has odd length
-        if (strlen($hash) % 2 || !ctype_xdigit($hash)) {
-            return '';
+        if (!is_string($hash) || strlen($hash) < 66 || strlen($hash) % 2 || !ctype_xdigit($hash)) {
+            return null;
+        }
+
+        // Verify the MAC before touching the ciphertext (Encrypt-then-MAC).
+        $mac = substr($hash, 0, 64);
+        $binaryInput = hex2bin(substr($hash, 64));
+        if ($binaryInput === false
+            || !hash_equals(hash_hmac($hashing_algorith, $binaryInput, $secret), $mac)) {
+            return null;
         }
 
         // we'll need the binary cipher
-        $binaryInput = hex2bin($hash);
         $iv = substr($secret, 0, 16);
         $cipherText = $binaryInput;
         $key = hash($hashing_algorith, $secret, true);
@@ -500,7 +517,13 @@ class Blockonomics
             OPENSSL_RAW_DATA,
             $iv
         );
+        if (!is_string($decrypted)) {
+            return null;
+        }
         $parts = explode(':', $decrypted);
+        if (count($parts) !== 4) {
+            return null;
+        }
         $order_info = new stdClass();
         $order_info->id_order = intval($parts[0]);
         $order_info->value = floatval($parts[1]);
@@ -510,7 +533,7 @@ class Blockonomics
     }
 
     /**
-     * Encrypts a string using the application secret. This returns a hex representation of the binary cipher text
+     * Encrypts a string using the application secret. Returns the HMAC-SHA256 of the raw ciphertext (hex) followed by the hex ciphertext, so decryptHash() can reject tampered hashes
      *
      * @param  $input
      * @return string
@@ -531,7 +554,8 @@ class Blockonomics
             $iv
         );
 
-        return bin2hex($cipherText);
+        // MAC first so decryptHash() can reject tampered hashes.
+        return hash_hmac($hashing_algorith, $cipherText, $secret) . bin2hex($cipherText);
     }
 
     /*
@@ -628,13 +652,15 @@ class Blockonomics
         try {
             Bridge::assertCurrencyAllowed($blockonomics_currency, getGatewayVariables('blockonomics'));
         } catch (\Throwable $blocked) {
-            http_response_code(403);
-            exit('This payment method is currently unavailable.');
+            $this->rejectUnavailableCurrency();
         }
 
         if ($blockonomics_currency === 'usdt') {
+            // Pseudo-address, unique per attempt: concurrent or repeat USDT
+            // payments for one invoice must get their own rows (the poller
+            // keys off the stored txid and never parses this value).
             $usdt_recieving_address = $this->getUSDTAddress();
-            $order->addr = $usdt_recieving_address . '-' . $order->id_order;
+            $order->addr = $usdt_recieving_address . '-' . $order->id_order . '-' . bin2hex(random_bytes(4));
         } else {
             $new_addresss_response = $this->getNewAddress($blockonomics_currency);
             if ($new_addresss_response->response_code == 200) {
@@ -659,6 +685,11 @@ class Blockonomics
     public function processOrderHash($order_hash, $blockonomics_currency)
     {
         $order_info = $this->decryptHash($order_hash);
+        // BN-1: a forged/garbage hash must never reach address generation
+        // (burns a provider address) or the orders table.
+        if (!is_object($order_info) || $order_info->id_order <= 0) {
+            $this->rejectInvalidOrderHash();
+        }
         // Fetch all orders by id
         $orders = $this->getAllOrdersById($order_info->id_order);
         if ($orders) {
@@ -686,6 +717,22 @@ class Blockonomics
             return $new_order;
         }
         return false;
+    }
+
+    /**
+     * Test seams: reject paths that production answers with an HTTP error
+     * page. Subclasses in the offline suite override these to throw.
+     */
+    protected function rejectInvalidOrderHash()
+    {
+        http_response_code(400);
+        exit('Invalid payment reference.');
+    }
+
+    protected function rejectUnavailableCurrency()
+    {
+        http_response_code(403);
+        exit('This payment method is currently unavailable.');
     }
 
     /*
@@ -762,7 +809,7 @@ class Blockonomics
     public function getOrderIdByHash($order_hash)
     {
         $order_info = $this->decryptHash($order_hash);
-        return $order_info->id_order;
+        return is_object($order_info) ? $order_info->id_order : null;
     }
 
     /*
@@ -865,6 +912,12 @@ class Blockonomics
         $active_currencies = $this->getActiveCurrencies();
         
         foreach ($active_currencies as $code => $currency)  {
+            // USDT has no Blockonomics API surface (Etherscan-verified) -
+            // its readiness is governed by Policy::usdtReadiness in the
+            // admin console. Probing it here hit a bogus usdt.* hostname.
+            if ($code === 'usdt') {
+                continue;
+            }
             $test_results[$code] = $this->test_one_currency($code);
         }
         
@@ -947,7 +1000,7 @@ class Blockonomics
 
         $error_str = '';
 
-        if (!isset($response->data) || count($response->data) == 0) {
+        if (!isset($response->data) || !is_countable($response->data) || count($response->data) == 0) {
             $error_str = $_BLOCKLANG['testSetup']['addStore'];
         }
         //if merchant has at least one xPub on his Blockonomics account
@@ -998,7 +1051,9 @@ class Blockonomics
             $update_xpub = $partial_match ? $partial_match : $available_xpub;
             $response = $this->update_callback($callback_url, $currency, $update_xpub);
             if ($response->response_code != 200) {
-                return $response->message;
+                // doCurlCall never sets ->message: report the failure
+                // instead of returning null (which silently continued).
+                return isset($response->message) ? (string) $response->message : 'Failed to update callback URL (HTTP ' . $response->response_code . ').';
             }
             return '';
         }
@@ -1017,7 +1072,7 @@ class Blockonomics
             $url = Blockonomics::BCH_SET_CALLBACK_URL;
         }
 
-        $post_content = '{"callback": "' . $callback_url . '", "xpub": "' . $xpub . '"}';
+        $post_content = json_encode(['callback' => $callback_url, 'xpub' => $xpub]);
         $response = $this->doCurlCall($url, $post_content);
         return $response;
     }
@@ -1034,7 +1089,10 @@ class Blockonomics
 
     public function redirect_finish_order($order_hash)
     {
-        $order_id = $this->decryptHash($order_hash)->id_order;
+        $order_id = $this->getOrderIdByHash($order_hash);
+        if (!$order_id) {
+            $this->rejectInvalidOrderHash();
+        }
         $finish_url = \App::getSystemURL() . 'viewinvoice.php?id=' . $order_id . '&paymentsuccess=true';
         header("Location: $finish_url");
         exit();
@@ -1180,31 +1238,40 @@ class Blockonomics
     function process_token_order($finish_order, $crypto, $txid) {
         include $this->getLangFilePath();
 
-        $order = $this->processOrderHash($finish_order, $crypto);
+        // Re-reports of an already-recorded transaction are no-ops, before
+        // any order work happens.
+        if ($this->blockonomicsTransactionExists($txid)) {
+            return;
+        }
+
+        $order_info = $this->decryptHash($finish_order);
+        if (!is_object($order_info) || $order_info->id_order <= 0) {
+            $this->rejectInvalidOrderHash();
+        }
+
+        // Resolve a USDT row specifically: reuse a waiting one, else start
+        // a fresh attempt (unique pseudo-address). A pending order in
+        // another currency must never absorb a USDT report.
+        $orders = $this->getAllOrdersById($order_info->id_order);
+        $order = $orders ? $this->getAndUpdateWaitingOrder($orders, $order_info, 'usdt') : false;
+        if (!$order) {
+            $order = $this->createNewCryptoOrder($order_info, 'usdt');
+        }
 
         if (empty($order)) {
             return;
         }
 
-        $transactionExists = $this->blockonomicsTransactionExists($txid);
-
-        if ($transactionExists) {
-            return;
-        }
-
-        $invoiceId = $order->id_order;
-        $usdt_recieving_address = $this->getUSDTAddress();
-        $new_address = $usdt_recieving_address . '-' . $invoiceId;
+        $supported = $this->getSupportedCurrencies();
+        $currency_name = isset($supported['usdt']['name']) ? $supported['usdt']['name'] : 'usdt';
         
         $subdomain = $this->getTokenNetwork() === "sepolia" ? "sepolia" : "www";
 
-        $blockonomics_currency = $this->getSupportedCurrencies()[$crypto];
-
-        $invoiceNote = '<b>' . $_BLOCKLANG['invoiceNote']['waiting'] . ' <img src="' . \App::getSystemURL() . 'modules/gateways/blockonomics/assets/img/usdt.png" style="max-width: 20px;"> ' . $blockonomics_currency->name . ' ' . $_BLOCKLANG['invoiceNote']['network'] . "</b>\r\r" .
-        $blockonomics_currency->name . " transaction id:\r" .
+        $invoiceNote = '<b>' . $_BLOCKLANG['invoiceNote']['waiting'] . ' <img src="' . \App::getSystemURL() . 'modules/gateways/blockonomics/assets/img/usdt.png" style="max-width: 20px;"> ' . $currency_name . ' ' . $_BLOCKLANG['invoiceNote']['network'] . "</b>\r\r" .
+        $currency_name . " transaction id:\r" .
             '<a target="_blank" href="https://' . $subdomain . ".etherscan.io/tx/$txid\">$txid</a>";
 
-        $this->updateOrderInDb($new_address, $txid, 0, 0);
-        $this->updateInvoiceNote($invoiceId, $invoiceNote);
+        $this->updateOrderInDb($order->addr, $txid, 0, 0);
+        $this->updateInvoiceNote($order->id_order, $invoiceNote);
     }
 }

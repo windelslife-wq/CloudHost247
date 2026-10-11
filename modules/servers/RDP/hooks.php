@@ -31,7 +31,7 @@ add_hook('AdminProductConfigFieldsSave', 1, function ($vars) {
         logModuleCall(
             'RDPmodule',
             __FUNCTION__,
-            $params,
+            $vars,
             $e->getMessage(),
             $e->getTraceAsString()
         );

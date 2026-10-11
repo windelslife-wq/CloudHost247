@@ -226,7 +226,7 @@ Not changed: `external-api/tools/productivity.php` `qrScanner()` still returns i
 |---|---|---|---|
 | A-1 | **CSRF token could be supplied in the URL.** `Csrf::matches()` fell back to `$_REQUEST`, and `InfrastructureApi` did the same. | `lib/Core/Csrf.php`; `lib/Api/InfrastructureApi.php`. A new test failed on the old code. | Medium (hygiene). **Fixed:** read from `$_POST` (form) or the `X-CSRF-Token` header (API). |
 | A-2 | **Dead branch in `AdapterFactory::forEngine`.** `isDryRun() && $fake === null` can never be true. | `lib/Adapters/AdapterFactory.php` | Low. **Fixed:** removed; behaviour unchanged. |
-| A-3 | **Legacy claim that `KubernetesAdapter` is implemented is false.** The class does not exist and has no git history. The `class_exists` guard fails closed with `ADAPTER_NOT_INSTALLED`. | Repository search; `AdapterFactory::forEngine` | Info. **Covered by a new test.** |
+| A-3 | **Done 2026-10-11 — `KubernetesAdapter` is now implemented** (A-9). The class exists with renderer, transport and adapter coverage; the legacy fail-closed claim no longer holds. `CpanelAdapter` likewise implemented. | `AdapterFactory::forEngine`; suites 26/27/28 | Info. **Covered by tests.** |
 | A-4 | The "not implemented" messages in `lib/ControlPanels/CpanelWhmClient.php` are intended fail-closed allowlist rejections. | Source review | Info (verified) |
 | A-5 | `FakeAdapter` is reachable only through `setFake`, which only tests call. `Settings::override` is in-memory, so a database setting cannot enable it. | `grep setFake`; `Settings::override` | Info (verified) |
 | A-6 | **Provisioning could skip payment in two ways.** (a) An installation with no `plan_id` has no price, so `requiresPayment` was false and it provisioned with no invoice. This breaks §20 ("provisioning only from a server-verified invoice"). (b) `bypass_payment` in the input was honoured for any actor, including customers. No HTTP route currently exposes `InstallationService::create`, so this was latent, but it is one route away from being live. | `lib/Deployments/InstallationService.php` `create()` | **High (latent).** **Fixed:** customers must supply `plan_id` (`ValidationException`, `PLAN_REQUIRED`). `bypass_payment` is honoured only for `PLAN_MANAGE` actors. On the old code, four of the new checks fail, and so does one existing count check (\"provisions exactly one installation\"), which the old bypass broke. |
@@ -311,9 +311,9 @@ Creation-time rules after A-6: a customer install needs a plan. Free plans (pric
 | C-2 | **Recurring commissions were never reversed on refund**, although the README promised automatic reversal. | `handleInvoiceRefund()` reversed only the first commission. | High → **fixed**: `reverseRecurringForInvoice()`, idempotent. |
 | C-3 | **Raw SQL `CONCAT(notes, …)` in five places.** A NULL `notes` made CONCAT return NULL, so the note was silently lost. The raw expressions also concatenated values into SQL. | `CommissionManager`, `UpgradeHandler`, `utilities.php` | Medium → **fixed**: notes appended in PHP (`appendNote()`); no raw SQL in the module. |
 
-Tests: `tests/CommissionTest.php`, 22 checks, all pass; 10 of them failed on the old code. PHP parse check passes on all 8 PHP files. Not run: a live WHMCS invoice and refund flow, and hook order (AffiliateCommission vs InvoicePaid), which depends on WHMCS.
+Tests: `tests/CommissionTest.php`, 22 checks, all pass; 10 of them failed on the old code. B-9 adds `tests/RefundUpgradeTest.php`, 47 checks, all pass (proportional first/recurring reversals incl. split refunds, over-refund cap, amount fallback chain, two-service invoices, all four upgrade regroupings + config-only + recordless no-op, handler delegation, audit regrouping, hook wiring). PHP parse check passes on all PHP files. Not run: a live WHMCS invoice and refund flow, and hook order (AffiliateCommission vs InvoicePaid), which depends on WHMCS.
 
-Open for the owner: partial refunds still reset the full first-commission flag (documented, conservative). `UpgradeHandler` and the upgrade/downgrade hooks only record notes; re-grouping logic runs only from the manual utility.
+B-9 closed 2026-10-11 both owner-open items: (1) refunds now reverse proportionally (hook amount, else booked money-out, else full as before) with cumulative per-entry caps — the first-paid flag resets only on full reversal; (2) the upgrade/downgrade hooks run the package-change rules via `CommissionManager::processPackageChange()` (`UpgradeHandler` delegates to it), regrouping records onto the live product, resetting tracking on moves into hosting, and the audit now regroups stale products too. Behaviour changes: partial refunds no longer reset the flag, and into-hosting moves re-arm the first rate automatically. Reversals are final per refund event (repayments do not re-credit).
 
 ## Additional audit item 2 — hostx_email (2026-10-10)
 
@@ -322,13 +322,13 @@ Open for the owner: partial refunds still reset the full first-commission flag (
 | H-1 | **Unauthenticated webhooks were processed.** The signature check ran only when a header was present. Microsoft 365 and Google returned `true` unconditionally. The Microsoft `clientState` check was skipped when no secret was set. Unsigned POSTs could set a customer's WHMCS service to `Terminated`. | `webhook.php`; `api.php` `verifyWebhookSignature()` | High | **Fixed** (`dee0cfe`). `authenticateWebhook()` is required for every request. Google needs `hostx_email_google_channel_token`; Microsoft needs `hostx_email_ms_client_state`; Professional needs a non-empty API key and a valid HMAC. |
 | H-2 | **Google license assignment never worked.** The code sent `PUT .../product/Google-Apps/users/{sku}/{email}`. That path does not exist, and PUT reassigns an existing license, so a new user could not receive one. The create path ignored the failure. | `api.php` `assignGoogleWorkspaceLicense()`; Google Licensing API `licenseAssignments.insert` | High (functional) | **Fixed.** Now `POST .../product/Google-Apps/sku/{skuId}/user` with `{userId}`. 409 (already licensed) counts as success. Both create paths log `Create-LicenseFailed` on failure. Not run live. |
 | H-3 | **A second, unused webhook implementation** in `api.php` (`handleWebhook` and three private handlers) kept the old fail-open auth. A future caller would bypass H-1. | `api.php` (no callers) | Medium (latent) | **Fixed:** removed (184 lines). `webhook.php` is the only entry point. |
-| H-4 | **Stored credentials use a key that is not secret.** The key is `sha256(SystemURL . 'HostXEmail_v1.0.0')`. Anyone with DB read access who knows the SystemURL (usually public) can decrypt. Changing SystemURL makes all stored credentials unreadable. | `functions.php` `hostx_email_get_encryption_key()`, `hostx_email_encrypt/decrypt()` | Medium | **Open, owner decision.** Fix: move to WHMCS's own encryption key with a versioned ciphertext and a one-time migration. This is not a one-line change because existing rows must be migrated. |
+| H-4 | **Stored credentials use a key that is not secret.** The key is `sha256(SystemURL . 'HostXEmail_v1.0.0')`. Anyone with DB read access who knows the SystemURL (usually public) can decrypt. Changing SystemURL makes all stored credentials unreadable. | `functions.php` `hostx_email_get_encryption_key()`, `hostx_email_encrypt/decrypt()` | Medium | **Fixed 2026-10-11 (B-5).** New writes are v1 (`hxem:v1:`, AES-256-GCM) keyed by WHMCS's own `$cc_encryption_hash`; reads dual-read v1 + legacy; `upgrade/migrate-credentials.php` is the one-time migration (dry-run default, re-wraps as found, never writes unclassifiable cells). The SystemURL key survives only for legacy reads. |
 | H-5 | **Rate limiter is dead code, but the README claimed rate limiting.** `hostx_email_check_rate_limit()` has no callers. It is file-based, not atomic, and fails open. | `functions.php` ~725 | Low | **Fixed:** dead function removed from `functions.php`; README corrected. Throttling, if wanted, belongs at the web server or WAF. |
-| H-6 | **AES-256-CBC without a MAC.** Ciphertext can be modified without detection. Decrypt returns an empty string on failure, so there is no padding oracle. | `functions.php` encrypt/decrypt | Low | **Open**; address with H-4. |
+| H-6 | **AES-256-CBC without a MAC.** Ciphertext can be modified without detection. Decrypt returns an empty string on failure, so there is no padding oracle. | `functions.php` encrypt/decrypt | Low | **Fixed 2026-10-11 with H-4 (B-5).** v1 is AES-256-GCM (authenticated); tampered/truncated/wrong-key payloads decrypt to empty. Legacy CBC survives read-only for pre-v1 rows. |
 
-Tests: `tests/WebhookAuthTest.php`, 13 checks, all pass (`node tests/run.mjs`). The test file loads `api.php`, so the edited class parses. PHP parse check passes on `webhook.php` and `api.php`. Not run: live provider webhooks, a live Google license assignment, and a before/after run on the old code.
+Tests: `tests/WebhookAuthTest.php`, 13 checks, all pass (`node tests/run.mjs`). The test file loads `api.php`, so the edited class parses. PHP parse check passes on `webhook.php` and `api.php`. B-5 adds `tests/CryptoMigrationTest.php`, 40 checks, all pass (v1 round-trip/auth, legacy dual-read, fail-closed, `migrate_value`, full dry-run + live migration against a fake Capsule incl. idempotent re-run, CLI wrapper). Not run: live provider webhooks, a live Google license assignment, a before/after run on the old code, and the migration script against a real WHMCS database (operator-run, dry-run first).
 
-Behaviour changes: (1) Google and Microsoft webhooks stop working until their secrets are set (H-1). (2) Google licences are now actually assigned on create (H-2), which is a real change for existing Google deployments.
+Behaviour changes: (1) Google and Microsoft webhooks stop working until their secrets are set (H-1). (2) Google licences are now actually assigned on create (H-2), which is a real change for existing Google deployments. (3) B-5: `hostx_email_encrypt()` now writes v1 and throws without a WHMCS secret instead of writing weak ciphertext (fail-closed); reads are backward compatible.
 
 ## Additional audit item 3 — phoneservices (2026-10-10)
 
@@ -529,7 +529,7 @@ Also fixed in this module: **DNS Lookup** had the same `record_type` bug (every 
 |---|---|
 | Module | `modules/addons/digitalproducts/` (WHMCS addon: products, versioned releases, entitlements, licensing, private downloads, JSON API) |
 | Specification | `docs/DIGITAL_PRODUCTS.md` (operator runbook), `docs/DIGITAL_PRODUCTS_REBUILD.md` (audit and rebuild record), `docs/WHMCS Digital Product Module/Build.txt` (original brief), `SECURITY.md`, `API.md`. |
-| Status | **Audited and code-fixed; owner decision pending on D-6 (activation limits).** Findings G-1 to G-3 fixed in code and covered by tests. G-4 and G-5 are recorded, not changed. Suite went from 17 assertions (2 files) to **225 assertions (8 files, 0 failures)**. No live WHMCS run. |
+| Status | **Audited and code-fixed; D-6 decided (option b, global defaults) and implemented.** Findings G-1 to G-4 fixed in code and covered by tests. G-5 is recorded, not changed. Suite went from 17 assertions (2 files) to **261 assertions (9 files, 0 failures)**. No live WHMCS run. |
 
 ### Why this module was re-audited
 
@@ -558,7 +558,7 @@ hand-written approximation of it.
 | G-1 | **The permitted-release rule had no shared definition.** `DownloadAuthorizer::versionNotAllowed()` was `protected`, so the client area (`lib/Client.php`) and the API (`api.php`) each re-derived the version themselves and only checked that the requested version was *active and on the product*. Under `purchase_version` mode a client could obtain a download token for any newer active release. The download endpoint then refused it, so nothing leaked — but the module handed out links it knew would fail, and the rule existed in three places. | `lib/Client.php` (`access_mode === 'purchase_version' ? (int) $entitlement->purchase_version_id : …`), `api.php` (same expression) | Medium (consistency, dead links) | **Fixed.** `DownloadAuthorizer::allowedVersionId()` is now the single definition; `versionNotAllowed()` delegates to it, and both callers resolve through it and refuse a requested release that is not the permitted one. |
 | G-2 | **Backslash traversal was not rejected in upload filenames.** The check was `preg_match('#(^|[\/])\.\.?([\/]|$)#', …)`. Inside a character class `[\/]` is only `/`, so `..\..\evil.zip` passed. Separately, a name that was nothing but an extension (`.zip`) was accepted, producing an empty basename. | `lib/Security/UploadValidator.php` `validate()` | Low (defence in depth; the stored object uses an opaque random key, and the original name is only a download filename) | **Fixed.** Both separators are recognised, and an empty basename is rejected. |
 | G-3 | **A legacy `disabled` release could never be published.** Migration `0002_versions_from_files` writes `status = 'disabled'` for legacy rows that were not active. The admin screen only offered *Publish* when `status === 'draft'`, so such a release was undownloadable, invisible in the client area (`whereIn('status', ['active','retired'])`) and could only be retired — never restored to service. | `install/migrations/0002_versions_from_files.php`; `lib/Admin.php` `versions()` | Low (functional gap) | **Fixed.** Publish is offered for any state that is neither active nor retired. |
-| G-4 | **License activation limits are enforced but unreachable.** `License::activateLicense()` honours `domain_limit`/`activations_limit`, but `generateLicense()` is only ever called from `EntitlementService` **without** either value, and there is no admin field, product column or addon setting for them. Every license is therefore issued with unlimited activations. | `lib/License.php` `generateLicense()` / `activateLicense()`; `lib/Services/EntitlementService.php`; grep for `activation_limit` — schema + `api.php` + `Client.php` only, no admin surface | Medium (incomplete feature) | **Open, owner decision (D-6).** Not changed: adding a cap would change business behaviour. Recorded, not silently wired. |
+| G-4 | **License activation limits are enforced but unreachable.** `License::activateLicense()` honours `domain_limit`/`activations_limit`, but `generateLicense()` is only ever called from `EntitlementService` **without** either value, and there is no admin field, product column or addon setting for them. Every license is therefore issued with unlimited activations. | `lib/License.php` `generateLicense()` / `activateLicense()`; `lib/Services/EntitlementService.php`; grep for `activation_limit` — schema + `api.php` + `Client.php` only, no admin surface | Medium (incomplete feature) | **Fixed (D-6 decided 2026-10-11: option b).** New `license_default_domain_limit` / `license_default_activations_limit` addon settings (default 0 = unlimited) are stamped onto every license at grant time; the admin settings screen manages both. Pre-existing licenses keep their stored limits. |
 | G-5 | **The ZIP symlink guard is environment-dependent.** It reads `ZipArchive::statIndex()['external_attributes']`, which this PHP build does not expose at all; `isset()` then skips the check silently. The module never extracts archives (objects are stored as opaque blobs and streamed), so this is defence in depth for downstream consumers. | `lib/Security/UploadValidator.php` `validateArchive()`; probe: `setExternalAttributesName()` with mode `0120777` → `statIndex()` returns no `external_attributes` key | Low, and **not verifiable here** | **Open, recorded.** Deliberately not made fail-closed: on a build without the field that would reject every archive. The suite prints `SKIP` rather than claiming a defence it cannot see. |
 
 ### Checked and found sound
@@ -588,6 +588,10 @@ hand-written approximation of it.
 | `tests/04_LicenseTest.php` (new) | 42 checks: generation, validation, domain binding, activation limits, legacy keys, crypto. |
 | `tests/05_TokenAndLimitsTest.php` (new) | 40 checks: token issuance/lookup/replay/expiry/purge, rate limiter, permitted-release rule. |
 | `tests/07_UploadAndStaticTest.php` (new) | 59 checks: real ZIP attacks, extension allowlist, and static regression checks on the security wiring. |
+| `lib/Core/Settings.php` | New `license_default_domain_limit` / `license_default_activations_limit` defaults (`0` = unlimited) plus `validate()` normalisation (D-6 b). |
+| `lib/Services/EntitlementService.php` | Grant stamps the issuance defaults onto every new license. |
+| `lib/Admin.php` | Settings save path stores both defaults; settings form renders both fields with 0 = unlimited help. |
+| `tests/08_LicenseDefaultsTest.php` (new) | 36 checks: out-of-box unlimited, issuance stamping, end-to-end enforcement, explicit-wins, validation, admin wiring (static), no retroactive capping. |
 
 No behaviour was invented and no default was changed. The download-time rule is
 byte-for-byte the same decision as before; only its location moved, and the two
@@ -599,6 +603,7 @@ callers that previously re-derived it now use it.
 |---|---|
 | `node tests/run.mjs` before this pass (2 suites) | 17 PASS, 0 FAIL |
 | `node tests/run.mjs` after this pass (8 suites, PHP 8.3.33, php-wasm) | **225 PASS, 0 FAIL** |
+| `node tests/run.mjs` after D-6(b) (9 suites, php-wasm) | **261 PASS, 0 FAIL** (225 + 36 new) |
 | Same suites, PHP 7.4.33 (php-wasm) | **225 PASS, 0 FAIL** |
 | `node tests/lint.mjs` | **FILES=35, BAD=0** on PHP 8.3.33 and on PHP 7.4.33 |
 | Mutation check A: pre-fix `UploadValidator` filename logic restored | **Caught:** `backslash traversal is refused`, `empty basename is refused` fail. Files restored and verified byte-identical. |
@@ -608,7 +613,7 @@ callers that previously re-derived it now use it.
 
 ### Remaining issues / blockers
 
-1. **D-6 (owner decision): license activation limits.** Enforcement exists; configuration does not. Choose one: (a) leave unlimited and document it; (b) add a global default in the addon settings (default 0 = unlimited, so nothing changes until an operator sets it); (c) add a per-product column via a migration plus an admin field. Option (b) or (c) is needed before the feature can be called complete.
+1. **D-6 decided 2026-10-11: option (b) global defaults.** `license_default_domain_limit` / `license_default_activations_limit` (default 0 = unlimited) are stamped at grant time and managed on the settings screen. Closed by the B-2 pass; suite 261/0.
 2. **Live WHMCS staging sign-off**, per `docs/DIGITAL_PRODUCTS.md`: a paid order end to end, a duplicate payment hook, a new release, refund/cancellation, a wrong-customer token, a forged/expired/replayed token, a download limit, a missing file, license validation throttling, and direct HTTP access to the private storage directory.
 3. **G-5** stays open and unverifiable here (see Findings).
 4. The suite runs on SQLite, not MySQL. MySQL-only DDL in migrations `0004`/`0005` (`ALTER TABLE … MODIFY`) is skipped by the migrations' own `try/catch`, exactly as on a host where it is unsupported; the resulting column types are therefore not identical to production.
@@ -626,7 +631,7 @@ callers that previously re-derived it now use it.
 |---|---|
 | Module | `modules/addons/CloudHost247_tools/` (30 PHP files, the authoritative 91-tool registry in `config/cloudhost247-tools.php`, 91 route-split browser modules in `assets/js/tools/`, `includes/{Catalog,Router,Runner,Security,RateLimiter,DnsPropagation}.php`). |
 | Specification | `docs/MODULES.md`, `config/cloudhost247-tools.php` (91 tools, 9 categories, `exec` = client/server/hybrid), `includes/Catalog.php`, `bin/verify-catalog.php`. |
-| Status | **Audited and code-fixed; one owner decision pending (D-7, routing the `/tools/<slug>` surface).** Findings T2-1 to T2-3 fixed in code and pinned by tests; T2-6 (test reproducibility) fixed. Suite went from **1419 to 1481 assertions, 0 failures**. No live WHMCS or browser run. |
+| Status | **Audited and code-fixed; owner decision D-7 taken (A-6, 2026-10-11 — the `/tools/*` surface is live, see below).** Findings T2-1 to T2-3 fixed in code and pinned by tests; T2-6 (test reproducibility) fixed. Suite went from **1419 to 1481 assertions, 0 failures** at audit time. No live WHMCS or browser run. |
 
 ### Why this module was audited
 
@@ -645,7 +650,7 @@ It is not.
 | T2-1 | **The live execution path bypassed the hardened Runner.** `index.php?m=CloudHost247_tools&action=ajax` reaches `CloudHost247ToolsClient::handleAjax()`, which called `call_user_func($handler, $_POST)` directly. `hooks.php` loads `assets/js/CloudHost247-tools.js` on every addon page and `templates/client/tool.tpl` calls `CloudHost247RenderToolForm`, whose submit handler posts to this endpoint — so it is the live path, **not** dead code. It skipped every Runner guarantee: the 1 MB request-size cap, the tiered quotas and global per-IP ceiling, the `exec=client` rejection, input redaction, generic error messages, the execution/socket timeout, and the `nosniff` / `no-store` / `Referrer-Policy` headers. | `includes/classes.php` `handleAjax()` (pre-fix); `assets/js/CloudHost247-tools.js:1111` | High | **Fixed.** `handleAjax()` now delegates to `CloudHost247ToolsRunner::run()` and emits through `Runner::respondLegacy()`. |
 | T2-2 | **The privacy guarantee for `exec=client` tools was contradicted by the live path.** The catalog registers 46 tools as `exec=client`, and the Runner tells the user *"This tool runs entirely in your browser and has no server endpoint. Your data is never transmitted to CloudHost247."* All 46 nevertheless have a server handler function, and the legacy bundle has **no client-side execution at all** (no `run()` in the bundle; it posts every form). So all 46 ran on the server. 39 are reachable from the legacy UI's `toolFields`, including **`credit_card_validator`**. Worse, the legacy path logged **raw `$_POST` with no redaction** into `mod_CloudHost247_tools_logs`, so card numbers and passwords were retained in plaintext in the database. | probe: 46 client tools, 46 with a server handler; `toolFields` ∩ client-exec = 39; `CloudHost247_tools_log($toolId, $_POST, …)` (pre-fix) | High (privacy + data retention) | **Fixed.** The server refuses all 46 by slug *and* by legacy handler id; the 39 exposed by the legacy UI now execute in the browser via their existing route-split module; all logging goes through `Runner::redact()`. |
 | T2-3 | **Raw exception messages were returned to the browser.** The legacy `catch` echoed `$e->getMessage()`, exposing internals (paths, SQL, driver text) to any caller. The Runner already logged detail server-side and returned a generic message. | `includes/classes.php` (pre-fix) | Medium (information disclosure) | **Fixed** — the delegation inherits the Runner's generic `server_error` text. |
-| T2-4 | **The `/tools/<slug>` surface is built and tested but has no request entry point in this repo.** `CloudHost247ToolsRouter` and `CloudHost247ToolsRunner` are referenced only by their own definitions, `tests/`, and `bin/verify-catalog.php`. `api/index.php` is a `die()` placeholder, and there is no `.htaccess` or front controller for the pretty routes. So the modern surface — and the Runner's protections — guard no traffic today; the 531 PHP assertions test code that no request reaches. | `grep -rn CloudHost247ToolsRunner\|Router` across the repo | Medium (incomplete wiring) | **Open, owner decision (D-7).** Needs a root-level rewrite rule plus a front controller. Not added unilaterally: it creates a new public URL namespace and a new deployment dependency. |
+| T2-4 | **The `/tools/<slug>` surface was built and tested but had no request entry point in this repo.** `CloudHost247ToolsRouter` and `CloudHost247ToolsRunner` were referenced only by their own definitions, `tests/`, and `bin/verify-catalog.php`. `api/index.php` was a `die()` placeholder, and there was no `.htaccess` or front controller for the pretty routes. | `grep -rn CloudHost247ToolsRunner\|Router` across the repo (at audit time) | Medium (incomplete wiring) | **Fixed by A-6 (2026-10-11).** Root `.htaccess` rule plus `front.php` added; D-7 decided (proceed). |
 | T2-5 | **A cross-module note in this tracker was wrong.** It recorded the legacy AJAX path as *"reachable but not used by the front end."* It is used by every tool page. | `hooks.php:20`, `templates/client/tool.tpl` | Low (documentation) | **Corrected** by this section. |
 | T2-6 | **`tests/tools.test.mjs` was not reproducible on a clean checkout.** It reads the 91-tool registry as JSON from `/tmp/tools.json`, and nothing in the repo produced that file, so the 845-assertion suite could only run on a machine where the file already existed. | `tests/tools.test.mjs` | Low (assurance) | **Fixed** — `tests/dump-catalog.php` + `tests/dump-catalog.mjs` generate it, and the suite generates it on demand when absent. |
 
@@ -700,7 +705,7 @@ It is not.
 
 ### Still open (owner)
 
-- **D-7** — whether to add the root-level rewrite and front controller that would make the `/tools/<slug>` Router surface live. Until then the Runner protects the legacy endpoint only, and `api/index.php` remains a placeholder.
+- **D-7** — decided 2026-10-11 (A-6): the root-level rewrite and front controller are added, the `/tools/*` surface is live, and `api/index.php` is a real endpoint. Nothing still open here.
 
 ## Module 8 — cloudhost247services (Domain & Infrastructure Platform)
 
@@ -817,7 +822,7 @@ Recommended: **option 1**, with two owner actions — confirm the licences are c
 |---|---|
 | Deliverable | `templates/hostx/includes/announcementbar.tpl`, integrated into `templates/hostx/header.tpl` immediately after `<body>` (above the navbar). |
 | Specification | `docs/Announcement Bar/Build.txt` (13 numbered requirements) plus `Announcement Bar.pdf`. |
-| Status | **Complete against the specification; two defects found and fixed (AB-1, AB-2).** One informational item recorded (AB-3). No automated tests — see note below. |
+| Status | **Complete against the specification; three defects found and fixed (AB-1, AB-2, AB-4).** One informational item recorded (AB-3). 43 automated checks green (`templates/hostx/tests/announcementbar.test.mjs`, wired into `ci/run-js.sh`) — see note below. |
 
 ### Spec conformance
 
@@ -826,7 +831,7 @@ Recommended: **option 1**, with two owner actions — confirm the licences are c
 | File at `/templates/hostx/includes/announcementbar.tpl` | Yes | File present |
 | Smarty + HTML + CSS only, no JS | Yes | No `<script>` in the template |
 | Integrated into the layout above the navbar | Yes | `header.tpl:14`, first include after `<body>` |
-| Multiple messages from an array, text + optional link | Yes | `{foreach from=$announcements item=announcement}` |
+| Multiple messages from an array, text + optional link | Yes | `{foreach from=$announcementBarMessages item=announcement}` (namespaced per AB-4) |
 | Horizontal scroll, smooth infinite loop, CSS `@keyframes` only | Yes | `@keyframes announcement-scroll`, `translateX(0 → -50%)` |
 | No `<marquee>`, no external slider library | Yes | None present |
 | Seamless looping, no gaps or jumps | Yes | Items rendered twice via `{section name=loop loop=2}` with a `-50%` translate |
@@ -843,11 +848,12 @@ Good practice already present: every interpolation is escaped (`|escape:'html'` 
 |---|---|---|---|---|
 | AB-1 | **The separator bullet anchored to the wrong element.** `.announcement-bar__item::after` used `position: absolute; right: 0`, but `.announcement-bar__item` has no `position` of its own. The nearest positioned ancestor is `.announcement-bar` (`position: relative`), so every copy of the bullet stacked at the bar's right edge instead of sitting after its item. | `.announcement-bar__item` rule has no `position`; `::after` has `position: absolute; right: 0` | Low (cosmetic) | **Fixed** by deleting the vestigial rule. Adding `position: relative` to the item would have been the wrong fix: the `.announcement-bar__dot` span already renders the intended separator, so keeping the `::after` would have doubled it. The matching `display: none` override in the `prefers-reduced-motion` block was removed with it. |
 | AB-2 | **Screen readers announced every message twice.** The seamless loop renders the item list twice (`{section name=loop loop=2}`), and both copies were exposed to assistive technology. | `{section name=loop loop=2}` wrapping the `{foreach}` | Low (accessibility) | **Fixed** — the second pass is marked `aria-hidden="true"`, so each message is announced once while the visual loop is unchanged. |
-| AB-3 | **`href` accepts any URI scheme.** `\|escape:'html'` does not stop a `javascript:` URL. Not exploitable today: the `$announcements` array is assigned server-side (by a hook, an addon, or statically), not from user input. | `href="{$announcement.url\|escape:'html'}"` | Informational | **Recorded, not changed.** Worth revisiting if announcements ever become admin- or user-editable through a form. |
+| AB-3 | **`href` accepts any URI scheme.** `\|escape:'html'` does not stop a `javascript:` URL. Not exploitable today: the `$announcementBarMessages` array is assigned server-side (by a hook, an addon, or statically), not from user input. The suite pins this precondition: no request input in the template or snippets, every shipped example URL uses `/`-relative or `https://` schemes, and a tripwire fails if any repo PHP starts feeding the bar. | `href="{$announcement.url\|escape:'html'}"` | Informational | **Recorded, not changed.** Worth revisiting if announcements ever become admin- or user-editable through a form. |
+| AB-4 | **The bar hijacked WHMCS core's `$announcements` on the announcements page.** The bar read `$announcements`, which WHMCS core assigns on `/announcements.php` with a different item shape (`title`/`text`/`summary`/`id`, no `url`). The guard passed, the `url` branch missed, and every site announcement's full body text rendered inside the scrolling bar — duplicating page content in the marquee. Escaped, so no injection; cosmetic, one page. | `templates/hostx/announcements.tpl:14` `{foreach from=$announcements …}` vs the bar's old `{foreach from=$announcements …}` | Low | **Fixed** — the bar's variable is renamed to `$announcementBarMessages` (bar template, both snippet files, header comment); the suite pins the namespaced read, the absence of bare `$announcements` in bar code, and the four-file assignment scope. Nothing assigned the old name, so nothing breaks. |
 
 ### Testing note
 
-There is no test harness for `templates/hostx/` anywhere in the repository, and none was added for this item. The template is Smarty rendered inside WHMCS, so both fixes are **static-only and unverified by execution** — they need a visual check on staging (confirm one separator dot between messages, and that the loop is still seamless). This is the weakest assurance of the ten modules and is called out rather than glossed over.
+`templates/hostx/tests/announcementbar.test.mjs` (43 checks, wired into `ci/run-js.sh`) is the first harness for `templates/hostx/`: it mirrors the conformance table above, pins the good-practice notes (escaping, `rel=noopener`, `aria-hidden`, reduced-motion, z-index, no `!important`), carries regression checks for AB-1/AB-2/AB-4, and guards AB-3's server-assigned-data precondition. Smarty executes only inside WHMCS, so the checks are static by necessity — the staging visual check (one separator dot between messages, seamless loop) still stands, but no finding is unverified-by-execution anymore.
 
 ## Module 11 — tools_center (second pass over `external-api/`)
 
@@ -910,7 +916,7 @@ Authentication runs **before** category/action resolution, so all three reflecte
 |---|---|
 | Module | `modules/addons/cloudhost247cloudflare/` — 35 PHP files, 3,176 lines. Encrypted Cloudflare accounts, product mappings, linked customer services, zone/DNS CRUD. Documented in `docs/MODULES.md` (Phases 11–13) and `docs/PHASE1{1,2,3,4}_CLOUDFLARE_*.md`. |
 | Specification | `docs/MODULES.md` lines 26 and 43; `docs/PHASE11_CLOUDFLARE_COMPATIBILITY.md`, `PHASE12_CLOUDFLARE_DNS_INVENTORY.md`, `PHASE13_CLOUDFLARE_DNS_BRIDGE.md`, `PHASE14_CLOUDFLARE_DNS_API.md`. |
-| Status | **Audited; one real defect found and fixed (CF-1).** This module shipped with **no test suite at all**; the pass built one. Suite now **60 assertions, 0 failures**; lint 37 files clean. No live run. |
+| Status | **Audited; one real defect found and fixed (CF-1).** This module shipped with **no test suite at all**; the pass built one. Suite now **60 assertions, 0 failures**; lint 37 files clean. No live run. The companion WHMCS server module was audited under C-6 on 2026-10-11 (addendum below): two findings fixed, 51-check suite green. |
 
 This module was **not** on the original 11-item list. It is one of six addons that had no completion record anywhere in the tracker, so it counts as unfinished under the original definition ("any non-complete status in the tracker **plus** modules in `MODULES.md` with no completion record").
 
@@ -956,6 +962,19 @@ CF-1 was found by the new assertion suite rather than by reading: the first vers
 ### Remaining coverage gap
 
 The module's DB-backed surface has **no tests**: `Http/AdminPortal.php`, `Http/ClientPortal.php`, `Service/ProvisioningService.php`, `Service/Worker.php`, `Service/JobQueue.php`, and the three repositories. There is no offline `Db` shim for this module (unlike `digitalproducts`' `CapsuleShim`), so covering them means building one first.
+
+### C-6 addendum — server provisioning module (2026-10-11)
+
+Scope: `modules/servers/cloudhost247cloudflare/` (1 PHP file, ~140 lines + `templates/clientarea.tpl`), the thin WHMCS adapter over the audited addon classes. Never previously audited; shipped with no tests.
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| CF-S1 | `AdminServicesTabFields()` returned API/DB-derived values (zone id, nameservers, plan label, error text) unescaped while WHMCS renders tab values as provided — stored-XSS vector in the admin page if the API ever returned markup. Fixed with a file-local `htmlspecialchars` helper mirroring the addon portal's `h()`; the suite pins it with hostile values. | Low | Fixed |
+| CF-S2 | Dead `use ...Db;` import, and `plan_label` missing the `?? ''` guard its sibling fields carry (undefined-key warning on sparse rows). | Trivial | Fixed |
+
+Checked and found sound: WHMCS entry-point contracts (MetaData/ConfigOptions/Create/Suspend/Unsuspend/Terminate/ChangePackage/TestConnection/ClientArea/AdminTab/CustomButton); idempotent terminate on unmapped services; fail-closed catch blocks that log only the exception class; `clientarea.tpl` escapes every interpolation and the management URL id is `(int)`-cast.
+
+Suite: `modules/servers/cloudhost247cloudflare/tests/01_ServerModuleTest.php` — **51 checks, 0 failures** (addon doubles for repositories/provisioning/logger, real `CloudflareException`). Mutation: neutering the escape helper fails exactly the 2 XSS checks; restored byte-identical (`diff -q`). Wired into the existing `mod_cloudflare` CI step (still 17 steps, one per module); local runner `tests/run.mjs` (php-wasm).
 
 ## Module 13 — soyoustart (WGS OVH / SoYouStart admin addon)
 
@@ -1084,6 +1103,95 @@ Third of the four. Scope: outbound message construction and delivery — `lib/Tr
 
 Not covered by this pass: `lib/Http/AdminPortal.php` (2,015 lines — the largest file in the addon), `lib/Campaign/CampaignService.php` (946), `lib/Automation/AutomationService.php` (739), `lib/Audience/SegmentService.php` and `lib/Campaign/Renderer.php` (template rendering of subscriber-supplied fields).
 
+### Follow-up (2026-10-11): `cloudhost247_cart_recovery` full audit — 8 findings, all fixed
+
+Last of the four, and the only module that remained at baseline depth. Unlike
+the three passes above, this one covered the whole module line by line (~3,100
+lines of `lib/` plus hooks, cron, the public recover/unsubscribe endpoint, the
+admin screen and both migrations), because the module is small enough to make
+that economical. **8 findings, all fixed, each with a regression test.** Suite
+grew 61 → 70 assertions, green, plus lint and the 15 static checks. A negative
+control (new tests against the pre-fix `lib/`) fails exactly the 7
+behaviour-changing tests and nothing else.
+
+**Fixed:**
+
+- **Unsubscribe regressed terminal records (data integrity, medium).**
+  `RecoveryService::unsubscribe()` transitioned the clicked record
+  unconditionally, so a converted customer clicking an old unsubscribe link
+  flipped `converted` → `unsubscribed`, silently deleting a conversion and
+  orphaning its revenue from analytics. Fix: new
+  `RecoveryService::suppressRecipient()` records the suppression but only
+  transitions *open* records; the public endpoint and the admin action both
+  use it. The refactor also closed a minor inconsistency where the admin
+  action stopped one record while the public path stopped all sibling carts
+  for the same recipient.
+- **Stuck `sending` claims wedged records until token expiry (robustness,
+  medium).** `deliver()` refuses rows in `sending`, but a worker that died
+  between the claim and the status update (OOM-kill, timeout, SIGKILL) left
+  the row there forever: no further reminder, no schedule advance, silent
+  until the 7-day token expiry. Fix: `process()` now reaps claims untouched
+  for 30+ minutes back to `failed` (logged, counted as `reaped`). The reset
+  is idempotent and the send still goes through the single-winner claim, so
+  overlapping runs cannot double-send; `attempts` is preserved so the retry
+  budget still bounds poison records.
+- **Guest-controlled names merged raw into HTML reminder bodies (email HTML
+  injection, low-medium).** Guest checkout supplies both the recipient
+  address (unauthenticated) and the name, and both reached the HTML body
+  unescaped — an attacker could send arbitrary markup (tracking/phishing
+  content; scripts are neutered by clients) to any address. Fix: new
+  `EmailService::htmlVars()` escapes every merge variable at the HTML sinks
+  (guest body, client `customvars`), except intentionally-HTML `cart_items`.
+- **CR/LF in merge variables reached the guest subject (header injection,
+  low).** Defence in depth on top of whatever the mailer strips: new
+  `EmailService::headerVars()` removes line breaks from subject and display
+  name values.
+- **LIKE-escape missed the backslash (minor correctness).** The admin search
+  escaped `%`/`_` but not `\`, so a backslash in the query changed the
+  meaning of the next character. One-line fix, plus the test fake's LIKE now
+  implements true MySQL escape semantics (it previously treated `\%` as a
+  wildcard too).
+- **`Lock::release()` cleared the lease unconditionally (minor hardening).**
+  The ownership re-read closed most of the race, but the final UPDATE is now
+  conditional on the full value read, so a lease stolen in the microsecond
+  window is never cleared from under its new owner.
+- **Dashboard summed revenue in PHP (perf).** `Analytics::summary()` loaded
+  every converted row to total `recovered_revenue`; it is now a SQL `SUM()`.
+  Behaviour-identical, O(1) memory.
+
+**Checked and sound (no change):** token lifecycle (Module 14's conclusions
+re-verified, including that `TokenService::equals()` is genuinely used by the
+decrypt-verify in `deliver()`); snapshot allow-list + deny pattern + depth
+and length caps + re-sanitise on restore (session poisoning closed; WHMCS
+recalculates prices at checkout anyway); the idempotent send claim
+(UNIQUE key + conditional UPDATE, still the backstop under overlapping
+workers); suppression honoured at capture and send time; admin auth
+(Foundation guard + `Manage Addon Modules` permission), CSRF (`check_token`
+on every POST, no state-changing GET); every admin echo escaped (also
+enforced by the static suite); no raw SQL, no `mail()`/SMTP stack, no
+dynamic code execution, no weak randomness anywhere in the module; cron is
+CLI-only via a server-set SAPI check; recovery redirect targets the
+server-configured SystemURL (no open redirect); response codes on the public
+endpoint (404/410) leak nothing enumerable against 256-bit tokens; reusable
+recovery links until expiry and fail-open client lookup are accepted design,
+reviewed, not findings.
+
+**Observations recorded, not defects:** (1) concurrent first captures (two
+devices, same client) can insert duplicate open records — PHP session
+locking makes this rare and the consequence is a duplicate reminder, not a
+security issue; (2) `OrderRevenue` falls back to the client's latest order
+when WHMCS omits both ids, which can misattribute revenue in a case the
+hooks should never produce; (3) `MigrationRunner` can throw a create-table
+race if two first-install crons overlap — self-heals on the next run;
+(4) info-level logs are silent when Foundation is absent (errors still reach
+`logModuleCall`/`error_log`); (5) `tests/*.php` execute over HTTP like every
+other module suite in this repo — benign output (pass/fail against in-memory
+fakes), but a repo-wide `deny` for `*/tests/` at the webserver layer would
+apply to all 17 suites, not just this one.
+
+Not covered by this pass: live WHMCS runtime behaviour (E-2); the README
+was re-read and remains accurate, no changes needed.
+
 ### Note on the four node_modules symlinks
 
 `cloudhost247ai`, `cloudhost247_cart_recovery`, `cloudhost247marketing` and `cloudhost247passkey` each needed `node_modules` for the php-wasm runners. That directory is a symlink to `cloudhost247services/node_modules` and is **gitignored for `CloudHost247_tools` and `cloudhost247cloudflare` only**. The four symlinks created here are untracked and were not committed — a fresh clone needs `npm i @php-wasm/node` in each module. Worth adding to `.gitignore` alongside the existing two entries.
@@ -1102,7 +1210,7 @@ Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phon
 
 **Remaining at baseline depth: `cloudhost247_cart_recovery` only** (4,653 lines). Its recovery-link security was already reviewed and found sound, so what remains is the rest of the module rather than a known-weak area.
 
-**Open owner decisions:** D-2 (deactivation, partially done), D-6 (`digitalproducts` activation limits), D-7 (routing `/tools/<slug>`), D-8 (policy for the two 100% ionCube-encoded modules). Plus the pre-existing High items: **P-5** (`phoneservices` all-tenant API key) and **M-5** (`smmaddon` client-controlled order quantity).
+**Open owner decisions:** D-2 (deactivation, partially done), D-6 (decided (b) via B-2 2026-10-11), D-7 (routing `/tools/<slug>` — decided via A-6 2026-10-11), D-8 (policy for the two 100% ionCube-encoded modules). Plus the pre-existing High items: **P-5** (`phoneservices` all-tenant API key) and **M-5** (`smmaddon` client-controlled order quantity).
 
 **Not done anywhere in this programme:** no CI (fifteen suites, nothing runs them), and no live WHMCS or browser run.
 
@@ -1115,7 +1223,7 @@ Original 11-item list — all done: `hostx_tools` (decision D-2 = retire, deacti
 1. **`hostx` (63/63) and `xtreme_currency_rates` (18/18) are 100% ionCube-encrypted** — no readable source, so no review, test or lint is possible for either. `hostx` alone is 47,701 lines: the largest single block of code in the repository and entirely outside every assurance process the project has. Owner decision **D-8**.
 2. **No CI exists.** Fifteen modules have test suites and nothing runs them. See the recommendation in the audit summary.
 
-**Open owner decisions now:** D-2 (deactivation, partially done), D-6 (digitalproducts activation limits), D-7 (routing `/tools/<slug>`), D-8 (policy for the two encoded modules). Plus the pre-existing High items still open in other modules: **P-5** (phoneservices all-tenant API key) and **M-5** (smmaddon client-controlled order quantity).
+**Open owner decisions now:** D-2 (deactivation, partially done), D-6 (decided (b) via B-2 2026-10-11), D-7 (routing `/tools/<slug>` — decided via A-6 2026-10-11), D-8 (policy for the two encoded modules). Plus the pre-existing High items still open in other modules: **P-5** (phoneservices all-tenant API key) and **M-5** (smmaddon client-controlled order quantity).
 
 > The earlier "1 of 11" line understated progress: `customaffiliate`, `hostx_email`,
 > `phoneservices` and `smmaddon` were audited on 2026-10-10 as additional audit
@@ -1179,3 +1287,593 @@ Original options, for reference:
 - Source read: `hostx_tools.php`, `includes/*.php`, `api/*.php` (search for execution, escaping and CSRF), `assets/js/hostx-tools.js`, templates.
 - Executed: the IP-spoofing reproduction for both modules (PHP 8.3 via php-wasm). No change made in this item.
 - Not run: no suite exists for this module.
+
+---
+
+## E-1 — CI pipeline (project gap, closed 2026-10-11)
+
+| Field | Information |
+|---|---|
+| Gap | `docs/UNFINISHED_MODULES.md` E-1: 17 test suites existed and nothing ran them — no `.github/` directory, no workflow files. |
+| Status | **Complete.** `.github/workflows/ci.yml` runs on every push and pull request: full PHP matrix on 8.3 (17 suites, one step per module, plus load/parse gates and the root-landing check), legacy 7.4 leg for the three 7.4-supported modules, Node 22 suites incl. jsdom UI wiring, a repo-wide `php -l` sweep (ionCube modules excluded, D-8), and the Python static checks. Runbook: `docs/CI.md`. |
+
+### Design
+
+CI executes the same `tests/*.php` files as the committed `run.mjs`
+wrappers, but on native PHP instead of php-wasm: faster, more faithful
+(real SQLite/OpenSSL/ZIP), no npm dependency. The wasm wrappers keep
+working — every touched suite resolves paths absolute-mount-first with a
+checkout-relative fallback. Drivers live in `ci/` (`run-php.sh`,
+`run-js.sh`, `php-lint.sh`) and are also the local entry points, so CI
+and local runs cannot drift.
+
+### Test-only changes (no production code)
+
+- Path fallbacks: `cloudhost247apps` tests 10/11/12/13/17 + `lint.php`,
+  `cloudhost247services` test 21.
+- Fixed dead fallback: `cloudhost247services` tests 11/12 used
+  `dirname(__DIR__, 3)` (the `modules/` dir) instead of the repo root —
+  now `CHS_ROOT`. Only reachable on native runs, so invisible until now.
+- Exit codes: 13 files that printed `FAIL=` but always exited 0 now
+  `exit($fail ? 1 : 0)`.
+- Flake fix: `cloudhost247apps` test 25 freezes `Clock` around the
+  retention section (cutoff-edge fixture + second boundary = observed
+  34/3 failure in pre-push validation).
+
+### Completion evidence
+
+- Pre-push validation in-sandbox (php-wasm, committed-runner-identical
+  mounts): **126/126 suite files green**, plus Node `core` 68/0, `qr`
+  36/0, `tools` 845/0, `tools_center` 43/43 with jsdom 24, Python
+  static 15/15 — every count matches this tracker.
+- Post-push: GitHub Actions run `38096863878` is green 5/5 on real PHP
+  8.3/7.4 + Node 22 + Python. The first CI run already paid for itself:
+  `php -l` caught a PHP 8 production fatal no suite exercised —
+  unparenthesized `a ? b : c ?: d` in Smtphosting
+  `Packages/WhmcsService/Service.php:112` (file could not load at all on
+  PHP 8) — fixed with behavior-preserving parens (`9f12bc0`).
+  TOKEN_PARSE-based lints cannot see this class of error (it is raised
+  at compile time, and `token_get_all(TOKEN_PARSE)` only parses), which
+  is why the native `php -l` sweep exists. `ci/php-lint.sh` also emits
+  file-level `::error::` annotations so future failures name the file.
+- Not covered (unchanged): E-2 live runs; group C modules with no
+  suites; D-8 encoded modules.
+
+## A-8 — empty theme templates (closed 2026-10-11)
+
+| Field | Information |
+|---|---|
+| Gap | `docs/UNFINISHED_MODULES.md` A-8: 4 zero-byte `templates/hostx` templates (`all-elements.tpl`, `clientareacreditcard.tpl`, `creditcard.tpl`, `pwreset.tpl`), feared to render blank pages. |
+| Status | **Complete.** No zero-byte `.tpl` remains. Three files are legacy WHMCS names retired in 8.x and now carry non-rendering marker comments; the fourth was an orphaned rename leftover and is deleted. |
+
+### Resolution
+
+- `pwreset.tpl`, `creditcard.tpl`, `clientareacreditcard.tpl`: verified
+  against upstream `WHMCS/templates-six`, which ships them empty /
+  intentionally-blank — the flows they once served moved to the
+  `password-reset-*` route templates, `checkout.tpl`, and the
+  `account-paymentmethods` templates (all present and current in this
+  theme, which requires WHMCS 8.x). The feared blank-page impact does
+  not apply; filling them with legacy forms would have added dead,
+  untestable code. Each file now holds a `{* *}` Smarty comment
+  recording why it is blank, so no future audit re-flags them.
+- `all-elements.tpl`: not a WHMCS template name, referenced nowhere in
+  the repo, no matching custom page — a leftover of the rename to
+  `all-element-hostx.tpl` (the 104 KB showcase rendered by root
+  `all-element-hostx.php`). Deleted.
+
+### Completion evidence
+
+- `find templates/ -name '*.tpl' -size 0` → no output.
+- Comment-only `.tpl` edits render byte-identical output to empty files
+  (Smarty `{* *}` comments produce no output), so no visual regression
+  is possible; CI re-runs green on push.
+
+## A-5 — Image to Text OCR placeholder (closed 2026-10-11)
+
+| Field | Information |
+|---|---|
+| Gap | `docs/UNFINISHED_MODULES.md` A-5: `CloudHost247_tool_image_to_text()` returned `'status' => 'placeholder'` — server-side OCR never implemented, while the catalog promised an opt-in server path. |
+| Status | **Complete.** The handler performs real OCR via OCR.space; the opt-in is enforced server-side and gated in both frontends; the catalog describes the shipped behaviour. |
+
+### Resolution
+
+- Server (`includes/tools/productivity_tools.php`): the handler now
+  requires the explicit `server_ocr` opt-in flag (re-checked here so
+  direct API calls cannot bypass consent), accepts the image as a
+  multipart upload or base64, validates the bytes in memory (finfo
+  MIME + `getimagesize`, ≤ 1 MB, ≤ 8000 px per side, JPG/PNG/GIF/BMP/
+  TIFF only — the raster formats the provider accepts), and POSTs to
+  `https://api.ocr.space/parse/image` with the key from the existing
+  `ocr_api_key` module setting. The transport is a dedicated cURL
+  block with TLS verification on (the shared module helper disables
+  it), a 20 s timeout inside the Runner's 25 s budget, and provider
+  failures mapped to user-safe errors (invalid key, usage limit,
+  timeout, unreadable image). Images are never written to disk and
+  never logged. A missing key yields a requires-configuration error,
+  not a placeholder.
+- Legacy bundle (`assets/js/CloudHost247-tools.js`): precise file
+  `accept` list, an opt-in checkbox in the form def, a submit gate
+  that refuses to upload until consent is ticked, and a renderer for
+  the extracted text with stats.
+- Route-split module (`assets/js/tools/image-to-text.js`): rewritten
+  for the JSON page transport — the picked file is read to a data URL
+  in a `mount()` hook (700 KB client cap so base64 fits the 1 MB
+  request limit), `validate()` blocks submits without a file or
+  without consent, and the module is marked `sensitive` so image data
+  stays out of localStorage history and share links.
+- Catalog (`config/cloudhost247-tools.php`): `exec` `hybrid` →
+  `server`, `inputs` updated, new `sensitive` flag, and the
+  description rewritten to the shipped behaviour. The `hybrid` value
+  promised a browser-local OCR engine that exists nowhere in the
+  tree; no code ships that promise any more. A vendored in-browser
+  engine (Tesseract-style, cf. the vendored QR decoder) remains a
+  possible future enhancement — it would be a new feature, not a
+  stub completion.
+
+### Completion evidence
+
+- New `tests/OcrTest.php`: 69 assertions covering opt-in allowlist,
+  both intake paths, validation, key configuration, the stubbed
+  success path (text/stats/payload shape), and every mapped failure —
+  69/69 green, full PHP suite 601/601.
+- JS suites green (`tools` 845 incl. the new `sensitive` parity
+  assertion, `core` 68, `qr` 36); `node --check` clean on both
+  edited bundles.
+- Manual QA path for the site admin: set `OCR API Key` in the module
+  settings (free keys at ocr.space/ocrapi/freekey), upload a clear
+  photo with the consent box ticked, and expect extracted text; the
+  provider's shared `helloworld` key works for a one-off smoke test.
+
+## A-6 — `/tools/*` request entry point (closed 2026-10-11)
+
+| Field | Information |
+|---|---|
+| Gap | `docs/UNFINISHED_MODULES.md` A-6 / finding T2-4: the Router/Runner surface had no request entry point — `api/index.php` was a `die()` placeholder, no `.htaccess`, no front controller — so hundreds of assertions guarded traffic that never arrived. Owner decision D-7. |
+| Status | **Complete. D-7 decided: proceed.** The surface is live behind a minimal rewrite rule; all route types dispatch, execute and render through one tested front controller. |
+
+### Resolution
+
+- New `modules/addons/CloudHost247_tools/front.php`: bootstraps WHMCS
+  (`init.php`, when deployed over WHMCS) and emits the response. The
+  route comes from `?route=` (the rewrite target), `PATH_INFO`, or the
+  raw request URI, in that order.
+- New `includes/Front.php` (`CloudHost247ToolsFront::dispatch`, pure
+  and offline-testable): resolves via `Router::resolve` and serves
+  every route type — tool/category/index/search/disclaimer pages,
+  sitemap XML, 301 aliases, 404s with suggestions, and the POST-only
+  `/tools/api/<slug>` JSON endpoint through `Runner::run` with
+  `require_csrf`. Page shells carry the ToolPage mount nodes, the
+  session CSRF token, per-route assets, breadcrumbs, JSON-LD, and
+  absolute canonicals (WHMCS SystemURL preferred, strictly validated
+  request host as fallback, relative URLs when neither is safe).
+- Both enable switches are honoured on pages and the API: the
+  registry `enabled` flag and the Tools-Manager switch in
+  `mod_CloudHost247_tools_status` (fail-closed, like the legacy path;
+  the registry decides alone without a database).
+- `api/index.php` is now a real endpoint: a thin alias that delegates
+  to the same dispatch (`?tool=<slug>` + JSON/form body).
+- New root `.htaccess` (the repo had none): a single self-contained
+  `/tools/*` rewrite block, documented to stay above any WHMCS
+  friendly-URL rules. Without mod_rewrite the same pages work via
+  `front.php?route=`. Nginx equivalent (server config, not shippable
+  from this repo):
+  `location /tools { try_files $uri $uri/ /modules/addons/CloudHost247_tools/front.php?route=$uri&$args; }`
+- Found and fixed while wiring: `Router::assets()` listed a
+  `tools-browse.js` that never existed (404 on every browse page).
+  Removed — `tools-core.js` already initialises the filter, FAQ and
+  nav on every page. A test now asserts every emitted asset URL
+  exists on disk, for all 91 tool routes plus the browse pages.
+- Known limitation (pre-existing Router design, out of scope):
+  generated links and canonicals are root-absolute, so pretty URLs
+  assume a root WHMCS install, not a subdirectory.
+
+### Completion evidence
+
+- New `tests/FrontTest.php`: 88 assertions — dispatch for every route
+  type, page shells (mount nodes, CSRF shape, module scripts, badges,
+  related/suggestions), API success through a real handler plus every
+  failure envelope (405/400/419/422/404), enablement matrix, site-URL
+  derivation incl. Host-header rejection, `jsonResponse` byte-parity
+  with `Runner::respond`, live execution of both entry files with
+  output capture, and static pins on the rewrite rule, the api alias
+  and on-disk assets. Full PHP suite 689/689; JS suites unchanged and
+  green (845/68/36). One mutation probe (forced enablement) failed
+  exactly the disabled-path tests; file restored byte-identical.
+- Manual QA path: with the checkout deployed over WHMCS, visit
+  `/tools`, `/tools/dns`, `/tools/dns-lookup` (run a lookup),
+  `/tools/search?q=ssl`, `/tools/disclaimer`, `/tools/sitemap.xml`,
+  a renamed URL (301) and a bogus URL (404 with suggestions); POST to
+  `/tools/api/my-ip` without a token (419) and via a page submit
+  (200). If mod_rewrite is off, the same pages answer at
+  `modules/addons/CloudHost247_tools/front.php?route=<path>`.
+ll, not a subdirectory.
+
+### Completion evidence
+
+- New `tests/FrontTest.php`: 88 assertions — dispatch for every route
+  type, page shells (mount nodes, CSRF shape, module scripts, badges,
+  related/suggestions), API success through a real handler plus every
+  failure envelope (405/400/419/422/404), enablement matrix, site-URL
+  derivation incl. Host-header rejection, `jsonResponse` byte-parity
+  with `Runner::respond`, live execution of both entry files with
+  output capture, and static pins on the rewrite rule, the api alias
+  and on-disk assets. Full PHP suite 689/689; JS suites unchanged and
+  green (845/68/36). One mutation probe (forced enablement) failed
+  exactly the disabled-path tests; file restored byte-identical.
+- Manual QA path: with the checkout deployed over WHMCS, visit
+  `/tools`, `/tools/dns`, `/tools/dns-lookup` (run a lookup),
+  `/tools/search?q=ssl`, `/tools/disclaimer`, `/tools/sitemap.xml`,
+  a renamed URL (301) and a bogus URL (404 with suggestions); POST to
+  `/tools/api/my-ip` without a token (419) and via a page submit
+  (200). If mod_rewrite is off, the same pages answer at
+  `modules/addons/CloudHost247_tools/front.php?route=<path>`.
+
+## Module 15 — blockonomics (WHMCS payment gateway)
+
+| Field | Information |
+|---|---|
+| Module | `modules/gateways/blockonomics.php` (entry) + `modules/gateways/blockonomics/` (core, payment page, USDT poller, upgrade, Test Setup, lang, 5 checkout templates) + `modules/gateways/callback/blockonomics.php` — 17 PHP files, ~3,700 lines. The `cloudhost247/` governance layer and the Services-side console were already assured (`docs/BLOCKONOMICS_AUDIT.md`, services suites 11/12); C-7 covered the gateway's own files, which had no tests. |
+| Specification | `docs/BLOCKONOMICS.md` (authority, enforcement, money-integrity rules) plus the stock upstream Blockonomics/WHMCS behaviour the gateway extends. |
+| Status | **Audited; eleven findings fixed (BN-1–BN-11).** New offline suite **247 checks, 0 failures** (`modules/gateways/blockonomics/tests/`, php-wasm runner + `mod_blockonomics` CI step). No live run. |
+
+### Findings (all fixed)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| BN-1 | Garbage order hashes reached address generation: any hex string in `show_order`/`get_order` burned a live provider address (BTC) and then hit a fatal assigning properties on a string. `processOrderHash()` / `process_token_order()` / `redirect_finish_order()` now reject undecryptable hashes with HTTP 400 before any provider or DB work (overridable seams so the suite executes the path). | Low-Medium | Fixed |
+| BN-2 | Order hashes were AES-128-CBC with a static IV and no MAC — malleable in principle. Now Encrypt-then-MAC (HMAC-SHA256 over the ciphertext prepended); anything without a valid MAC — including pre-C-7 hashes — fails closed. Only in-flight checkout hashes break across the deploy. Analysis: targeted amount forgery was already infeasible (id and value share the IV-bound first block), so this is defence in depth. | Low | Fixed |
+| BN-3 | `->name` read on the array returned by `getSupportedCurrencies()` (4 sites): blank currency name in invoice notes + warning spam on every waiting-callback and USDT report. Now `['name']` with a code fallback. | Low | Fixed |
+| BN-4 | The USDT poller (an infinite daemon) was web-reachable with no access control — every HTTP hit ran the loop to `max_execution_time`, and concurrent loops widened the double-credit race. Now CLI-only (403 otherwise) plus a non-blocking single-flight lock. | Medium | Fixed |
+| BN-5 | No curl timeouts in `getNewAddress()`, `fetchPrice()` and the poller (a hung provider wedged checkout or stalled all USDT crediting). Now connect 10 s / total 30 s everywhere `doCurlCall()` already had one. | Low | Fixed |
+| BN-6 | Test Setup died or misdiagnosed whenever USDT was active: it probed a bogus `usdt.blockonomics.co` hostname (`exit()` mid-JSON) or reported via the BCH endpoint. USDT is now skipped (its readiness is governed by `Policy::usdtReadiness`); a failed callback update now reports instead of returning null (BN-6b). | Low-Medium | Fixed |
+| BN-7 | Repeat/concurrent USDT payments for one invoice collided: same deterministic pseudo-address meant a duplicate-key 500, an overwritten txid (first payment orphaned), or absorption into another currency's pending order. Pseudo-addresses are now unique per attempt and the report flow resolves a USDT row specifically — second payments get their own credited rows. | Low-Medium | Fixed |
+| BN-8 | `update_callback()` built JSON by string concatenation (a quote in SystemURL/xpub broke the request). Now `json_encode()`. | Low | Fixed |
+| BN-9 | Non-countable provider bodies in `check_get_callbacks_response_body()` raised `TypeError`. Now guarded by `is_countable()`. | Low | Fixed |
+| BN-10 | The poller caught `Exception` but not `Error`, so one poison order killed the daemon. Now catches `\Throwable` and continues. | Low | Fixed |
+| BN-11 | Unescaped output: hash-derived `$order->currency`, provider-derived `$order->addr` / `$payment_uri` in the checkout templates (HTML + JS contexts), and query-derived `$txid`/`$addr` in the callback's admin invoice note. All escaped context-appropriately. | Low | Fixed |
+
+### Checked and found sound
+
+- Callback: constant-time secret check, 400/404 discipline, expiry finalises without credit, amount math through `Policy::classifyAmount`, replay trio (suffixed transid, settled-invoice check, terminal-order check), sanitised gateway log. Raw-txid reuse across addresses is deliberately allowed (multi-address transactions); the secret is the auth boundary (audit §24's global-txid claim is the USDT report path's property).
+- Poller: ERC-20 selector + field offsets verified correct, contract and recipient enforced, confirmation gate fail-closed, tx-exists guard before `addInvoicePayment`. Cross-method double-pay (card + USDT) resolves as WHMCS credit balance — accepted, documented.
+- Money math: credit base (converted vs plain invoice), fiat→crypto conversion incl. margin, per-currency decimals, display formatting — all pinned; `Policy` inputs re-pinned at the gateway boundary.
+- Entry/upgrade: link fails closed when governance is down, Test Setup and upgrade are admin-gated, upgrade deletes files only (no row deletes).
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `blockonomics/blockonomics.php` | BN-1/BN-2/BN-3/BN-5/BN-6/BN-6b/BN-7/BN-8/BN-9 + test seams + `fetchPrice` protected. |
+| `callback/blockonomics.php` | BN-3 name fix + BN-11 note escaping. |
+| `blockonomics/pollTransactionStatus.php` | BN-4 CLI guard + single-flight, BN-5 timeouts, BN-10 `Throwable`, dead line removed. |
+| `assets/templates/checkout.tpl`, `web3_checkout.tpl` | BN-11 escaping. |
+| `tests/` (new: bootstrap + 6 suites + run.mjs) | 247 checks via WHMCS/Capsule/Bridge fakes, real `Policy`, eval-loaded real class. |
+| `ci/run-php.sh`, `docs/CI.md` | New `mod_blockonomics` step (18 steps); count updated. |
+
+### Completion evidence
+
+- Executed: **247 checks, 0 failures** (41 hash + 58 flow + 35 diagnostics + 36 money + 64 statics + 13 entry).
+- Mutation probes, each caught and each restored byte-identical (`diff -q`): neutered MAC verify (2 failures), removed template escape (2 failures), removed CLI guard (1 failure).
+- Not evidence: no live run; the callback/poller/payment scripts are covered by static pins (they cannot be included offline) while every pure/method dependency they use is executed.
+- Ops note: USDT crediting needs `exec()` (the payment page spawns the poller daemon); on hosts without it USDT orders stall at status 0. No cron fallback is documented upstream.
+
+## Module 16 — soyoustart_vps (WGS OVH VPS provisioning)
+
+| Field | Information |
+|---|---|
+| Module | `modules/servers/soyoustart_vps/` — 16 PHP files, 4,139 lines from vendor drop `WGS-OVH-v8.0.8-Sourcecode.zip` (same product as the Module 13 admin addon and the C-5 dedicated-server module; the entry file requires both). Real code is 3 CRLF files: `soyoustart_vps.php` (1,268: WHMCS entry + a ~40-branch client-area AJAX dispatcher), `lib/SoyoustartServer.php` (892: HTML builders, invoice helpers), `hooks.php` (555: admin-area JS + InvoicePaid); the rest are 5 lang files, 7 index silencers and 1 Smarty template. |
+| Specification | WHMCS server-module contract (entry functions, ClientArea template return, AdminServicesTabFields) + OVH VPS API behaviour. |
+| Status | **Audited; eighteen findings fixed (VS-1–VS-16, VS-23, VS-24).** New offline suite **165 checks, 0 failures** (`modules/servers/soyoustart_vps/tests/`, php-wasm runner + `mod_soyoustart_vps` CI step). Six findings recorded open (VS-17–VS-22: vendor-JS/owner-side). No live run. |
+
+Patching rationale: Module 13 recorded the sibling addon as do-not-fork, but `main` already carries in-tree hardening of the shared WGS transport (C-5: `TrustedEndpoint` host pinning, TLS verify, redacted logging) — the fork decision predates C-4. The C-4 fixes below stay inside that established direction: small, behaviour-preserving, suite-pinned. Architectural items (CSRF, server-side ACL) remain open for an owner decision rather than a risky blind rewire.
+
+### Findings (fixed)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| VS-1 | `soyostart_vps_MetaData()` typo meant WHMCS never read the module metadata (fell back to defaults). One-character fix. | Trivial | Fixed |
+| VS-2 | The InvoicePaid hook only ran when the URL contained a debug flag (`$_GET['testettdttd'] == "soyoustart"`) — in production it never ran, so client-paid additional-IP/snapshot/backup orders were never paid at OVH and sat unpaid. Gate removed; fulfilment now runs on every InvoicePaid for pending rows. | High (functional) | Fixed |
+| VS-3 | Stored XSS, client→admin: client-set reverse DNS / IP descriptions / display names and provider API messages were interpolated unescaped into the admin service tab and client area (element + `data-*` attribute contexts); the admin console launcher concatenated the provider URL into a `<script>` block. New `escapeHtml()` (ENT_QUOTES) applied at ~75 sites; console URL is `json_encode()`d; Smarty vars take `|escape`. | Medium | Fixed |
+| VS-4 | The power on/off branch interpolated the raw client `type` request value into the OVH API path. Now a strict `start`/`stop` allowlist (others get HTTP 400 JSON). Analysis: OVH URL-bound request signatures already failed dot-segment tricks closed, so this was own-server sub-resource confusion, not cross-tenant. | Low | Fixed |
+| VS-5 | Copy-paste: the getServerIp error branch read `$diskid` (undefined there) instead of `$ips`. | Trivial | Fixed |
+| VS-6 | Inactive-license branch returned `$license["ststus"]` (undefined key) instead of `["status"]`. | Trivial | Fixed |
+| VS-7 | `$vpsLabelValue` used uninitialised for unhandled required-configuration labels. Now initialised to null; OS/location fallbacks guarded. | Trivial | Fixed |
+| VS-8 | `createCustomFields()` (runs on every client-area view) had a stray-brace unconditional update: 9 row rewrites per page view. Now insert-if-missing, update-only-if-changed. | Low | Fixed |
+| VS-9 | `die("kk")` debug leftover on the backup-order failure path. Now a JSON error. | Trivial | Fixed |
+| VS-10 | Robustness trio: `getServiceConfigs()` swallowed `Throwable` and returned null (callers `foreach` it) — now `[]`; `InsertIpData`'s bare `catch (Exception)` never matched inside the namespace so the documented rethrow prefix was dead — now `\Exception`; `featureHtml` missing-key warnings guarded; `$diskErrors`/`$ipsErrors` initialised; snapshot/backup order flows now verify `CreateInvoice` success like the IP flow already did (no silent unbilled OVH orders). | Low | Fixed |
+| VS-11 | `orderBackup` ran the entire cart→checkout→invoice flow *inside* the configurable-options loop (one OVH order + invoice per option), charged the snapshot price with a "Creating snapshot" description, and ended in VS-9. Lookup hoisted out of the loop, charges the real `autobackupprice` column with an "Ordering automated backup" description, errors cleanly when the option is absent. | Medium (money) | Fixed |
+| VS-12 | AdminServicesTabFieldsSave read `$_POST["customfield"][$customVieldsValues->fieldid]` with no guards (null row → warning cascade). Now isset-guarded. | Trivial | Fixed |
+| VS-13 | Unencoded server name in the `/ip?routedTo.serviceName=` query. Now `urlencode()`d. | Trivial | Fixed |
+| VS-14 | `viewIpDetails` interpolated the client `ipblock` request value into the API path. Now parsed and `FILTER_VALIDATE_IP`-checked (400-style HTML error otherwise). | Low | Fixed |
+| VS-15 | Firewall-rule `sequese` and both snapshot `taskID` values interpolated raw into API paths. Now `(int)`-cast. | Low | Fixed |
+| VS-16 | Unguarded `explode(...)[1]` / `->value` / `->paymentmethod` reads across CreateAccount, ClientArea and the hook (malformed product config → warning spam + confusing API calls). New `soyoustart_vps_cfgPart()` helper (11 account-id sites); CreateAccount fails fast with a clear message; ClientArea surfaces a contact-support error; the hook skips with an activity-log line. | Low | Fixed |
+| VS-23 | `createIPsHtml()` is called by the client IP-details branch but defined nowhere — clicking it fatals (an `Error`, uncaught by `catch (Exception)`). Now calls the real `createIpDetailsHtmlvps()` with the full responses. (The sibling C-5 had the same undefined call; now fixed as SD-3 in Module 20.) | Medium (functional) | Fixed |
+| VS-24 | Additional-IP modal always showed price 0 with no currency (`$clientCurrency[" rate"]` / `[" prefix"]` — spaced keys that never exist). Keys fixed; server-side charge path already used real values, so display-only. | Low | Fixed |
+
+### Findings (open — vendor-JS or owner-side)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| VS-17 | API error messages render via jquerygrowl's `.html(message)` (~15 client/admin handlers) and the hostname JS self-echoes through `.html()` — provider/own-input markup executes. Fix belongs in JS (`$('<div>').text(m).html()` at each sink); server HTML payloads are escaped (VS-3). Not forked: vendored plugin, no privilege boundary crossed beyond the provider-trust one. | Low | Open |
+| VS-18 | No CSRF tokens on any client-area (~40 POST actions incl. power, firewall, snapshot, real-money IP/snapshot/backup orders) or admin-tab AJAX action. Authn/z is inherited from WHMCS core (same-URL posts); only cross-site forgery is missing. Needs token plumbing across PHP + 2 JS surfaces — an owner decision, not a blind offline rewire. | Medium-High | Open |
+| VS-19 | Per-service feature hiding (`servicePageAclSettings_*`) is enforced only by not rendering UI — every hidden action stays directly callable. Needs server-side checks per AJAX branch; same owner decision as VS-18. | Low-Medium | Open |
+| VS-20 | Admin hooks and the client template load `sweetalert2@11` (floating major) and DataTables from CDNs with no SRI. Pin + integrity (or self-host). | Low | Open |
+| VS-21 | `CheckLicense()` pings the vendor on every provision and every client-area view — a vendor outage wedges provisioning. Vendor design; cache-or-degrade is an owner call. | Low | Open |
+| VS-22 | Client `script.js` leaks every visitor IP to `ipinfo.io` via JSONP on page load (privacy + availability coupling). Remove or consent-gate. | Low | Open |
+
+### Checked and found sound
+
+- Money direction: invoice amounts are server-derived (`additionalIPprice × int-cast qty`, `snapprice`, now `autobackupprice`); client input cannot set prices. `CreateInvoice` goes through `localAPI` with Unpaid status.
+- API transport (shared, C-5-hardened): TLS verified, no redirects, signed requests host-pinned, module log redacted; OVH signatures cover method+URL+body so the VS-4/VS-14/VS-15 path confusions fail closed at OVH.
+- Exception paths log metadata-only via `SafeLog`; no secrets in logs.
+- Dead code left alone: `Renew` no-op stub, commented Reinstall button, unused `$sshKey`, commented fake-payment block in the hook, undefined `$ipParts[0]` in the template (renders empty; copy box still fed by AJAX).
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `soyoustart_vps.php` | VS-1/VS-4/VS-5/VS-6/VS-7/VS-9/VS-10b/VS-11/VS-12/VS-13/VS-14/VS-15/VS-16/VS-23 + 4 pure helpers + entry-side VS-3 escapes (CRLF preserved). |
+| `lib/SoyoustartServer.php` | `escapeHtml()` + ~58 call sites, modal static `data-ipAddress`, VS-8 n/a, VS-10/VS-12-class guards (CRLF preserved). |
+| `hooks.php` | VS-2 gate removal + config/paymentmethod guards (CRLF preserved). |
+| `templates/clientareanew.tpl` | VS-3 `|escape` (17 sites) + VS-24 currency keys. |
+| `tests/` (new: bootstrap + 6 suites + run.mjs) | 165 checks via WHMCS/Capsule/localAPI fakes + real lib class. |
+| `ci/run-php.sh`, `docs/CI.md` | New `mod_soyoustart_vps` step (19 steps); count updated. |
+
+### Completion evidence
+
+- Executed: **165 checks, 0 failures** (53 load + 31 escape + 36 validators + 20 source pins + 10 invoice math + 15 robustness).
+- Mutation probes, each caught and each restored byte-identical (md5): neutered `escapeHtml` (19 failures), reintroduced MetaData typo (load crash + pin failure), reintroduced debug gate string (pin failure).
+- Not evidence: no live run; the 40-branch dispatcher bodies execute only against live WHMCS/OVH, so branch wiring is pinned statically while every extracted helper, builder and money path they use is executed.
+- Pre-existing note: the entry file relies on WHMCS autoloading for its own lib class (`new server()` with no `require`); the suite requires it explicitly.
+
+## Module 17 — smmprovisioning (SMM order provisioning)
+
+| Field | Information |
+|---|---|
+| Module | `modules/servers/smmprovisioning/` — 1 PHP file (396 lines) + 1 template. Shares the already-audited `modules/addons/smmaddon/lib/` (`Helper`, `ApiClient`); that audit ("Additional audit item 4", M-1–M-7) is the governing context — C-3 fixes touch only the server module + its template, never the addon. |
+| Specification | WHMCS server-module contract + SMM panel API v2 behaviour (`action=add/status/cancel`). |
+| Status | **Audited; six findings fixed (SP-1–SP-6).** New offline suite **103 checks, 0 failures** (`modules/servers/smmprovisioning/tests/`, php-wasm runner + `mod_smmprovisioning` CI step). Quantity-trust stays under the existing open M-5 owner decision. No live run. |
+
+### Findings (fixed)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| SP-1 | CreateAccount had no idempotency: every re-run placed a fresh panel order (real double-spend), and a retry after a hook-placed order doubled too. Mirrors the M-4 rule exactly: skip with `success` when a non-`error` order row already exists for the service; `error` rows still retry. | Medium | Fixed |
+| SP-2 | Suspend/Terminate ignored the panel cancel result yet always marked the local row `canceled` (local/remote drift). Now marks only when the panel response carries no `error`, and logs rejections; the WHMCS workflow still returns `success` so admin suspend/terminate never wedges on a panel hiccup. | Low | Fixed |
+| SP-3 | Link/quantity extraction was last-fuzzy-match-wins across all custom fields, so a later fuzzy field could steal the value from the correctly-named one, and the DB fallback overwrote params-derived values. New `smmprovisioning_matchField()`: exact configured name (before any `|label`) wins, then first fuzzy hit; the DB pass only fills what is still missing. Residual fuzzy quirks (e.g. a `Country` field matching `count`) fail closed to the missing-fields error. | Low | Fixed |
+| SP-4 | Success path overwrote `tblhosting.notes`, clobbering admin notes. Now reads and appends (`value('notes')` + newline join). | Low | Fixed |
+| SP-5 | Empty server hostname+IP produced a garbage `https://` endpoint and a confusing downstream exception. New `smmprovisioning_apiEndpoint()` helper: isset-guarded reads, case-insensitive scheme check (fixes `HTTP://` double-prefixing), fail-fast `API URL and API Key are required.` in CreateAccount/TestConnection; suspend/terminate skip the panel call with an activity-log line. Explicit admin `http://` is preserved (M-6 stays the owner decision for scheme policy). | Low | Fixed |
+| SP-6 | Client-area template echoed every value raw, including the client/panel link inside `href` (a `javascript:` link executed). All echoes escaped; links render as anchors only for http(s) (with `rel="noopener"`), otherwise plain text. Self-XSS + provider-trust boundary only. | Low | Fixed |
+
+### Findings (open / deferred to existing decisions)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| M-5 | Quantity comes from a client-editable field and the min clamp can raise it; `max 0` disables the cap (pinned by the suite as current behaviour). Already open as the smmaddon owner decision — C-3 inherits it unchanged. | High (financial) | Open (owner) |
+| M-6/M-7 | Panel URL scheme policy and API-key storage questions. Same standing owner items; C-3 adds no new exposure (keys stay in the server record; the mapping write fan-outs to existing tables). | Low/Medium | Open (owner) |
+
+Sibling observations (addon scope, not touched — candidates for a future smmaddon pass): `AfterModuleSuspend`/`AfterModuleTerminate` also ignore the cancel result (SP-2's twin); the suspend hook calls `getServerConfig($order->whmcs_service_id)` with a service id where a server id is expected, so the per-server mapping always misses and falls back to addon config (harmless: fallback works, mapping silently unused). No double-order between C-3 CreateAccount and `AfterModuleCreate`: the hook runs after and M-4's skip sees C-3's row.
+
+### Checked and found sound
+
+- Error semantics: panel failures store an `error` row and return the message (no silent success); `error` rows remain retryable while live rows are now sticky (SP-1).
+- Clamp behaviour pinned: below-min raised, above-max lowered, max 0 uncapped — vendor behaviour preserved, M-5 open.
+- No URL validation on links is correct: SMM links are routinely usernames/IDs, not URLs; the panel is the validator.
+- Transport (audited addon code): TLS verified, 30 s timeout, key masked as `***` in debug logs.
+- ClientArea ownership is inherited from WHMCS core (same-URL module dispatch); the module passes only the service's own row to the template.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `smmprovisioning.php` | SP-1–SP-5 + `smmprovisioning_apiEndpoint()` / `smmprovisioning_matchField()` helpers. |
+| `templates/clientarea.tpl` | SP-6 escaping + href scheme gate. |
+| `tests/` (new: bootstrap + eval harness + 5 suites + run.mjs) | 103 checks via Illuminate-Capsule/SmmAddon/log doubles; entry eval-loaded with require lines stripped (C-7 pattern), production chain proven by 01. |
+| `ci/run-php.sh`, `docs/CI.md` | New `mod_smmprovisioning` step (20 steps); count updated. |
+
+### Completion evidence
+
+- Executed: **103 checks, 0 failures** (17 load + 43 create + 21 lifecycle + 13 clientarea + 9 template, template really rendered).
+- Mutation probes, each caught and each restored byte-identical (md5): disabled idempotency (1 failure), forced-open href gate (1 failure), always-mark cancel (3 failures).
+- Not evidence: no live run; panel HTTP is doubled (shapes follow SMM API v2 + the audited ApiClient), and WHMCS-core ownership gating is assumed, not executed.
+
+## Module 18 — RDP (RDP reseller provisioning)
+
+| Field | Information |
+|---|---|
+| Module | `modules/servers/RDP/` — entry `RDP.php` (366 lines), `lib/Helper.php` (296), `hooks.php` (39), Smarty `templates/overview.tpl` + static `error.tpl`, admin/client CSS+JS. Single-tenant reseller client for `rdparena.com` (`Cra-Token` header auth). All files CRLF, preserved. |
+| Specification | WHMCS server-module contract + the vendor reseller API as implied by the code (no public vendor docs found; endpoint shapes below are pinned, not assumed). |
+| Status | **Audited; seventeen findings fixed (RD-1–RD-17).** New offline suite **121 checks, 0 failures** (`modules/servers/RDP/tests/`, php-wasm runner + `mod_rdp` CI step). No live run. |
+
+### Findings (fixed)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| RD-1 | PHP 8 fatal on object-shaped panel errors: `isset($result['result'][0]->serviceid)` throws `Cannot use object of type stdClass as array`, so every vendor error message crashed instead of reporting (the `->error` branch was dead code). Guarded with `isset` + `is_array`. Found by the new suite, proven by probe 2. | Medium | Fixed |
+| RD-2 | RDP password stored **plaintext** in `tblhosting.password` (direct Capsule write bypasses WHMCS encryption, and breaks decrypt-on-display). Now wrapped in `encrypt()`. | Medium | Fixed |
+| RD-3 | Every panel response — including base64 RDP passwords — written to the module log with full retention. New `Helper::maskSensitiveForLog()` (recursive, non-mutating) masks `password` keys in the logged copy only. | Medium-Low | Fixed |
+| RD-4 | No create idempotency: the mail-failure path returned `'error'` *after* placing and storing the order, so any retry double-ordered. Create now short-circuits with `success` when the service already has a panel service id (SP-1/M-4 mirror). | Medium-Low | Fixed |
+| RD-5 | Admin services tab echoed five panel fields raw into admin HTML (only the password attribute was escaped) — provider-trust stored XSS in the admin area. All escaped with `htmlspecialchars` ENT_QUOTES. | Low-Medium | Fixed |
+| RD-6 | `overview.tpl` echoed all eight outputs raw. All carry `\|escape` (base64 password alphabet unaffected, `atob` still works). Pinned statically (Smarty is not available offline). | Low | Fixed |
+| RD-7 | ClientArea copied `hostname` into the `ipaddress` template var — copy-paste bug; the admin tab reads `->ipaddress` from the same endpoint, proving the field. Now reads `->ipaddress`. | Low | Fixed |
+| RD-8 | TestConnection left `$success`/`$errorMsg` undefined off the happy path and reported non-200 as `success=null`. Initialised, with an explicit failure message on non-200. | Low | Fixed |
+| RD-9 | ClientArea catch returned addon-shaped keys (`tabOverviewReplacementTemplate`) WHMCS server tabs ignore — exceptions blanked the tab. Now returns the standard `templatefile`/`vars` overview fallback (status 0). | Low | Fixed |
+| RD-10 | Admin-tab catch returned a bare string instead of the `[tab => html]` contract. Now returns the warning tab. | Low | Fixed |
+| RD-11 | Renew dereferenced a possibly-missing service id and possibly-null result (warnings, then `null` return). Fails fast with a message when no service id is set; null-safe confirmation/error extraction. | Low | Fixed |
+| RD-12 | CreateAccount null-shape hardening: panel outages now return real error strings instead of `null`-with-warnings (order branch + mail-result guard). | Low | Fixed |
+| RD-13 | ClientArea left `$hostname`/`$status` undefined on non-200 and trusted non-object results; added inits, `is_array`/`is_object` guards, and an isset service id. Same guard on the admin-tab condition. | Low | Fixed |
+| RD-14 | `$_REQUEST['id']` read unguarded; a missing id created orphan custom-field rows (`relid` null). Cast-guarded, field creation skipped when empty. | Low | Fixed |
+| RD-15 | `saveCustomFiledValue` inserted a value row with `fieldid` null when the field lookup missed. Returns `false` instead (creation then reports `error`, no orphan row). | Low | Fixed |
+| RD-16 | cURL timeout was **10000 seconds** (≈2.7 h per hung panel call, including the product-edit page render). Now 30 s + 10 s connect timeout, with TLS verify pinned explicitly (`VERIFYPEER`/`VERIFYHOST 2`, matching previous defaults). Pinned statically. | Low | Fixed |
+| RD-17 | Stock hook logged undefined `$params` in its catch (closure scope has `$vars`). Trivial. | Trivial | Fixed |
+
+### Findings (open / deliberately untouched)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| RD-O1 | Suspend/Unsuspend/Terminate return `true` with **no panel call** — WHMCS-side status changes leave the RDP live. No suspend endpoint is visible in the client; inventing vendor API calls is out of scope. | Low-Medium | Open (vendor gap) |
+| RD-O2 | Metadata declares SSO labels but no `SingleSignOn` handlers exist; the buttons may render broken. Cosmetic; needs owner confirmation of intended behaviour. | Low | Open (owner) |
+| RD-O3 | Exception paths log full `$params` (including the server token) to the module log — admin-visible only. Consistent with all prior turns; no change. | Low | Accepted |
+| RD-O4 | `error.tpl` is now unreferenced (the catch it named used the wrong key shape). Harmless static file; left in place. | — | Accepted |
+| RD-O5 | ConfigOptions calls the live panel on every product-edit page load (dropdown needs stock). Vendor design; the 30 s cap (RD-16) bounds the damage. | Low | Accepted |
+
+Not a finding — endpoint concatenation deliberately preserved: `baseUrl` (`…/resellerapi.php`) + `endPoint` (`stock`, `order`, `service/…`) with no separator *looks* broken, but the code's intimate response-shape knowledge (trailing-space keys like `'name '`, base64 passwords, per-endpoint fields) evidences a tested live integration, consistent with a hand-rolled vendor router that parses the tail after the script name. No public vendor docs exist to confirm any alternative, so "fixing" it would risk breaking a working integration. Pinned statically (base URL + concatenation + all endpoint strings) so no future edit silently "corrects" it.
+
+### Checked and found sound
+
+- Password reveal flow: base64 in a `data-password` attribute, decoded client-side into `textContent` — no `innerHTML` sink in either toggle script.
+- Stock hook: pipe-less/empty config guarded; failures logged, never fatal.
+- Field/template setup: existence-checked, safe to re-run on every product edit.
+- Mail customvars use the documented `base64_encode(serialize(...))` localAPI shape; decoded credentials verified in-suite.
+- The swallow-and-log Helper pattern (methods return null on transport failure) is now safe at every call site (RD-1/RD-8/RD-11/RD-12/RD-13).
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `RDP.php` | RD-1, RD-2, RD-4, RD-5 (escapes), RD-7, RD-8–RD-14 (E-series + E10/E11). |
+| `lib/Helper.php` | RD-3 mask helper + call site, RD-15, RD-16. |
+| `hooks.php` | RD-17. |
+| `templates/overview.tpl` | RD-6 (`\|escape` × 8). |
+| `tests/` (new: bootstrap + doubles + 5 suites + run.mjs) | 121 checks: real-file load + hook execution, entry behaviour against a scriptable Helper stand-in, real-Helper unit tests, static transport/template pins. |
+| `ci/run-php.sh`, `docs/CI.md` | New `mod_rdp` step (21 steps); count updated. |
+
+### Completion evidence
+
+- Executed: **121 checks, 0 failures** (48 load + 21 config/create + 11 lifecycle + 21 clientarea + 20 helper).
+- Mutation probes, each caught and each restored byte-identical (md5): removed `encrypt()` (2 failures), removed the RD-1 guard (fatal reproduced, suite red), removed log masking (1 failure).
+- Not evidence: no live run; panel HTTP shapes follow the code-implied vendor contract, `|escape` is pinned statically (no Smarty offline), and WHMCS-core tab rendering is assumed, not executed.
+
+## Module 19 — cloudhost247_lteproxy (LTE proxy provisioning)
+
+| Field | Information |
+|---|---|
+| Module | `modules/servers/cloudhost247_lteproxy/` — entry `cloudhost247_lteproxy.php`, `lib/` (ApiClient, Helpers, Cache, Logger, RateLimiter, ApiException + new AjaxHandlers), 3 ajax endpoints, `hooks/` (AdminSidebar, Notifications, Automation) + new `hooks.php` bootstrap, Smarty admin/client templates, admin + client JS. Vendor client for `api.cloudhost247.com` (key + secret auth). |
+| Specification | WHMCS server-module contract + the vendor API as implied by the code (no public vendor docs found; endpoint shapes are pinned, not assumed). |
+| Status | **Audited; twenty-seven findings fixed (LP-1–LP-27).** New offline suite **430 checks, 0 failures** (`modules/servers/cloudhost247_lteproxy/tests/`, php-wasm runner + `mod_lteproxy` CI step). No live run. |
+
+### Findings (fixed)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| LP-1 | **IDOR across the client ajax API:** every order-scoped handler took `proxy_id` from POST with no ownership check, so any authenticated client could rotate, reveal, or reconfigure any other client's proxies. All handlers now take the session order id and verify membership via the new `Helpers::proxyBelongsToOrder()` (404 on foreign id). Caught statically (per-handler pins) and behaviourally (foreign-proxy 404s). | High | Fixed |
+| LP-2 | **Total client-area outage on PHP 8:** `generateRandomString()` passed `ceil()`'s float to `random_bytes(int)` — a TypeError on every call, and `generateCsrfToken()` calls it, so ClientArea fatals and no CSRF token can ever be minted (PHP 7.4 coerced silently, which hid it). Cast to `(int)`. | High (PHP 8) | Fixed |
+| LP-3 | **Hooks never loaded:** the `hooks/` implementations had no bootstrap and WHMCS only autoloads `/includes/hooks/`, so all automation/notifications were silently dead. New `hooks.php` loader + installer step. | Medium | Fixed |
+| LP-4 | **Quantity fell back to the API timeout:** the missing-quantity fallback was `configoption4`, which is `api_timeout` (30) — one missing field ordered 30 proxies. Fallback removed (default 1). | Medium-High | Fixed |
+| LP-5 | **Cron terminated zero-date services:** `strtotime('0000-00-00')` returns year 0 (not false), so services with unset due dates computed hugely-negative days and were auto-cancelled with 'expired' mails. The raw value is now tested (`''` / zero date / zero datetime) before `strtotime`, with a `false` guard. | Medium-High | Fixed |
+| LP-6 | **Retries replayed purchases:** transport-error and 502/503/504 retries replayed every method including POST `/buy` (double-purchase on a slow vendor). New `isIdempotentMethod()` gate — only GET/HEAD/PUT/DELETE retry. | Medium | Fixed |
+| LP-7 | **Client JS XSS sweep:** 20+ unescaped `${}` interpolations rendered vendor/derived strings into `innerHTML` (proxy rows, speed cards, batch/rotation/history renderers). All escaped at the site; `CSS.escape()` on the `querySelector` sink; `encodeURIComponent` on URL params. A per-occurrence static rule now requires every interpolation to open with an escaper or a whitelisted static-output expression. | Medium | Fixed |
+| LP-8 | **Raw template outputs:** ~40 unescaped `{$...}` across the admin dashboard, settings, client dashboard, and error templates (HTML text, attributes, JS string/number contexts). All carry `\|escape` / `\|json_encode` / `\|escape:'javascript'` as the context demands; pinned statically (no Smarty offline). | Low-Medium | Fixed |
+| LP-9 | **Create double-ordered on retry:** no idempotency — a retry after any edge failure purchased again. Create now returns `success` when the service already stores an order id (RD-4/SP-1 mirror). | Medium-Low | Fixed |
+| LP-10 | **Wrong client IP whitelisted:** ip-whitelist orders always used the request IP, ignoring the ordered/explicit `client_ip`. Explicit custom-field/config value now wins; request IP is the last resort. | Medium-Low | Fixed |
+| LP-11 | **Credentials into the log:** HTTP response bodies were logged raw (proxy passwords/auth), and a non-scalar vendor error code fatals the typed `ApiException::$errorCode`. Responses pass through `maskSensitiveData()`; error codes are scalar-guarded. | Low-Medium | Fixed |
+| LP-12 | **`unserialize()` on cache files:** cache read/cleanup unserialised file contents (object injection if the cache dir is ever writable by another principal). JSON encode/decode throughout. | Low-Medium | Fixed |
+| LP-13 | **Raw `$_GET['action']` into the template** (`requestedAction`) — reflected XSS. Removed; the dashboard no longer takes an action var. | Low-Medium | Fixed |
+| LP-14 | **InvoicePaid set every next due date to +30 days** regardless of billing cycle. Per-cycle interval table (Monthly → +1 month, …, Triennially; +30 days fallback). | Low-Medium | Fixed |
+| LP-15 | **Admin notes destroyed** by create/suspend/unsuspend (blind `notes` overwrite; unsuspend also wiped suspension history). Create/suspend append; unsuspend strips only our marker. | Low-Medium | Fixed |
+| LP-16 | **Duplicate client mails:** inline Create/Renew notifications plus the AfterModule hooks both fired on the same event. Notifications are hook-owned exactly-once (InvoicePaid covers hook-triggered creates). | Low | Fixed |
+| LP-17 | **Dead admin sidebar registration** used the wrong hook API and linked nonexistent addon pages. Removed (the module has no addon pages to link). | Low | Fixed |
+| LP-18 | **CSRF token via GET** on stats.php (token leaks into logs/referrers); the other two endpoints already used POST. Aligned to POST. | Low | Fixed |
+| LP-19 | **proxy-test 500s disclosed `$e->getMessage()`** (paths, driver text, vendor internals) to any authenticated client. Generic message; detail stays in the server log. | Low | Fixed |
+| LP-20 | **Raw exception codes reached `http_response_code()`** (ValueError on 0/out-of-range vendor codes). New `Helpers::safeHttpStatus()` clamp at all three endpoints. | Low | Fixed |
+| LP-21 | **Vendor codes crashed error handling:** a non-int `code` in an error payload hit the `ApiException` int `$code` (TypeError), and scalar-JSON responses slipped past validation. `is_int` guard with HTTP-code fallback; non-array payloads rejected. | Low | Fixed |
+| LP-22 | **`isValidCarrier()` rejected every non-US carrier** (checked the US-only map). Now checks the full carrier map. | Low | Fixed |
+| LP-23 | **Proxy URLs broke on special characters** (raw user/password interpolation). `rawurlencode()` on both credentials. | Low | Fixed |
+| LP-24 | **Formatting bugs:** `formatDuration()` compared float `floor()` with `===` and printed '1 months' (`(int)` casts added); quality rating used `=== 0` so string `'0.0'` packet loss misgraded Excellent → Good (`== 0`). | Low | Fixed |
+| LP-25 | **Runtime dirs web-readable:** no guards in `logs/`/`cache`, no silencers anywhere. 10 depth-correct `index.php` silencers + root `.htaccess` shipped; Logger/Cache/RateLimiter self-heal guards on construction; installer writes them too. | Low | Fixed |
+| LP-26 | **Input-hardening bundle:** unclamped curl timeout (`max(1, …)`), unvalidated `client_ip` in updateProxyAuth (`FILTER_VALIDATE_IP`), empty-password ChangePassword reaching the vendor (fail-fast), unvalidated region/carrier reaching the vendor (`sanitizeOrderParams` fail-fast in Create), admin-tab escape missing `ENT_QUOTES`/charset. | Low-Trivial | Fixed |
+| LP-27 | **~700 lines of handler code duplicated across the three ajax mains** (untestable, drifted apart — e.g. LP-18/LP-19 existed in only some copies). Extracted into `lib/AjaxHandlers.php`; mains are now thin dispatchers. Restructure, not a vuln. | — | Fixed |
+
+### Findings (open / deliberately untouched)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| LP-O1 | `hooks.php` must be copied to `/includes/hooks/cloudhost247_lteproxy.php` by hand (WHMCS has no module-hook autoload). Installer step 6 documents it. | Low | Open (owner action) |
+| LP-O2 | Suspend/Unsuspend are WHMCS-local note changes with no vendor call (the vendor exposes no suspend endpoint; noted in-code). Services keep running while suspended. | Low-Medium | Open (vendor gap) |
+| LP-O3 | `admin.js` keeps one static `innerHTML` sink (a fixed loading spinner, no interpolation). Pinned as 'single static sink' — provably unexploitable, left alone. | — | Accepted |
+| LP-O4 | `getQualityClass()` falls back to `'fair'` for unknown ratings (vendor sends a fixed 5-literal set today). Cosmetic default; left as designed. | — | Accepted |
+| LP-O5 | New code keeps the module's PHP 7.4-parseable baseline (a `match` introduced mid-audit was rewritten as if/elseif); statically pinned. | — | Accepted |
+
+### Checked and found sound
+
+- Terminate calls `cancelOrder` (no RD-O1 mirror); renew calls `extendOrder`; auth/region/carrier/type/rotation updates all reach the vendor.
+- Order-scoping of the ajax mains: session → service → order id chain verified per endpoint, including the batch-test username fallback.
+- Clamp discipline preserved in the extraction: extend 1–365, rotation 1–1440, buy quantity ≥ 1, trial gated on the product flag.
+- RateLimiter window math, Cache TTL/expiry/size caps, and log-level filtering verified against the real classes.
+- `getClientIp()` proxy-header trust is unchanged: it is only a last resort now (LP-10), never a sole source for auth decisions.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `cloudhost247_lteproxy.php` | LP-4, LP-9, LP-10, LP-15, LP-16, LP-26 (password/region/ENT_QUOTES), LP-13; test-dir config seams. |
+| `lib/AjaxHandlers.php` (new, ~800 lines) | LP-27 extraction; LP-1 guards; LP-24 quality fix; LP-16/LP-18/LP-19/LP-20 applied uniformly. |
+| `ajax/proxy-operations.php`, `ajax/proxy-test.php`, `ajax/stats.php` | Thin dispatchers (LP-27); `$orderId` threading (LP-1); `safeHttpStatus` (LP-20); generic 500s (LP-19). |
+| `lib/ApiClient.php` | LP-6 retry gate, LP-21 code guards, LP-26 timeout clamp + IP validation; static HTTP seam (tests). |
+| `lib/Helpers.php` | LP-1/LP-20 helpers, LP-22, LP-23, LP-24, LP-2; `JsonResponseException` (`\Error`, so endpoint `catch (\Exception)` cannot swallow the test seam). |
+| `lib/Cache.php` | LP-12 JSON; LP-25 self-healing guards. |
+| `lib/Logger.php` | LP-11 masking; LP-25 guards. |
+| `lib/RateLimiter.php`, `lib/ApiException.php` | LP-25 guards; LP-11/LP-21 scalar guards. |
+| `hooks/Automation.php` | LP-5 zero-date guard, LP-14 cycle table, LP-16 activation notice. |
+| `hooks/AdminSidebar.php`, `hooks/Notifications.php`, `hooks.php` (new) | LP-17 removal; missing `Capsule` imports; LP-3 bootstrap. |
+| `install.php` | LP-25 installer guards, AjaxHandlers core-file entry, LP-O1 copy step. |
+| `templates/` (4 files) | LP-8 escapes. |
+| `assets/js/client.js` | LP-7 escape sweep + selector/URL sinks. |
+| 10 `index.php` silencers + root `.htaccess` (new) | LP-25. |
+| `tests/` (new: bootstrap + doubles + 8 suites + run.mjs) | 430 checks: real-file load + static security pins, Helpers/ApiClient/Cache/Logger/RateLimiter behaviour, ajax-handler behaviour via doubles, entry + hook execution, real-endpoint-file dispatch, template/JS static rules. |
+| `ci/run-php.sh`, `docs/CI.md` | New `mod_lteproxy` step (22 steps); count updated. |
+
+### Completion evidence
+
+- Executed: **430 checks, 0 failures** (111 load/static + 69 helpers + 38 cache/logger/limiter + 34 API client + 55 ajax handlers + 80 entry/hooks + 20 endpoint dispatch + 23 templates/JS).
+- Mutation probes, each caught and each reverted (backup/restore): `== 0` → `=== 0` (LP-24 check red), one IDOR guard removed (static pin + 3 behavioural checks red), LP-2 cast removed (static pin red + production TypeError reproduced in two suites), extend clamp removed (clamp check red).
+- Fresh-clone proof: `cache/`+`logs/` guards deleted, suite re-ran green with guards self-healed by construction.
+- Not evidence: no live run; vendor HTTP shapes follow the code-implied contract, `\|escape` is pinned statically (no Smarty offline), and WHMCS-core rendering/hook firing is assumed, not executed.
+
+## Module 20 — soyoustart (WGS OVH dedicated-server provisioning, C-5)
+
+| Field | Information |
+|---|---|
+| Module | `modules/servers/soyoustart/` — 18 original PHP files (~5,134 lines), CRLF vendor drop from WGS OVH v8.0.8; entry `soyoustart.php`, `lib/SoyoustartServer.php`, admin hook, standalone `ajax/ajax.php`, client Smarty template and client JS. Shares the addon transport/Helper and an InvoicePaid hook in `soyoustart_vps`. |
+| Specification | WHMCS provisioning contract and existing OVH request shapes, as implied by the vendor code. No verified external OVH checkout contract. |
+| Status | **Audited and targeted fixes applied (SD-1–SD-14).** New offline suite **131 checks, 0 failures** (30 load + 53 auth/invoice + 16 escape/robustness + 32 source/parse), `mod_soyoustart` in CI (23 steps). No WHMCS/OVH live run. The open vendor/owner decisions below remain explicit. |
+
+Module 13's do-not-fork decision covered the **addon** and its unpatched SO-1/SO-2 credential/path findings. The server provisioning files already share an in-tree hardened transport (see Module 16). This pass makes small, pinned server fixes plus two one-line shared-module corrections; it does **not** rotate the addon application keys, change its transport contract, or attempt the cross-surface CSRF/ACL redesign.
+
+### Fixed findings
+
+| ID | Finding | Severity | Change |
+|---|---|---|---|
+| SD-1 | Client-area IP actions took any `ip`/`ipblock` and used the account-wide OVH credentials — a client could query or alter another server's IP when multiple servers share an account. | High | `manage_ips` now queries the server's assigned IP list before any IP-specific action and uses strict membership (404 on foreign block / failed lookup). `addAdditionalIp` remains the only non-IP-specific action. |
+| SD-2 | Additional-IP order path referenced **undefined** `$additionalIpPrice`, `createAdditionalIpInvoice()`, and `InsertIpData()` — OVH checkout could succeed, then invoice creation fataled, leaving an orphaned purchase. | High (money/functional) | Price fetched before dispatch; quantity (1–256), userid and finite positive price checked **before** OVH cart. Real invoice (server-priced `price × qty`, unpaid) + row insert methods added to lib, with unit tests. Post-checkout invoice/row failures are still non-atomic (SD-O4). |
+| SD-3 | Client `getIpDetails` called undefined `createIPsHtml()` (fatal). | Medium | Calls the existing `createIpDetailsHtml()` with the full API response, matching the admin path. |
+| SD-4 | CreateAccount wrote `"ovh_server_location", $location` as two numeric array elements, so the custom field was never set — breaking subsequent service actions. | Medium | Correct `"ovh_server_location" => $location` map. |
+| SD-5 | Client→admin stored XSS: API name/reverse/IP/description, provider messages and language strings rendered raw across ~175 concatenations in the lib HTML builders and admin/client response branches, plus ~169 Smarty expressions. | Medium | `escapeHtml` (ENT_QUOTES UTF-8) at HTML/attribute sinks, `|escape` on template outputs; client/admin OS option HTML escaped. Behavioural XSS fixtures + static template/source pins; no Smarty runtime offline. Client JS growl/`.html` sinks remain open (SD-O1). |
+| SD-6 | Untrusted IP/task/sequence/mitigation identifiers reached API paths. | Low–Medium | IP format guard for detail routes; `(int)` task/sequence/boot ids; URL-encoded mitigation IPs. SD-1 also scopes client IP actions. |
+| SD-7 | Unknown monitoring actions used undefined `$data` when calling OVH. | Low | HTTP 400 JSON, no call. |
+| SD-8 | Inactive license path returned `$license['ststus']` (undefined key). | Trivial | Corrected to `status`. |
+| SD-9 | Admin-tab save errors were logged as `soyoustart_vps`, confusing the module audit trail. | Trivial | Correct log module name. |
+| SD-10 | CreateAccount indexed malformed `configoption2/3/4` and Domain without guards (warnings and stray OVH carts); unassigned server client area used undefined `serverInfo`/`hardwareInfo`/`processor`/`errors` fields. | Low | Product/account/payment settings fail fast before cart; sensible display defaults. Fresh service custom-field insert in shared `Helper` now checks the nullable row safely. |
+| SD-11 | Standalone `/ajax/ajax.php` accepted arbitrary `accountId`, `ovhServerName`, `location` from an unauthenticated request; could trigger server reinstall/cancel under a configured OVH account. | **High** | Mandatory WHMCS admin session + POST + positive service id; service/product/custom-field lookup from WHMCS, strict module+identifier validation; ignore client-supplied identifiers. All four admin AJAX calls and DataTables POST now send serviceId. `AjaxAuth::context` is unit tested. |
+| SD-12 | Cancel reinstall used a **hardcoded task ID 12345** when the session had none. | Low | Reject missing/zero task id (400). |
+| SD-13 | Lib `getServiceConfigs()` swallowed exceptions and returned null; FTP progress used undefined `$percent` when quota missing; feature settings indexed missing key. | Low | Return `[]`, initialise progress, default settings. |
+| SD-14 | Shared `soyoustart_vps` InvoicePaid hook always chose **VPS** payment settings even for a dedicated-server additional-IP invoice from C-5. | Medium (money) | Choose the product's `configoption1`, matching CreateAccount's configured payment method. C-4 suite remains green. |
+
+### Open and deliberately untouched
+
+| ID | Finding | Reason |
+|---|---|---|
+| SD-O1 | Client/admin vendor JS uses growl `.html()` with provider error messages and some `.html()` self-echoes. | Vendor JS sweep deferred; HTML builders are escaped but the JS message sink still needs a separate review. |
+| SD-O2 | No explicit CSRF tokens on the client-area AJAX actions or admin-tab / standalone admin AJAX; per-service feature hiding is UI-only. | Needs token plumbing and server-side ACL mapping across JS + PHP (same owner decision as VS-18/VS-19); not inferred offline. |
+| SD-O3 | Shared addon `InvoicePaid` hook calls `UpdateConfigOption` for additional-IP invoices and updates a `Snapshot` option (also dereferences null on unrelated invoices); dedicated-server IPs should not gain snapshot quantity. | Addon vendor logic and WHMCS product semantics require owner review; not changed here. |
+| SD-O4 | OVH checkout precedes WHMCS invoice and tracking-row insertion. If localAPI/DB fails after checkout, reconciliation is manual; no atomic OVH/WHMCS transaction or retry key. | Cross-system workflow redesign, not solvable with an offline micro-patch. |
+| SD-O5 | `soyoustart_Renew()` is an empty implementation that returns success; the vendor may renew automatically, but WHMCS's callback does not renew at OVH. | Owner must confirm billing contract before connecting a paid OVH endpoint. |
+| SD-O6 | Floating CDN versions/no SRI; `ipinfo.io` visitor-IP call; `CheckLicense` network call on each create/client visit. | Same vendor-side owner concerns as VS-20/VS-22/VS-21. |
+| SD-O7 | The shared addon still has SO-1/SO-2 (hardcoded application keys, unvalidated `getOs` endpoint); this C-5 pass does not change those. | Module 13 fork-vs-replace/rotation decision remains open. |
+
+### Completion evidence and limits
+
+- **131/131 offline assertions**, four independent PHP suites. Both C-4 (165/165) and C-5 suites run green on php-wasm 8.3. CI step invokes the same self-contained PHP files natively. PHP entry/lib/ajax/hooks parsed via `token_get_all(TOKEN_PARSE)` and real entry/lib loads; `bash -n ci/run-php.sh` clean.
+- Four mutations caught then byte-restored: wrong module check (2 failures), HTML escaper disabled (multiple failures), positive-price check inverted, IP-ownership membership forced true. Green rechecked after restore.
+- Not evidence: no live OVH checkout, no real WHMCS admin session/hook rendering or Smarty execution. Admin and client dispatcher branch order is pinned statically; most branches are not executed against real WHMCS. The independent addon findings and open workflow risks above are **not** declared fixed.

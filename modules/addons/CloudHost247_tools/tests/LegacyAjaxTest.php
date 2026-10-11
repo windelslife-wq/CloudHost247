@@ -241,3 +241,4 @@ la_ok('local runner restores ToolPage', strpos($bundle, 'CH.ToolPage = realToolP
 la_ok('local runner handles async run()', strpos($bundle, 'typeof data.then ===') !== false);
 
 echo "\nPASS=$pass FAIL=$fail\n";
+exit($fail > 0 ? 1 : 0);

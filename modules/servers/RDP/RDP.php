@@ -27,7 +27,7 @@ function RDP_ConfigOptions($params)
     /** Function to create a custom field */
     $allstock = $helper->getStocks();
 
-    $pid = $_REQUEST['id'];
+    $pid = isset($_REQUEST['id']) ? (int) $_REQUEST['id'] : 0;
 
     $options = [];
 
@@ -49,7 +49,9 @@ function RDP_ConfigOptions($params)
     $helper = new Helper($params);
 
     /** Function to create a custom field */
-    $helper->CreateCustomFields($pid);
+    if ($pid > 0) {
+        $helper->CreateCustomFields($pid);
+    }
     /** Function to create an email template */
 
     $helper->createTemplate();
@@ -70,12 +72,17 @@ function RDP_CreateAccount(array $params)
 
         $helper = new Helper($params);
 
+        /** Skip when the service already has a panel service id (retry-safe: no double order). */
+        if (!empty($params['customfields']['serviceid'])) {
+            return 'success';
+        }
+
         /** Function to create an order */
-        $planid = explode('|', $params['configoption1']);
+        $planid = explode('|', isset($params['configoption1']) ? $params['configoption1'] : '');
 
         $result = $helper->createOrder($planid[0]);
 
-        if (!empty($result) && isset($result['result'][0]->serviceid)) {
+        if (!empty($result) && isset($result['result']) && is_array($result['result']) && isset($result['result'][0]->serviceid)) {
 
             /** Function to save the value of a custom field */
             $customresult = $helper->saveCustomFiledValue($params['pid'], $params['serviceid'], $result['result'][0]->serviceid);
@@ -91,17 +98,17 @@ function RDP_CreateAccount(array $params)
                 /** Function to send an email to the client */
                 $emailSendResult = $helper->sendEmail($emailData);
 
-                if ($emailSendResult['result'] == 'success') {
+                if (isset($emailSendResult['result']) && $emailSendResult['result'] == 'success') {
                     Capsule::table("tblhosting")->where("id",$params['serviceid'])->update([
                         "username" => $result['result'][0]->username,
-                        "password" => base64_decode($result['result'][0]->password),
+                        "password" => encrypt(base64_decode($result['result'][0]->password)),
                     ]);
                     return 'success';
                 }
             }
 
         } else {
-            return $result['result']->error;
+            return isset($result['result']->error) ? $result['result']->error : 'Order placement failed: no service id returned by the panel.';
         }
 
         return 'error';
@@ -183,12 +190,18 @@ function RDP_Renew(array $params)
         $helper = new Helper($params);
 
         /** Function to renew an order */
-        $result = $helper->renewService($params['customfields']['serviceid']);
+        $serviceId = isset($params['customfields']['serviceid']) ? $params['customfields']['serviceid'] : '';
+        if ($serviceId === '') {
+            return 'Service ID is not set for this service.';
+        }
+        $result = $helper->renewService($serviceId);
 
-        if ($result['result']->message) {
+        if (is_array($result) && isset($result['result']->message) && $result['result']->message) {
             return 'success';
-        } else {
+        } elseif (is_array($result) && isset($result['result']->error)) {
             return $result['result']->error;
+        } else {
+            return 'Service renewal failed: no confirmation returned by the panel.';
         }
 
     } catch (Exception $e) {
@@ -212,17 +225,19 @@ function RDP_ClientArea(array $params)
 
         $helper = new Helper($params);
 
-        $password = $username = $ipaddress = $signupdate = $duedate = '';
+        $password = $username = $ipaddress = $signupdate = $duedate = $hostname = '';
+        $status = '';
 
         /** Function to get service detail */
-        $result = $helper->getServiceDetail($params['customfields']['serviceid']);
+        $serviceId = isset($params['customfields']['serviceid']) ? $params['customfields']['serviceid'] : '';
+        $result = $helper->getServiceDetail($serviceId);
 
-        if ($result['httpcode'] == 200 && isset($result['result'])) {
+        if (is_array($result) && $result['httpcode'] == 200 && isset($result['result']) && is_object($result['result'])) {
 
             $password = $result['result']->password;
             $hostname = $result['result']->hostname;
             $username = $result['result']->username;
-            $ipaddress = $result['result']->hostname;
+            $ipaddress = $result['result']->ipaddress;
             $signupdate = $result['result']->signupdate;
             $duedate = $result['result']->duedate;
             $status = $result['httpcode'];
@@ -241,7 +256,7 @@ function RDP_ClientArea(array $params)
                 'assets_link' => $assets_link,
                 'encodedPassword' => $password,
                 'status' => $status,
-                'serviceid' => $params['customfields']['serviceid']
+                'serviceid' => $serviceId
             ),
         );
     }catch (Exception $e) {
@@ -254,9 +269,17 @@ function RDP_ClientArea(array $params)
         );
 
         return array(
-            'tabOverviewReplacementTemplate' => 'error.tpl',
-            'templateVariables' => array(
-                'usefulErrorHelper' => $e->getMessage(),
+            'templatefile' => "templates/overview.tpl",
+            'vars' => array(
+                'hostname' => '',
+                'username' => '',
+                'ipaddress' => '',
+                'signupdate' => '',
+                'duedate' => '',
+                'assets_link' => isset($assets_link) ? $assets_link : '',
+                'encodedPassword' => '',
+                'status' => 0,
+                'serviceid' => '',
             ),
         );
     }
@@ -277,7 +300,7 @@ function RDP_AdminServicesTabFields(array $params)
 
             $html = '<div class="alert alert-warning" role="alert">Please provide service id to get RDP info.</div>';
 
-        } elseif ($result['httpcode'] == 200) {
+        } elseif (is_array($result) && $result['httpcode'] == 200 && isset($result['result']) && is_object($result['result'])) {
 
             $html = '<link href="' . $CONFIG["SystemURL"] . '/modules/servers/RDP/assets/css/admin-style.css" rel="stylesheet">
                 <div class="container deviceCell">
@@ -286,15 +309,15 @@ function RDP_AdminServicesTabFields(array $params)
                         <tbody>
                             <tr>
                                 <td style="width:50%" class="hading-td">Hostname :</td>
-                                <td class="hading-td">' . $result['result']->hostname . '</td>
+                                <td class="hading-td">' . htmlspecialchars($result['result']->hostname, ENT_QUOTES, "UTF-8") . '</td>
                             </tr>
                             <tr>
                                 <td class="hading-td">IPaddress :</td>
-                                <td class="hading-td">' . $result['result']->ipaddress . '</td>
+                                <td class="hading-td">' . htmlspecialchars($result['result']->ipaddress, ENT_QUOTES, "UTF-8") . '</td>
                             </tr>
                             <tr>
                                 <td class="hading-td">Username :</td>
-                                <td class="hading-td">' . $result['result']->username . '</td>
+                                <td class="hading-td">' . htmlspecialchars($result['result']->username, ENT_QUOTES, "UTF-8") . '</td>
                             </tr>
                             <tr>
                                 <td class="hading-td">Password :</td>
@@ -308,11 +331,11 @@ function RDP_AdminServicesTabFields(array $params)
                             </tr>
                             <tr>
                                 <td class="hading-td">Signup Date :</td>
-                                <td class="hading-td">' . $result['result']->signupdate . '</td>
+                                <td class="hading-td">' . htmlspecialchars($result['result']->signupdate, ENT_QUOTES, "UTF-8") . '</td>
                             </tr>
                             <tr>
                                 <td class="hading-td">Due Date :</td>
-                                <td class="hading-td">' . $result['result']->duedate . '</td>
+                                <td class="hading-td">' . htmlspecialchars($result['result']->duedate, ENT_QUOTES, "UTF-8") . '</td>
                             </tr>
                         </tbody>
                     </table>
@@ -327,7 +350,7 @@ function RDP_AdminServicesTabFields(array $params)
         return ["RDP Information" => $html];
     } catch (Exception $e) {
         logModuleCall('custom server module', __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
-        return $e->getMessage();
+        return ["RDP Information" => '<div class="alert alert-warning" role="alert">Something went wrong. Please check the system log.</div>'];
     }
 }
 
@@ -340,9 +363,12 @@ function RDP_TestConnection(array $params)
         $result = $helper->testConnection();
 
 
-        if ($result['httpcode'] == 200) {
-
+        $success = false;
+        $errorMsg = '';
+        if (is_array($result) && $result['httpcode'] == 200) {
             $success = true;
+        } else {
+            $errorMsg = 'Connection failed: the panel did not return HTTP 200.';
         }
 
     } catch (Exception $e) {

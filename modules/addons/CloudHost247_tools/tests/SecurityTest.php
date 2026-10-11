@@ -84,3 +84,4 @@ echo "== escaping ==\n";
 chk('xss', '&lt;script&gt;alert(&#039;x&#039;)&lt;/script&gt;', CloudHost247ToolsSecurity::e("<script>alert('x')</script>"));
 
 echo "\nPASS=$pass FAIL=$fail\n";
+exit($fail > 0 ? 1 : 0);

@@ -24,7 +24,11 @@ class UpgradeHandler
     }
 
     /**
-     * Process a package change for an existing service
+     * Process a package change for an existing service.
+     *
+     * Thin wrapper kept for manual callers: the rules live in
+     * CommissionManager::processPackageChange(), which the upgrade/downgrade
+     * hooks now run automatically.
      *
      * @param int $serviceId
      * @param int $oldProductId
@@ -33,70 +37,7 @@ class UpgradeHandler
      */
     public function processPackageChange($serviceId, $oldProductId, $newProductId)
     {
-        $oldIsHosting = $this->manager->isWebHostingProduct($oldProductId);
-        $newIsHosting = $this->manager->isWebHostingProduct($newProductId);
-
-        $result = [
-            'service_id' => $serviceId,
-            'old_product_id' => $oldProductId,
-            'new_product_id' => $newProductId,
-            'old_is_hosting' => $oldIsHosting,
-            'new_is_hosting' => $newIsHosting,
-            'action_taken' => 'none',
-        ];
-
-        if ($oldIsHosting && $newIsHosting) {
-            // Stayed in hosting group - preserve first commission status
-            $this->updateNotes($serviceId, "Product changed within hosting group: {$oldProductId} -> {$newProductId}");
-            $result['action_taken'] = 'preserved';
-            $result['message'] = 'First commission status preserved. Recurring commissions continue at configured rate.';
-        } elseif ($oldIsHosting && !$newIsHosting) {
-            // Moved out of hosting group
-            $this->updateNotes($serviceId, "Product moved OUT of hosting group: {$oldProductId} -> {$newProductId}. Future commissions blocked.");
-            $result['action_taken'] = 'blocked';
-            $result['message'] = 'Product moved out of hosting group. Future commissions will not apply.';
-        } elseif (!$oldIsHosting && $newIsHosting) {
-            // Moved INTO hosting group - treat as new service for commission purposes
-            $this->resetCommissionStatus($serviceId);
-            $this->updateNotes($serviceId, "Product moved INTO hosting group: {$oldProductId} -> {$newProductId}. Commission tracking reset.");
-            $result['action_taken'] = 'reset';
-            $result['message'] = 'Product moved into hosting group. Next payment will be treated as first payment (50% commission).';
-        } else {
-            // Was not hosting, still not hosting - no change needed
-            $result['action_taken'] = 'ignored';
-            $result['message'] = 'Neither old nor new product is in hosting group. No commission impact.';
-        }
-
-        $this->manager->logDebug('UpgradeHandler processed package change', $result);
-        return $result;
-    }
-
-    /**
-     * Reset commission status for a service
-     *
-     * @param int $serviceId
-     * @return void
-     */
-    private function resetCommissionStatus($serviceId)
-    {
-        try {
-            // Recurring totals are left as they are; only the first-payment flag is reset.
-            foreach (Capsule::table('mod_customaffiliate_commissions')->where('service_id', $serviceId)->get() as $row) {
-                Capsule::table('mod_customaffiliate_commissions')
-                    ->where('id', $row->id)
-                    ->update([
-                        'first_commission_paid' => false,
-                        'first_commission_paid_at' => null,
-                        'first_commission_invoice_id' => null,
-                        'notes' => CommissionManager::appendNote($row->notes, 'Commission tracking reset on ' . date('Y-m-d H:i:s')),
-                    ]);
-            }
-        } catch (Exception $e) {
-            $this->manager->logDebug('Error resetting commission status', [
-                'error' => $e->getMessage(),
-                'service_id' => $serviceId,
-            ]);
-        }
+        return $this->manager->processPackageChange($serviceId, $oldProductId, $newProductId);
     }
 
     /**
@@ -153,6 +94,16 @@ class UpgradeHandler
                     $this->updateNotes($serviceId, "Service ID {$serviceId} no longer exists in tblhosting");
                     $stats['fixed']++;
                     continue;
+                }
+
+                // Regroup stale records onto the live product (data hygiene
+                // only: flags and totals are never touched by the audit).
+                if ((int) $record->product_id !== (int) $service->packageid) {
+                    Capsule::table('mod_customaffiliate_commissions')
+                        ->where('id', $record->id)
+                        ->update(['product_id' => (int) $service->packageid]);
+                    $this->updateNotes($serviceId, "Audit: regrouped product {$record->product_id} -> {$service->packageid}");
+                    $stats['fixed']++;
                 }
 
                 // Verify product is still in hosting group

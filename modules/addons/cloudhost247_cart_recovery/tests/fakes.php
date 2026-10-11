@@ -287,9 +287,24 @@ namespace {
                 case 'in': return in_array($actual, $expected);
                 case 'notnull': return $actual !== null;
                 case 'like':
-                    $pattern = '/^' . str_replace('%', '.*', preg_quote((string) $expected, '/')) . '$/i';
-                    $pattern = str_replace('\%', '.*', $pattern);
-                    return $actual !== null && preg_match($pattern, (string) $actual) === 1;
+                    # MySQL LIKE semantics: backslash escapes %, _ and itself.
+                    $regex = '';
+                    $likeEscaped = false;
+                    foreach (str_split((string) $expected) as $ch) {
+                        if ($likeEscaped) {
+                            $regex .= preg_quote($ch, '/');
+                            $likeEscaped = false;
+                            continue;
+                        }
+                        if ($ch === '\\') { $likeEscaped = true; continue; }
+                        if ($ch === '%') { $regex .= '.*'; continue; }
+                        if ($ch === '_') { $regex .= '.'; continue; }
+                        $regex .= preg_quote($ch, '/');
+                    }
+                    if ($likeEscaped) {
+                        $regex .= preg_quote('\\', '/');
+                    }
+                    return $actual !== null && preg_match('/^' . $regex . '$/i', (string) $actual) === 1;
             }
             return false;
         }

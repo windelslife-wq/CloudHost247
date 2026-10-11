@@ -1,7 +1,7 @@
 <?php
 
 require __DIR__ . '/bootstrap.php';
-require_once (is_dir('/repo') ? '/repo' : dirname(__DIR__, 3)) . '/modules/gateways/blockonomics/cloudhost247/autoload.php';
+require_once (is_dir('/repo') ? '/repo' : CHS_ROOT) . '/modules/gateways/blockonomics/cloudhost247/autoload.php';
 
 use CloudHost247\Blockonomics\Bridge;
 use CloudHost247\Blockonomics\ConnectionTester;

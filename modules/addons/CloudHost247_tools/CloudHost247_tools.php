@@ -42,7 +42,7 @@ function CloudHost247_tools_config()
                 'Type' => 'text',
                 'Size' => '50',
                 'Default' => '',
-                'Description' => 'API key for Image to Text OCR (optional)',
+                'Description' => 'OCR.space API key for Image to Text (free keys at ocr.space/ocrapi/freekey; required for server-side OCR)',
             ],
             'rate_limit_requests' => [
                 'FriendlyName' => 'Rate Limit (requests/minute)',

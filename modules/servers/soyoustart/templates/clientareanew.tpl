@@ -1,44 +1,44 @@
 {if $errors}
 
 <div class="alert alert-danger" role="alert">
-    {$errors[0]}
+    {$errors[0]|escape}
 </div>
 {else}
 
 {assign var=unique_id value=10|mt_rand:20000000}
-<link href="{$assets}/css/style.css?v={$unique_id}" rel="stylesheet">
-<script src="{$assets}/js/script.js?v={$unique_id}"></script>
-<script src="{$assets}/js/highcharts.js"></script>
+<link href="{$assets|escape}/css/style.css?v={$unique_id|escape}" rel="stylesheet">
+<script src="{$assets|escape}/js/script.js?v={$unique_id|escape}"></script>
+<script src="{$assets|escape}/js/highcharts.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="{$assets}/js/jquerygrowl.js" type="text/javascript"></script>
-<link href="{$assets}/css/jquerygrowl.css" rel="stylesheet" type="text/css" />
+<script src="{$assets|escape}/js/jquerygrowl.js" type="text/javascript"></script>
+<link href="{$assets|escape}/css/jquerygrowl.css" rel="stylesheet" type="text/css" />
 <link rel="stylesheet" href="//cdn.datatables.net/1.13.1/css/jquery.dataTables.min.css">
 <script src="//cdn.datatables.net/1.13.1/js/jquery.dataTables.min.js"></script>
 
 {if $clientareatemplate|strstr:"lagom"}
-<link href="{$assets}/css/compatible_lagom.css?v={$unique_id}" rel="stylesheet">
+<link href="{$assets|escape}/css/compatible_lagom.css?v={$unique_id|escape}" rel="stylesheet">
 
 {elseif $clientareatemplate eq "twenty-x"}
-<link href="{$assets}/css/compatible_twenty-x.css?v={$unique_id}" rel="stylesheet">
+<link href="{$assets|escape}/css/compatible_twenty-x.css?v={$unique_id|escape}" rel="stylesheet">
 {elseif $clientareatemplate eq "six"}
-<link href="{$assets}/css/compatible_six.css?v={$unique_id}" rel="stylesheet">
+<link href="{$assets|escape}/css/compatible_six.css?v={$unique_id|escape}" rel="stylesheet">
 {elseif $clientareatemplate eq "clientx-child"}
-<link href="{$assets}/css/compatible_clientx_child.css?v={$unique_id}" rel="stylesheet">
+<link href="{$assets|escape}/css/compatible_clientx_child.css?v={$unique_id|escape}" rel="stylesheet">
 {elseif $clientareatemplate eq "cloudx"}
-<link href="{$assets}/css/compatible_cloudx.css?v={$unique_id}" rel="stylesheet">
+<link href="{$assets|escape}/css/compatible_cloudx.css?v={$unique_id|escape}" rel="stylesheet">
 {elseif $clientareatemplate eq "hostx"}
-<link href="{$assets}/css/compatible_hostx.css?v={$unique_id}" rel="stylesheet">
+<link href="{$assets|escape}/css/compatible_hostx.css?v={$unique_id|escape}" rel="stylesheet">
 {/if}
 
 
 <div class="new-client-area-box">
     <div class="client-area-host-name justify-content-between">
-        <h3>{$LANG["hostName"]} <span>{$ovhCustomHostname|@ucfirst}</span></h3>
+        <h3>{$LANG["hostName"]|escape} <span>{$ovhCustomHostname|@ucfirst|escape}</span></h3>
 
         {if $serverInfo->state eq "ok" || $serverInfo->state eq "running"}
-        <h3>{$LANG["state"]} : <span class="badge badge-success">Running</span></h3>
+        <h3>{$LANG["state"]|escape} : <span class="badge badge-success">Running</span></h3>
         {else}
-        <h3>{$LANG["state"]} : <span class="badge badge-danger">{$serverInfo->state}</span></h3>
+        <h3>{$LANG["state"]|escape} : <span class="badge badge-danger">{$serverInfo->state|escape}</span></h3>
         {/if}
     </div>
     <div class="client-area-spec-wrapper">
@@ -56,8 +56,8 @@
                 </svg>
             </span>
             <div class="client-spec-content">
-                <h4>{$LANG["memory"]}</h4>
-                <h3>{$memory}</h3>
+                <h4>{$LANG["memory"]|escape}</h4>
+                <h3>{$memory|escape}</h3>
 
             </div>
         </div>
@@ -76,9 +76,9 @@
                 </svg>
             </span>
             <div class="client-spec-content">
-                <h4>{$LANG["cpu"]}</h4>
-                {* <h3>{$hardwareInfo->numberOfProcessors} CORE</h3> *}
-                <h3>{$processor}</h3>
+                <h4>{$LANG["cpu"]|escape}</h4>
+                {* <h3>{$hardwareInfo->numberOfProcessors|escape} CORE</h3> *}
+                <h3>{$processor|escape}</h3>
 
             </div>
         </div>
@@ -89,9 +89,9 @@
                 </svg>
             </span>
             <div class="client-spec-content">
-                <h4>{$LANG["disk"]}</h4>
-                {* <h3>{$hardwareInfo->diskGroups[0]->diskSize->value} {$hardwareInfo->diskGroups[0]->diskSize->unit} </h3> *}
-                <h3>{$hardwareInfo->diskGroups[0]->description}</h3>
+                <h4>{$LANG["disk"]|escape}</h4>
+                {* <h3>{$hardwareInfo->diskGroups[0]->diskSize->value|escape} {$hardwareInfo->diskGroups[0]->diskSize->unit|escape} </h3> *}
+                <h3>{$hardwareInfo->diskGroups[0]->description|escape}</h3>
             </div>
         </div>
         <div class="client-area-spec-box">
@@ -113,15 +113,15 @@
                 </svg>
             </span>
             <div class="client-spec-content">
-                <h4>{$LANG["os"]}</h4>
+                <h4>{$LANG["os"]|escape}</h4>
                 {if $serverInfo->os eq "none_64"}
-                <h3>{$LANG["noOsInstall"]}</h3>
+                <h3>{$LANG["noOsInstall"]|escape}</h3>
                 <a href="#" class="installOsbtn" data-toggle="modal" data-target="#installOs" style="font-weight: 800;">Install</a>
                 {else}
 
                 {assign var=osName value=$serverInfo->os|replace:'_':' '}
                 {assign var=osName value=$osName|replace:'-':' '}
-                <h3 id="osName">{$osName|capitalize:true}</h3>
+                <h3 id="osName">{$osName|capitalize:true|escape}</h3>
 
                 {/if}
 
@@ -134,39 +134,39 @@
         <div class="row gutter-10">
             <div class="col-md-6">
                 <div class="ca-content-bx">
-                    <h6>{$LANG["finance"]}</h6>
-                    <p>{$LANG["paidBefore"]} <span>{$params["model"]->nextduedate}</span>
+                    <h6>{$LANG["finance"]|escape}</h6>
+                    <p>{$LANG["paidBefore"]|escape} <span>{$params["model"]->nextduedate|escape}</span>
                     </p>
-                    <h4>${$params["model"]->amount}</h4>
+                    <h4>${$params["model"]->amount|escape}</h4>
                     <div class="ca-content-table-bx">
                         <table>
                             <tr>
                                 <td>
-                                    <p>{$LANG["orderDate"]}</p>
+                                    <p>{$LANG["orderDate"]|escape}</p>
                                 </td>
                                 <td>
                                     <p>
-                                        <span>{$params["model"]->regdate}</span>
+                                        <span>{$params["model"]->regdate|escape}</span>
                                     </p>
                                 </td>
                             </tr>
                             <tr>
                                 <td>
-                                    <p>{$LANG["nextPayment"]}</p>
+                                    <p>{$LANG["nextPayment"]|escape}</p>
                                 </td>
                                 <td>
                                     <p>
-                                        <span>Until {$params["model"]->nextduedate}</span>
+                                        <span>Until {$params["model"]->nextduedate|escape}</span>
                                     </p>
                                 </td>
                             </tr>
                             <tr>
                                 <td>
-                                    <p>{$LANG["billingCycle"]}</p>
+                                    <p>{$LANG["billingCycle"]|escape}</p>
                                 </td>
                                 <td>
                                     <p>
-                                        <span>{$params["model"]->billingcycle}</span>
+                                        <span>{$params["model"]->billingcycle|escape}</span>
                                     </p>
                                 </td>
                             </tr>
@@ -176,18 +176,18 @@
             </div>
             <div class="col-md-6">
                 <div class="ca-content-bx">
-                    <h6>{$LANG["networkHeading"]}</h6>
-                    <p>{$LANG["networkSubHeading"]}</p>
+                    <h6>{$LANG["networkHeading"]|escape}</h6>
+                    <p>{$LANG["networkSubHeading"]|escape}</p>
 
                     <div class="copyIP">
-                        <h4>{$serverInfo->ip} </h4>
+                        <h4>{$serverInfo->ip|escape} </h4>
 
-                        <input type="hidden" value="{$serverInfo->ip}" id="myInput">
+                        <input type="hidden" value="{$serverInfo->ip|escape}" id="myInput">
 
                         <!-- The button used to copy the text -->
                         <div class="customtooltip">
                             <i class="fas fa-copy" onclick="copyText(this)" onmouseout="updateText()"></i>
-                            {* <button onclick="copyText(this)" onmouseout="updateText()" data-copyData="{$serverInfo->ip}"> *}
+                            {* <button onclick="copyText(this)" onmouseout="updateText()" data-copyData="{$serverInfo->ip|escape}"> *}
                                 <span class="tooltiptext" id="myTooltip">Copy to clipboard</span>
                                 {* Copy text
                             </button> *}
@@ -196,7 +196,7 @@
 
                     <div class="ca-content-table-bx">
                         <div class="connected-box-main">
-                            <p>{$LANG["networkstatus"]}</p>
+                            <p>{$LANG["networkstatus"]|escape}</p>
                             <div class="connected-box">
                                 <span>
                                     <svg xmlns="http://www.w3.org/2000/svg" width="11" height="10" viewBox="0 0 11 10" fill="none">
@@ -230,25 +230,25 @@
                     {* <p>here’s what happening with your Host today</p> *}
                     <div class="Access-cards-wrapper">
                         <ul class="nav nav-tabs mainTab">
-                            <li class="active"><a data-toggle="tab" data-menuname="detail" href="#detail">{$LANG["tabDetails"]}</a></li>
+                            <li class="active"><a data-toggle="tab" data-menuname="detail" href="#detail">{$LANG["tabDetails"]|escape}</a></li>
 
                             {if $aclSettingsDedicated["Backup_Storage"] neq "on" && !"backupStorage"|in_array:$enableSettingsAddon}
-                            <li><a data-toggle="tab" data-menuname="ftp_backup" href="#ftp_backup">{$LANG["tabFTPBackup"]}</a></li>
+                            <li><a data-toggle="tab" data-menuname="ftp_backup" href="#ftp_backup">{$LANG["tabFTPBackup"]|escape}</a></li>
                             {/if}
                             {if $aclSettingsDedicated["Power"] neq "on" && !"power"|in_array:$enableSettingsAddon}
-                            <li><a data-toggle="tab" data-menuname="power" href="#power">{$LANG["tabPower"]}</a></li>
+                            <li><a data-toggle="tab" data-menuname="power" href="#power">{$LANG["tabPower"]|escape}</a></li>
                             {/if}
                             {if $aclSettingsDedicated["Manage_IPs"] neq "on" && !"manageIps"|in_array:$enableSettingsAddon}
-                            <li><a data-toggle="tab" data-menuname="manage_ips" href="#manage_ips">{$LANG["tabManageIPs"]}</a></li>
+                            <li><a data-toggle="tab" data-menuname="manage_ips" href="#manage_ips">{$LANG["tabManageIPs"]|escape}</a></li>
                             {/if}
                             {if $aclSettingsDedicated["IMPI"] neq "on" && !"impi"|in_array:$enableSettingsAddon}
-                            <li><a data-toggle="tab" data-menuname="impi" href="#impi">{$LANG["tabIMPI"]}</a></li>
+                            <li><a data-toggle="tab" data-menuname="impi" href="#impi">{$LANG["tabIMPI"]|escape}</a></li>
                             {/if}
                             {if $aclSettingsDedicated["Monitoring"] neq "on" && !"monitoring"|in_array:$enableSettingsAddon}
-                            <li><a data-toggle="tab" data-menuname="monitoring" href="#monitoring">{$LANG["tabMonitoring"]}</a></li>
+                            <li><a data-toggle="tab" data-menuname="monitoring" href="#monitoring">{$LANG["tabMonitoring"]|escape}</a></li>
                             {/if}
                             {if $aclSettingsDedicated["Logs"] neq "on" && !"logs"|in_array:$enableSettingsAddon}
-                            <li><a data-toggle="tab" data-menuname="interventions" href="#interventions">{$LANG["tabLogs"]}</a></li>
+                            <li><a data-toggle="tab" data-menuname="interventions" href="#interventions">{$LANG["tabLogs"]|escape}</a></li>
                             {/if}
                         </ul>
 
@@ -264,66 +264,66 @@
                                     <div class="serverDetailInfo mt-4 tab-pane fade in active show" id="serverDetailInfo">
                                         <div class="row">
                                             <div class="col-md-2">
-                                                <strong>{$LANG["name"]}</strong>
+                                                <strong>{$LANG["name"]|escape}</strong>
                                             </div>
                                             <div class="col-md-4">
-                                                <span>{$ovhCustomHostname|@ucfirst}</span>
+                                                <span>{$ovhCustomHostname|@ucfirst|escape}</span>
                                             </div>
                                             <div class="col"></div>
                                         </div>
                                         <div class="row">
                                             <div class="col-md-2">
-                                                <strong>{$LANG["ip"]}</strong>
+                                                <strong>{$LANG["ip"]|escape}</strong>
                                             </div>
                                             <div class="col-md-4">
-                                                <span>{$serverInfo->ip}</span>
-                                            </div>
-                                            <div class="col"></div>
-                                        </div>
-
-                                        <div class="row">
-                                            <div class="col-md-2">
-                                                <strong>{$LANG["datacenter"]}</strong>
-                                            </div>
-                                            <div class="col-md-4">
-                                                <span>{$serverInfo->datacenter|strtoupper}</span>
-                                                {* <span>{$dataCenters[$serverInfo->datacenter]}</span> *}
+                                                <span>{$serverInfo->ip|escape}</span>
                                             </div>
                                             <div class="col"></div>
                                         </div>
 
                                         <div class="row">
                                             <div class="col-md-2">
-                                                <strong>{$LANG["os"]}</strong>
+                                                <strong>{$LANG["datacenter"]|escape}</strong>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <span>{$serverInfo->datacenter|strtoupper|escape}</span>
+                                                {* <span>{$dataCenters[$serverInfo->datacenter]|escape}</span> *}
+                                            </div>
+                                            <div class="col"></div>
+                                        </div>
+
+                                        <div class="row">
+                                            <div class="col-md-2">
+                                                <strong>{$LANG["os"]|escape}</strong>
                                             </div>
                                             <div class="col-md-4">
 
                                                 {if $serverInfo->os eq "none_64"}
-                                                <span>{$LANG["installOsMessage"]}</strong>
+                                                <span>{$LANG["installOsMessage"]|escape}</strong>
                                                     {else}
-                                                    <span>{$osName|capitalize:true}</span>
+                                                    <span>{$osName|capitalize:true|escape}</span>
                                                     {/if}
 
                                             </div>
                                             <div class="col">
                                                 {if $serverInfo->os eq "none_64"}
-                                                <button class="btn btn-primary installOsbtn" data-toggle="modal" data-target="#installOs">{$LANG["installOsbtn"]} </button>
+                                                <button class="btn btn-primary installOsbtn" data-toggle="modal" data-target="#installOs">{$LANG["installOsbtn"]|escape} </button>
                                                 {else}
 
-                                                <button class="btn btn-primary installOsbtn" data-toggle="modal" data-target="#installOs">{$LANG["re_installOsbtn"]} </button>
+                                                <button class="btn btn-primary installOsbtn" data-toggle="modal" data-target="#installOs">{$LANG["re_installOsbtn"]|escape} </button>
                                                 {/if}
 
                                             </div>
                                         </div>
                                         <div class="row">
                                             <div class="col-md-2">
-                                                <strong>{$LANG["state"]}</strong>
+                                                <strong>{$LANG["state"]|escape}</strong>
                                             </div>
                                             <div class="col-md-4">
                                                 {if $serverInfo->state eq "ok" || $serverInfo->state eq "running"}
-                                                <span class="label label-success">{$serverInfo->state}</span>
+                                                <span class="label label-success">{$serverInfo->state|escape}</span>
                                                 {else}
-                                                <span class="label label-danger">{$serverInfo->state}</span>
+                                                <span class="label label-danger">{$serverInfo->state|escape}</span>
                                                 {/if}
 
                                             </div>
@@ -331,16 +331,16 @@
                                         </div>
                                         <div class="row">
                                             <div class="col-md-2">
-                                                <strong>{$LANG["reverseDns"]}</strong>
+                                                <strong>{$LANG["reverseDns"]|escape}</strong>
                                             </div>
                                             <div class="col-md-4">
-                                                <span>{$ovhReveserDNSCustomHostname}</span>
+                                                <span>{$ovhReveserDNSCustomHostname|escape}</span>
                                             </div>
                                             <div class="col"></div>
                                         </div>
                                         <div class="row">
                                             <div class="col-md-2">
-                                                <strong>{$LANG["monitoring"]}</strong>
+                                                <strong>{$LANG["monitoring"]|escape}</strong>
                                             </div>
                                             <div class="col-md-4">
                                                 {if $serverInfo->monitoring}
@@ -353,19 +353,19 @@
                                         </div>
                                         <div class="row">
                                             <div class="col-md-2">
-                                                <strong>{$LANG["linkSpeed"]}</strong>
+                                                <strong>{$LANG["linkSpeed"]|escape}</strong>
                                             </div>
                                             <div class="col-md-4">
-                                                <span>{$serverInfo->linkSpeed}</span>
+                                                <span>{$serverInfo->linkSpeed|escape}</span>
                                             </div>
                                             <div class="col"></div>
                                         </div>
                                         <div class="row">
                                             <div class="col-md-2">
-                                                <strong>{$LANG["serverId"]}</strong>
+                                                <strong>{$LANG["serverId"]|escape}</strong>
                                             </div>
                                             <div class="col-md-4">
-                                                <span>{$serverInfo->serverId}</span>
+                                                <span>{$serverInfo->serverId|escape}</span>
                                             </div>
                                             <div class="col"></div>
                                         </div>
@@ -374,33 +374,33 @@
                                     <div class="serverDetailInfo tab-pane fade mt-4" id="hardware_info">
                                         <div class="row">
                                             <div class="col-md-3">
-                                                <strong>{$LANG["memorySize"]}</strong>
+                                                <strong>{$LANG["memorySize"]|escape}</strong>
                                             </div>
                                             <div class="col">
-                                                {* <span>{$memorySize} GB</span> *}
-                                                <span>{$memory}</span>
+                                                {* <span>{$memorySize|escape} GB</span> *}
+                                                <span>{$memory|escape}</span>
                                             </div>
                                         </div>
                                         <div class="row">
                                             <div class="col-md-3">
-                                                <strong>{$LANG["processorArchitecture"]}</strong>
+                                                <strong>{$LANG["processorArchitecture"]|escape}</strong>
                                             </div>
                                             <div class="col">
-                                                <span>{$hardwareInfo->processorArchitecture}</span>
+                                                <span>{$hardwareInfo->processorArchitecture|escape}</span>
                                             </div>
                                         </div>
                                         <div class="row">
                                             <div class="col-md-3">
-                                                <strong>{$LANG["diskGroups"]}</strong>
+                                                <strong>{$LANG["diskGroups"]|escape}</strong>
                                             </div>
                                             <div class="col">
-                                                <span>{$hardwareInfo->diskGroups[0]->description}</span>
+                                                <span>{$hardwareInfo->diskGroups[0]->description|escape}</span>
                                             </div>
                                         </div>
 
                                         <div class="row">
                                             <div class="col-md-3">
-                                                <strong>{$LANG["raidController"]}</strong>
+                                                <strong>{$LANG["raidController"]|escape}</strong>
                                             </div>
                                             <div class="col">
                                                 <span>{if $hardwareInfo->diskGroups[0]->raidController eq null} -- {else}$hardwareInfo->diskGroups[0]->raidController {/if}</span>
@@ -408,50 +408,50 @@
                                         </div>
                                         <div class="row">
                                             <div class="col-md-3">
-                                                <strong>{$LANG["processorName"]}</strong>
+                                                <strong>{$LANG["processorName"]|escape}</strong>
                                             </div>
                                             <div class="col">
-                                                <span>{$hardwareInfo->processorName}</span>
+                                                <span>{$hardwareInfo->processorName|escape}</span>
                                             </div>
                                         </div>
                                         <div class="row">
                                             <div class="col-md-3">
-                                                <strong>{$LANG["numberOfProcessors"]}</strong>
+                                                <strong>{$LANG["numberOfProcessors"]|escape}</strong>
                                             </div>
                                             <div class="col">
-                                                <span>{if $hardwareInfo->numberOfProcessors eq null} -- {else} {$hardwareInfo->numberOfProcessors} {/if}</span>
+                                                <span>{if $hardwareInfo->numberOfProcessors eq null} -- {else} {$hardwareInfo->numberOfProcessors|escape} {/if}</span>
                                             </div>
                                         </div>
                                         <div class="row">
                                             <div class="col-md-3">
-                                                <strong>{$LANG["coresPerProcessor"]}</strong>
+                                                <strong>{$LANG["coresPerProcessor"]|escape}</strong>
                                             </div>
                                             <div class="col">
-                                                <span>{if $hardwareInfo->coresPerProcessor eq null} -- {else} {$hardwareInfo->coresPerProcessor} {/if}</span>
+                                                <span>{if $hardwareInfo->coresPerProcessor eq null} -- {else} {$hardwareInfo->coresPerProcessor|escape} {/if}</span>
                                             </div>
                                         </div>
                                         <div class="row">
                                             <div class="col-md-3">
-                                                <strong>{$LANG["usbKeys"]}</strong>
+                                                <strong>{$LANG["usbKeys"]|escape}</strong>
                                             </div>
                                             <div class="col">
-                                                <span>{if $hardwareInfo->usbKeys eq null} -- {else} {$hardwareInfo->usbKeys} {/if}</span>
+                                                <span>{if $hardwareInfo->usbKeys eq null} -- {else} {$hardwareInfo->usbKeys|escape} {/if}</span>
                                             </div>
                                         </div>
                                         <div class="row">
                                             <div class="col-md-3">
-                                                <strong>{$LANG["defaultHardwareRaidSize"]}</strong>
+                                                <strong>{$LANG["defaultHardwareRaidSize"]|escape}</strong>
                                             </div>
                                             <div class="col">
-                                                <span>{if $hardwareInfo->diskGroups[0]->defaultHardwareRaidSize eq null} -- {else}{$hardwareInfo->diskGroups[0]->defaultHardwareRaidSize} {/if}</span>
+                                                <span>{if $hardwareInfo->diskGroups[0]->defaultHardwareRaidSize eq null} -- {else}{$hardwareInfo->diskGroups[0]->defaultHardwareRaidSize|escape} {/if}</span>
                                             </div>
                                         </div>
                                         <div class="row">
                                             <div class="col-md-3">
-                                                <strong>{$LANG["motherboard"]}</strong>
+                                                <strong>{$LANG["motherboard"]|escape}</strong>
                                             </div>
                                             <div class="col">
-                                                <span>{$hardwareInfo->motherboard}</span>
+                                                <span>{$hardwareInfo->motherboard|escape}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -463,24 +463,24 @@
                             <div id="power" class="tab-pane fade text-center">
                                 <ul class="nav nav-tabs subTab">
                                     {if $aclSettingsDedicated["Reboot"] neq "on" && !"reboot"|in_array:$enableSettingsAddon}
-                                    <li class="active"><a data-toggle="tab" href="#reboot">{$LANG["reboot"]}</a></li>
+                                    <li class="active"><a data-toggle="tab" href="#reboot">{$LANG["reboot"]|escape}</a></li>
                                     {/if}
                                     {if $aclSettingsDedicated["reInstall"] neq "on" && !"Reinstall"|in_array:$enableSettingsAddon}
-                                    <li data-type="reInstall"><a data-toggle="tab" data-type="reInstall" href="#reInstall" onclick="getPowerDetails(this)">{$LANG["reInstall"]}</a>
+                                    <li data-type="reInstall"><a data-toggle="tab" data-type="reInstall" href="#reInstall" onclick="getPowerDetails(this)">{$LANG["reInstall"]|escape}</a>
                                     </li>
                                     {/if}
                                     {if $aclSettingsDedicated["NetBoot"] neq "on" && !"netboot"|in_array:$enableSettingsAddon}
-                                    <li data-type="netBoot"><a data-toggle="tab" data-type="netBoot" href="#netBoot">{$LANG["netBoot"]}</a></li>
+                                    <li data-type="netBoot"><a data-toggle="tab" data-type="netBoot" href="#netBoot">{$LANG["netBoot"]|escape}</a></li>
                                     {/if}
                                     {if $aclSettingsDedicated["Rescue"] neq "on" && !"Rescue"|in_array:$enableSettingsAddon}
-                                    <li data-type="rescue"><a data-toggle="tab" data-type="rescue" href="#rescue" onclick="getPowerDetails(this)">{$LANG["rescue"]}</a>
+                                    <li data-type="rescue"><a data-toggle="tab" data-type="rescue" href="#rescue" onclick="getPowerDetails(this)">{$LANG["rescue"]|escape}</a>
                                     </li>
                                     {/if}
                                 </ul>
                                 <div class="tab-content">
                                     <div class="tab-pane fade in active show" id="reboot">
-                                        <p class="powerNotes">{$LANG["reboot_msg"]} </p>
-                                        <button class="btn btn-success rebootBtn">{$LANG["reboot"]} </button>
+                                        <p class="powerNotes">{$LANG["reboot_msg"]|escape} </p>
+                                        <button class="btn btn-success rebootBtn">{$LANG["reboot"]|escape} </button>
                                     </div>
                                     <div class="tab-pane fade" id="reInstall">
                                         <div class="reInstallOuter">
@@ -520,7 +520,7 @@
                                                     </table>
                                                 </div>
 
-                                                <button class="btn btn-success reInstall mt-3">{$LANG["reInstall"]}
+                                                <button class="btn btn-success reInstall mt-3">{$LANG["reInstall"]|escape}
                                                     <button class="btn btn-primary mt-3 mx-3 cancleReinstall" style="display: none;">Cancle Re-install</button>
                                                 </button>
                                             </div>
@@ -530,12 +530,12 @@
                                     <div class="tab-pane fade" id="netBoot">
 
                                         <div class="netBootType row">
-                                            <div class="col-md-4">{$LANG["netBootTypeText"]} </div>
+                                            <div class="col-md-4">{$LANG["netBootTypeText"]|escape} </div>
                                             <div class="col-md-6">
                                                 <select class="form-control" id="netBootType">
                                                     <option selected disabled>Select Type </option>
-                                                    <option value="hardDisk">{$LANG["netBootTypeHD"]}</option>
-                                                    <option value="network">{$LANG["netBootTypeNet"]}</option>
+                                                    <option value="hardDisk">{$LANG["netBootTypeHD"]|escape}</option>
+                                                    <option value="network">{$LANG["netBootTypeNet"]|escape}</option>
                                                 </select>
                                             </div>
 
@@ -543,22 +543,22 @@
 
 
                                         <ul class="nav nav-tabs d-none">
-                                            <li class="active"><a data-toggle="tab" href="#hardDisk" data-type="hardDisk" class="loaded" onclick="getPowerDetails(this)">{$LANG["hardDisk"]}</a>
+                                            <li class="active"><a data-toggle="tab" href="#hardDisk" data-type="hardDisk" class="loaded" onclick="getPowerDetails(this)">{$LANG["hardDisk"]|escape}</a>
                                             </li>
-                                            <li data-type="network"><a data-toggle="tab" data-type="network" href="#network" onclick="getPowerDetails(this)">{$LANG["network"]}</a></li>
-                                            {* <li data-type="rescue"><a data-toggle="tab" data-type="rescue" href="#rescue" onclick="getPowerDetails(this)">{$LANG["rescue"]}</a>
+                                            <li data-type="network"><a data-toggle="tab" data-type="network" href="#network" onclick="getPowerDetails(this)">{$LANG["network"]|escape}</a></li>
+                                            {* <li data-type="rescue"><a data-toggle="tab" data-type="rescue" href="#rescue" onclick="getPowerDetails(this)">{$LANG["rescue"]|escape}</a>
                                             </li> *}
                                         </ul>
                                         <div class="tab-content">
                                             <div class="tab-pane fade in active show" id="hardDisk">
-                                                <p class="hardDiskNotes">{$LANG["netbootmsg"]} </p>
-                                                <button class="btn btn-success netbootBtn">{$LANG["bootnow_btn"]}
+                                                <p class="hardDiskNotes">{$LANG["netbootmsg"]|escape} </p>
+                                                <button class="btn btn-success netbootBtn">{$LANG["bootnow_btn"]|escape}
                                                 </button>
                                             </div>
                                             <div class="tab-pane fade" id="network">
                                                 <div class="netBootNet mt-4">
                                                     <div class="row">
-                                                        <div class="col-6">{$LANG["rescueAvailable"]}</div>
+                                                        <div class="col-6">{$LANG["rescueAvailable"]|escape}</div>
                                                         <div class="col-6">
                                                             <select name="bootid" id="networklist" class="form-control">
                                                                 <option value="" disabled selected>loading...
@@ -573,7 +573,7 @@
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <button class="btn btn-success netbootBtn mt-5">{$LANG["bootnow_btn"]}
+                                                <button class="btn btn-success netbootBtn mt-5">{$LANG["bootnow_btn"]|escape}
                                                 </button>
                                             </div>
                                             {* <div class="tab-pane fade" id="rescue">
@@ -589,7 +589,7 @@
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <button class="btn btn-success netbootBtn mt-5">{$LANG["bootnow_btn"]}
+                                                <button class="btn btn-success netbootBtn mt-5">{$LANG["bootnow_btn"]|escape}
                                                 </button>
                                             </div> *}
 
@@ -608,7 +608,7 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        <button class="btn btn-success netbootBtn mt-5">{$LANG["bootnow_btn"]}
+                                        <button class="btn btn-success netbootBtn mt-5">{$LANG["bootnow_btn"]|escape}
                                         </button>
                                     </div>
                                 </div>
@@ -617,43 +617,43 @@
 
                             <div id="impi" class="tab-pane fade">
                                 <ul class="nav nav-tabs subTab">
-                                    <li class="active" data-type="impiTest"><a data-toggle="tab" href="#impiTest">{$LANG["impiTest"]}</a></li>
-                                    <li data-type="rebootImpi"><a data-toggle="tab" href="#rebootImpi">{$LANG["rebootImpi"]}</a></li>
-                                    <li data-type="browserImpi"><a data-toggle="tab" href="#browserImpi">{$LANG["browserImpi"]}</a></li>
-                                    <li data-type="htmlImpi"><a data-toggle="tab" href="#htmlImpi">{$LANG["htmlImpi"]}</a></li>
-                                    <li data-type="javaImpi"><a data-toggle="tab" href="#javaImpi">{$LANG["javaImpi"]}</a></li>
+                                    <li class="active" data-type="impiTest"><a data-toggle="tab" href="#impiTest">{$LANG["impiTest"]|escape}</a></li>
+                                    <li data-type="rebootImpi"><a data-toggle="tab" href="#rebootImpi">{$LANG["rebootImpi"]|escape}</a></li>
+                                    <li data-type="browserImpi"><a data-toggle="tab" href="#browserImpi">{$LANG["browserImpi"]|escape}</a></li>
+                                    <li data-type="htmlImpi"><a data-toggle="tab" href="#htmlImpi">{$LANG["htmlImpi"]|escape}</a></li>
+                                    <li data-type="javaImpi"><a data-toggle="tab" href="#javaImpi">{$LANG["javaImpi"]|escape}</a></li>
 
                                 </ul>
                                 <div class="tab-content">
                                     <div class="tab-pane fade in active show" id="impiTest">
                                         <div class="impitest" style="text-align: center;">
-                                            {$LANG["ipmiTestMessage"]}
-                                            <button class="btn btn-success" data-toggle="modal" data-target="#testImpi" data-type="impiTest">{$LANG["btnTestImpi"]}</button>
+                                            {$LANG["ipmiTestMessage"]|escape}
+                                            <button class="btn btn-success" data-toggle="modal" data-target="#testImpi" data-type="impiTest">{$LANG["btnTestImpi"]|escape}</button>
                                         </div>
 
                                     </div>
                                     <div class="tab-pane fade" id="rebootImpi">
                                         <div class="impitest" style="text-align: center;">
-                                            {$LANG["ipmiRebootMessage"]}
-                                            <button class="btn btn-success getImpi" data-type="rebootImpi">{$LANG["btnRebootImpi"]}</button>
+                                            {$LANG["ipmiRebootMessage"]|escape}
+                                            <button class="btn btn-success getImpi" data-type="rebootImpi">{$LANG["btnRebootImpi"]|escape}</button>
                                         </div>
                                     </div>
                                     <div class="tab-pane fade" id="browserImpi">
                                         <div class="impitest" style="text-align: center;">
-                                            {$LANG["browserImpiMessage"]}
-                                            <button class="btn btn-success getImpi" data-type="browserImpi">{$LANG["btnBrowserImpi"]}</button>
+                                            {$LANG["browserImpiMessage"]|escape}
+                                            <button class="btn btn-success getImpi" data-type="browserImpi">{$LANG["btnBrowserImpi"]|escape}</button>
                                         </div>
                                     </div>
                                     <div class="tab-pane fade" id="htmlImpi">
                                         <div class="impitest" style="text-align: center;">
-                                            {$LANG["htmlImpiMessage"]}
-                                            <button class="btn btn-success getImpi" data-type="htmlImpi">{$LANG["btnhtmlImpi"]}</button>
+                                            {$LANG["htmlImpiMessage"]|escape}
+                                            <button class="btn btn-success getImpi" data-type="htmlImpi">{$LANG["btnhtmlImpi"]|escape}</button>
                                         </div>
                                     </div>
                                     <div class="tab-pane fade" id="javaImpi">
                                         <div class="impitest" style="text-align: center;">
-                                            {$LANG["javaImpiMessage"]}
-                                            <button class="btn btn-success getImpi" data-type="javaImpi">{$LANG["btnjavaImpi"]}</button>
+                                            {$LANG["javaImpiMessage"]|escape}
+                                            <button class="btn btn-success getImpi" data-type="javaImpi">{$LANG["btnjavaImpi"]|escape}</button>
                                         </div>
 
                                     </div>
@@ -663,32 +663,32 @@
 
                             <div id="monitoring" class="tab-pane fade">
                                 <div class="impitest" style="text-align: center;">
-                                    <h3 class="text-left">{$LANG["monitoringHeading"]}</h3>
-                                    <p class="subHeading"> {$LANG["monitoringSubHeading"]}</p>
+                                    <h3 class="text-left">{$LANG["monitoringHeading"]|escape}</h3>
+                                    <p class="subHeading"> {$LANG["monitoringSubHeading"]|escape}</p>
                                     <div class="monitoring-custom">
                                         <div class="monitoring-custom-inner {if !$serverInfo->monitoring} active {/if}" data-action="disable">
                                             <span class="monitoring-checkbox"></span>
                                             <div class="monitoring-checkbox-content">
-                                                <h5>{$LANG["monitoringDisabled"]}</h5>
-                                                <p>{$LANG["monitoringDisabledMess"]}</p>
+                                                <h5>{$LANG["monitoringDisabled"]|escape}</h5>
+                                                <p>{$LANG["monitoringDisabledMess"]|escape}</p>
                                             </div>
                                         </div>
                                         <div class="monitoring-custom-inner {if $serverInfo->monitoring && $serverInfo->noIntervention} active {/if}" data-action="EnableWithProactive">
                                             <span class="monitoring-checkbox"></span>
                                             <div class="monitoring-checkbox-content">
-                                                <h5>{$LANG["monitoringEnableProactive"]}</h5>
-                                                <p>{$LANG["monitoringEnableProactiveMess"]}</p>
+                                                <h5>{$LANG["monitoringEnableProactive"]|escape}</h5>
+                                                <p>{$LANG["monitoringEnableProactiveMess"]|escape}</p>
                                             </div>
                                         </div>
                                         <div class="monitoring-custom-inner{if $serverInfo->monitoring && !$serverInfo->noIntervention} active {/if}" data-action="EnableWithoutProactive">
                                             <span class="monitoring-checkbox"></span>
                                             <div class="monitoring-checkbox-content">
-                                                <h5>{$LANG["monitoringEnableWithoutProactive"]}</h5>
-                                                <p>{$LANG["monitoringEnableWithoutProactiveMess"]}</p>
+                                                <h5>{$LANG["monitoringEnableWithoutProactive"]|escape}</h5>
+                                                <p>{$LANG["monitoringEnableWithoutProactiveMess"]|escape}</p>
                                             </div>
                                         </div>
                                     </div>
-                                    <button class="btn btn-success mb-3" data-type="monitoring" onclick="enableDisablMonitoring()">{$LANG["monitoringbtn"]}</button>
+                                    <button class="btn btn-success mb-3" data-type="monitoring" onclick="enableDisablMonitoring()">{$LANG["monitoringbtn"]|escape}</button>
                                 </div>
 
                             </div>
@@ -857,14 +857,14 @@
         <div class="modal-content">
             <form id="addIpDescriptionsForm">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="addIpDescriptionsTitle">{$LANG["addIpDescModalHeading"]}</h5>
+                    <h5 class="modal-title" id="addIpDescriptionsTitle">{$LANG["addIpDescModalHeading"]|escape}</h5>
                     <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                         <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
                 <div class="modal-body">
                     <div class="form-group">
-                        <label for="addIpDesc" class="col-form-label">{$LANG["addIpDescModallabel"]}</label>
+                        <label for="addIpDesc" class="col-form-label">{$LANG["addIpDescModallabel"]|escape}</label>
                         <div class="modal-input">
                             <textarea class="form-control" id="addIpDesc" rows="3"></textarea>
                         </div>
@@ -886,23 +886,23 @@
         <div class="modal-content">
             <form id="addReverseIpForm">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="addReverseIpTitle">{$LANG["addReverseIPModalHeading"]}</h5>
+                    <h5 class="modal-title" id="addReverseIpTitle">{$LANG["addReverseIPModalHeading"]|escape}</h5>
                     <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                         <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
                 <div class="modal-body">
                     <div class="alert alert-info" role="alert" style="text-align: left;font-size: 14px;">
-                        {$LANG["addReverseMessage"]}</div>
+                        {$LANG["addReverseMessage"]|escape}</div>
 
                     <div class="form-group">
-                        <label for="addIpReverseIPAddress" class="col-form-label">{$LANG["addReverseIPAddlabel"]}</label>
+                        <label for="addIpReverseIPAddress" class="col-form-label">{$LANG["addReverseIPAddlabel"]|escape}</label>
                         <div class="modal-input">
                             <input type="text" class="form-check form-control" id="addIpReverseIPAddress" style="width: 100%;" readonly>
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="addIpReverse" class="col-form-label">{$LANG["addReverseIPModallabel"]}</label>
+                        <label for="addIpReverse" class="col-form-label">{$LANG["addReverseIPModallabel"]|escape}</label>
                         <div class="modal-input">
                             <input type="text" class="form-check form-control" id="addIpReverse" style="width: 100%;" placeholder="yourdomainname">
                         </div>
@@ -924,29 +924,29 @@
         <div class="modal-content">
             <form id="addReverseIp6Form">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="addReverseIp6Title">{$LANG["addReverseIP6ModalHeading"]}</h5>
+                    <h5 class="modal-title" id="addReverseIp6Title">{$LANG["addReverseIP6ModalHeading"]|escape}</h5>
                     <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                         <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
                 <div class="modal-body">
                     <div class="alert alert-info" role="alert" style="text-align: left;font-size: 14px;">
-                        {$LANG["addReverseMessage"]}</div>
+                        {$LANG["addReverseMessage"]|escape}</div>
 
                     <div class="form-group">
-                        <label for="addIpReverseIP6Address" class="col-form-label">{$LANG["addReverseIPAddlabel"]}</label>
+                        <label for="addIpReverseIP6Address" class="col-form-label">{$LANG["addReverseIPAddlabel"]|escape}</label>
                         <div class="modal-input">
                             <input type="text" class="form-check form-control" id="addIpReverseIP6Address" style="width: 100%;" readonly>
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="ipAddress6" class="col-form-label">{$LANG["ipAddress6label"]}</label>
+                        <label for="ipAddress6" class="col-form-label">{$LANG["ipAddress6label"]|escape}</label>
                         <div class="modal-input">
                             <input type="text" class="form-check form-control" id="ipAddress6" style="width: 100%;"name="ipAddress6" placeholder="Enter IPv6 Address" >
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="addIp6Reverse" class="col-form-label">{$LANG["addReverseIPModallabel"]}</label>
+                        <label for="addIp6Reverse" class="col-form-label">{$LANG["addReverseIPModallabel"]|escape}</label>
                         <div class="modal-input">
                             <input type="text" class="form-check form-control" id="addIp6Reverse" style="width: 100%;" placeholder="yourdomainname">
                         </div>
@@ -968,7 +968,7 @@
         <div class="modal-content">
             <form id="getFirewallRulesForm">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="getFirewallRulesTitle">{$LANG["getRuleModalHeading"]} <span class="firewallName"> </span></h5>
+                    <h5 class="modal-title" id="getFirewallRulesTitle">{$LANG["getRuleModalHeading"]|escape} <span class="firewallName"> </span></h5>
                     <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                         <span aria-hidden="true">&times;</span>
                     </button>
@@ -978,7 +978,7 @@
                 <div id="firewaAddllRules" style="display: none;">
                     <div class="form-row">
                         <div class="form-group col-md-6">
-                            <label for="firewallSequence">{$LANG["addRuleSequence"]}</label>
+                            <label for="firewallSequence">{$LANG["addRuleSequence"]|escape}</label>
                             <select class="form-control" id="firewallSequence" name="firewallSequence">
                                 <option value="0">0</option>
                                 <option value="1">1</option>
@@ -1004,7 +1004,7 @@
                         </div>
 
                         <div class="form-group col-md-6">
-                            <label for="firewallAction">{$LANG["addRuleAction"]}</label>
+                            <label for="firewallAction">{$LANG["addRuleAction"]|escape}</label>
                             <select class="form-control" id="firewallAction" name="firewallAction">
                                 <option value="permit">PERMIT</option>
                                 <option value="deny">DENY</option>
@@ -1014,7 +1014,7 @@
                     </div>
                     <div class="form-row">
                         <div class="form-group col-md-6">
-                            <label for="firewallProtocol">{$LANG["addRuleProtocol"]}</label>
+                            <label for="firewallProtocol">{$LANG["addRuleProtocol"]|escape}</label>
                             <select class="form-control" id="firewallProtocol" name="firewallProtocol">
                                 <option value="ah">AH</option>
                                 <option value="esp">ESP</option>
@@ -1026,7 +1026,7 @@
                             </select>
                         </div>
                         <div class="form-group col-md-6">
-                            <label for="firewallSourse">{$LANG["addRuleSource"]}</label>
+                            <label for="firewallSourse">{$LANG["addRuleSource"]|escape}</label>
 
                             <input type="text" class="form-control" id="firewallSourse" name="firewallSourse" value="all">
 
@@ -1035,11 +1035,11 @@
 
                     <div class="form-row">
                         <div class="form-group col-md-6">
-                            <label for="firewallDestinationPort">{$LANG["addRuleDestinationPort"]}</label>
+                            <label for="firewallDestinationPort">{$LANG["addRuleDestinationPort"]|escape}</label>
                             <input type="number" class="form-control" name="firewallDestinationPort" id="firewallDestinationPort">
                         </div>
                         <div class="form-group col-md-6">
-                            <label for="firewallSourcePort">{$LANG["addRuleSourcePort"]}</label>
+                            <label for="firewallSourcePort">{$LANG["addRuleSourcePort"]|escape}</label>
                             <input type="number" class="form-control" name="firewallSourcePort" id="firewallSourcePort">
                         </div>
 
@@ -1048,7 +1048,7 @@
                     <div class="form-row onlyWithTCP" style="display: none; align-items: center;">
 
                         <div class="form-group col-md-6">
-                            <label for="firewallOption">{$LANG["addRuleOption"]}</label>
+                            <label for="firewallOption">{$LANG["addRuleOption"]|escape}</label>
                             <select class="form-control" name="firewallOption" id="firewallOption">
                                 <option value="">None</option>
                                 <option value="established">Established</option>
@@ -1057,7 +1057,7 @@
                         </div>
                         <div class="form-group col-md-6">
                             <input type="checkbox" class="" name="firewallFragements" id="firewallFragements">
-                            <label for="firewallFragements">{$LANG["addRuleFragements"]}</label>
+                            <label for="firewallFragements">{$LANG["addRuleFragements"]|escape}</label>
                         </div>
 
                     </div>
@@ -1076,14 +1076,14 @@
                     <table class="table table-hover" id="getFirewallRulesTable">
                         <thead>
                             <tr>
-                                <th>{$LANG["getRuleTblHeadingPriotrity"]}</th>
-                                <th>{$LANG["getRuleTblHeadingAction"]}</th>
-                                <th>{$LANG["getRuleTblHeadingProtocol"]}</th>
-                                <th>{$LANG["getRuleTblHeadingSourceIp"]}</th>
-                                <th>{$LANG["getRuleTblHeadingSourcePort"]}</th>
-                                <th>{$LANG["getRuleTblHeadingDestPort"]}</th>
-                                <th>{$LANG["getRuleTblHeadingOptions"]}</th>
-                                <th>{$LANG["getRuleTblHeadingStatus"]}</th>
+                                <th>{$LANG["getRuleTblHeadingPriotrity"]|escape}</th>
+                                <th>{$LANG["getRuleTblHeadingAction"]|escape}</th>
+                                <th>{$LANG["getRuleTblHeadingProtocol"]|escape}</th>
+                                <th>{$LANG["getRuleTblHeadingSourceIp"]|escape}</th>
+                                <th>{$LANG["getRuleTblHeadingSourcePort"]|escape}</th>
+                                <th>{$LANG["getRuleTblHeadingDestPort"]|escape}</th>
+                                <th>{$LANG["getRuleTblHeadingOptions"]|escape}</th>
+                                <th>{$LANG["getRuleTblHeadingStatus"]|escape}</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -1105,7 +1105,7 @@
         <div class="modal-content">
             <form id="addReverseIpForm">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="additinalIpModalLongTitle">{$LANG["additinalIpModalHeading"]}</h5>
+                    <h5 class="modal-title" id="additinalIpModalLongTitle">{$LANG["additinalIpModalHeading"]|escape}</h5>
                     <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                         <span aria-hidden="true">&times;</span>
                     </button>
@@ -1114,11 +1114,11 @@
                 <div class="modal-body">
 
                     <div class="form-group">
-                        <label for="additionalIp" class="col-form-label">{$LANG["numberOfIp"]}</label>
+                        <label for="additionalIp" class="col-form-label">{$LANG["numberOfIp"]|escape}</label>
                         <div class="modal-input">
-                            <input type="number" class="form-control" id="additionalIp" value="1" min="1" style="width: 100%;" data-perIpPrice="{$aditionalIpPrice->additionalIPprice}">
-                            <div class="form-text">{$LANG["numberOfIpMessage"]} : <span id="noOfIps"> 1</span> * {$aditionalIpPrice->additionalIPprice}
-                                {$clientCurrency["prefix"]} = <span id="ipPrices"> 2 </span><span id="currency">{$clientCurrency["prefix"]}</span></div>
+                            <input type="number" class="form-control" id="additionalIp" value="1" min="1" style="width: 100%;" data-perIpPrice="{$aditionalIpPrice->additionalIPprice|escape}">
+                            <div class="form-text">{$LANG["numberOfIpMessage"]|escape} : <span id="noOfIps"> 1</span> * {$aditionalIpPrice->additionalIPprice|escape}
+                                {$clientCurrency["prefix"]|escape} = <span id="ipPrices"> 2 </span><span id="currency">{$clientCurrency["prefix"]|escape}</span></div>
                         </div>
                     </div>
 
@@ -1141,7 +1141,7 @@
         <div class="modal-content">
             <form id="viewIpDetailsForm">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="viewIpDetailsTitle">{$LANG["viewIpDetailModalHeading"]} <span id="viewIpDetailsIpBlock"></span> </h5>
+                    <h5 class="modal-title" id="viewIpDetailsTitle">{$LANG["viewIpDetailModalHeading"]|escape} <span id="viewIpDetailsIpBlock"></span> </h5>
                     <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                         <span aria-hidden="true">&times;</span>
                     </button>
@@ -1168,7 +1168,7 @@
         <div class="modal-content">
             <form id="installOsForm">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="installOsLongTitle">{$LANG["installOsHeading"]}</h5>
+                    <h5 class="modal-title" id="installOsLongTitle">{$LANG["installOsHeading"]|escape}</h5>
                     <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                         <span aria-hidden="true">&times;</span>
                     </button>
@@ -1176,7 +1176,7 @@
 
                 <div class="modal-body">
                     <div class="form-group">
-                        <label for="inputState">{$LANG["installOslabel"]}</label>
+                        <label for="inputState">{$LANG["installOslabel"]|escape}</label>
                         <select class="form-control inputState" id="inputState" name="inputState">
                             <option value="" disabled selected>loading...</option>
                         </select>

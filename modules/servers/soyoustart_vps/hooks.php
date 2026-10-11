@@ -486,7 +486,6 @@ add_hook('AdminAreaHeadOutput', 1, function ($vars) {
 add_hook('InvoicePaid', 1, function ($vars) {
 
     try {
-        if ($_GET['testettdttd'] == "soyoustart") {
             require_once ROOTDIR . '/includes/modulefunctions.php';
             $apiCall = new ApiCall();
             $helper = new Helper();
@@ -496,12 +495,16 @@ add_hook('InvoicePaid', 1, function ($vars) {
                 $params = ModuleBuildParams($additionipDatas->service_id);
                 $pid = $params['pid'];
                 $serviceId = $params['serviceid'];
-                $configoption2 = explode('@', $params['configoption2']);
-                $ovhAccountData = explode('-', $params['configoption3']);
-                $planCode = $configoption2["1"];
-                $location = $ovhAccountData["1"];
-                $ovhPaymentMethod = $helper->get_data("mod_soyoustart_pricesetting", ["server" => "OVH", "servertype" => "VPS"], "first");
-                $paymentmethod = $ovhPaymentMethod->paymentmethod;
+                $configoption2 = explode('@', isset($params['configoption2']) ? $params['configoption2'] : '');
+                $ovhAccountData = explode('-', isset($params['configoption3']) ? $params['configoption3'] : '');
+                $planCode = isset($configoption2["1"]) ? $configoption2["1"] : '';
+                $location = isset($ovhAccountData["1"]) ? $ovhAccountData["1"] : '';
+                if ($planCode === '' || $location === '') {
+                    logActivity('SoYouStart additional IP payment skipped: product configuration is incomplete', 'soyoustart');
+                    return;
+                }
+                $ovhPaymentMethod = $helper->get_data("mod_soyoustart_pricesetting", ["server" => "OVH", "servertype" => ($params["configoption1"] ?? "")], "first");
+                $paymentmethod = isset($ovhPaymentMethod->paymentmethod) ? $ovhPaymentMethod->paymentmethod : '';
                 $orderid = $additionipDatas->iporderid;
                 $paymentresponse = $apiCall->getpaymentdetail($params, $orderid, $paymentmethod, $pid, $serviceId, $ovhAccountData, $location);
 
@@ -542,7 +545,6 @@ add_hook('InvoicePaid', 1, function ($vars) {
                     logActivity("SoYouStart additional IP payment response was unavailable", "soyoustart");
                 }
             }
-        }
     } catch (\Exception $e) {
         logModuleCall(
             "soyoustart",

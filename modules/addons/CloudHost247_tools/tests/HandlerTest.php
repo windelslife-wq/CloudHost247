@@ -158,3 +158,4 @@ $r = CloudHost247_tool_speed_test(['action' => 'upload', 'payload' => str_repeat
 eq('upload counts bytes', $r['bytes_received'], 1000);
 
 echo "\nPASS=$pass FAIL=$fail\n";
+exit($fail > 0 ? 1 : 0);

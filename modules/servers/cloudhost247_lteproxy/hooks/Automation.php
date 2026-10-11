@@ -15,6 +15,7 @@ declare(strict_types=1);
 use CloudHost247\LTEProxy\ApiClient;
 use CloudHost247\LTEProxy\Logger;
 use CloudHost247\LTEProxy\Helpers;
+use WHMCS\Database\Capsule;
 
 if (!defined('WHMCS')) {
     die('This file cannot be accessed directly');
@@ -115,13 +116,28 @@ add_hook('InvoicePaid', 1, function ($vars) {
             $result = cloudhost247_lteproxy_CreateAccount($params);
 
             if ($result === 'success') {
-                // Update service status
+                // Update service status (next due date follows the billing cycle)
+                $cycleIntervals = [
+                    'Monthly' => '+1 month',
+                    'Quarterly' => '+3 months',
+                    'Semi-Annually' => '+6 months',
+                    'Annually' => '+1 year',
+                    'Biennially' => '+2 years',
+                    'Triennially' => '+3 years',
+                ];
+                $interval = $cycleIntervals[$service->billingcycle] ?? '+30 days';
                 Capsule::table('tblhosting')
                     ->where('id', $serviceId)
                     ->update([
                         'domainstatus' => 'Active',
-                        'nextduedate' => date('Y-m-d', strtotime('+30 days')),
+                        'nextduedate' => date('Y-m-d', strtotime($interval)),
                     ]);
+
+                sendCh247Notification(
+                    (int) $service->userid,
+                    'Proxy Order Activated',
+                    'Your LTE proxy order has been activated.'
+                );
 
                 logActivity('CloudHost247 LTE Proxy: Auto-provisioned service ' . $serviceId);
             } else {
@@ -278,7 +294,21 @@ add_hook('DailyCronJob', 1, function () {
             ->get();
 
         foreach ($services as $service) {
-            $daysUntilExpiry = (int) floor((strtotime($service->nextduedate) - time()) / 86400);
+            $dueRaw = $service->nextduedate ?? '';
+
+            // Never bill/terminate on a missing or zero date (strtotime maps
+            // '0000-00-00' to year 0, not false, so test the raw value).
+            if ($dueRaw === '' || $dueRaw === '0000-00-00' || $dueRaw === '0000-00-00 00:00:00') {
+                continue;
+            }
+
+            $dueTimestamp = strtotime($dueRaw);
+
+            if ($dueTimestamp === false) {
+                continue;
+            }
+
+            $daysUntilExpiry = (int) floor(($dueTimestamp - time()) / 86400);
 
             // Send expiry warnings
             if (in_array($daysUntilExpiry, [7, 3, 1], true)) {

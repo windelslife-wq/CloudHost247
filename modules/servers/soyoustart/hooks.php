@@ -543,7 +543,8 @@ add_hook('AdminAreaHeadOutput', 1, function ($vars) {
                         dataTableObj = $("#getFirewallRulesTable").DataTable({
                             "ajax": {
                                 "url": "/modules/servers/soyoustart/ajax/ajax.php",
-                                "data": { ajaxAction: true, iPaction: "getFirewallRules", ipblock, location:"' . $location . '", accountId:"' . $accountId . '" },
+                                "type": "POST",
+                                "data": { serviceId: ' . (int) $serviceId . ', iPaction: "getFirewallRules", ipblock },
                                 "dataSrc": "data"
                             },
                             columns: [

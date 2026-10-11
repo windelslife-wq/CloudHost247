@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use WHMCS\Database\Capsule;
+
 /**
  * CloudHost247 LTE Proxy Admin Sidebar Hooks
  *
@@ -16,52 +18,10 @@ if (!defined('WHMCS')) {
 }
 
 /**
- * Add admin sidebar menu items
+ * NOTE: no admin sidebar menu - the module has no addon pages to link to.
+ * (A previous AdminAreaSidebar registration used the wrong hook API and
+ * pointed at nonexistent addonmodules.php pages, so it never rendered.)
  */
-add_hook('AdminAreaSidebar', 1, function () {
-    $sidebar = new WHMCS\Module\Addon\Setting();
-
-    $menuItem = [
-        'name' => 'CloudHost247 LTE Proxy',
-        'icon' => 'fa-wifi',
-        'uri' => '#',
-        'order' => 100,
-        'children' => [
-            [
-                'name' => 'Dashboard',
-                'icon' => 'fa-tachometer-alt',
-                'uri' => 'addonmodules.php?module=cloudhost247_lteproxy&action=dashboard',
-                'order' => 1,
-            ],
-            [
-                'name' => 'Proxy Management',
-                'icon' => 'fa-network-wired',
-                'uri' => 'addonmodules.php?module=cloudhost247_lteproxy&action=proxies',
-                'order' => 2,
-            ],
-            [
-                'name' => 'Order Logs',
-                'icon' => 'fa-list-alt',
-                'uri' => 'addonmodules.php?module=cloudhost247_lteproxy&action=logs',
-                'order' => 3,
-            ],
-            [
-                'name' => 'API Logs',
-                'icon' => 'fa-code',
-                'uri' => 'addonmodules.php?module=cloudhost247_lteproxy&action=api_logs',
-                'order' => 4,
-            ],
-            [
-                'name' => 'Settings',
-                'icon' => 'fa-cog',
-                'uri' => 'addonmodules.php?module=cloudhost247_lteproxy&action=settings',
-                'order' => 5,
-            ],
-        ],
-    ];
-
-    return $menuItem;
-});
 
 /**
  * Add client profile sidebar hook

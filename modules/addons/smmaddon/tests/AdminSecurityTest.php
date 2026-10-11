@@ -96,3 +96,4 @@ check('logs: clear-logs form carries csrf_token', strpos($html, 'name="csrf_toke
 
 echo "\nadmin security: PASS=$pass FAIL=$fail\n";
 echo "FAIL=$fail\n";
+exit($fail > 0 ? 1 : 0);

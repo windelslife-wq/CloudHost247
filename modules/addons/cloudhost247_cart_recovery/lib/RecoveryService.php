@@ -288,24 +288,36 @@ final class RecoveryService
         if (!$row) {
             return self::outcome(false, 'invalid_token');
         }
-        self::suppress($row->email, $row->client_id, 'unsubscribe');
+        // The suppression is recorded even when this record is already
+        // terminal (a converted customer may still click an old link), but a
+        // terminal status is never regressed: conversion history survives.
+        self::suppressRecipient($row->email, $row->client_id, 'unsubscribe');
+        Log::info('customer.unsubscribed', array('recovery_id' => (int) $row->id));
+        return self::outcome(true, 'unsubscribed', (int) $row->id);
+    }
+
+    /**
+     * Suppress a recipient and move every *open* record for them to
+     * unsubscribed — the clicked record plus any sibling carts. Terminal
+     * records are left untouched, so unsubscribing never rewrites
+     * conversion or expiry history.
+     */
+    public static function suppressRecipient($email, $clientId, $reason = 'unsubscribe')
+    {
+        self::suppress($email, $clientId, $reason);
         $now = self::now();
-        self::table()->where('id', $row->id)->update(array(
+        $query = self::table()->whereIn('status', Schema::openStatuses());
+        if ($clientId) {
+            $query->where('client_id', (int) $clientId);
+        } else {
+            $query->where('email', (string) $email);
+        }
+        return (bool) $query->update(array(
             'status' => Schema::STATUS_UNSUBSCRIBED,
             'unsubscribed_at' => $now,
             'next_reminder_at' => null,
             'updated_at' => $now,
         ));
-        // Stop every other open cart for the same recipient as well.
-        $others = self::table()->whereIn('status', Schema::openStatuses());
-        if ($row->client_id) {
-            $others->where('client_id', (int) $row->client_id);
-        } else {
-            $others->where('email', (string) $row->email);
-        }
-        $others->update(array('status' => Schema::STATUS_UNSUBSCRIBED, 'unsubscribed_at' => $now, 'next_reminder_at' => null, 'updated_at' => $now));
-        Log::info('customer.unsubscribed', array('recovery_id' => (int) $row->id));
-        return self::outcome(true, 'unsubscribed', (int) $row->id);
     }
 
     public static function suppress($email, $clientId, $reason = 'unsubscribe')

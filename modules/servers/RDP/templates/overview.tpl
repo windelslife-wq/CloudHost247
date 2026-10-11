@@ -1,5 +1,5 @@
-<link href="{$assets_link}css/client-style.css" rel="stylesheet">
-<script src="{$assets_link}js/client-script.js"></script>
+<link href="{$assets_link|escape}css/client-style.css" rel="stylesheet">
+<script src="{$assets_link|escape}js/client-script.js"></script>
 
 
 {if $status eq 200  && $serviceid}
@@ -20,15 +20,15 @@
         <tbody>
             <tr>
                 <td style="width:50%" class="hading-td">Hostname :</td>
-                <td class="hading-td">{$hostname}</td>
+                <td class="hading-td">{$hostname|escape}</td>
             </tr>
             <tr>
                 <td class="hading-td">IPaddress :</td>
-                <td class="hading-td">{$ipaddress}</td>
+                <td class="hading-td">{$ipaddress|escape}</td>
             </tr>
             <tr>
                 <td class="hading-td">Username :</td>
-                <td class="hading-td">{$username}</td>
+                <td class="hading-td">{$username|escape}</td>
             </tr>
             <tr>
                 <td class="hading-td">Password :</td>
@@ -36,18 +36,18 @@
                     <span id="passwordField" class="hidden-password">.................</span>
                     <button id="togglePassword" onclick="togglePassword()"
                         style="border: none; background: none; cursor: pointer; outline: none;"
-                        data-password="{$encodedPassword}">
+                        data-password="{$encodedPassword|escape}">
                         <i id="eyeIcon" class="fa fa-eye"></i>
                     </button>
                 </td>
             </tr>
             <tr>
                 <td class="hading-td">Signup Date :</td>
-                <td class="hading-td">{$signupdate}</td>
+                <td class="hading-td">{$signupdate|escape}</td>
             </tr>
             <tr>
                 <td class="hading-td">Due Date :</td>
-                <td class="hading-td">{$duedate}</td>
+                <td class="hading-td">{$duedate|escape}</td>
             </tr>
         </tbody>
     </table>

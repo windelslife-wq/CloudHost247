@@ -88,7 +88,7 @@ final class EmailService
         $result = localAPI('SendEmail', array(
             'messagename' => self::templateName($number),
             'id' => (int) $recovery->client_id,
-            'customvars' => base64_encode(serialize($variables)),
+            'customvars' => base64_encode(serialize(self::htmlVars($variables))),
         ));
         $status = is_array($result) && isset($result['result']) ? (string) $result['result'] : '';
         if ($status !== 'success') {
@@ -109,8 +109,9 @@ final class EmailService
             throw new \RuntimeException('Guest delivery requires the WHMCS mail service, which is unavailable');
         }
         $message = new \WHMCS\Mail\Message();
-        $message->setRecipients('to', array(array($email, $variables['customer_name'])));
-        $message->setSubject(self::substitute(self::subjectFor($number), $variables));
+        $headers = self::headerVars($variables);
+        $message->setRecipients('to', array(array($email, $headers['customer_name'])));
+        $message->setSubject(self::substitute(self::subjectFor($number), $headers));
         $message->setBody(self::renderGuestMessage($number, $variables));
         $message->send();
         return true;
@@ -171,6 +172,40 @@ final class EmailService
             return '';
         }
         return '<table cellpadding="0" cellspacing="0" style="border-collapse:collapse">' . $rows . '</table>';
+    }
+
+    /**
+     * Merge variables escaped for HTML sinks (message bodies, customvars).
+     * Names, emails and currency codes can carry customer-supplied markup —
+     * notably from guest checkout, where the address itself is
+     * unauthenticated — so everything is escaped except cart_items, which is
+     * intentionally HTML and already escaped item by item.
+     */
+    public static function htmlVars(array $variables)
+    {
+        $safe = array();
+        foreach ($variables as $key => $value) {
+            if ($key === 'cart_items') {
+                $safe[$key] = (string) $value;
+                continue;
+            }
+            $safe[$key] = htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+        }
+        return $safe;
+    }
+
+    /**
+     * Merge variables bound for email headers (subject, display name).
+     * Headers take raw text, so the only transformation is stripping line
+     * breaks: a name containing CR/LF must never reach the subject line.
+     */
+    public static function headerVars(array $variables)
+    {
+        $safe = array();
+        foreach ($variables as $key => $value) {
+            $safe[$key] = str_replace(array("\r", "\n"), '', (string) $value);
+        }
+        return $safe;
     }
 
     /** Replace {$variable} placeholders with their merge values. */
@@ -260,6 +295,6 @@ final class EmailService
         if ($body === null || $body === '') {
             $body = self::defaultBody($number);
         }
-        return self::substitute($body, $variables);
+        return self::substitute($body, self::htmlVars($variables));
     }
 }

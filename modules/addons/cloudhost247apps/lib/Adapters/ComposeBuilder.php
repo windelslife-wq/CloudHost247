@@ -410,7 +410,8 @@ class ComposeBuilder
         return $out;
     }
 
-    private static function interpolate($value, array $map, $depth)
+    /** Interpolate ${VAR} references against a merged environment map (shared with the Kubernetes renderer). */
+    public static function interpolate($value, array $map, $depth)
     {
         if ($depth > 5 || strpos((string) $value, '${') === false) {
             return $value;

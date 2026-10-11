@@ -1,0 +1,20 @@
+# CloudHost247 Tools - pretty URLs for the /tools/* surface.
+#
+#   /tools                  -> tool index (landing page)
+#   /tools/<slug>           -> individual tool page
+#   /tools/<category>       -> category page
+#   /tools/search?q=...     -> tool search
+#   /tools/disclaimer       -> disclaimer page
+#   /tools/sitemap.xml      -> sitemap
+#   /tools/api/<slug>       -> JSON execution endpoint (POST)
+#
+# If this install also uses WHMCS friendly URLs, keep this block BEFORE the
+# WHMCS rewrite rules so /tools/* never falls through to index.php.
+# Without mod_rewrite, the same pages work by calling the front controller
+# directly: modules/addons/CloudHost247_tools/front.php?route=<slug>.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^tools(?:/(.*))?$ modules/addons/CloudHost247_tools/front.php?route=$1 [QSA,L]
+</IfModule>

@@ -26,7 +26,7 @@
                         
                         <div>
                             <span class="blockonomics-icon-cart"></span>
-                            {$order->value} {$order->currency}
+                            {$order->value} {$order->currency|escape}
                         </div>
                     </th>
                 </tr>
@@ -38,19 +38,19 @@
                         <label class="bnomics-address-text">{$_BLOCKLANG.payAmount1}{strtolower($crypto['name'])}{$_BLOCKLANG.payAmount2}</label>
                         <label class="bnomics-copy-address-text">{$_BLOCKLANG.copyClipboard}</label>
                         <div class="bnomics-copy-container">
-                            <input type="text" value="{$order->addr}" id="bnomics-address-input" readonly/>
+                            <input type="text" value="{$order->addr|escape}" id="bnomics-address-input" readonly/>
                             <span id="bnomics-address-copy" class="blockonomics-icon-copy"></span>
                             <span id="bnomics-show-qr" class="blockonomics-icon-qr"></span>
                         </div>
                         
                         <div class="bnomics-qr-code">
                             <div class="bnomics-qr">
-                                <a href="{$payment_uri}" target="_blank" class="bnomics-qr-link">
+                                <a href="{$payment_uri|escape}" target="_blank" class="bnomics-qr-link">
                                     <canvas id="bnomics-qr-code"></canvas>
                                 </a>
                             </div>
                             <small class="bnomics-qr-code-hint">
-                                <a href="{$payment_uri}" target="_blank" class="bnomics-qr-link">{$_BLOCKLANG.openWallet}</a>
+                                <a href="{$payment_uri|escape}" target="_blank" class="bnomics-qr-link">{$_BLOCKLANG.openWallet}</a>
                             </small>
                         </div>
 
@@ -70,7 +70,7 @@
                         </div>
 
                         <small class="bnomics-crypto-price-timer">
-                            1 {strtoupper($crypto['code'])} = <span id="bnomics-crypto-rate"> {$crypto_rate_str}</span> {$order->currency} {$_BLOCKLANG.updateIn} <span class="bnomics-time-left">00:00 min</span>
+                            1 {strtoupper($crypto['code'])} = <span id="bnomics-crypto-rate"> {$crypto_rate_str}</span> {$order->currency|escape} {$_BLOCKLANG.updateIn} <span class="bnomics-time-left">00:00 min</span>
                         </small>
                     </th>
                 </tr>
@@ -84,10 +84,10 @@
 var blockonomics_data = JSON.stringify({
     time_period: {$time_period},
     crypto: JSON.parse('{json_encode($crypto)}'),
-    crypto_address: '{$order->addr}',
+    crypto_address: '{$order->addr|escape:'javascript'}',
     get_order_amount_url: '{$WEB_ROOT}/modules/gateways/blockonomics/payment.php?get_order={$order_hash}&crypto={$crypto['code']}',
     finish_order_url: '{$WEB_ROOT}/modules/gateways/blockonomics/payment.php?finish_order={$order_hash}',
-    payment_uri: '{$payment_uri}',
+    payment_uri: '{$payment_uri|escape:'javascript'}',
 })
 </script>
 

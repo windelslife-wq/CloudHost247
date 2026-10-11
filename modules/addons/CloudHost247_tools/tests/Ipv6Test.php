@@ -109,3 +109,4 @@ eq('inc', inet_ntop(CloudHost247_tools_ip_inc(inet_pton('2001:db8::ff'))), '2001
 eq('inc rollover', inet_ntop(CloudHost247_tools_ip_inc(inet_pton('2001:db8::ffff:ffff'))), '2001:db8::1:0:0');
 
 echo "\nPASS=$pass FAIL=$fail\n";
+exit($fail > 0 ? 1 : 0);

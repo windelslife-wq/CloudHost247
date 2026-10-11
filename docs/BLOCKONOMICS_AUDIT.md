@@ -127,3 +127,28 @@ Blockonomics-specific: `11_BlockonomicsTest.php` 172 assertions,
 BTC and USDT remain independently testable — each currency's toggle,
 readiness rule and enforcement path is asserted separately, and BCH now has
 equivalent coverage.
+
+## 11. C-7 follow-up (2026-10-11)
+
+The gateway's own files (`blockonomics.php` entry/core, callback,
+payment page, poller, upgrade, Test Setup, templates) were audited and
+given the offline suite this document's verification section lacked
+(`modules/gateways/blockonomics/tests/`, 247 checks, `mod_blockonomics`
+CI step). Deltas to the verdicts above:
+
+- §24's global-txid claim holds for the USDT **report** path
+  (`process_token_order`); the BTC/BCH **callback** deliberately keys on
+  the per-address suffixed transid so multi-address transactions are not
+  collapsed. No change — the callback secret remains the auth boundary.
+- The invoice-note currency name (§4-adjacent display) was blank on
+  PHP 8 (`->name` on an array) — fixed, with escaping for
+  query-derived note values.
+- Test Setup (§10 tooling) broke whenever USDT was active — fixed by
+  skipping the API-less currency; callback-update failures now report.
+- The poller gained the controls §4 assumes but never stated: CLI-only,
+  single-flight, timeouts, `Throwable` tolerance.
+- Order hashes gained a MAC (defence in depth; targeted forgery was
+  already infeasible — see Module 15 record).
+- Ops note: USDT crediting requires `exec()` for the poller daemon;
+  without it USDT orders stall at status 0. Cross-method double-pay
+  (card + USDT) resolves as WHMCS credit balance.

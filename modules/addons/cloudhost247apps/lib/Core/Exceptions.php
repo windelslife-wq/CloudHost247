@@ -271,11 +271,17 @@ class RetryableCpanelException extends CpanelException
     }
 }
 
-/** Kubernetes API failures. */
+/** Kubernetes API failures; permanent API rejections do not retry by default. */
 class KubernetesException extends AppsException
 {
     protected $code_name = 'KUBERNETES_PROVISIONING_FAILED';
     protected $status = 502;
+}
+
+/** Transport/server failures that can safely be retried after state reconciliation. */
+class RetryableKubernetesException extends KubernetesException
+{
+    protected $code_name = 'KUBERNETES_TEMPORARILY_UNAVAILABLE';
 
     public function isRetryable()
     {

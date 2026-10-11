@@ -21,6 +21,38 @@ function soyoustart_MetaData()
     );
 }
 
+/**
+ * Safe part of a separator-delimited product config value (SD-10).
+ */
+function soyoustart_cfgPart($params, $key, $index, $sep)
+{
+    $value = (is_array($params) && isset($params[$key])) ? (string) $params[$key] : '';
+    $parts = explode($sep, $value);
+    return isset($parts[$index]) ? trim($parts[$index]) : '';
+}
+
+/**
+ * First IP of a client-supplied block, or null (SD-6).
+ */
+function soyoustart_firstIp($ipBlock)
+{
+    if (!is_string($ipBlock) || $ipBlock === '') {
+        return null;
+    }
+    $ip = trim(explode('/', $ipBlock)[0]);
+    return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : null;
+}
+
+/** Only allow client IP operations against blocks assigned to this server (SD-1). */
+function soyoustart_ipBelongsToServer($response, $candidate)
+{
+    if (!is_string($candidate) || $candidate === '' || !is_array($response)
+        || ($response['httpcode'] ?? 0) != 200 || !is_array($response['result'] ?? null)) {
+        return false;
+    }
+    return in_array($candidate, $response['result'], true);
+}
+
 function soyoustart_ConfigOptions()
 {
 
@@ -76,10 +108,13 @@ function soyoustart_CreateAccount(array $params)
         $apiCall = new ApiCall();
         $helper = new Helper();
         $result = Capsule::table("tbladdonmodules")->select('value')->where('setting', 'licenseNumtoactivate')->where('module', 'soyoustart')->first();
+        if (!$result || empty($result->value)) {
+            return 'SoYouStart license is not configured';
+        }
         $license = $apiCall->CheckLicense($result->value);
 
         if ($license["status"] != "Active") {
-            return   $license["ststus"] . " License";
+            return $license["status"] . " License";
         }
 
         $serviceId = $params['serviceid'];
@@ -88,9 +123,10 @@ function soyoustart_CreateAccount(array $params)
 
         $pid = $params['pid'];
 
-        $domainName = explode("//", $CONFIG["Domain"])[1];
+        $domainName = (parse_url((string) ($CONFIG['Domain'] ?? ''), PHP_URL_HOST) ?: ($CONFIG['Domain'] ?? 'localhost'));
         $defaultCustomHostName = $helper->get_data("mod_acl_settings", ["key" => "generalaclSettings"], "first");
-        $defaultCustomHostName = (!empty($defaultCustomHostName->id) ? json_decode($defaultCustomHostName->value, true)["defaultCustomHostName"] : "WHMCS_$serviceId'_'$domainName");
+        $defaultCustomHostName = (!empty($defaultCustomHostName->id) ? (json_decode($defaultCustomHostName->value, true)["defaultCustomHostName"] ?? null) : null)
+            ?: "WHMCS_{$serviceId}_{$domainName}";
 
         /* formating billing cycle data for API */
         $billingCycle = $params['model']["billingcycle"];
@@ -103,15 +139,18 @@ function soyoustart_CreateAccount(array $params)
 
         $ovhAccountData = array_values($ovhAccountData);
 
-        $location = $ovhAccountData["1"];
-        $planGroup = $configoption2["0"];
-        $planCode = $configoption2["1"];
+        $location = $ovhAccountData[1] ?? '';
+        $planGroup = $configoption2[0] ?? '';
+        $planCode = $configoption2[1] ?? '';
         $ovhSubsidiaryURL = explode("=", $params['configoption4']);
 
-        $subsidiaryLocation = $ovhSubsidiaryURL[1];
+        $subsidiaryLocation = $ovhSubsidiaryURL[1] ?? '';
         $ovhPaymentMethod = $helper->get_data("mod_soyoustart_pricesetting", ["server" => "OVH", "servertype" => $params["configoption1"]], "first");
-        $orderid = $params['customfields']['ovh_order_id'];
-        $paymentmethod = $ovhPaymentMethod->paymentmethod;
+        $orderid = $params['customfields']['ovh_order_id'] ?? '';
+        $paymentmethod = $ovhPaymentMethod->paymentmethod ?? '';
+        if (!$planCode || !$location || empty($ovhAccountData[0]) || empty($ovhAccountData[2]) || !$subsidiaryLocation || !$paymentmethod) {
+            return 'Incomplete OVH product/account/payment configuration';
+        }
 
         if (!empty($params['customfields']['ovh_order_id'])) {
             $paymentresponse = $apiCall->getpaymentdetail($params, $orderid, $paymentmethod, $pid, $serviceId, $ovhAccountData, $location);
@@ -134,7 +173,7 @@ function soyoustart_CreateAccount(array $params)
         $cartDetails = $apiCall->createCart($location, $planCode, $subsidiaryLocation);
 
         if ($cartDetails["httpcode"] != 200) {
-            return $cartDetails['result']->message . "Please check your (" . $ovhAccountData[2] . ")" . " account is active";
+            return $cartDetails['result']->message . "Please check your (" . ($ovhAccountData[2] ?? '') . ")" . " account is active";
         }
         $cartId = $cartDetails["result"]->cartId;
 
@@ -241,7 +280,7 @@ function soyoustart_CreateAccount(array $params)
         $orderid = $response["result"]->orderId;
         /* updating admin custom fields */
 
-        $fields = ["ovh_account" => $ovhAccountData[2], "ovh_server_location", $location, "ovh_order_id" => $orderid, "ovh_custom_hostname" => $defaultCustomHostName];
+        $fields = ["ovh_account" => $ovhAccountData[2], "ovh_server_location" => $location, "ovh_order_id" => $orderid, "ovh_custom_hostname" => $defaultCustomHostName];
         $helper->insert_custom_fields_value($serviceId, $pid, $fields);
         $paymentmethod = $ovhPaymentMethod->paymentmethod;
 
@@ -322,7 +361,7 @@ function soyoustart_AdminServicesTabFields(array $params)
 {
     try {
 
-        if ($params["customfields"]["ovh_server_name"] && $params["customfields"]["ovh_order_id"]) {
+        if (!empty($params["customfields"]["ovh_server_name"]) && !empty($params["customfields"]["ovh_order_id"])) {
             global $CONFIG;
             global $whmcs;
 
@@ -357,7 +396,7 @@ function soyoustart_AdminServicesTabFields(array $params)
                     $serverInfo = $apiCall->getServerInfo($location, $serverType, $ovhServerName, $accountId);
                     $hardwareInfo = $apiCall->getHardwareInfo($location, $serverType, $ovhServerName, $accountId);
 
-                    $html = $obj->serviceInfoHtml($serverInfo, $_ADDONLANG, $hardwareInfo["result"], $processor, $disk, $dataCenter, $apiCall, $location, $serverType, $ovhServerName, $accountId, true);
+                    $html = $obj->serviceInfoHtml($serverInfo, $_ADDONLANG, $hardwareInfo["result"], $processor, $disk, $dataCenter, $apiCall, $location, $serverType, $ovhServerName, $accountId, true, $serviceId);
                     echo $html;
                     exit;
                 } elseif ($whmcs->get_req_var("serviceAction") == "getIpsInfo") {
@@ -383,7 +422,11 @@ function soyoustart_AdminServicesTabFields(array $params)
                     exit;
                 } elseif ($whmcs->get_req_var("iPaction") == "viewIpDetails") {
 
-                    $ip = $whmcs->get_req_var("ipblock");
+                    $ip = soyoustart_firstIp($whmcs->get_req_var("ipblock"));
+                    if ($ip === null) {
+                        echo '<div class="alert alert-danger" role="alert">Invalid IP block.</div>';
+                        exit;
+                    }
                     $ipdetails = $apiCall->getIpDetails($location, $ovhServerName, $accountId, $ip);
                     $html = $obj->createIpDetailsHtml($ipdetails, $_ADDONLANG);
                     echo $html;
@@ -422,7 +465,7 @@ function soyoustart_AdminServicesTabFields(array $params)
                     $ipv4 = explode("/", $whmcs->get_req_var("ipblock"));
                     $ipblock = urlencode($whmcs->get_req_var("ipblock"));
                     if ($whmcs->get_req_var("mitigrationIp")) {
-                        $mitigrationIp = $whmcs->get_req_var("mitigrationIp");
+                        $mitigrationIp = urlencode($whmcs->get_req_var("mitigrationIp"));
                         $endPoint = "/ip/{$ipblock}/mitigation/{$mitigrationIp}";
                         $response = $apiCall->__delete($endPoint, $accountId, $location, [], "delete mitigration", true);
                     } else {
@@ -467,7 +510,7 @@ function soyoustart_AdminServicesTabFields(array $params)
                 } elseif ($whmcs->get_req_var("iPaction") == "deleteFirewallRule") {
                     $ipblock = urlencode($whmcs->get_req_var("ipblock"));
                     $ipReverse = str_replace("::", "", explode("/", $whmcs->get_req_var("ipblock")));
-                    $endPoint = "/ip/{$ipblock}/firewall/{$ipReverse["0"]}/rule/{$whmcs->get_req_var("sequese")}";
+                    $endPoint = "/ip/{$ipblock}/firewall/{$ipReverse["0"]}/rule/" . (int) $whmcs->get_req_var("sequese");
                     $response = $apiCall->__delete($endPoint, $accountId, $location, [], "deleting firewall rules", true);
                     echo json_encode($response);
                     exit;
@@ -475,7 +518,7 @@ function soyoustart_AdminServicesTabFields(array $params)
             }
 
             $fieldsarray = array(
-                ' ' => $obj->serviceInfoHtml([], $_ADDONLANG, $ovhCustomHostname, $processor, $disk, $dataCenter, $apiCall, $location, $serverType, $ovhServerName, $accountId, false),
+                ' ' => $obj->serviceInfoHtml([], $_ADDONLANG, $ovhCustomHostname, $processor, $disk, $dataCenter, $apiCall, $location, $serverType, $ovhServerName, $accountId, false, $serviceId),
                 '' => $obj->ipsInfoHtml([], $ipsErrors,  $_ADDONLANG, false),
                 '   ' => $obj->featureHtml($configuration->aclSettingsDedicated(), $serviceId),
             );
@@ -507,7 +550,7 @@ function soyoustart_AdminServicesTabFieldsSave(array $params)
             $response = $helper->insert_update("mod_acl_settings", ["key" => "servicePageAclSettings_$serviceId"], ["key" => "servicePageAclSettings_$serviceId", "value" => json_encode($postData)]);
         }
     } catch (Exception $e) {
-        logModuleCall('soyoustart_vps', __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
+        logModuleCall('soyoustart', __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
     }
 }
 
@@ -667,9 +710,14 @@ function soyoustart_ClientArea(array $params)
             $configoption2 = explode('@', $params['configoption2']);
             $planCode = $configoption2["1"];
             $ovhSubsidiaryURL = explode("=", $params['configoption4']);
-            $subsidiaryLocation = $ovhSubsidiaryURL[1];
+            $subsidiaryLocation = $ovhSubsidiaryURL[1] ?? '';
             $billingCycle = $params['model']["billingcycle"];
             $billingData = $obj->formateBillingCycle($billingCycle);
+            $additionalIpPrice = $helper->get_data("mod_soyoustart_pricesetting", ["servertype" => $params["configoption1"]], "first");
+            $errors = [];
+            $serverInfo = ['httpcode' => 0, 'result' => (object) []];
+            $hardwareInfo = ['httpcode' => 0, 'result' => (object) []];
+            $processor = $memory = $disk = '';
 
             /* getting enable setting/feature from service page */
             $enableSettings = $helper->get_data("mod_acl_settings", ["key" => "servicePageAclSettings_$serviceId"], "first");
@@ -697,7 +745,7 @@ function soyoustart_ClientArea(array $params)
                 $interventions = $apiCall->get("/dedicated/server/{$ovhServerName}/intervention", $accountId, $location, "Getting Interventions", true);
 
                 if ($interventions["httpcode"] != 200) {
-                    echo $interventions["result"]->message;
+                    echo SoyoustartServer::escapeHtml($interventions["result"]->message);
                     exit;
                 }
                 $interventionInfo = $apiCall->getInterventionInfo($location, $interventions["result"], $ovhServerName, $accountId);
@@ -706,16 +754,25 @@ function soyoustart_ClientArea(array $params)
                 echo $interventionHtml;
                 exit;
             } elseif ($whmcs->get_req_var("manage_ips")) {
+                $ipAction = $whmcs->get_req_var("iPaction");
+                if ($whmcs->get_req_var("getIpDetails") || ($ipAction && $ipAction !== 'addAdditionalIp')) {
+                    $requestedIp = $whmcs->get_req_var("ipblock") ?: $whmcs->get_req_var("ip");
+                    $ownedIps = $apiCall->get("/dedicated/server/{$ovhServerName}/ips", $accountId, $location, "Checking assigned IPs", true);
+                    if (!soyoustart_ipBelongsToServer($ownedIps, $requestedIp)) {
+                        echo json_encode(["httpcode" => 404, "result" => ["message" => "IP block not assigned to this server"]]);
+                        exit;
+                    }
+                }
                 if ($whmcs->get_req_var("getIpDetails")) {
                     $ip = $whmcs->get_req_var("ip");
                     $ipdetails = $apiCall->getIpDetails($location, $ovhServerName, $accountId, $ip);
                     if ($ipdetails["httpcode"] != 200) {
                         echo '<div class="alert alert-danger" role="alert">
-                        ' . $ipdetails["result"]->message . '
+                        ' . SoyoustartServer::escapeHtml($ipdetails["result"]->message) . '
                         </div>';
                         exit;
                     }
-                    $ipDetailsHtml = $obj->createIPsHtml($ipdetails["result"], $_ADDONLANG);
+                    $ipDetailsHtml = $obj->createIpDetailsHtml($ipdetails, $_ADDONLANG);
                     echo $ipDetailsHtml;
                     exit;
                 } else if ($whmcs->get_req_var("iPaction") == "addDesc") {
@@ -747,7 +804,7 @@ function soyoustart_ClientArea(array $params)
                     $ipv4 = explode("/", $whmcs->get_req_var("ipblock"));
                     $ipblock = urlencode($whmcs->get_req_var("ipblock"));
                     if ($whmcs->get_req_var("mitigrationIp")) {
-                        $mitigrationIp = $whmcs->get_req_var("mitigrationIp");
+                        $mitigrationIp = urlencode($whmcs->get_req_var("mitigrationIp"));
                         $endPoint = "/ip/{$ipblock}/mitigation/{$mitigrationIp}";
                         $response = $apiCall->__delete($endPoint, $accountId, $location, [], "delete mitigration", true);
                     } else {
@@ -825,7 +882,7 @@ function soyoustart_ClientArea(array $params)
                 } elseif ($whmcs->get_req_var("iPaction") == "deleteFirewallRule") {
                     $ipblock = urlencode($whmcs->get_req_var("ipblock"));
                     $ipReverse = str_replace("::", "", explode("/", $whmcs->get_req_var("ipblock")));
-                    $endPoint = "/ip/{$ipblock}/firewall/{$ipReverse["0"]}/rule/{$whmcs->get_req_var("sequese")}";
+                    $endPoint = "/ip/{$ipblock}/firewall/{$ipReverse["0"]}/rule/" . (int) $whmcs->get_req_var("sequese");
                     $data = [];
                     $response = $apiCall->__delete($endPoint, $accountId, $location, $data, "deleting firewall rules", true);
                     echo json_encode($response);
@@ -852,6 +909,12 @@ function soyoustart_ClientArea(array $params)
                     echo json_encode($response);
                     exit;
                 } elseif ($whmcs->get_req_var("iPaction") == "addAdditionalIp") {
+                    // Fail before OVH checkout if the invoice could not be priced.
+                    $quantity = (int) $whmcs->get_req_var("numberOfIp");
+                    if ($quantity < 1 || $quantity > 256 || (int) ($params["userid"] ?? 0) < 1 || !SoyoustartServer::validAdditionalIpPrice($additionalIpPrice)) {
+                        echo json_encode(["httpcode" => 400, "result" => ["message" => "Invalid IP quantity or price"]]);
+                        exit;
+                    }
                     /* creating cart */
                     $cartDetails = $apiCall->createCart($location, $planCode . "add Additional IPs", $subsidiaryLocation);
                     if ($cartDetails["httpcode"] != 200) {
@@ -860,12 +923,12 @@ function soyoustart_ClientArea(array $params)
                     }
 
                     $cartId = $cartDetails["result"]->cartId;
-                    $quantity = (int) $whmcs->get_req_var("numberOfIp");
+                    // $quantity was checked before creating the OVH cart.
                     $postData = array(
                         'duration' => $billingData["durationVal"],
                         'planCode' => 'ip-failover-arin',
                         'pricingMode' => $billingData["pricingModeVal"],
-                        'quantity' => (int) $whmcs->get_req_var("numberOfIp")
+                        'quantity' => $quantity
                     );
                     /* assigning ip into cart */
                     $assignIpData = $apiCall->post("/order/cart/{$cartId}/ip", $accountId, $location, $postData, "Assigning ip into cart", true);
@@ -918,7 +981,11 @@ function soyoustart_ClientArea(array $params)
                     }
                 } elseif ($whmcs->get_req_var("iPaction") == "viewIpDetails") {
 
-                    $ip = $whmcs->get_req_var("ipblock");
+                    $ip = soyoustart_firstIp($whmcs->get_req_var("ipblock"));
+                    if ($ip === null) {
+                        echo '<div class="alert alert-danger" role="alert">Invalid IP block.</div>';
+                        exit;
+                    }
                     $ipdetails = $apiCall->getIpDetails($location, $ovhServerName, $accountId, $ip);
 
                     $html = $obj->createIpDetailsHtml($ipdetails, $_ADDONLANG);
@@ -928,7 +995,7 @@ function soyoustart_ClientArea(array $params)
                     $ips = $apiCall->get("/dedicated/server/{$ovhServerName}/ips", $accountId, $location, "Getting IPs", true);
                     if ($ips["httpcode"] != 200) {
                         echo '<div class="alert alert-danger" role="alert">
-                        ' . $ips["result"]->message . '
+                        ' . SoyoustartServer::escapeHtml($ips["result"]->message) . '
                         </div>';
                         exit;
                     }
@@ -971,7 +1038,7 @@ function soyoustart_ClientArea(array $params)
 
                     if ($response["httpcode"] != 200) {
                         echo '<div class="alert alert-danger" role="alert">
-                        ' . $response["result"]->message . '
+                        ' . SoyoustartServer::escapeHtml($response["result"]->message) . '
                         </div>';
                         exit;
                     }
@@ -1013,7 +1080,7 @@ function soyoustart_ClientArea(array $params)
                     echo json_encode($response);
                     exit;
                 } elseif ($whmcs->get_req_var("ftpAction") == "FTPBackupStaus") {
-                    $taskId = $whmcs->get_req_var("taskID");
+                    $taskId = (int) $whmcs->get_req_var("taskID");
                     $response = $apiCall->get("/dedicated/server/{$ovhServerName}/task/{$taskId}", $accountId, $location, "Getting task status", true);
                     echo json_encode($response);
                     exit;
@@ -1034,6 +1101,9 @@ function soyoustart_ClientArea(array $params)
                     $data = ["monitoring" => false];
                 } elseif ($whmcs->get_req_var("monitoringAction") == "EnableWithoutProactive") {
                     $data = ["monitoring" => true, "noIntervention" => false];
+                } else {
+                    echo json_encode(["httpcode" => 400, "result" => ["message" => "Unknown monitoring action"]]);
+                    exit;
                 }
                 $response = $apiCall->enableDisableMonitoring($location, $accountId, $ovhServerName, $data);
                 echo json_encode($response);
@@ -1051,7 +1121,7 @@ function soyoustart_ClientArea(array $params)
                     echo json_encode($response);
                     exit;
                 } elseif ($whmcs->get_req_var("boot") == "hardrebootConf") {
-                    $taskId = $whmcs->get_req_var("taskID");
+                    $taskId = (int) $whmcs->get_req_var("taskID");
                     $response = $apiCall->getTaskStatus($location, $accountId, $ovhServerName, $taskId);
 
                     echo json_encode($response);
@@ -1061,7 +1131,7 @@ function soyoustart_ClientArea(array $params)
                     if ($whmcs->get_req_var("rootdevice") == "none") {
                         $data = ['bootId' => (int)$whmcs->get_req_var("bootid")];
                     } else {
-                        $data = ['bootId' => (float)$whmcs->get_req_var("bootid"), 'rootDevice' => $whmcs->get_req_var("rootdevice")];
+                        $data = ['bootId' => (int) $whmcs->get_req_var("bootid"), 'rootDevice' => $whmcs->get_req_var("rootdevice")];
                     }
 
                     $response = $apiCall->put("/dedicated/server/{$ovhServerName}", $accountId, $location, $data, "netBooting server", true);
@@ -1074,15 +1144,15 @@ function soyoustart_ClientArea(array $params)
                     $installationStatus = $apiCall->get("/dedicated/server/{$ovhServerName}/install/status", $accountId, $location, "Getting installation status", true);
 
                     if ($compatibleOs["httpcode"] != 200) {
-                        $error = $compatibleOs["result"]->message;
+                        $error = SoyoustartServer::escapeHtml($compatibleOs["result"]->message);
                         $html = "<div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\"><strong>Error!</strong> $error <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\"><span aria-hidden=\"true\">&times;</span></button>
                     </div>";
                         echo json_encode(["type" => $type, "html" => $html]);
                         exit;
                     }
                     $html = '';
-                    foreach ($compatibleOs["result"]->ovh  as $value) {
-                        $html .= '<option value="' . $value . '">' . ucfirst(str_replace('-', " ", str_replace('_', " ", $value))) . '</option>';
+                    foreach ($compatibleOs["result"]->ovh ?? [] as $value) {
+                        $html .= '<option value="' . SoyoustartServer::escapeHtml($value) . '">' . SoyoustartServer::escapeHtml(ucfirst(str_replace('-', " ", str_replace('_', " ", $value)))) . '</option>';
                     }
                     echo json_encode(["type" => $type, "html" => $html, "installationStatus" => $installationStatus]);
                     exit;
@@ -1126,7 +1196,7 @@ function soyoustart_ClientArea(array $params)
                         $netBootDetails = $apiCall->get("/dedicated/server/{$ovhServerName}/boot/{$netBootId}", $accountId, $location, "Getting Boot details", true);
 
                         $netBootDetails = $netBootDetails["result"];
-                        $selectnetwork .= '<option value="' . $netBootDetails->bootId . '">' . ucfirst($netBootDetails->kernel) . ' ' . $netBootDetails->description . '</option>';
+                        $selectnetwork .= '<option value="' . SoyoustartServer::escapeHtml($netBootDetails->bootId) . '">' . SoyoustartServer::escapeHtml(ucfirst($netBootDetails->kernel) . ' ' . $netBootDetails->description) . '</option>';
                     }
 
                     echo json_encode(["type" => $type, "html" => $selectnetwork]);
@@ -1165,7 +1235,7 @@ function soyoustart_ClientArea(array $params)
                     echo json_encode($response);
                     exit;
                 } elseif ($whmcs->get_req_var("impiAction") == "impiTaskStaus") {
-                    $taskId = $whmcs->get_req_var("taskID");
+                    $taskId = (int) $whmcs->get_req_var("taskID");
                     $response = $apiCall->getTaskStatus($location, $accountId, $ovhServerName, $taskId);
 
                     if (isset($response["result"]) && $response["result"]->status == "done") {
@@ -1193,7 +1263,6 @@ function soyoustart_ClientArea(array $params)
                 } else {
                     $serverInfo = $apiCall->getServerInfo($location, $serverType, $ovhServerName, $accountId);
 
-                    $errors = [];
                     if ($serverInfo["httpcode"] != 200) {
                         $errors[] = $serverInfo["result"]->message;
                     }
@@ -1217,7 +1286,7 @@ function soyoustart_ClientArea(array $params)
                     'LANG' => $_ADDONLANG,
                     'assets' => $assets,
                     'errors' => $errors,
-                    'aditionalIpPrice' => $helper->get_data("mod_soyoustart_pricesetting", ["servertype" => $params["configoption1"]], "first"),
+                    'aditionalIpPrice' => $additionalIpPrice,
                     'serverInfo' => $serverInfo["result"],
                     'hardwareInfo' => $hardwareInfo["result"],
                     "dataCenters" => dataCenter(),
@@ -1226,8 +1295,8 @@ function soyoustart_ClientArea(array $params)
                     'memory' => $memory,
                     'disk' => $disk,
                     'clientCurrency' => getCurrency($params["userid"]),
-                    'ovhCustomHostname' => empty($ovhCustomHostname) ? $serverInfo["result"]->name : $ovhCustomHostname,
-                    'ovhReveserDNSCustomHostname' => empty($ovhReveserDNSCustomHostname) ? $serverInfo["result"]->reverse : $ovhReveserDNSCustomHostname,
+                    'ovhCustomHostname' => empty($ovhCustomHostname) ? ($serverInfo["result"]->name ?? '') : $ovhCustomHostname,
+                    'ovhReveserDNSCustomHostname' => empty($ovhReveserDNSCustomHostname) ? ($serverInfo["result"]->reverse ?? '') : $ovhReveserDNSCustomHostname,
                     'aclSettingsDedicated' => $enableSettings,
                     'enableSettingsAddon' => $enableSettingsAddon,
                     'clientareatemplate' => $params["clientareatemplate"],

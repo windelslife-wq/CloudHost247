@@ -94,7 +94,10 @@ if (Policy::isExpired((int) $order['timestamp'], (int) $blockonomics->getTimePer
 }
 
 $blockonomics_currency_code = $order['blockonomics_currency'];
-$blockonomics_currency = $blockonomics->getSupportedCurrencies()[$blockonomics_currency_code];
+$supported_currencies = $blockonomics->getSupportedCurrencies();
+$blockonomics_currency_name = isset($supported_currencies[$blockonomics_currency_code]['name'])
+    ? $supported_currencies[$blockonomics_currency_code]['name']
+    : $blockonomics_currency_code;
 if ($blockonomics_currency_code == 'btc') {
     $subdomain = 'www';
 } else {
@@ -103,9 +106,13 @@ if ($blockonomics_currency_code == 'btc') {
 
 $systemUrl = \App::getSystemURL();
 if ($status < $confirmations) {
-    $invoiceNote = '<b>' . $_BLOCKLANG['invoiceNote']['waiting'] . ' <img src="' . $systemUrl . 'modules/gateways/blockonomics/assets/img/' . $blockonomics_currency_code . '.png" style="max-width: 20px;"> ' . $blockonomics_currency->name . ' ' . $_BLOCKLANG['invoiceNote']['network'] . "</b>\r\r" .
-    $blockonomics_currency->name . " transaction id:\r" .
-        '<a target="_blank" href="https://' . $subdomain . ".blockonomics.co/api/tx?txid=$txid&addr=$addr\">$txid</a>";
+    // $txid/$addr arrive in the query string: escape them for the admin
+    // invoice note (defence in depth behind the callback secret).
+    $noteTxid = htmlspecialchars($txid, ENT_QUOTES, 'UTF-8');
+    $noteAddr = htmlspecialchars($addr, ENT_QUOTES, 'UTF-8');
+    $invoiceNote = '<b>' . $_BLOCKLANG['invoiceNote']['waiting'] . ' <img src="' . $systemUrl . 'modules/gateways/blockonomics/assets/img/' . $blockonomics_currency_code . '.png" style="max-width: 20px;"> ' . $blockonomics_currency_name . ' ' . $_BLOCKLANG['invoiceNote']['network'] . "</b>\r\r" .
+    $blockonomics_currency_name . " transaction id:\r" .
+        '<a target="_blank" href="https://' . $subdomain . ".blockonomics.co/api/tx?txid=$noteTxid&addr=$noteAddr\">$noteTxid</a>";
 
     $blockonomics->updateOrderInDb($addr, $txid, $status, $value);
     $blockonomics->updateInvoiceNote($invoiceId, $invoiceNote);

@@ -175,8 +175,7 @@ final class AdminController
                         $out['errors'][] = 'Recovery record not found.';
                         break;
                     }
-                    RecoveryService::suppress($record->email, $record->client_id, 'admin');
-                    RecoveryService::transition($recoveryId, Schema::STATUS_UNSUBSCRIBED, array('next_reminder_at' => null, 'unsubscribed_at' => RecoveryService::now()));
+                    RecoveryService::suppressRecipient($record->email, $record->client_id, 'admin');
                     $out['notices'][] = 'Customer added to the suppression list.';
                     break;
 

@@ -143,6 +143,19 @@ function cloudhost247apps_config()
                 'Default' => '',
                 'Description' => 'Phase 8 read-only, staff-only, queued bandwidth snapshot via the fixed StatsBar::get_stats display=bandwidthusage call. Keep off until the exact UAPI ACL, response schema, TLS and audit behavior pass dedicated staging; preserve cPanel zeroisunlimited semantics as reported.',
             ],
+            'cpanel_mysql_enabled' => [
+                'FriendlyName' => 'cPanel deployment-adapter MySQL provisioning enabled',
+                'Type' => 'yesno',
+                'Default' => '',
+                'Description' => 'Write capability for the cPanel application adapter: Mysql::create_database, create_user, set_privileges_on_database and delete_database through the fixed WHM bridge. Keep off until the exact UAPI ACL, response schema, TLS, credential-storage and audit behavior pass dedicated staging.',
+            ],
+            'cpanel_default_package' => [
+                'FriendlyName' => 'cPanel default WHM package for adapter-created accounts',
+                'Type' => 'text',
+                'Size' => '32',
+                'Default' => '',
+                'Description' => 'WHM package used when an application manifest declares no adapters.cpanel.package. Empty means the manifest must declare one; account creation fails closed without a package.',
+            ],
             'dns_inventory_api_enabled' => [
                 'FriendlyName' => 'Cloudflare DNS inventory API enabled',
                 'Type' => 'yesno',
@@ -266,6 +279,8 @@ function cloudhost247apps_output($vars)
                 ? 'Enabled (staff-only, queued, vendor-reported values; staging approval still required)' : 'Disabled (safe default)') . '</dd>'
             . '<dt>cPanel bandwidth-usage snapshots</dt><dd>' . ($uapiBandwidthUsageEnabled
                 ? 'Enabled (staff-only, queued, vendor-reported values; staging approval still required)' : 'Disabled (safe default)') . '</dd>'
+            . '<dt>cPanel MySQL provisioning</dt><dd>' . ($mysqlEnabled
+                ? 'Enabled (deployment-adapter database writes; staging approval still required)' : 'Disabled (safe default)') . '</dd>'
             . '<dt>Encryption key</dt><dd>' . ($keyReady ? 'Configured' : 'Missing — set CH247APPS_ENCRYPTION_KEY before storing provider credentials') . '</dd>'
             . '<dt>Real provider adapters</dt><dd>' . (int) $installed . ' installed of ' . count($providers) . ' catalog entries</dd>'
             . '<dt>Authenticated API</dt><dd><code>' . htmlspecialchars($apiUrl, ENT_QUOTES, 'UTF-8') . '</code></dd>'

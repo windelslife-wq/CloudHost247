@@ -85,8 +85,8 @@ T::throws('license activation is not an implemented capability', PanelAdapterUna
 T::throws('unimplemented Plesk does not get an adapter', PanelAdapterUnavailableException::class, function () {
     ControlPanelAdapterRegistry::forPanel('plesk');
 });
-T::ok('the application deployment factory still has no cPanel application adapter',
-    empty(AdapterFactory::availability()['cpanel']['installed']));
+T::ok('the application deployment factory ships a cPanel application adapter',
+    !empty(AdapterFactory::availability()['cpanel']['installed']));
 T::ok('customers cannot manage WHM accounts', !Rbac::allows(Actor::customer(42), Rbac::PANEL_ACCOUNT_MANAGE));
 T::ok('read-only staff may view but not manage panel accounts',
     Rbac::allows(Actor::admin(4, Actor::ROLE_STAFF), Rbac::PANEL_ACCOUNT_VIEW)

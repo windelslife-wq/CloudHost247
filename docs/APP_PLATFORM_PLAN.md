@@ -286,12 +286,14 @@ and idempotent processing), subscription lifecycle with configurable grace
 period, suspension/termination automation, provisioning strictly gated on
 verified payment. Tests `06`.
 
-### Legacy Phase 4 — cPanel application adapter (planned; not source-verified)
+### Legacy Phase 4 — cPanel application adapter (shipped 2026-10-11 via A-9)
 
-> This is earlier planning material, not proof that a cPanel application deployment
-> adapter shipped. The source tree does not contain `Ch247Apps\\Adapters\\CpanelAdapter`.
-> The active Hosting Control Plane Phase 4 is the separate cPanel/WHM account adapter
-> slice documented in [`PHASE4_CPANEL_ADAPTER.md`](PHASE4_CPANEL_ADAPTER.md).
+> Update: the cPanel application deployment adapter HAS shipped since this
+> planning note was written (`Ch247Apps\\Adapters\\CpanelAdapter`, covered by
+> `tests/27_CpanelAdapterTest.php`). The phase detail below is retained as
+> historical planning material; the active Hosting Control Plane Phase 4 is the
+> separate cPanel/WHM account adapter slice documented in
+> [`PHASE4_CPANEL_ADAPTER.md`](PHASE4_CPANEL_ADAPTER.md).
 `CpanelAdapter` using **WHM API** (`createacct`, `suspendacct`, `unsuspendacct`,
 `removeacct`, `wwwadd`, `adddns`, `modifyacct`, `setresellerlimits`, package
 management) and **UAPI** (`DomainInfo`, `Email::add_pop`, `Mysql::create_database`

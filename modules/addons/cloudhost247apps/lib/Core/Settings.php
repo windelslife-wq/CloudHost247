@@ -51,6 +51,8 @@ class Settings
         'cpanel_uapi_aliases_enabled' => '0', // read-only Phase 6 capability; off until UAPI permissions and staging are validated
         'cpanel_uapi_quota_usage_enabled' => '0', // read-only Phase 7 snapshot; off until quota UAPI permissions and staging are validated
         'cpanel_uapi_bandwidth_usage_enabled' => '0', // read-only Phase 8 snapshot; off until StatsBar UAPI permissions and staging are validated
+        'cpanel_mysql_enabled' => '0', // deployment-adapter write capability; off until Mysql UAPI permissions and staging are validated
+        'cpanel_default_package' => '', // WHM package for adapter-created accounts when the manifest declares none
         'dns_inventory_api_enabled'     => '0', // Phase 14 authenticated read-only API; Phase 12 Cloudflare gates remain independent
         'provider_poll_interval_seconds' => '15',
         'provider_operation_poll_limit' => '120',

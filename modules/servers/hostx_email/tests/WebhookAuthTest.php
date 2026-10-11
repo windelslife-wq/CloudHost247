@@ -70,4 +70,5 @@ check('unknown provider rejected', !$p->authenticateWebhook('mystery', $body, []
 
 echo "\nwebhook auth: PASS=$pass FAIL=$fail\n";
 echo "FAIL=$fail\n";
+exit($fail > 0 ? 1 : 0);
 }
