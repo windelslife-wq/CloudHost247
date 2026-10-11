@@ -117,16 +117,18 @@ The tracker's own rule counts them as unfinished.
 ## F. Re-scan 2026-10-11 — new findings not yet in sections A–E
 
 A fresh code scan on 2026-10-11 (excluding vendored libraries and `node_modules`) confirmed
-the sections above and found these additional items. None is completed yet; each needs an
-owner decision or a live check first.
+the sections above and found these additional items. F-1 and F-2 are completed; F-3 and F-4
+need owner action first; the rest are open.
 
-| # | Location | Finding | Needs |
+| # | Location | Finding | State |
 |---|---|---|---|
-| F-1 | `templates/hostx/js/overrides/override.js` | **Zero-byte**, but loaded on every page by `templates/hostx/footer.tpl:38`. Sits next to an orphan zero-byte `override.js.new`. | Owner: keep as an empty custom-JS hook (add an intent comment) or delete the reference. |
-| F-2 | `modules/servers/Smtphosting/templates/{admin,client/default}/pages/home/home.tpl` | **Zero-byte.** `Core/Http/Response.php:149` uses `home` as the default page, so the default Smtphosting page renders blank. The `EasyDCIM/home.tpl` copy in `templates/assets/tpl/` is also empty. | Owner: what the home page should show. |
-| F-3 | `modules/addons/cloudhost247apps/lib/ControlPanels/CpanelWhmClient.php` | Many UAPI bandwidth/quota/database/privilege operations throw "not implemented". These are allowlist guards on a deliberately narrow adapter, not missing code. | Owner: confirm which operations must be supported. |
-| F-4 | `modules/servers/Smtphosting/Core/...` | Unresolved `@TODO` notes in the vendored framework (e.g. `CommandLine/CommandLoop.php` "remove me", `Tasks/Manager.php` pagination). | Low priority; framework code. |
-| F-5 | `modules/addons/hostx` (63 files) and `modules/addons/xtreme_currency_rates` (18 files) | Still ionCube-encoded; no source to audit. | Already D-8. |
+| F-1 | `templates/hostx/js/overrides/override.js` (+ orphan `override.js.new`) | Zero-byte, and the include in `templates/hostx/footer.tpl` was guarded by `{if $overridesJs}`, a variable nothing ever sets. The script could never load. | **Done 2026-10-11 — removed.** Dead `{if $overridesJs}` block deleted from `footer.tpl`; both empty files deleted. `templates/hostx/tests/announcementbar.test.mjs` still 43/43 green. |
+| F-2 | `modules/servers/Smtphosting/templates/{client/default,admin}/pages/home/home.tpl` | Zero-byte; `Core/Http/Response.php:149` uses `home` as the default page, so it rendered blank. | **Done 2026-10-11 — minimal static home page** added to both client and admin templates (no required Smarty variables). The `templates/assets/tpl/EasyDCIM/home.tpl` copy is a different provider's asset and is left unchanged. |
+| F-3 | `modules/addons/tools_center` QR functions (`qrGenerator`, `qrScanner`) | The earlier inventory called these "unused, no longer called". **That is wrong:** they are listed in `clientarea.php` (lines 159–160), wired in `js/tools-center.js`, defined in `templates/tools/tool.tpl`, and covered by `tests/run-tests.js` and `tests/ui-wiring.js`. | **Not removed.** Removing them would change a live client-facing menu and break its tests. Needs owner decision: keep (update the inventory) or remove together with the menu entries and tests. |
+| F-4 | `modules/addons/hostx_tools` (retired addon) | Owner chose removal, but the addon is still wired into `ci/run-php.sh:79` and `.github/workflows/ci.yml:60`, and the WHMCS deactivation is still pending. Deleting the files now would break CI and could break the live WHMCS install. | **Not removed yet.** Order: (1) deactivate in WHMCS, (2) remove the CI step, (3) delete the folder. |
+| F-5 | `modules/servers/Smtphosting/Core/...` | Unresolved `@TODO` notes in the vendored framework (e.g. `CommandLine/CommandLoop.php` "remove me", `Tasks/Manager.php` pagination). | Open. Low priority; framework code. |
+| F-6 | `modules/addons/hostx` (63 files) and `modules/addons/xtreme_currency_rates` (18 files) | Still ionCube-encoded; no source to audit. | Open — D-8. |
+| F-7 | `modules/addons/cloudhost247apps/lib/ControlPanels/CpanelWhmClient.php` | Many UAPI bandwidth/quota/database/privilege operations throw "not implemented". These are allowlist guards on a deliberately narrow adapter, not missing code. | Open — confirm which operations must be supported. |
 
 Zero-byte files under `node_modules` (in `cloudhost247services`) are third-party packages and are not counted.
 
