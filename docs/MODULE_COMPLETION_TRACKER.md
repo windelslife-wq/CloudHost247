@@ -1626,3 +1626,54 @@ Patching rationale: Module 13 recorded the sibling addon as do-not-fork, but `ma
 - Mutation probes, each caught and each restored byte-identical (md5): neutered `escapeHtml` (19 failures), reintroduced MetaData typo (load crash + pin failure), reintroduced debug gate string (pin failure).
 - Not evidence: no live run; the 40-branch dispatcher bodies execute only against live WHMCS/OVH, so branch wiring is pinned statically while every extracted helper, builder and money path they use is executed.
 - Pre-existing note: the entry file relies on WHMCS autoloading for its own lib class (`new server()` with no `require`); the suite requires it explicitly.
+
+## Module 17 — smmprovisioning (SMM order provisioning)
+
+| Field | Information |
+|---|---|
+| Module | `modules/servers/smmprovisioning/` — 1 PHP file (396 lines) + 1 template. Shares the already-audited `modules/addons/smmaddon/lib/` (`Helper`, `ApiClient`); that audit ("Additional audit item 4", M-1–M-7) is the governing context — C-3 fixes touch only the server module + its template, never the addon. |
+| Specification | WHMCS server-module contract + SMM panel API v2 behaviour (`action=add/status/cancel`). |
+| Status | **Audited; six findings fixed (SP-1–SP-6).** New offline suite **103 checks, 0 failures** (`modules/servers/smmprovisioning/tests/`, php-wasm runner + `mod_smmprovisioning` CI step). Quantity-trust stays under the existing open M-5 owner decision. No live run. |
+
+### Findings (fixed)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| SP-1 | CreateAccount had no idempotency: every re-run placed a fresh panel order (real double-spend), and a retry after a hook-placed order doubled too. Mirrors the M-4 rule exactly: skip with `success` when a non-`error` order row already exists for the service; `error` rows still retry. | Medium | Fixed |
+| SP-2 | Suspend/Terminate ignored the panel cancel result yet always marked the local row `canceled` (local/remote drift). Now marks only when the panel response carries no `error`, and logs rejections; the WHMCS workflow still returns `success` so admin suspend/terminate never wedges on a panel hiccup. | Low | Fixed |
+| SP-3 | Link/quantity extraction was last-fuzzy-match-wins across all custom fields, so a later fuzzy field could steal the value from the correctly-named one, and the DB fallback overwrote params-derived values. New `smmprovisioning_matchField()`: exact configured name (before any `|label`) wins, then first fuzzy hit; the DB pass only fills what is still missing. Residual fuzzy quirks (e.g. a `Country` field matching `count`) fail closed to the missing-fields error. | Low | Fixed |
+| SP-4 | Success path overwrote `tblhosting.notes`, clobbering admin notes. Now reads and appends (`value('notes')` + newline join). | Low | Fixed |
+| SP-5 | Empty server hostname+IP produced a garbage `https://` endpoint and a confusing downstream exception. New `smmprovisioning_apiEndpoint()` helper: isset-guarded reads, case-insensitive scheme check (fixes `HTTP://` double-prefixing), fail-fast `API URL and API Key are required.` in CreateAccount/TestConnection; suspend/terminate skip the panel call with an activity-log line. Explicit admin `http://` is preserved (M-6 stays the owner decision for scheme policy). | Low | Fixed |
+| SP-6 | Client-area template echoed every value raw, including the client/panel link inside `href` (a `javascript:` link executed). All echoes escaped; links render as anchors only for http(s) (with `rel="noopener"`), otherwise plain text. Self-XSS + provider-trust boundary only. | Low | Fixed |
+
+### Findings (open / deferred to existing decisions)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| M-5 | Quantity comes from a client-editable field and the min clamp can raise it; `max 0` disables the cap (pinned by the suite as current behaviour). Already open as the smmaddon owner decision — C-3 inherits it unchanged. | High (financial) | Open (owner) |
+| M-6/M-7 | Panel URL scheme policy and API-key storage questions. Same standing owner items; C-3 adds no new exposure (keys stay in the server record; the mapping write fan-outs to existing tables). | Low/Medium | Open (owner) |
+
+Sibling observations (addon scope, not touched — candidates for a future smmaddon pass): `AfterModuleSuspend`/`AfterModuleTerminate` also ignore the cancel result (SP-2's twin); the suspend hook calls `getServerConfig($order->whmcs_service_id)` with a service id where a server id is expected, so the per-server mapping always misses and falls back to addon config (harmless: fallback works, mapping silently unused). No double-order between C-3 CreateAccount and `AfterModuleCreate`: the hook runs after and M-4's skip sees C-3's row.
+
+### Checked and found sound
+
+- Error semantics: panel failures store an `error` row and return the message (no silent success); `error` rows remain retryable while live rows are now sticky (SP-1).
+- Clamp behaviour pinned: below-min raised, above-max lowered, max 0 uncapped — vendor behaviour preserved, M-5 open.
+- No URL validation on links is correct: SMM links are routinely usernames/IDs, not URLs; the panel is the validator.
+- Transport (audited addon code): TLS verified, 30 s timeout, key masked as `***` in debug logs.
+- ClientArea ownership is inherited from WHMCS core (same-URL module dispatch); the module passes only the service's own row to the template.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `smmprovisioning.php` | SP-1–SP-5 + `smmprovisioning_apiEndpoint()` / `smmprovisioning_matchField()` helpers. |
+| `templates/clientarea.tpl` | SP-6 escaping + href scheme gate. |
+| `tests/` (new: bootstrap + eval harness + 5 suites + run.mjs) | 103 checks via Illuminate-Capsule/SmmAddon/log doubles; entry eval-loaded with require lines stripped (C-7 pattern), production chain proven by 01. |
+| `ci/run-php.sh`, `docs/CI.md` | New `mod_smmprovisioning` step (20 steps); count updated. |
+
+### Completion evidence
+
+- Executed: **103 checks, 0 failures** (17 load + 43 create + 21 lifecycle + 13 clientarea + 9 template, template really rendered).
+- Mutation probes, each caught and each restored byte-identical (md5): disabled idempotency (1 failure), forced-open href gate (1 failure), always-mark cancel (3 failures).
+- Not evidence: no live run; panel HTTP is doubled (shapes follow SMM API v2 + the audited ApiClient), and WHMCS-core ownership gating is assumed, not executed.

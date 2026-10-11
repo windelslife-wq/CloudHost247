@@ -8,7 +8,7 @@ repo now runs on every push and pull request via
 
 | Job | Runtime | Covers |
 |---|---|---|
-| PHP suites (8.3) | PHP 8.3 + extensions (`pdo_sqlite`, `mbstring`, `curl`, `openssl`, `intl`, `bcmath`, `simplexml`, `zip`) | All 19 PHP suites natively, one step per module, plus the 9 load/parse gates and the root-landing existence check (`ci/run-php.sh`) |
+| PHP suites (8.3) | PHP 8.3 + extensions (`pdo_sqlite`, `mbstring`, `curl`, `openssl`, `intl`, `bcmath`, `simplexml`, `zip`) | All 20 PHP suites natively, one step per module, plus the 9 load/parse gates and the root-landing existence check (`ci/run-php.sh`) |
 | PHP suites (7.4) | PHP 7.4 | Only the modules with documented 7.4 support: `CloudHost247_tools`, `digitalproducts`, `Smtphosting` (`ci/run-php.sh legacy74`) |
 | JS suites (Node 22) | Node 22 + PHP 8.3 (catalog dump only) + jsdom 24 | `core` / `qr` / `tools` suites, `tools_center` incl. UI wiring, the `hostx` announcement-bar suite, `node --check` on the shipped bundles (`ci/run-js.sh`) |
 | PHP syntax sweep | PHP 8.3 | `php -l` over every shipped PHP file except the two ionCube-encoded modules (`hostx`, `xtreme_currency_rates` — owner decision D-8) and `vendor/` trees (`ci/php-lint.sh`) |
