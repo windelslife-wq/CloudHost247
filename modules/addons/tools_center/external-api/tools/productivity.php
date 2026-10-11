@@ -1,7 +1,7 @@
 <?php
 /**
  * Productivity Tools Module
- * QR code, OCR, username checker, notepad, generators, and more
+ * OCR, username checker, notepad, generators, and more
  */
 
 class ProductivityTools {
@@ -9,62 +9,6 @@ class ProductivityTools {
     
     public function __construct($config) {
         $this->config = $config;
-    }
-    
-    /**
-     * QR Code Generator
-     */
-    public function qrGenerator($params) {
-        $data = $params['data'] ?? '';
-        $size = min((int)($params['size'] ?? 300), 1000);
-        $level = $params['level'] ?? 'M'; // L, M, Q, H
-        
-        if (empty($data)) {
-            throw new Exception('Data is required');
-        }
-        
-        if (strlen($data) > 4000) {
-            throw new Exception('Data too long (max 4000 characters)');
-        }
-        
-        // Generate QR using Google Chart API (deprecated) or QRServer
-        $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?' . http_build_query([
-            'data' => $data,
-            'size' => $size . 'x' . $size,
-            'ecc' => $level,
-            'format' => 'png'
-        ]);
-        
-        return [
-            'data' => $data,
-            'qr_image_url' => $qrUrl,
-            'size' => $size,
-            'error_correction' => $level,
-            'format' => 'PNG',
-            'download_url' => $qrUrl,
-        ];
-    }
-    
-    /**
-     * QR Scanner (decode from base64 image)
-     */
-    public function qrScanner($params) {
-        $imageBase64 = $params['image'] ?? '';
-        $imageUrl = $params['url'] ?? '';
-        
-        if (empty($imageBase64) && empty($imageUrl)) {
-            throw new Exception('QR image (base64) or URL is required');
-        }
-        
-        // This is a placeholder - actual QR decoding requires image processing libraries
-        // In production, use a QR decoding API or library like Zxing
-        
-        return [
-            'note' => 'QR decoding requires image processing. Use the QR Server decode API or a local library.',
-            'decode_url' => 'https://api.qrserver.com/v1/read-qr-code/?fileurl=' . urlencode($imageUrl),
-            'provided_url' => $imageUrl ?: null,
-            'has_image_data' => !empty($imageBase64),
-        ];
     }
     
     /**
