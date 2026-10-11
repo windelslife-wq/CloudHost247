@@ -9,7 +9,7 @@ Two independent methods were used, and a module/artifact appears below if **eith
    recorded in `docs/MODULE_COMPLETION_TRACKER.md`, plus modules in `docs/MODULES.md`
    that have **no completion record at all**.
 
-Summary: **5 stub-code artifacts** (2 missing adapter classes done via A-9 2026-10-11; 4 empty theme templates done via A-8 2026-10-11; OCR placeholder done via A-5 2026-10-11; tools entry point done via A-6 2026-10-11), **17 partially complete modules** (B-13 done 2026-10-11), **7 modules with no completion record**, **2 unauditable modules**, **1 project-level gap** (E-1 done 2026-10-11; E-2 live validation remains).
+Summary: **5 stub-code artifacts** (2 missing adapter classes done via A-9 2026-10-11; 4 empty theme templates done via A-8 2026-10-11; OCR placeholder done via A-5 2026-10-11; tools entry point done via A-6 2026-10-11), **17 partially complete modules** (B-13, B-15 done 2026-10-11), **7 modules with no completion record**, **2 unauditable modules**, **1 project-level gap** (E-1 done 2026-10-11; E-2 live validation remains).
 
 ---
 
@@ -58,7 +58,7 @@ feed, software inventory, HR/IT/ATS systems, asset register, etc.)
 | B-12 | `modules/addons/cloudhost247passkey` | Documented limitations: secondary WHMCS users (`tblusers`) login handoff returns `SERVICE_UNAVAILABLE` until verified per-install; **Passkey + 2FA in one flow not implemented**; interactive Entra ID sign-in not enabled; no remember-me cookies; per-role staff permissions "arrive in a later phase". | PASSKEY.md §18 |
 | B-13 | `modules/addons/cloudhost247_cart_recovery` | **Done 2026-10-11 — deep audit complete.** Full line-by-line audit of the module (~3,100 lines lib + entry points); 8 findings, all fixed with regression tests (suite 61 → 70 assertions, green). No module remains at baseline audit depth. | Module 14 follow-up |
 | B-14 | `modules/addons/domainbroker` | Owner items pending: B-9 (`rdap_enabled` default), a live WHMCS run, and a real RDAP lookup. | Module 4 |
-| B-15 | Announcement Bar (`templates/hostx/includes/announcementbar.tpl`) | Complete against spec but **no automated tests**; AB-3 informational item recorded. | Module 10 |
+| B-15 | Announcement Bar (`templates/hostx/includes/announcementbar.tpl`) | **Done 2026-10-11 — 43 automated checks green.** First `templates/hostx/` harness (`templates/hostx/tests/announcementbar.test.mjs`, wired into `ci/run-js.sh`) mirrors the Module 10 conformance table, pins escaping/a11y/reduced-motion notes, regresses AB-1/AB-2, and guards AB-3's server-assigned-data precondition (static snippet data, safe example URL schemes, tripwire on repo PHP feeds). Test-writing also found **AB-4** (bar hijacked core `$announcements` on `/announcements.php`, duplicating page bodies into the marquee) — fixed by renaming the bar's variable to `$announcementBarMessages`. | Module 10 + suite |
 | B-16 | `modules/addons/cloudhost247cloudflare` (+ `modules/servers/cloudhost247cloudflare`) | No live run; test suite was created by the audit pass (60 assertions). Remaining coverage gap recorded. | Module 12 |
 | B-17 | `modules/addons/cloudhost247services` | Cleanest module reviewed (no functional defect) but **no live WHMCS run**; 12 read-only handlers documented as not carrying CSRF verify calls; remaining coverage gaps recorded, not fixed. | Module 8 |
 | B-18 | OVH / SoYouStart crons (`crons/priceSync.php`, `getServer.php`, `getIpStatus.php`, `emailSend.php`) | No completion record and no tests anywhere in the tracker. | — |

@@ -9,7 +9,7 @@
 		{include file="$template/hostx_includes/mega-menu-hover-setting.tpl"}
     </head>
      <body data-phone-cc-input="{$phoneNumberInputStyle}" class="currency_format_{$currency_format}">
-		{* Announcement bar - renders only when an $announcements array has been assigned
+		{* Announcement bar - renders only when an $announcementBarMessages array has been assigned
 		   (by a hook, an addon module or statically). See includes/announcementbar-examples.tpl *}
 		{include file="$template/includes/announcementbar.tpl"}
 		{include file="$template/hostx_includes/mobile-menu.tpl"}

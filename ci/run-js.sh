@@ -40,6 +40,7 @@ step node modules/addons/CloudHost247_tools/tests/core.test.mjs
 step node modules/addons/CloudHost247_tools/tests/qr.test.mjs
 step node modules/addons/CloudHost247_tools/tests/tools.test.mjs
 step node modules/addons/tools_center/tests/run-tests.js
+step node templates/hostx/tests/announcementbar.test.mjs
 
 # Syntax gate for the shipped browser bundles touched by the audits.
 for js in \

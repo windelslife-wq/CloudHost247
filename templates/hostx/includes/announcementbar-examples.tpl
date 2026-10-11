@@ -7,7 +7,7 @@
 {*  1. BASIC: Simple text-only messages (no links)                       *}
 {* ───────────────────────────────────────────────────────────────────── *}
 
-{assign var="announcements" value=[
+{assign var="announcementBarMessages" value=[
     ['text'=>'Welcome to CloudHost247 Isc — Your trusted hosting partner since 2010'],
     ['text'=>'Free migration assistance with every plan'],
     ['text'=>'99.9% Uptime SLA guaranteed']
@@ -20,7 +20,7 @@
 {*  2. STANDARD: Messages with internal links                            *}
 {* ───────────────────────────────────────────────────────────────────── *}
 
-{assign var="announcements" value=[
+{assign var="announcementBarMessages" value=[
     ['text'=>'🚀 NVMe SSD VPS now available — Up to 10x faster!', 'url'=>'/cart.php?gid=12'],
     ['text'=>'💬 24/7 Live Chat Support', 'url'=>'/support.php'],
     ['text'=>'🔒 Free SSL Certificate included', 'url'=>'/ssl-certificates.php'],
@@ -34,7 +34,7 @@
 {*  3. ADVANCED: With Font Awesome icons and external links                *}
 {* ───────────────────────────────────────────────────────────────────── *}
 
-{assign var="announcements" value=[
+{assign var="announcementBarMessages" value=[
     ['text'=>'New Data Center in Singapore', 'url'=>'/datacenters.php', 'icon'=>'fas fa-globe-asia'],
     ['text'=>'cPanel License $15/month', 'url'=>'/cart.php?gid=5', 'icon'=>'fas fa-cube'],
     ['text'=>'Join our Affiliate Program', 'url'=>'https://affiliates.example.com', 'icon'=>'fas fa-hand-holding-usd', 'external'=>true],
@@ -57,7 +57,6 @@
 {*  Then in header.tpl simply use:                                          *}
 {* ───────────────────────────────────────────────────────────────────── *}
 
-{assign var="announcements" value=$announcementBarMessages|default:[]}
 {include file="includes/announcementbar.tpl"}
 
 
@@ -66,7 +65,7 @@
 {* ───────────────────────────────────────────────────────────────────── *}
 
 {if isset($promoActive) && $promoActive}
-    {assign var="announcements" value=[
+    {assign var="announcementBarMessages" value=[
         ['text'=>'⚡ Flash Sale: 50% OFF Managed Hosting', 'url'=>'/flash-sale.php', 'icon'=>'fas fa-bolt'],
         ['text'=>'Offer ends midnight tonight!', 'url'=>'/flash-sale.php', 'icon'=>'fas fa-clock']
     ]}
@@ -78,7 +77,7 @@
 {*  6. MULTI-LANGUAGE: Using WHMCS language strings                        *}
 {* ───────────────────────────────────────────────────────────────────── *}
 
-{assign var="announcements" value=[
+{assign var="announcementBarMessages" value=[
     ['text'=>{lang key='announcementNvmeVps'}, 'url'=>'/cart.php?gid=12'],
     ['text'=>{lang key='announcementLiveChat'}, 'url'=>'/support.php'],
     ['text'=>{lang key='announcementFreeSsl'}, 'url'=>'/ssl-certificates.php']

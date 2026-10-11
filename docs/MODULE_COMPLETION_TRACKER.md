@@ -817,7 +817,7 @@ Recommended: **option 1**, with two owner actions — confirm the licences are c
 |---|---|
 | Deliverable | `templates/hostx/includes/announcementbar.tpl`, integrated into `templates/hostx/header.tpl` immediately after `<body>` (above the navbar). |
 | Specification | `docs/Announcement Bar/Build.txt` (13 numbered requirements) plus `Announcement Bar.pdf`. |
-| Status | **Complete against the specification; two defects found and fixed (AB-1, AB-2).** One informational item recorded (AB-3). No automated tests — see note below. |
+| Status | **Complete against the specification; three defects found and fixed (AB-1, AB-2, AB-4).** One informational item recorded (AB-3). 43 automated checks green (`templates/hostx/tests/announcementbar.test.mjs`, wired into `ci/run-js.sh`) — see note below. |
 
 ### Spec conformance
 
@@ -826,7 +826,7 @@ Recommended: **option 1**, with two owner actions — confirm the licences are c
 | File at `/templates/hostx/includes/announcementbar.tpl` | Yes | File present |
 | Smarty + HTML + CSS only, no JS | Yes | No `<script>` in the template |
 | Integrated into the layout above the navbar | Yes | `header.tpl:14`, first include after `<body>` |
-| Multiple messages from an array, text + optional link | Yes | `{foreach from=$announcements item=announcement}` |
+| Multiple messages from an array, text + optional link | Yes | `{foreach from=$announcementBarMessages item=announcement}` (namespaced per AB-4) |
 | Horizontal scroll, smooth infinite loop, CSS `@keyframes` only | Yes | `@keyframes announcement-scroll`, `translateX(0 → -50%)` |
 | No `<marquee>`, no external slider library | Yes | None present |
 | Seamless looping, no gaps or jumps | Yes | Items rendered twice via `{section name=loop loop=2}` with a `-50%` translate |
@@ -843,11 +843,12 @@ Good practice already present: every interpolation is escaped (`|escape:'html'` 
 |---|---|---|---|---|
 | AB-1 | **The separator bullet anchored to the wrong element.** `.announcement-bar__item::after` used `position: absolute; right: 0`, but `.announcement-bar__item` has no `position` of its own. The nearest positioned ancestor is `.announcement-bar` (`position: relative`), so every copy of the bullet stacked at the bar's right edge instead of sitting after its item. | `.announcement-bar__item` rule has no `position`; `::after` has `position: absolute; right: 0` | Low (cosmetic) | **Fixed** by deleting the vestigial rule. Adding `position: relative` to the item would have been the wrong fix: the `.announcement-bar__dot` span already renders the intended separator, so keeping the `::after` would have doubled it. The matching `display: none` override in the `prefers-reduced-motion` block was removed with it. |
 | AB-2 | **Screen readers announced every message twice.** The seamless loop renders the item list twice (`{section name=loop loop=2}`), and both copies were exposed to assistive technology. | `{section name=loop loop=2}` wrapping the `{foreach}` | Low (accessibility) | **Fixed** — the second pass is marked `aria-hidden="true"`, so each message is announced once while the visual loop is unchanged. |
-| AB-3 | **`href` accepts any URI scheme.** `\|escape:'html'` does not stop a `javascript:` URL. Not exploitable today: the `$announcements` array is assigned server-side (by a hook, an addon, or statically), not from user input. | `href="{$announcement.url\|escape:'html'}"` | Informational | **Recorded, not changed.** Worth revisiting if announcements ever become admin- or user-editable through a form. |
+| AB-3 | **`href` accepts any URI scheme.** `\|escape:'html'` does not stop a `javascript:` URL. Not exploitable today: the `$announcementBarMessages` array is assigned server-side (by a hook, an addon, or statically), not from user input. The suite pins this precondition: no request input in the template or snippets, every shipped example URL uses `/`-relative or `https://` schemes, and a tripwire fails if any repo PHP starts feeding the bar. | `href="{$announcement.url\|escape:'html'}"` | Informational | **Recorded, not changed.** Worth revisiting if announcements ever become admin- or user-editable through a form. |
+| AB-4 | **The bar hijacked WHMCS core's `$announcements` on the announcements page.** The bar read `$announcements`, which WHMCS core assigns on `/announcements.php` with a different item shape (`title`/`text`/`summary`/`id`, no `url`). The guard passed, the `url` branch missed, and every site announcement's full body text rendered inside the scrolling bar — duplicating page content in the marquee. Escaped, so no injection; cosmetic, one page. | `templates/hostx/announcements.tpl:14` `{foreach from=$announcements …}` vs the bar's old `{foreach from=$announcements …}` | Low | **Fixed** — the bar's variable is renamed to `$announcementBarMessages` (bar template, both snippet files, header comment); the suite pins the namespaced read, the absence of bare `$announcements` in bar code, and the four-file assignment scope. Nothing assigned the old name, so nothing breaks. |
 
 ### Testing note
 
-There is no test harness for `templates/hostx/` anywhere in the repository, and none was added for this item. The template is Smarty rendered inside WHMCS, so both fixes are **static-only and unverified by execution** — they need a visual check on staging (confirm one separator dot between messages, and that the loop is still seamless). This is the weakest assurance of the ten modules and is called out rather than glossed over.
+`templates/hostx/tests/announcementbar.test.mjs` (43 checks, wired into `ci/run-js.sh`) is the first harness for `templates/hostx/`: it mirrors the conformance table above, pins the good-practice notes (escaping, `rel=noopener`, `aria-hidden`, reduced-motion, z-index, no `!important`), carries regression checks for AB-1/AB-2/AB-4, and guards AB-3's server-assigned-data precondition. Smarty executes only inside WHMCS, so the checks are static by necessity — the staging visual check (one separator dot between messages, seamless loop) still stands, but no finding is unverified-by-execution anymore.
 
 ## Module 11 — tools_center (second pass over `external-api/`)
 
@@ -1448,6 +1449,27 @@ and local runs cannot drift.
 - Known limitation (pre-existing Router design, out of scope):
   generated links and canonicals are root-absolute, so pretty URLs
   assume a root WHMCS install, not a subdirectory.
+
+### Completion evidence
+
+- New `tests/FrontTest.php`: 88 assertions — dispatch for every route
+  type, page shells (mount nodes, CSRF shape, module scripts, badges,
+  related/suggestions), API success through a real handler plus every
+  failure envelope (405/400/419/422/404), enablement matrix, site-URL
+  derivation incl. Host-header rejection, `jsonResponse` byte-parity
+  with `Runner::respond`, live execution of both entry files with
+  output capture, and static pins on the rewrite rule, the api alias
+  and on-disk assets. Full PHP suite 689/689; JS suites unchanged and
+  green (845/68/36). One mutation probe (forced enablement) failed
+  exactly the disabled-path tests; file restored byte-identical.
+- Manual QA path: with the checkout deployed over WHMCS, visit
+  `/tools`, `/tools/dns`, `/tools/dns-lookup` (run a lookup),
+  `/tools/search?q=ssl`, `/tools/disclaimer`, `/tools/sitemap.xml`,
+  a renamed URL (301) and a bogus URL (404 with suggestions); POST to
+  `/tools/api/my-ip` without a token (419) and via a page submit
+  (200). If mod_rewrite is off, the same pages answer at
+  `modules/addons/CloudHost247_tools/front.php?route=<path>`.
+ll, not a subdirectory.
 
 ### Completion evidence
 
