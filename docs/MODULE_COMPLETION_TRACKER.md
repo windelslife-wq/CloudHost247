@@ -1677,3 +1677,70 @@ Sibling observations (addon scope, not touched — candidates for a future smmad
 - Executed: **103 checks, 0 failures** (17 load + 43 create + 21 lifecycle + 13 clientarea + 9 template, template really rendered).
 - Mutation probes, each caught and each restored byte-identical (md5): disabled idempotency (1 failure), forced-open href gate (1 failure), always-mark cancel (3 failures).
 - Not evidence: no live run; panel HTTP is doubled (shapes follow SMM API v2 + the audited ApiClient), and WHMCS-core ownership gating is assumed, not executed.
+
+## Module 18 — RDP (RDP reseller provisioning)
+
+| Field | Information |
+|---|---|
+| Module | `modules/servers/RDP/` — entry `RDP.php` (366 lines), `lib/Helper.php` (296), `hooks.php` (39), Smarty `templates/overview.tpl` + static `error.tpl`, admin/client CSS+JS. Single-tenant reseller client for `rdparena.com` (`Cra-Token` header auth). All files CRLF, preserved. |
+| Specification | WHMCS server-module contract + the vendor reseller API as implied by the code (no public vendor docs found; endpoint shapes below are pinned, not assumed). |
+| Status | **Audited; seventeen findings fixed (RD-1–RD-17).** New offline suite **121 checks, 0 failures** (`modules/servers/RDP/tests/`, php-wasm runner + `mod_rdp` CI step). No live run. |
+
+### Findings (fixed)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| RD-1 | PHP 8 fatal on object-shaped panel errors: `isset($result['result'][0]->serviceid)` throws `Cannot use object of type stdClass as array`, so every vendor error message crashed instead of reporting (the `->error` branch was dead code). Guarded with `isset` + `is_array`. Found by the new suite, proven by probe 2. | Medium | Fixed |
+| RD-2 | RDP password stored **plaintext** in `tblhosting.password` (direct Capsule write bypasses WHMCS encryption, and breaks decrypt-on-display). Now wrapped in `encrypt()`. | Medium | Fixed |
+| RD-3 | Every panel response — including base64 RDP passwords — written to the module log with full retention. New `Helper::maskSensitiveForLog()` (recursive, non-mutating) masks `password` keys in the logged copy only. | Medium-Low | Fixed |
+| RD-4 | No create idempotency: the mail-failure path returned `'error'` *after* placing and storing the order, so any retry double-ordered. Create now short-circuits with `success` when the service already has a panel service id (SP-1/M-4 mirror). | Medium-Low | Fixed |
+| RD-5 | Admin services tab echoed five panel fields raw into admin HTML (only the password attribute was escaped) — provider-trust stored XSS in the admin area. All escaped with `htmlspecialchars` ENT_QUOTES. | Low-Medium | Fixed |
+| RD-6 | `overview.tpl` echoed all eight outputs raw. All carry `\|escape` (base64 password alphabet unaffected, `atob` still works). Pinned statically (Smarty is not available offline). | Low | Fixed |
+| RD-7 | ClientArea copied `hostname` into the `ipaddress` template var — copy-paste bug; the admin tab reads `->ipaddress` from the same endpoint, proving the field. Now reads `->ipaddress`. | Low | Fixed |
+| RD-8 | TestConnection left `$success`/`$errorMsg` undefined off the happy path and reported non-200 as `success=null`. Initialised, with an explicit failure message on non-200. | Low | Fixed |
+| RD-9 | ClientArea catch returned addon-shaped keys (`tabOverviewReplacementTemplate`) WHMCS server tabs ignore — exceptions blanked the tab. Now returns the standard `templatefile`/`vars` overview fallback (status 0). | Low | Fixed |
+| RD-10 | Admin-tab catch returned a bare string instead of the `[tab => html]` contract. Now returns the warning tab. | Low | Fixed |
+| RD-11 | Renew dereferenced a possibly-missing service id and possibly-null result (warnings, then `null` return). Fails fast with a message when no service id is set; null-safe confirmation/error extraction. | Low | Fixed |
+| RD-12 | CreateAccount null-shape hardening: panel outages now return real error strings instead of `null`-with-warnings (order branch + mail-result guard). | Low | Fixed |
+| RD-13 | ClientArea left `$hostname`/`$status` undefined on non-200 and trusted non-object results; added inits, `is_array`/`is_object` guards, and an isset service id. Same guard on the admin-tab condition. | Low | Fixed |
+| RD-14 | `$_REQUEST['id']` read unguarded; a missing id created orphan custom-field rows (`relid` null). Cast-guarded, field creation skipped when empty. | Low | Fixed |
+| RD-15 | `saveCustomFiledValue` inserted a value row with `fieldid` null when the field lookup missed. Returns `false` instead (creation then reports `error`, no orphan row). | Low | Fixed |
+| RD-16 | cURL timeout was **10000 seconds** (≈2.7 h per hung panel call, including the product-edit page render). Now 30 s + 10 s connect timeout, with TLS verify pinned explicitly (`VERIFYPEER`/`VERIFYHOST 2`, matching previous defaults). Pinned statically. | Low | Fixed |
+| RD-17 | Stock hook logged undefined `$params` in its catch (closure scope has `$vars`). Trivial. | Trivial | Fixed |
+
+### Findings (open / deliberately untouched)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| RD-O1 | Suspend/Unsuspend/Terminate return `true` with **no panel call** — WHMCS-side status changes leave the RDP live. No suspend endpoint is visible in the client; inventing vendor API calls is out of scope. | Low-Medium | Open (vendor gap) |
+| RD-O2 | Metadata declares SSO labels but no `SingleSignOn` handlers exist; the buttons may render broken. Cosmetic; needs owner confirmation of intended behaviour. | Low | Open (owner) |
+| RD-O3 | Exception paths log full `$params` (including the server token) to the module log — admin-visible only. Consistent with all prior turns; no change. | Low | Accepted |
+| RD-O4 | `error.tpl` is now unreferenced (the catch it named used the wrong key shape). Harmless static file; left in place. | — | Accepted |
+| RD-O5 | ConfigOptions calls the live panel on every product-edit page load (dropdown needs stock). Vendor design; the 30 s cap (RD-16) bounds the damage. | Low | Accepted |
+
+Not a finding — endpoint concatenation deliberately preserved: `baseUrl` (`…/resellerapi.php`) + `endPoint` (`stock`, `order`, `service/…`) with no separator *looks* broken, but the code's intimate response-shape knowledge (trailing-space keys like `'name '`, base64 passwords, per-endpoint fields) evidences a tested live integration, consistent with a hand-rolled vendor router that parses the tail after the script name. No public vendor docs exist to confirm any alternative, so "fixing" it would risk breaking a working integration. Pinned statically (base URL + concatenation + all endpoint strings) so no future edit silently "corrects" it.
+
+### Checked and found sound
+
+- Password reveal flow: base64 in a `data-password` attribute, decoded client-side into `textContent` — no `innerHTML` sink in either toggle script.
+- Stock hook: pipe-less/empty config guarded; failures logged, never fatal.
+- Field/template setup: existence-checked, safe to re-run on every product edit.
+- Mail customvars use the documented `base64_encode(serialize(...))` localAPI shape; decoded credentials verified in-suite.
+- The swallow-and-log Helper pattern (methods return null on transport failure) is now safe at every call site (RD-1/RD-8/RD-11/RD-12/RD-13).
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `RDP.php` | RD-1, RD-2, RD-4, RD-5 (escapes), RD-7, RD-8–RD-14 (E-series + E10/E11). |
+| `lib/Helper.php` | RD-3 mask helper + call site, RD-15, RD-16. |
+| `hooks.php` | RD-17. |
+| `templates/overview.tpl` | RD-6 (`\|escape` × 8). |
+| `tests/` (new: bootstrap + doubles + 5 suites + run.mjs) | 121 checks: real-file load + hook execution, entry behaviour against a scriptable Helper stand-in, real-Helper unit tests, static transport/template pins. |
+| `ci/run-php.sh`, `docs/CI.md` | New `mod_rdp` step (21 steps); count updated. |
+
+### Completion evidence
+
+- Executed: **121 checks, 0 failures** (48 load + 21 config/create + 11 lifecycle + 21 clientarea + 20 helper).
+- Mutation probes, each caught and each restored byte-identical (md5): removed `encrypt()` (2 failures), removed the RD-1 guard (fatal reproduced, suite red), removed log masking (1 failure).
+- Not evidence: no live run; panel HTTP shapes follow the code-implied vendor contract, `|escape` is pinned statically (no Smarty offline), and WHMCS-core tab rendering is assumed, not executed.

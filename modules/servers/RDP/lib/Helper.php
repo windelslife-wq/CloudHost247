@@ -128,6 +128,24 @@ class Helper
         }
     }
 
+    /** Replace password values with *** so credentials never land in the module log. */
+    public function maskSensitiveForLog($data)
+    {
+        if (is_object($data)) {
+            $data = clone $data;
+            foreach (get_object_vars($data) as $key => $value) {
+                $data->$key = ($key === 'password') ? '***' : $this->maskSensitiveForLog($value);
+            }
+            return $data;
+        }
+        if (is_array($data)) {
+            foreach ($data as $key => $value) {
+                $data[$key] = ($key === 'password') ? '***' : $this->maskSensitiveForLog($value);
+            }
+            return $data;
+        }
+        return $data;
+    }
     /** Function to run the API using cURL. */
     public function curlCall()
     {
@@ -161,8 +179,11 @@ class Helper
 
             curl_setopt($this->curl, CURLOPT_URL, $this->baseUrl . $this->endPoint);
             curl_setopt($this->curl, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($this->curl, CURLOPT_TIMEOUT, 10000); // timeout in seconds
+            curl_setopt($this->curl, CURLOPT_TIMEOUT, 30); // timeout in seconds
             curl_setopt($this->curl, CURLOPT_FOLLOWLOCATION, 1);
+            curl_setopt($this->curl, CURLOPT_CONNECTTIMEOUT, 10);
+            curl_setopt($this->curl, CURLOPT_SSL_VERIFYPEER, true);
+            curl_setopt($this->curl, CURLOPT_SSL_VERIFYHOST, 2);
             curl_setopt($this->curl, CURLOPT_HTTPHEADER, $this->header); // Added Content-Type for JSON
 
             $response = curl_exec($this->curl);
@@ -175,7 +196,7 @@ class Helper
                 "data" => $this->data
             ], [
                 "httpCode" => $httpCode,
-                "result" => json_decode($response),
+                "result" => $this->maskSensitiveForLog(json_decode($response)),
             ]);
 
             if (curl_errno($this->curl)) {
@@ -228,6 +249,10 @@ class Helper
 
         try {
             $customFieldId = Capsule::table('tblcustomfields')->where("type", "=", "product")->where("relid", $pid)->where("fieldname", "like", "serviceid|%")->value('id');
+
+            if (empty($customFieldId)) {
+                return false;
+            }
 
             if (Capsule::table('tblcustomfieldsvalues')->where('fieldid', $customFieldId)->where('relid', $serviceid)->first()) {
 
