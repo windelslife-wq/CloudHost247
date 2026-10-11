@@ -114,6 +114,24 @@ The tracker's own rule counts them as unfinished.
 
 ---
 
+## F. Re-scan 2026-10-11 — new findings not yet in sections A–E
+
+A fresh code scan on 2026-10-11 (excluding vendored libraries and `node_modules`) confirmed
+the sections above and found these additional items. None is completed yet; each needs an
+owner decision or a live check first.
+
+| # | Location | Finding | Needs |
+|---|---|---|---|
+| F-1 | `templates/hostx/js/overrides/override.js` | **Zero-byte**, but loaded on every page by `templates/hostx/footer.tpl:38`. Sits next to an orphan zero-byte `override.js.new`. | Owner: keep as an empty custom-JS hook (add an intent comment) or delete the reference. |
+| F-2 | `modules/servers/Smtphosting/templates/{admin,client/default}/pages/home/home.tpl` | **Zero-byte.** `Core/Http/Response.php:149` uses `home` as the default page, so the default Smtphosting page renders blank. The `EasyDCIM/home.tpl` copy in `templates/assets/tpl/` is also empty. | Owner: what the home page should show. |
+| F-3 | `modules/addons/cloudhost247apps/lib/ControlPanels/CpanelWhmClient.php` | Many UAPI bandwidth/quota/database/privilege operations throw "not implemented". These are allowlist guards on a deliberately narrow adapter, not missing code. | Owner: confirm which operations must be supported. |
+| F-4 | `modules/servers/Smtphosting/Core/...` | Unresolved `@TODO` notes in the vendored framework (e.g. `CommandLine/CommandLoop.php` "remove me", `Tasks/Manager.php` pagination). | Low priority; framework code. |
+| F-5 | `modules/addons/hostx` (63 files) and `modules/addons/xtreme_currency_rates` (18 files) | Still ionCube-encoded; no source to audit. | Already D-8. |
+
+Zero-byte files under `node_modules` (in `cloudhost247services`) are third-party packages and are not counted.
+
+---
+
 ## What this list is not
 
 - It is **not** a list of bugs: most findings behind section B are already fixed in code; the
