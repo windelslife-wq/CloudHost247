@@ -50,6 +50,10 @@ class CpanelWhmAdapter implements ControlPanelAdapterInterface
             'account.suspend' => true,
             'account.unsuspend' => true,
             'account.terminate' => true,
+            'account.database.create' => true,
+            'account.database.user.create' => true,
+            'account.database.privileges.grant' => true,
+            'account.database.delete' => true,
         ];
     }
 
@@ -270,6 +274,118 @@ class CpanelWhmAdapter implements ControlPanelAdapterInterface
             ]);
         }
         return ['terminated' => true, 'confirmed' => true, 'already_absent' => false];
+    }
+
+    /**
+     * Create one MySQL database inside a cPanel account (short name only;
+     * cPanel applies the account prefix itself).
+     */
+    public function createDatabase(array $connection, $username, $shortName)
+    {
+        $username = self::username($username);
+        $shortName = self::mysqlName($shortName);
+        $response = $this->client->call($connection, 'uapi_mysql_create_database', 'POST', [
+            'cpanel.user' => $username,
+            'cpanel.module' => 'Mysql',
+            'cpanel.function' => 'create_database',
+            'name' => $shortName,
+        ]);
+        $this->assertUapiAccepted($response, 'create the database');
+        return ['database' => $shortName];
+    }
+
+    /** Create one MySQL user inside a cPanel account (short name only). */
+    public function createDatabaseUser(array $connection, $username, $shortName, $password)
+    {
+        $username = self::username($username);
+        $shortName = self::mysqlName($shortName, 32);
+        $password = (string) $password;
+        if ($password === '' || strlen($password) > 1024 || preg_match('/[\\r\\n\\x00]/', $password)) {
+            throw new ValidationException('A database user password of 1–1024 safe characters is required.', [
+                'field' => 'password',
+            ]);
+        }
+        $response = $this->client->call($connection, 'uapi_mysql_create_user', 'POST', [
+            'cpanel.user' => $username,
+            'cpanel.module' => 'Mysql',
+            'cpanel.function' => 'create_user',
+            'name' => $shortName,
+            'password' => $password,
+        ]);
+        $this->assertUapiAccepted($response, 'create the database user');
+        return ['user' => $shortName];
+    }
+
+    /** Grant full rights on one database to one user (one fixed grant, never partial). */
+    public function grantDatabasePrivileges(array $connection, $username, $shortDatabase, $shortUser)
+    {
+        $username = self::username($username);
+        $shortDatabase = self::mysqlName($shortDatabase);
+        $shortUser = self::mysqlName($shortUser, 32);
+        $response = $this->client->call($connection, 'uapi_mysql_set_privileges', 'POST', [
+            'cpanel.user' => $username,
+            'cpanel.module' => 'Mysql',
+            'cpanel.function' => 'set_privileges_on_database',
+            'user' => $shortUser,
+            'database' => $shortDatabase,
+            'privileges' => 'ALL PRIVILEGES',
+        ]);
+        $this->assertUapiAccepted($response, 'grant privileges on the database');
+        return ['granted' => true];
+    }
+
+    /** Delete one MySQL database inside a cPanel account (short name only). */
+    public function deleteDatabase(array $connection, $username, $shortName)
+    {
+        $username = self::username($username);
+        $shortName = self::mysqlName($shortName);
+        $response = $this->client->call($connection, 'uapi_mysql_delete_database', 'POST', [
+            'cpanel.user' => $username,
+            'cpanel.module' => 'Mysql',
+            'cpanel.function' => 'delete_database',
+            'name' => $shortName,
+        ]);
+        $this->assertUapiAccepted($response, 'delete the database');
+        return ['deleted' => true];
+    }
+
+    /**
+     * Confirm a Mysql UAPI call from its status envelope.
+     *
+     * Vendor data fields are deliberately not interpreted: only the status,
+     * error and warning envelope the adapter has verified may confirm a write.
+     */
+    private function assertUapiAccepted(array $response, $action)
+    {
+        $uapi = isset($response['data']['uapi']) && is_array($response['data']['uapi'])
+            ? $response['data']['uapi'] : null;
+        if ($uapi === null || !array_key_exists('status', $uapi)) {
+            throw new CpanelException('cPanel UAPI returned an unverifiable response while trying to ' . $action . '.', [
+                'error_code' => 'CPANEL_UAPI_RESPONSE_INVALID',
+            ]);
+        }
+        if (!in_array($uapi['status'], [1, '1', true], true)
+            || self::hasUapiMessages(isset($uapi['errors']) ? $uapi['errors'] : null)) {
+            throw new CpanelException('cPanel UAPI refused to ' . $action . '.', [
+                'error_code' => 'CPANEL_UAPI_API_REJECTED',
+            ]);
+        }
+        if (self::hasUapiMessages(isset($uapi['warnings']) ? $uapi['warnings'] : null)) {
+            throw new CpanelException('cPanel UAPI returned a warning; the request to ' . $action
+                . ' cannot be confirmed.', [
+                'error_code' => 'CPANEL_UAPI_WARNING',
+            ]);
+        }
+    }
+
+    private static function mysqlName($value, $maxLength = 48)
+    {
+        $name = strtolower(trim((string) $value));
+        if ($name === '' || strlen($name) > (int) $maxLength || !preg_match('/^[a-z0-9]+$/', $name)) {
+            throw new ValidationException('A valid short MySQL name of 1–' . (int) $maxLength
+                . ' lowercase letters and digits is required.', ['field' => 'name']);
+        }
+        return $name;
     }
 
     private function setSuspended(array $connection, $username, $target, array $parameters, $operation)
