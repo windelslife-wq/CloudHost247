@@ -916,7 +916,7 @@ Authentication runs **before** category/action resolution, so all three reflecte
 |---|---|
 | Module | `modules/addons/cloudhost247cloudflare/` — 35 PHP files, 3,176 lines. Encrypted Cloudflare accounts, product mappings, linked customer services, zone/DNS CRUD. Documented in `docs/MODULES.md` (Phases 11–13) and `docs/PHASE1{1,2,3,4}_CLOUDFLARE_*.md`. |
 | Specification | `docs/MODULES.md` lines 26 and 43; `docs/PHASE11_CLOUDFLARE_COMPATIBILITY.md`, `PHASE12_CLOUDFLARE_DNS_INVENTORY.md`, `PHASE13_CLOUDFLARE_DNS_BRIDGE.md`, `PHASE14_CLOUDFLARE_DNS_API.md`. |
-| Status | **Audited; one real defect found and fixed (CF-1).** This module shipped with **no test suite at all**; the pass built one. Suite now **60 assertions, 0 failures**; lint 37 files clean. No live run. |
+| Status | **Audited; one real defect found and fixed (CF-1).** This module shipped with **no test suite at all**; the pass built one. Suite now **60 assertions, 0 failures**; lint 37 files clean. No live run. The companion WHMCS server module was audited under C-6 on 2026-10-11 (addendum below): two findings fixed, 51-check suite green. |
 
 This module was **not** on the original 11-item list. It is one of six addons that had no completion record anywhere in the tracker, so it counts as unfinished under the original definition ("any non-complete status in the tracker **plus** modules in `MODULES.md` with no completion record").
 
@@ -962,6 +962,19 @@ CF-1 was found by the new assertion suite rather than by reading: the first vers
 ### Remaining coverage gap
 
 The module's DB-backed surface has **no tests**: `Http/AdminPortal.php`, `Http/ClientPortal.php`, `Service/ProvisioningService.php`, `Service/Worker.php`, `Service/JobQueue.php`, and the three repositories. There is no offline `Db` shim for this module (unlike `digitalproducts`' `CapsuleShim`), so covering them means building one first.
+
+### C-6 addendum — server provisioning module (2026-10-11)
+
+Scope: `modules/servers/cloudhost247cloudflare/` (1 PHP file, ~140 lines + `templates/clientarea.tpl`), the thin WHMCS adapter over the audited addon classes. Never previously audited; shipped with no tests.
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| CF-S1 | `AdminServicesTabFields()` returned API/DB-derived values (zone id, nameservers, plan label, error text) unescaped while WHMCS renders tab values as provided — stored-XSS vector in the admin page if the API ever returned markup. Fixed with a file-local `htmlspecialchars` helper mirroring the addon portal's `h()`; the suite pins it with hostile values. | Low | Fixed |
+| CF-S2 | Dead `use ...Db;` import, and `plan_label` missing the `?? ''` guard its sibling fields carry (undefined-key warning on sparse rows). | Trivial | Fixed |
+
+Checked and found sound: WHMCS entry-point contracts (MetaData/ConfigOptions/Create/Suspend/Unsuspend/Terminate/ChangePackage/TestConnection/ClientArea/AdminTab/CustomButton); idempotent terminate on unmapped services; fail-closed catch blocks that log only the exception class; `clientarea.tpl` escapes every interpolation and the management URL id is `(int)`-cast.
+
+Suite: `modules/servers/cloudhost247cloudflare/tests/01_ServerModuleTest.php` — **51 checks, 0 failures** (addon doubles for repositories/provisioning/logger, real `CloudflareException`). Mutation: neutering the escape helper fails exactly the 2 XSS checks; restored byte-identical (`diff -q`). Wired into the existing `mod_cloudflare` CI step (still 17 steps, one per module); local runner `tests/run.mjs` (php-wasm).
 
 ## Module 13 — soyoustart (WGS OVH / SoYouStart admin addon)
 

@@ -4,10 +4,15 @@ if (!defined('WHMCS')) die('This file cannot be accessed directly');
 require_once dirname(__DIR__, 2) . '/addons/cloudhost247cloudflare/autoload.php';
 
 use CloudHost247\Cloudflare\Core\Logger;
-use CloudHost247\Cloudflare\Core\Db;
 use CloudHost247\Cloudflare\Repository\AccountRepository;
 use CloudHost247\Cloudflare\Repository\ServiceRepository;
 use CloudHost247\Cloudflare\Service\ProvisioningService;
+
+/** Escape admin-tab output (mirrors the addon portal's h() helper). */
+function cloudhost247cloudflare_escape($value)
+{
+    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
 
 function cloudhost247cloudflare_MetaData()
 {
@@ -112,13 +117,15 @@ function cloudhost247cloudflare_AdminServicesTabFields($params)
     $service = (new ServiceRepository())->findByHostingId((int) ($params['serviceid'] ?? 0));
     if (!$service) return ['Cloudflare Status' => 'Not provisioned'];
     $nameservers = json_decode((string) ($service['nameservers_json'] ?? '[]'), true) ?: [];
+    // Values can carry API/DB content (zone ids, nameservers, error text), so
+    // they are escaped here — WHMCS renders tab values as provided.
     return [
-        'Cloudflare Status' => (string) $service['status'],
-        'Cloudflare Plan' => (string) $service['plan_label'],
-        'Cloudflare Zone ID' => (string) ($service['zone_id'] ?? ''),
-        'Cloudflare Nameservers' => implode(', ', $nameservers),
-        'Cloudflare Last Sync' => (string) ($service['last_synced_at'] ?? 'Never'),
-        'Cloudflare Last Error' => trim((string) ($service['last_error_code'] ?? '') . ' ' . (string) ($service['last_error_message'] ?? '')),
+        'Cloudflare Status' => cloudhost247cloudflare_escape($service['status'] ?? ''),
+        'Cloudflare Plan' => cloudhost247cloudflare_escape($service['plan_label'] ?? ''),
+        'Cloudflare Zone ID' => cloudhost247cloudflare_escape($service['zone_id'] ?? ''),
+        'Cloudflare Nameservers' => cloudhost247cloudflare_escape(implode(', ', $nameservers)),
+        'Cloudflare Last Sync' => cloudhost247cloudflare_escape($service['last_synced_at'] ?? 'Never'),
+        'Cloudflare Last Error' => cloudhost247cloudflare_escape(trim((string) ($service['last_error_code'] ?? '') . ' ' . (string) ($service['last_error_message'] ?? ''))),
     ];
 }
 function cloudhost247cloudflare_AdminCustomButtonArray()
