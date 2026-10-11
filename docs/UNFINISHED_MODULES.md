@@ -9,7 +9,7 @@ Two independent methods were used, and a module/artifact appears below if **eith
    recorded in `docs/MODULE_COMPLETION_TRACKER.md`, plus modules in `docs/MODULES.md`
    that have **no completion record at all**.
 
-Summary: **7 stub-code artifacts** (incl. 2 missing adapter classes and 4 empty theme templates), **18 partially complete modules**, **7 modules with no completion record**, **2 unauditable modules**, **1 project-level gap** (E-1 done 2026-10-11; E-2 live validation remains).
+Summary: **7 stub-code artifacts** (incl. 2 missing adapter classes; 4 empty theme templates done via A-8 2026-10-11), **18 partially complete modules**, **7 modules with no completion record**, **2 unauditable modules**, **1 project-level gap** (E-1 done 2026-10-11; E-2 live validation remains).
 
 ---
 
@@ -25,7 +25,7 @@ Summary: **7 stub-code artifacts** (incl. 2 missing adapter classes and 4 empty 
 | A-6 | `modules/addons/CloudHost247_tools` | `api/index.php` — literal placeholder (`Placeholder for future API endpoints`), and the `/tools/<slug>` Router/Runner surface has **no request entry point** (no `.htaccess`, no front controller) | file body; finding **T2-4**; owner decision **D-7** | 531 PHP assertions currently guard traffic that never arrives |
 | A-7 | `modules/addons/cloudhost247ai` | **16 roadmap agent stubs** in `lib/Agents/AgentRegistry.php` `roadmap()` — registered but permanently inert (`CONFIGURATION_REQUIRED`), each naming the collector it lacks | lines ~188–246 | Declared, not built (see list below) |
 | A-9 | `modules/addons/cloudhost247apps` | **Two adapter classes are referenced but do not exist**: `Ch247Apps\Adapters\CpanelAdapter` (mapped to the `cpanel` / `whm` / `uapi` engines) and `Ch247Apps\Adapters\KubernetesAdapter` (mapped to `kubernetes`) in `lib/Adapters/AdapterFactory.php` `ENGINES`. No `class CpanelAdapter` / `class KubernetesAdapter` anywhere in the repo, no git history. The factory fails closed with `ADAPTER_NOT_INSTALLED`. | `lib/Adapters/AdapterFactory.php` lines 28–34; tracker finding **A-3** | Declared engines with no implementation |
-| A-8 | `templates/hostx` | **4 zero-byte theme templates**: `all-elements.tpl`, `clientareacreditcard.tpl`, `creditcard.tpl`, `pwreset.tpl` — shipped as empty files while their siblings (`pwresetvalidation.tpl` 2,301 bytes, the other `password-reset-*.tpl`, `*.tpl` pages) carry content. `pwreset.tpl`, `creditcard.tpl` and `clientareacreditcard.tpl` are WHMCS client-area page template names, so an empty override renders a blank page for those routes. | `ls -la templates/hostx/…` → 0 bytes; nothing in the theme references them | Empty build output in the live theme |
+| A-8 | `templates/hostx` | **Done 2026-10-11 — 3 legacy templates blank by design, 1 orphan deleted.** `pwreset.tpl`, `creditcard.tpl`, `clientareacreditcard.tpl` are retired WHMCS 8.x template names (flows moved to the `password-reset-*` route templates, `checkout.tpl` and the `account-paymentmethods` templates); upstream `WHMCS/templates-six` ships them empty / intentionally-blank too, so the blank-page risk does not apply on this 8.x theme. Each now carries a non-rendering `{* *}` marker comment saying so. `all-elements.tpl` was not a WHMCS name at all — an unreferenced rename leftover (the live showcase is `all-element-hostx.tpl`, rendered by `all-element-hostx.php`) — deleted. No zero-byte `.tpl` remains. | upstream Six + `find templates/ -name '*.tpl' -size 0` → empty | — |
 
 ### A-7 detail — the 16 unbuilt AI agents (`cloudhost247ai`)
 

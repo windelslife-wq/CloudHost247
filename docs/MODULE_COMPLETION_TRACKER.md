@@ -1230,3 +1230,33 @@ and local runs cannot drift.
   file-level `::error::` annotations so future failures name the file.
 - Not covered (unchanged): E-2 live runs; group C modules with no
   suites; D-8 encoded modules.
+
+## A-8 — empty theme templates (closed 2026-10-11)
+
+| Field | Information |
+|---|---|
+| Gap | `docs/UNFINISHED_MODULES.md` A-8: 4 zero-byte `templates/hostx` templates (`all-elements.tpl`, `clientareacreditcard.tpl`, `creditcard.tpl`, `pwreset.tpl`), feared to render blank pages. |
+| Status | **Complete.** No zero-byte `.tpl` remains. Three files are legacy WHMCS names retired in 8.x and now carry non-rendering marker comments; the fourth was an orphaned rename leftover and is deleted. |
+
+### Resolution
+
+- `pwreset.tpl`, `creditcard.tpl`, `clientareacreditcard.tpl`: verified
+  against upstream `WHMCS/templates-six`, which ships them empty /
+  intentionally-blank — the flows they once served moved to the
+  `password-reset-*` route templates, `checkout.tpl`, and the
+  `account-paymentmethods` templates (all present and current in this
+  theme, which requires WHMCS 8.x). The feared blank-page impact does
+  not apply; filling them with legacy forms would have added dead,
+  untestable code. Each file now holds a `{* *}` Smarty comment
+  recording why it is blank, so no future audit re-flags them.
+- `all-elements.tpl`: not a WHMCS template name, referenced nowhere in
+  the repo, no matching custom page — a leftover of the rename to
+  `all-element-hostx.tpl` (the 104 KB showcase rendered by root
+  `all-element-hostx.php`). Deleted.
+
+### Completion evidence
+
+- `find templates/ -name '*.tpl' -size 0` → no output.
+- Comment-only `.tpl` edits render byte-identical output to empty files
+  (Smarty `{* *}` comments produce no output), so no visual regression
+  is possible; CI re-runs green on push.
