@@ -1557,3 +1557,72 @@ ll, not a subdirectory.
 - Mutation probes, each caught and each restored byte-identical (`diff -q`): neutered MAC verify (2 failures), removed template escape (2 failures), removed CLI guard (1 failure).
 - Not evidence: no live run; the callback/poller/payment scripts are covered by static pins (they cannot be included offline) while every pure/method dependency they use is executed.
 - Ops note: USDT crediting needs `exec()` (the payment page spawns the poller daemon); on hosts without it USDT orders stall at status 0. No cron fallback is documented upstream.
+
+## Module 16 — soyoustart_vps (WGS OVH VPS provisioning)
+
+| Field | Information |
+|---|---|
+| Module | `modules/servers/soyoustart_vps/` — 16 PHP files, 4,139 lines from vendor drop `WGS-OVH-v8.0.8-Sourcecode.zip` (same product as the Module 13 admin addon and the C-5 dedicated-server module; the entry file requires both). Real code is 3 CRLF files: `soyoustart_vps.php` (1,268: WHMCS entry + a ~40-branch client-area AJAX dispatcher), `lib/SoyoustartServer.php` (892: HTML builders, invoice helpers), `hooks.php` (555: admin-area JS + InvoicePaid); the rest are 5 lang files, 7 index silencers and 1 Smarty template. |
+| Specification | WHMCS server-module contract (entry functions, ClientArea template return, AdminServicesTabFields) + OVH VPS API behaviour. |
+| Status | **Audited; eighteen findings fixed (VS-1–VS-16, VS-23, VS-24).** New offline suite **165 checks, 0 failures** (`modules/servers/soyoustart_vps/tests/`, php-wasm runner + `mod_soyoustart_vps` CI step). Six findings recorded open (VS-17–VS-22: vendor-JS/owner-side). No live run. |
+
+Patching rationale: Module 13 recorded the sibling addon as do-not-fork, but `main` already carries in-tree hardening of the shared WGS transport (C-5: `TrustedEndpoint` host pinning, TLS verify, redacted logging) — the fork decision predates C-4. The C-4 fixes below stay inside that established direction: small, behaviour-preserving, suite-pinned. Architectural items (CSRF, server-side ACL) remain open for an owner decision rather than a risky blind rewire.
+
+### Findings (fixed)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| VS-1 | `soyostart_vps_MetaData()` typo meant WHMCS never read the module metadata (fell back to defaults). One-character fix. | Trivial | Fixed |
+| VS-2 | The InvoicePaid hook only ran when the URL contained a debug flag (`$_GET['testettdttd'] == "soyoustart"`) — in production it never ran, so client-paid additional-IP/snapshot/backup orders were never paid at OVH and sat unpaid. Gate removed; fulfilment now runs on every InvoicePaid for pending rows. | High (functional) | Fixed |
+| VS-3 | Stored XSS, client→admin: client-set reverse DNS / IP descriptions / display names and provider API messages were interpolated unescaped into the admin service tab and client area (element + `data-*` attribute contexts); the admin console launcher concatenated the provider URL into a `<script>` block. New `escapeHtml()` (ENT_QUOTES) applied at ~75 sites; console URL is `json_encode()`d; Smarty vars take `|escape`. | Medium | Fixed |
+| VS-4 | The power on/off branch interpolated the raw client `type` request value into the OVH API path. Now a strict `start`/`stop` allowlist (others get HTTP 400 JSON). Analysis: OVH URL-bound request signatures already failed dot-segment tricks closed, so this was own-server sub-resource confusion, not cross-tenant. | Low | Fixed |
+| VS-5 | Copy-paste: the getServerIp error branch read `$diskid` (undefined there) instead of `$ips`. | Trivial | Fixed |
+| VS-6 | Inactive-license branch returned `$license["ststus"]` (undefined key) instead of `["status"]`. | Trivial | Fixed |
+| VS-7 | `$vpsLabelValue` used uninitialised for unhandled required-configuration labels. Now initialised to null; OS/location fallbacks guarded. | Trivial | Fixed |
+| VS-8 | `createCustomFields()` (runs on every client-area view) had a stray-brace unconditional update: 9 row rewrites per page view. Now insert-if-missing, update-only-if-changed. | Low | Fixed |
+| VS-9 | `die("kk")` debug leftover on the backup-order failure path. Now a JSON error. | Trivial | Fixed |
+| VS-10 | Robustness trio: `getServiceConfigs()` swallowed `Throwable` and returned null (callers `foreach` it) — now `[]`; `InsertIpData`'s bare `catch (Exception)` never matched inside the namespace so the documented rethrow prefix was dead — now `\Exception`; `featureHtml` missing-key warnings guarded; `$diskErrors`/`$ipsErrors` initialised; snapshot/backup order flows now verify `CreateInvoice` success like the IP flow already did (no silent unbilled OVH orders). | Low | Fixed |
+| VS-11 | `orderBackup` ran the entire cart→checkout→invoice flow *inside* the configurable-options loop (one OVH order + invoice per option), charged the snapshot price with a "Creating snapshot" description, and ended in VS-9. Lookup hoisted out of the loop, charges the real `autobackupprice` column with an "Ordering automated backup" description, errors cleanly when the option is absent. | Medium (money) | Fixed |
+| VS-12 | AdminServicesTabFieldsSave read `$_POST["customfield"][$customVieldsValues->fieldid]` with no guards (null row → warning cascade). Now isset-guarded. | Trivial | Fixed |
+| VS-13 | Unencoded server name in the `/ip?routedTo.serviceName=` query. Now `urlencode()`d. | Trivial | Fixed |
+| VS-14 | `viewIpDetails` interpolated the client `ipblock` request value into the API path. Now parsed and `FILTER_VALIDATE_IP`-checked (400-style HTML error otherwise). | Low | Fixed |
+| VS-15 | Firewall-rule `sequese` and both snapshot `taskID` values interpolated raw into API paths. Now `(int)`-cast. | Low | Fixed |
+| VS-16 | Unguarded `explode(...)[1]` / `->value` / `->paymentmethod` reads across CreateAccount, ClientArea and the hook (malformed product config → warning spam + confusing API calls). New `soyoustart_vps_cfgPart()` helper (11 account-id sites); CreateAccount fails fast with a clear message; ClientArea surfaces a contact-support error; the hook skips with an activity-log line. | Low | Fixed |
+| VS-23 | `createIPsHtml()` is called by the client IP-details branch but defined nowhere — clicking it fatals (an `Error`, uncaught by `catch (Exception)`). Now calls the real `createIpDetailsHtmlvps()` with the full responses. (Sibling C-5 has the same undefined call at `soyoustart.php:718` — flagged for the C-5 turn, not touched here.) | Medium (functional) | Fixed |
+| VS-24 | Additional-IP modal always showed price 0 with no currency (`$clientCurrency[" rate"]` / `[" prefix"]` — spaced keys that never exist). Keys fixed; server-side charge path already used real values, so display-only. | Low | Fixed |
+
+### Findings (open — vendor-JS or owner-side)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| VS-17 | API error messages render via jquerygrowl's `.html(message)` (~15 client/admin handlers) and the hostname JS self-echoes through `.html()` — provider/own-input markup executes. Fix belongs in JS (`$('<div>').text(m).html()` at each sink); server HTML payloads are escaped (VS-3). Not forked: vendored plugin, no privilege boundary crossed beyond the provider-trust one. | Low | Open |
+| VS-18 | No CSRF tokens on any client-area (~40 POST actions incl. power, firewall, snapshot, real-money IP/snapshot/backup orders) or admin-tab AJAX action. Authn/z is inherited from WHMCS core (same-URL posts); only cross-site forgery is missing. Needs token plumbing across PHP + 2 JS surfaces — an owner decision, not a blind offline rewire. | Medium-High | Open |
+| VS-19 | Per-service feature hiding (`servicePageAclSettings_*`) is enforced only by not rendering UI — every hidden action stays directly callable. Needs server-side checks per AJAX branch; same owner decision as VS-18. | Low-Medium | Open |
+| VS-20 | Admin hooks and the client template load `sweetalert2@11` (floating major) and DataTables from CDNs with no SRI. Pin + integrity (or self-host). | Low | Open |
+| VS-21 | `CheckLicense()` pings the vendor on every provision and every client-area view — a vendor outage wedges provisioning. Vendor design; cache-or-degrade is an owner call. | Low | Open |
+| VS-22 | Client `script.js` leaks every visitor IP to `ipinfo.io` via JSONP on page load (privacy + availability coupling). Remove or consent-gate. | Low | Open |
+
+### Checked and found sound
+
+- Money direction: invoice amounts are server-derived (`additionalIPprice × int-cast qty`, `snapprice`, now `autobackupprice`); client input cannot set prices. `CreateInvoice` goes through `localAPI` with Unpaid status.
+- API transport (shared, C-5-hardened): TLS verified, no redirects, signed requests host-pinned, module log redacted; OVH signatures cover method+URL+body so the VS-4/VS-14/VS-15 path confusions fail closed at OVH.
+- Exception paths log metadata-only via `SafeLog`; no secrets in logs.
+- Dead code left alone: `Renew` no-op stub, commented Reinstall button, unused `$sshKey`, commented fake-payment block in the hook, undefined `$ipParts[0]` in the template (renders empty; copy box still fed by AJAX).
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `soyoustart_vps.php` | VS-1/VS-4/VS-5/VS-6/VS-7/VS-9/VS-10b/VS-11/VS-12/VS-13/VS-14/VS-15/VS-16/VS-23 + 4 pure helpers + entry-side VS-3 escapes (CRLF preserved). |
+| `lib/SoyoustartServer.php` | `escapeHtml()` + ~58 call sites, modal static `data-ipAddress`, VS-8 n/a, VS-10/VS-12-class guards (CRLF preserved). |
+| `hooks.php` | VS-2 gate removal + config/paymentmethod guards (CRLF preserved). |
+| `templates/clientareanew.tpl` | VS-3 `|escape` (17 sites) + VS-24 currency keys. |
+| `tests/` (new: bootstrap + 6 suites + run.mjs) | 165 checks via WHMCS/Capsule/localAPI fakes + real lib class. |
+| `ci/run-php.sh`, `docs/CI.md` | New `mod_soyoustart_vps` step (19 steps); count updated. |
+
+### Completion evidence
+
+- Executed: **165 checks, 0 failures** (53 load + 31 escape + 36 validators + 20 source pins + 10 invoice math + 15 robustness).
+- Mutation probes, each caught and each restored byte-identical (md5): neutered `escapeHtml` (19 failures), reintroduced MetaData typo (load crash + pin failure), reintroduced debug gate string (pin failure).
+- Not evidence: no live run; the 40-branch dispatcher bodies execute only against live WHMCS/OVH, so branch wiring is pinned statically while every extracted helper, builder and money path they use is executed.
+- Pre-existing note: the entry file relies on WHMCS autoloading for its own lib class (`new server()` with no `require`); the suite requires it explicitly.

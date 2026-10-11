@@ -1,6 +1,6 @@
 {if $errors}
     <div class="alert alert-danger" role="alert">
-        {$errors[0]}, Please contact to the support!
+        {$errors[0]|escape}, Please contact to the support!
     </div>
 {else}
 {assign var=unique_id value=10|mt_rand:20000000}
@@ -25,11 +25,11 @@
 {/if}
 <div class="new-client-area-box">
     <div class="client-area-host-name justify-content-between">
-        <h3>{$LANG["hostName"]} <span class="serverName">{$ovhCustomHostname|@ucfirst}</span> <span class="editServerName ml-1" data-toggle="modal" data-target="#editServerName"><i class="fas fa-pen "></i></span></h3>
+        <h3>{$LANG["hostName"]} <span class="serverName">{$ovhCustomHostname|@ucfirst|escape}</span> <span class="editServerName ml-1" data-toggle="modal" data-target="#editServerName"><i class="fas fa-pen "></i></span></h3>
         {if $serverInfo->state eq "ok" || $serverInfo->state eq "running"}
-        <h3>{$LANG["state"]} : <span class="badge badge-success">{$serverInfo->state|capitalize}</span></h3>
+        <h3>{$LANG["state"]} : <span class="badge badge-success">{$serverInfo->state|capitalize|escape}</span></h3>
         {else}
-        <h3>{$LANG["state"]} : <span class="label label-danger">{$serverInfo->state|capitalize}</span></h3>
+        <h3>{$LANG["state"]} : <span class="label label-danger">{$serverInfo->state|capitalize|escape}</span></h3>
         {/if}
     </div>
     <div class="client-area-spec-wrapper">
@@ -74,7 +74,7 @@
             </span>
             <div class="client-spec-content">
                 <h4>{$LANG["cpu"]}</h4>
-                <h3>{$serverInfo->vcore} CORE</h3>
+                <h3>{$serverInfo->vcore|escape} CORE</h3>
             </div>
         </div>
         <div class="client-area-spec-box">
@@ -87,7 +87,7 @@
             </span>
             <div class="client-spec-content">
                 <h4>{$LANG["disk"]}</h4>
-                <h3>{$serverInfo->model->disk} GB</h3>
+                <h3>{$serverInfo->model->disk|escape} GB</h3>
             </div>
         </div>
         <div class="client-area-spec-box">
@@ -131,9 +131,9 @@
             <div class="col-md-6">
                 <div class="ca-content-bx">
                     <h6>{$LANG["finance"]}</h6>
-                    <p>{$LANG["paidBefore"]} <span>{$params["model"]->nextduedate}</span>
+                    <p>{$LANG["paidBefore"]} <span>{$params["model"]->nextduedate|escape}</span>
                     </p>
-                    <h4>${$params["model"]->amount}</h4>
+                    <h4>${$params["model"]->amount|escape}</h4>
                     <div class="ca-content-table-bx">
                         <table>
                             <tr>
@@ -142,7 +142,7 @@
                                 </td>
                                 <td>
                                     <p>
-                                        <span>{$params["model"]->regdate}</span>
+                                        <span>{$params["model"]->regdate|escape}</span>
                                     </p>
                                 </td>
                             </tr>
@@ -152,7 +152,7 @@
                                 </td>
                                 <td>
                                     <p>
-                                        <span>Until {$params["model"]->nextduedate}</span>
+                                        <span>Until {$params["model"]->nextduedate|escape}</span>
                                     </p>
                                 </td>
                             </tr>
@@ -162,7 +162,7 @@
                                 </td>
                                 <td>
                                     <p>
-                                        <span>{$params["model"]->billingcycle}</span>
+                                        <span>{$params["model"]->billingcycle|escape}</span>
                                     </p>
                                 </td>
                             </tr>
@@ -274,7 +274,7 @@
                                                 <strong>Server {$LANG["name"]}</strong>
                                             </div>
                                             <div class="col-4">
-                                                <span class="customServerName">{$ovhCustomHostname|@ucfirst}
+                                                <span class="customServerName">{$ovhCustomHostname|@ucfirst|escape}
                                                 </span>
                                             </div>
                                             <div class="col"></div>
@@ -320,7 +320,7 @@
                                                 <strong>Model</strong>
                                             </div>
                                             <div class="col-4">
-                                                <span class="">{$serverInfo->model->offer} </span>
+                                                <span class="">{$serverInfo->model->offer|escape} </span>
                                             </div>
                                             <div class="col"></div>
                                         </div>
@@ -342,7 +342,7 @@
                                                 <strong>Zone</strong>
                                             </div>
                                             <div class="col-4">
-                                                <span class="">{$serverInfo->zone} </span>
+                                                <span class="">{$serverInfo->zone|escape} </span>
                                             </div>
                                             <div class="col"></div>
                                         </div>
@@ -354,7 +354,7 @@
                                             </div>
                                             <div class="col">
                                                 {if $serverInfo->model->memory <= 1024} <span>
-                                                    {$serverInfo->model->memory}
+                                                    {$serverInfo->model->memory|escape}
                                                     MB</span>
                                                     {else}
                                                     <span>{$serverInfo->model->memory/1024} GB</span>
@@ -376,7 +376,7 @@
                                                 <strong>{$LANG["vpsservide_disk"]}</strong>
                                             </div>
                                             <div class="col">
-                                                <span>{$serverInfo->model->disk} GB</span>
+                                                <span>{$serverInfo->model->disk|escape} GB</span>
                                             </div>
                                         </div>
                                         <div class="row">
@@ -384,7 +384,7 @@
                                                 <strong>{$LANG["diskType"]}</strong>
                                             </div>
                                             <div class="col">
-                                                <span style="text-transform: uppercase;">{$serverInfo->offerType}</span>
+                                                <span style="text-transform: uppercase;">{$serverInfo->offerType|escape}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -833,12 +833,12 @@
                         <div class="modal-input">
                             <input type="number" class="form-control" id="additionalIp" min="1" value="1"
                                 style="width: 100%;"
-                                data-perIpPrice="{$aditionalIpPrice->additionalIPprice * $clientCurrency[" rate"]}"
-                                data-currencyCode="{$clientCurrency[" prefix"]}">
+                                data-perIpPrice="{$aditionalIpPrice->additionalIPprice * $clientCurrency["rate"]}"
+                                data-currencyCode="{$clientCurrency["prefix"]|escape}">
                             <div class="form-text">{$LANG["numberOfIpMessage"]} : {$aditionalIpPrice->additionalIPprice
                                 * $clientCurrency["rate"]}
                                 * <span id="ipPrices"> 1 = {$aditionalIpPrice->additionalIPprice *
-                                    $clientCurrency["rate"]}{$clientCurrency["prefix"]} </span></div>
+                                    $clientCurrency["rate"]}{$clientCurrency["prefix"]|escape} </span></div>
                         </div>
                     </div>
                     <div class="modal-footer">

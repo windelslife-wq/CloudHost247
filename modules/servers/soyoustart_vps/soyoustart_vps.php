@@ -13,13 +13,36 @@ use WHMCS\Module\Addon\Soyoustart\SafeLog;
 if (!defined("WHMCS")) {
     die("This file cannot be accessed directly");
 }
-function soyostart_vps_MetaData()
+function soyoustart_vps_MetaData()
 {
     return array(
         'DisplayName' => 'soyoustart_vps',
         'APIVersion' => '1.0.1',
         'RequiresServer' => true,
     );
+}
+function soyoustart_vps_cfgPart($params, $key, $index, $sep)
+{
+    $value = (is_array($params) && isset($params[$key])) ? (string) $params[$key] : '';
+    $parts = explode($sep, $value);
+    return isset($parts[$index]) ? trim($parts[$index]) : '';
+}
+function soyoustart_vps_powerAction($type)
+{
+    $type = is_string($type) ? strtolower(trim($type)) : '';
+    return in_array($type, ['start', 'stop'], true) ? $type : null;
+}
+function soyoustart_vps_firstIp($ipBlock)
+{
+    if (!is_string($ipBlock) || $ipBlock === '') {
+        return null;
+    }
+    $ip = trim(explode('/', $ipBlock)[0]);
+    return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : null;
+}
+function soyoustart_vps_consoleScript($consoleUrl)
+{
+    return '<script>window.open(' . json_encode((string) $consoleUrl) . ')</script>';
 }
 function soyoustart_vps_ConfigOptions()
 {
@@ -60,13 +83,14 @@ function soyoustart_vps_CreateAccount(array $params)
         $apiCall = new ApiCall();
         $settings = new Configuration();
         $result = Capsule::table("tbladdonmodules")->select('value')->where('setting', 'licenseNumtoactivate')->where('module', 'soyoustart')->first();
-        $license = $apiCall->CheckLicense($result->value);
+        $license = $apiCall->CheckLicense(isset($result->value) ? $result->value : '');
         if ($license["status"] != "Active") {
-            return   $license["ststus"] . " License";
+            return   $license["status"] . " License";
         }
         $serviceId = $params['serviceid'];
         $serviceConfigs = $obj->getServiceConfigs($serviceId);
-        $domainName = explode("//", $CONFIG["Domain"])[1];
+        $domainParts = explode("//", isset($CONFIG["Domain"]) ? $CONFIG["Domain"] : '');
+$domainName = isset($domainParts[1]) ? $domainParts[1] : '';
         $defaultCustomHostName = $helper->get_data("mod_acl_settings", ["key" => "generalaclSettings"], "first");
         $defaultCustomHostName = (!empty($defaultCustomHostName->id) ? json_decode($defaultCustomHostName->value, true)["defaultCustomHostName"] : "WHMCS_$serviceId'_'$domainName");
         $defaultCustomHostName = str_replace("ServiceID", $serviceId, $defaultCustomHostName);
@@ -74,16 +98,17 @@ function soyoustart_vps_CreateAccount(array $params)
         /* formating billing cycle data for API */
         $billingCycle = $params['model']["billingcycle"];
         $billingData = $obj->formateBillingCycle($billingCycle);
-        $configoption2 = explode('@', $params['configoption2']);
-        $ovhAccountData = explode('-', $params['configoption3']);
-        $planCode = $configoption2["1"];
-        $location = $ovhAccountData["1"];
-        $ovhSubsidiaryURL = explode("=", $params['configoption4']);
-        $subsidiaryLocation = $ovhSubsidiaryURL[1];
+        $planCode = soyoustart_vps_cfgPart($params, 'configoption2', 1, '@');
+        $location = soyoustart_vps_cfgPart($params, 'configoption3', 1, '-');
+        $subsidiaryLocation = soyoustart_vps_cfgPart($params, 'configoption4', 1, '=');
+        if ($planCode === '' || $location === '' || $subsidiaryLocation === '') {
+            return 'Product configuration is incomplete. Please check config options 2, 3 and 4.';
+        }
+        $ovhAccountData = explode('-', isset($params['configoption3']) ? $params['configoption3'] : '');
         $ovhPaymentMethod = $helper->get_data("mod_soyoustart_pricesetting", ["server" => "OVH", "servertype" => "VPS"], "first");
-        $orderid = $params['customfields']['ovh_order_id'];
-        $paymentmethod = $ovhPaymentMethod->paymentmethod;
-        if (!empty($params['customfields']['ovh_order_id'])) {
+        $orderid = isset($params['customfields']['ovh_order_id']) ? $params['customfields']['ovh_order_id'] : '';
+        $paymentmethod = isset($ovhPaymentMethod->paymentmethod) ? $ovhPaymentMethod->paymentmethod : '';
+        if (!empty($orderid)) {
             $paymentresponse = $apiCall->getpaymentdetail($params, $orderid, $paymentmethod, $pid, $serviceId, $ovhAccountData, $location);
             if (is_array($paymentresponse)) {
                 if ($paymentresponse["httpcode"] == 200) {
@@ -101,7 +126,7 @@ function soyoustart_vps_CreateAccount(array $params)
         /* creating cart */
         $cartDetails = $apiCall->createCart($location, $planCode, $subsidiaryLocation);
         if ($cartDetails["httpcode"] != 200) {
-            return $cartDetails['result']->message . "Please check your (" . $ovhAccountData[2] . ")" . " account is active";
+            return $cartDetails['result']->message . "Please check your (" . (isset($ovhAccountData[2]) ? $ovhAccountData[2] : '') . ")" . " account is active";
         }
         $cartId = $cartDetails["result"]->cartId;
         $cartassign = $apiCall->assignCart('/order/cart/' . $cartId . '/assign', $ovhAccountData[0], $location);
@@ -158,10 +183,11 @@ function soyoustart_vps_CreateAccount(array $params)
                     $vpsLabelName = $vpsLabelNames[(count($vpsLabelNames) - 1)];
                     $vpsLabel = strtoupper($vpsLabelName);
                 }
+                $vpsLabelValue = null;
                 if ($vpsLabel == 'DATACENTER') {
-                    $vpsLabelValue = strtoupper(!isset($params['configoptions']['Server Location'])?  $params['configoptions']['server_location'] : $params['configoptions']['Server Location']);
+                    $vpsLabelValue = strtoupper(!isset($params['configoptions']['Server Location'])?  (isset($params['configoptions']['server_location']) ? $params['configoptions']['server_location'] : '') : $params['configoptions']['Server Location']);
                 } else if ($vpsLabel == 'OS') {
-                    $vpsLabelValue = (!isset($params['configoptions']['OS Version']) ? $params['configoptions']['os_version'] : $params['configoptions']['OS Version'] );
+                    $vpsLabelValue = (!isset($params['configoptions']['OS Version']) ? (isset($params['configoptions']['os_version']) ? $params['configoptions']['os_version'] : '') : $params['configoptions']['OS Version'] );
                 } else if ($requiredConfigurationData->label == 'AUTO_RENEW_VPS') {
                     $vpsLabelValue = false;
                 }
@@ -232,7 +258,7 @@ function soyoustart_vps_SuspendAccount(array $params)
         $apiCall = new ApiCall();
         $location = $params["customfields"]["ovh_server_location"];
         $ovhServerName = $params["customfields"]["ovh_server_name"];
-        $accountId = explode("-", $params["configoption3"])[0];
+        $accountId = soyoustart_vps_cfgPart($params, "configoption3", 0, '-');
         $response = $apiCall->post("/vps/{$ovhServerName}/stop", $accountId, $location, [], "Request the machine to stop", true);
         if ($response["httpcode"] != 200) {
             return $response["result"]->message;
@@ -249,7 +275,7 @@ function soyoustart_vps_UnsuspendAccount(array $params)
         $apiCall = new ApiCall();
         $location = $params["customfields"]["ovh_server_location"];
         $ovhServerName = $params["customfields"]["ovh_server_name"];
-        $accountId = explode("-", $params["configoption3"])[0];
+        $accountId = soyoustart_vps_cfgPart($params, "configoption3", 0, '-');
         $response = $apiCall->post("/vps/{$ovhServerName}/start", $accountId, $location, [], "Request the machine to start", true);
         if ($response["httpcode"] != 200) {
             return $response["result"]->message;
@@ -267,7 +293,7 @@ function soyoustart_vps_TerminateAccount(array $params)
         $apiCall = new ApiCall();
         $location = $params["customfields"]["ovh_server_location"];
         $ovhServerName = $params["customfields"]["ovh_server_name"];
-        $accountId = explode("-", $params["configoption3"])[0];
+        $accountId = soyoustart_vps_cfgPart($params, "configoption3", 0, '-');
         $enableSettings = $helper->get_data("mod_acl_settings", ["key" => "generalaclSettings"], "first");
         $enableSettings = (!empty($enableSettings->id) ? json_decode($enableSettings->value, true) : []);
         if (isset($enableSettings["serverTemination"]) && $enableSettings["serverTemination"] == "on") {
@@ -308,7 +334,7 @@ function soyoustart_vps_AdminServicesTabFields(array $params)
             $location = $params["customfields"]["ovh_server_location"];
             $serverType = $params["moduletype"];
             $ovhServerName = $params["customfields"]["ovh_server_name"];
-            $accountId = explode("-", $params["configoption3"])[0];
+            $accountId = soyoustart_vps_cfgPart($params, "configoption3", 0, '-');
             $ovhCustomHostname = $params["customfields"]["ovh_custom_hostname"];
             /* Get serviceinfo  */
             if ($whmcs->get_req_var("snapshot")) {
@@ -316,7 +342,7 @@ function soyoustart_vps_AdminServicesTabFields(array $params)
                     $response = $apiCall->get("/vps/{$ovhServerName}/snapshot", $accountId, $location, "Get SnapshotInfo", true);
                     if ($response["httpcode"] != 200) {
                         if ($response["result"]->message == "This service does not exist") {
-                            $html = '<div class="alert alert-danger" role="alert">Error: ' . $response["result"]->message . '</div>';
+                            $html = '<div class="alert alert-danger" role="alert">Error: ' . server::escapeHtml($response["result"]->message) . '</div>';
                         } else {
                             $html .= '
                             <div id="snapshot">
@@ -331,11 +357,11 @@ function soyoustart_vps_AdminServicesTabFields(array $params)
                         $dateTime = new \DateTime("$creationDate");
                         $readableFormat = $dateTime->format('D, Y-m-d H:i:s');
                         $html = '<tr>
-                                    <td>' . $response["result"]->region . '</td>
+                                    <td>' . server::escapeHtml($response["result"]->region) . '</td>
                                         <td>' . $readableFormat . '</td>
-                                        <td>' . $response["result"]->description . ' </td>
+                                        <td>' . server::escapeHtml($response["result"]->description) . ' </td>
                                         <td>
-                                        <button class="editSnapshot" type="button" data-toggle="modal" data-target="#editSnapshot" data-desc="' . $response["result"]->description . '"><i class="fas fa-pen"></i></button>
+                                        <button class="editSnapshot" type="button" data-toggle="modal" data-target="#editSnapshot" data-desc="' . server::escapeHtml($response["result"]->description) . '"><i class="fas fa-pen"></i></button>
                                         <button id="revertSnapshot" type="button"><i class="fal fa-redo"></i> </button>
                                         <button id="deleteSnapshot" type="button"><i class="fas fa-trash"></i></button>
                                         </td>
@@ -356,7 +382,7 @@ function soyoustart_vps_AdminServicesTabFields(array $params)
                     echo json_encode($response);
                     exit;
                 } elseif ($whmcs->get_req_var("snapshotAction") == "getStatus") {
-                    $taskid = $whmcs->get_req_var("taskID");
+                    $taskid = (int) $whmcs->get_req_var("taskID");
                     $response = $apiCall->get("/vps/{$ovhServerName}/tasks/{$taskid}", $accountId, $location, "Getting task status", true);
                     echo json_encode($response);
                     exit;
@@ -374,11 +400,11 @@ function soyoustart_vps_AdminServicesTabFields(array $params)
                     if ($ips["httpcode"] == 200) {
                         $iptInfo = $obj->getipData($ips['result'], $ovhServerName, $accountId, $location);
                     } else {
-                        $ipsErrors = $diskid["result"]->message;
+                        $ipsErrors = $ips["result"]->message;
                     }
                     foreach ($iptInfo as $key => $value) {
                         if ($value->version == "v4") {
-                            echo $value->ipAddress;
+                            echo server::escapeHtml($value->ipAddress);
                         }
                     }
                     exit;
@@ -447,7 +473,7 @@ function soyoustart_vps_AdminServicesTabFieldsSave(array $params)
             ->where("tblcustomfields.fieldname", "like", "%ovh_custom_hostname|%")
             ->first();
         $location = $params["customfields"]["ovh_server_location"];
-        $accountId = explode("-", $params["configoption3"])[0];
+        $accountId = soyoustart_vps_cfgPart($params, "configoption3", 0, '-');
         $ovhServerName = trim($params["customfields"]["ovh_server_name"]);
         $configuration = new Configuration();
         $apiCall = new ApiCall();
@@ -462,7 +488,8 @@ function soyoustart_vps_AdminServicesTabFieldsSave(array $params)
         if (!empty($postData)) {
             $response = $helper->insert_update("mod_acl_settings", ["key" => "servicePageAclSettings_$serviceId"], ["key" => "servicePageAclSettings_$serviceId", "value" => json_encode($postData)]);
         }
-        $customServerName = $_POST["customfield"][$customVieldsValues->fieldid];
+        $customFieldId = isset($customVieldsValues->fieldid) ? $customVieldsValues->fieldid : null;
+        $customServerName = ($customFieldId !== null && isset($_POST["customfield"][$customFieldId])) ? $_POST["customfield"][$customFieldId] : '';
         if (!empty($customServerName)) {
             $response = $apiCall->put("/vps/{$ovhServerName}", $accountId, $location, ["displayName" => $customServerName], "Updating custome server name", true);
             if ($response["httpcode"] != 200) {
@@ -492,7 +519,7 @@ function soyoustart_vps_rescuereboot(array $params)
             $location = $params["customfields"]["ovh_server_location"];
             $serverType = $params["moduletype"];
             $ovhServerName = $params["customfields"]["ovh_server_name"];
-            $accountId = explode("-", $params["configoption3"])[0];
+            $accountId = soyoustart_vps_cfgPart($params, "configoption3", 0, '-');
             $data = ["netbootMode" => "local"];
             $response = $apiCall->recuseService($location, $accountId, $ovhServerName, $data);
             if ($response["httpcode"] != 200) {
@@ -516,7 +543,7 @@ function soyoustart_vps_rebootServer(array $params)
             $location = $params["customfields"]["ovh_server_location"];
             $serverType = $params["moduletype"];
             $ovhServerName = $params["customfields"]["ovh_server_name"];
-            $accountId = explode("-", $params["configoption3"])[0];
+            $accountId = soyoustart_vps_cfgPart($params, "configoption3", 0, '-');
             //reboot server 
             $serverreboot = $apiCall->post("/vps/{$ovhServerName}/reboot", $accountId, $location, [], "Reboot Server ", true);
             if ($serverreboot["httpcode"] != 200) {
@@ -540,7 +567,7 @@ function soyoustart_vps_console(array $params)
         $location = $params["customfields"]["ovh_server_location"];
         $serverType = $params["moduletype"];
         $ovhServerName = $params["customfields"]["ovh_server_name"];
-        $accountId = explode("-", $params["configoption3"])[0];
+        $accountId = soyoustart_vps_cfgPart($params, "configoption3", 0, '-');
         $response = $apiCall->post("/vps/{$ovhServerName}/getConsoleUrl", $accountId, $location, [], "console ", true);
         if ($response["httpcode"] != 200) {
             return array(
@@ -548,7 +575,7 @@ function soyoustart_vps_console(array $params)
             );
         } else {
             $consoleUrl = $response['result'];
-            echo '<script>window.open("' . $consoleUrl . '")</script>';
+            echo soyoustart_vps_consoleScript($consoleUrl);
             exit;
             // return 'success';
         }
@@ -565,7 +592,7 @@ function soyoustart_vps_poweron(array $params)
         $apiCall = new ApiCall();
         $location = $params["customfields"]["ovh_server_location"];
         $ovhServerName = $params["customfields"]["ovh_server_name"];
-        $accountId = explode("-", $params["configoption3"])[0];
+        $accountId = soyoustart_vps_cfgPart($params, "configoption3", 0, '-');
         $response = $apiCall->post("/vps/{$ovhServerName}/start", $accountId, $location, [], "Request the machine to start", true);
         if ($response["httpcode"] != 200) {
             return $response["result"]->message;
@@ -582,7 +609,7 @@ function soyoustart_vps_poweroff(array $params)
         $apiCall = new ApiCall();
         $location = $params["customfields"]["ovh_server_location"];
         $ovhServerName = $params["customfields"]["ovh_server_name"];
-        $accountId = explode("-", $params["configoption3"])[0];
+        $accountId = soyoustart_vps_cfgPart($params, "configoption3", 0, '-');
         $response = $apiCall->post("/vps/{$ovhServerName}/stop", $accountId, $location, [], "Request the machine to stop", true);
         if ($response["httpcode"] != 200) {
             return $response["result"]->message;
@@ -599,7 +626,7 @@ function soyoustart_vps_ClientArea(array $params)
         if (isset($_SESSION['uid']) && !empty($_SESSION['uid'])) {
             $apiCall = new ApiCall();
             $result = Capsule::table("tbladdonmodules")->select('value')->where('setting', 'licenseNumtoactivate')->where('module', 'soyoustart')->first();
-            $license = $apiCall->CheckLicense($result->value);
+            $license = $apiCall->CheckLicense(isset($result->value) ? $result->value : '');
             if ($license["status"] != "Active") {
                 return   $license["status"] . " License, Reason: " .$license["description"];
             }
@@ -628,12 +655,10 @@ function soyoustart_vps_ClientArea(array $params)
             $ovhCustomHostname = $params["customfields"]["ovh_custom_hostname"];
             $ovhCustomFTPHostname = $params["customfields"]["ovh_ftp_custom_hostname"];
             $customHostName = '';
-            $accountId = explode("-", $params["configoption3"])[0];
-            $configoption2 = explode('@', $params['configoption2']);
-            $planGroup = $configoption2["0"];
-            $planCode = $configoption2["1"];
-            $ovhSubsidiaryURL = explode("=", $params['configoption4']);
-            $subsidiaryLocation = $ovhSubsidiaryURL[1];
+            $accountId = soyoustart_vps_cfgPart($params, "configoption3", 0, '-');
+            $planGroup = soyoustart_vps_cfgPart($params, 'configoption2', 0, '@');
+            $planCode = soyoustart_vps_cfgPart($params, 'configoption2', 1, '@');
+            $subsidiaryLocation = soyoustart_vps_cfgPart($params, 'configoption4', 1, '=');
             $billingCycle = $params['model']["billingcycle"];
             $billingData = $obj->formateBillingCycle($billingCycle);
             $additionalIpPrice = $helper->get_data("mod_soyoustart_pricesetting", ["servertype" => $params["configoption1"]], "first");
@@ -644,6 +669,9 @@ function soyoustart_vps_ClientArea(array $params)
             $enableSettingsAddon = Capsule::table('mod_soyoustart_product_settings')->where("product", "like", "$pid\_%")->first();
             $enableSettingsAddon = (isset($enableSettingsAddon->id) ? explode(",", $enableSettingsAddon->settings) : []);
             $errors = [];
+            if ($planCode === '' || $subsidiaryLocation === '') {
+                $errors[] = "Product configuration is incomplete, contact support!";
+            }
             if($ovhServerName == ""){
                 $errors[] = "Your server has not been assigned yet, contact support!";
             } else{
@@ -673,7 +701,7 @@ function soyoustart_vps_ClientArea(array $params)
                 if ($update == "success") {
                     echo json_encode(["httpcode" => 200, "result" => ""]);
                 } else {
-                    echo json_encode(["httpcode" => 204, "result" => ["message" => $update]]);
+                    echo json_encode(["httpcode" => 204, "result" => ["message" => server::escapeHtml($update)]]);
                 }
                 exit;
             } elseif ($whmcs->get_req_var("manage_ips")) {
@@ -683,11 +711,11 @@ function soyoustart_vps_ClientArea(array $params)
                     $ipforewall = $apiCall->getIpDetails($location, $ovhServerName, $accountId, $ip);
                     if ($ipdetails["httpcode"] != 200) {
                         echo '<div class="alert alert-danger" role="alert">
-                            ' . $ipdetails["result"]->message . '
+                            ' . server::escapeHtml($ipdetails["result"]->message) . '
                             </div>';
                         exit;
                     }
-                    $ipDetailsHtml = $obj->createIPsHtml($ipdetails["result"], $ipforewall["result"], $_ADDONLANG);
+                    $ipDetailsHtml = $obj->createIpDetailsHtmlvps($ipdetails, $ipforewall, $_ADDONLANG);
                     echo $ipDetailsHtml;
                     exit;
                 } else if ($whmcs->get_req_var("iPaction") == "addDesc") {
@@ -771,7 +799,8 @@ function soyoustart_vps_ClientArea(array $params)
                 } elseif ($whmcs->get_req_var("iPaction") == "deleteFirewallRule") {
                     $ipblock = urlencode($whmcs->get_req_var("ipblock"));
                     $ipReverse = str_replace("::", "", explode("/", $whmcs->get_req_var("ipblock")));
-                    $endPoint = "/ip/{$ipblock}/firewall/{$ipReverse["0"]}/rule/{$whmcs->get_req_var("sequese")}";
+                    $sequence = (int) $whmcs->get_req_var("sequese");
+                    $endPoint = "/ip/{$ipblock}/firewall/{$ipReverse["0"]}/rule/{$sequence}";
                     $data = [];
                     $response = $apiCall->__delete($endPoint, $accountId, $location, $data, "deleting firewall rules", true);
                     echo json_encode($response);
@@ -872,8 +901,12 @@ function soyoustart_vps_ClientArea(array $params)
                         }
                     }
                 } elseif ($whmcs->get_req_var("iPaction") == "viewIpDetails") {
-                    $ip = explode("/", $whmcs->get_req_var("ipblock"));
-                    $ipdetails = $apiCall->get("/vps/{$ovhServerName}/ips/$ip[0]", $accountId, $location, "Get ip data", true);
+                    $ipAddress = soyoustart_vps_firstIp($whmcs->get_req_var("ipblock"));
+                    if ($ipAddress === null) {
+                        echo '<div class="alert alert-danger" role="alert">Invalid IP block.</div>';
+                        exit;
+                    }
+                    $ipdetails = $apiCall->get("/vps/{$ovhServerName}/ips/$ipAddress", $accountId, $location, "Get ip data", true);
                     $ipdetail = $apiCall->getIpDetails($location, $ovhServerName, $accountId, $whmcs->get_req_var("ipblock"));
                     $html = $obj->createIpDetailsHtmlvps($ipdetails, $ipdetail, $_ADDONLANG);
                     echo $html;
@@ -882,7 +915,7 @@ function soyoustart_vps_ClientArea(array $params)
                     $ips = $apiCall->get("/vps/{$ovhServerName}/ips", $accountId, $location, "Get ip address", true);
                     if ($ips["httpcode"] != 200) {
                         echo '<div class="alert alert-danger" role="alert">
-                            ' . $ips["result"]->message . '
+                            ' . server::escapeHtml($ips["result"]->message) . '
                             </div>';
                         exit;
                     }
@@ -906,7 +939,12 @@ function soyoustart_vps_ClientArea(array $params)
                     echo json_encode($response);
                     exit;
                 } elseif ($whmcs->get_req_var("boot") == "serverOnOff") {
-                    $response = $apiCall->post("/vps/{$ovhServerName}/{$whmcs->get_req_var("type")}", $accountId, $location, [], "Request the machine to {$whmcs->get_req_var("type")}", true);
+                    $powerAction = soyoustart_vps_powerAction($whmcs->get_req_var("type"));
+                    if ($powerAction === null) {
+                        echo json_encode(["httpcode" => 400, "result" => ["message" => "Invalid power action."]]);
+                        exit;
+                    }
+                    $response = $apiCall->post("/vps/{$ovhServerName}/{$powerAction}", $accountId, $location, [], "Request the machine to {$powerAction}", true);
                     echo json_encode($response);
                     exit;
                 }
@@ -922,23 +960,23 @@ function soyoustart_vps_ClientArea(array $params)
             } elseif ($whmcs->get_req_var("getDatacenter")) {
                 $dataCenter = $apiCall->get("/vps/{$ovhServerName}/datacenter", $accountId, $location, "Geting datacenter", true);
                 if ($dataCenter["httpcode"] != 200) {
-                    echo $dataCenter["result"]->message;
+                    echo server::escapeHtml($dataCenter["result"]->message);
                     exit;
                 }
-                echo $dataCenter["result"]->longName;
+                echo server::escapeHtml($dataCenter["result"]->longName);
                 exit;
             } elseif ($whmcs->get_req_var("getOpetaingSystem")) {
                 $operatingSystem = $apiCall->get("/vps/{$ovhServerName}/images/current", $accountId, $location, "Geting operating system", true);
                 if ($operatingSystem["httpcode"] != 200) {
-                    echo $operatingSystem["result"]->message;
+                    echo server::escapeHtml($operatingSystem["result"]->message);
                     exit;
                 }
-                echo $operatingSystem["result"]->name;
+                echo server::escapeHtml($operatingSystem["result"]->name);
                 exit;
             } elseif ($whmcs->get_req_var("getIps")) {
-                $response = $apiCall->get("/ip?routedTo.serviceName=$ovhServerName", $accountId, $location, "Geting IPs", true);
+                $response = $apiCall->get("/ip?routedTo.serviceName=" . urlencode($ovhServerName), $accountId, $location, "Geting IPs", true);
                 if ($response["httpcode"] != 200) {
-                    echo $response["result"]->message;
+                    echo server::escapeHtml($response["result"]->message);
                     exit;
                 }
                 $ipV4 = [];
@@ -995,6 +1033,10 @@ function soyoustart_vps_ClientArea(array $params)
                     $snapshotPrice = $additionalIpPrice->snapprice;
                     $discription = "Creating snapshot";
                     $results = $obj->createInvoice($userId, $snapshotPrice, $discription);
+                    if (!is_array($results) || !isset($results['result']) || $results['result'] != "success") {
+                        echo json_encode(is_array($results) ? $results : ["result" => "error", "message" => "Invoice creation failed."]);
+                        exit;
+                    }
                     $createdinvoiceId = $results['invoiceid'];
                     $data = [
                         "invoiceid" => $createdinvoiceId,
@@ -1033,7 +1075,7 @@ function soyoustart_vps_ClientArea(array $params)
                     echo json_encode($response);
                     exit;
                 } elseif ($whmcs->get_req_var("snapshotAction") == "getStatus") {
-                    $taskid = $whmcs->get_req_var("taskID");
+                    $taskid = (int) $whmcs->get_req_var("taskID");
                     $response = $apiCall->get("/vps/{$ovhServerName}/tasks/{$taskid}", $accountId, $location, "Getting task status", true);
                     echo json_encode($response);
                     exit;
@@ -1054,7 +1096,7 @@ function soyoustart_vps_ClientArea(array $params)
                     // $availableTemplates = $apiCall->get("/vps/{$ovhServerName}/templates", $accountId, $location, "Getting Templates ids", true);
                     $availableTemplates = $apiCall->get("/vps/{$ovhServerName}/images/available", $accountId, $location, "Getting Templates ids", true);
                     if ($availableTemplates["httpcode"] != 200) {
-                        $error = $availableTemplates["result"]->message;
+                        $error = server::escapeHtml($availableTemplates["result"]->message);
                         echo json_encode(["error" => "true", "html" => $error]);
                         exit;
                     }
@@ -1063,10 +1105,10 @@ function soyoustart_vps_ClientArea(array $params)
                         $availableTemplateDetails = $apiCall->get("/vps/{$ovhServerName}/images/available/{$value}", $accountId, $location, "Getting Template details", true);
                         // $availableTemplateDetails = $apiCall->get("/vps/{$ovhServerName}/templates/{$value}", $accountId, $location, "Getting Template details", true);
                         if ($availableTemplateDetails["httpcode"] != 200) {
-                            echo json_encode(["error" => "true", "html" => $availableTemplateDetails["result"]->message]);
+                            echo json_encode(["error" => "true", "html" => server::escapeHtml($availableTemplateDetails["result"]->message)]);
                             exit;
                         }
-                        $html .= '<option value="' . $value . '">' . ucwords(str_replace(array('-', '_'), ' ', $availableTemplateDetails["result"]->name)) . '</option>';
+                        $html .= '<option value="' . server::escapeHtml($value) . '">' . server::escapeHtml(ucwords(str_replace(array('-', '_'), ' ', $availableTemplateDetails["result"]->name))) . '</option>';
                     }
                     echo json_encode(["html" => $html]);
                     exit;
@@ -1098,6 +1140,11 @@ function soyoustart_vps_ClientArea(array $params)
                             $backupPlanCode = Capsule::table("tblproductconfigoptionssub")->where("id", $options["selectedvalue"])->select("optionname")->first();
                             $backupPlanCode = str_replace("_", "-", (explode("|", $backupPlanCode->optionname)[0]));
                         }
+                    }
+                    if ($backupPlanCode === false) {
+                        echo json_encode(["httpcode" => 400, "result" => ["message" => "Automated Backup option is not configured for this product."]]);
+                        exit;
+                    }
                         $data = ["cartId" => $cartId, "duration" => $billingData["durationVal"], "planCode" => $backupPlanCode, "pricingMode" => $billingData["pricingModeVal"], "quantity" => (int) 1];
                         $response = $apiCall->post("/order/cartServiceOption/vps/{$ovhServerName}", $accountId, $location, $data, "assigning Autobackup option in cart", true);
                         if ($response["httpcode"] != 200) {
@@ -1114,9 +1161,13 @@ function soyoustart_vps_ClientArea(array $params)
                         $fields = ["ovh_automated_backup_order_id" => $orderId];
                         $helper->insert_custom_fields_value($serviceId, $pid, $fields);
                         $userId = $params["userid"];
-                        $snapshotPrice = $additionalIpPrice->snapprice;
-                        $discription = "Creating snapshot";
-                        $results = $obj->createInvoice($userId, $snapshotPrice, $discription);
+                        $backupPrice = isset($additionalIpPrice->autobackupprice) ? $additionalIpPrice->autobackupprice : 0;
+                        $discription = "Ordering automated backup";
+                        $results = $obj->createInvoice($userId, $backupPrice, $discription);
+                    if (!is_array($results) || !isset($results['result']) || $results['result'] != "success") {
+                        echo json_encode(is_array($results) ? $results : ["result" => "error", "message" => "Invoice creation failed."]);
+                        exit;
+                    }
                         $createdinvoiceId = $results['invoiceid'];
                         $data = [
                             "invoiceid" => $createdinvoiceId,
@@ -1136,8 +1187,6 @@ function soyoustart_vps_ClientArea(array $params)
                             echo json_encode($response);
                             exit;
                         }
-                        die("kk");
-                    }
                 } else {
                     $BackupData = $apiCall->get("/vps/{$ovhServerName}/automatedBackup", $accountId, $location, "Getting backup data", true);
                     $html = $obj->cretateBackupHtml($BackupData, $BackupData, $_ADDONLANG);
@@ -1258,7 +1307,7 @@ function createCustomFields($pid)
             $exist_custom_fields = Capsule::table('tblcustomfields')->where('type', $customfieldval['type'])->where('relid', $customfieldval['relid'])->where('fieldname', 'like', $fieldname[0] . '|%')->get();
             if (!isset($exist_custom_fields[0]->id)) {
                 Capsule::table('tblcustomfields')->insert($customfieldval);
-            } {
+            } elseif ($exist_custom_fields[0]->fieldname !== $customfieldval["fieldname"] || $exist_custom_fields[0]->description !== $customfieldval['description']) {
                 Capsule::table('tblcustomfields')->where("relid", $pid)->where("type", "product")->where('fieldname', 'like', $fieldname[0] . '|%')->update(["fieldname" => $customfieldval["fieldname"], "description" => $customfieldval['description']]);
             }
         }
