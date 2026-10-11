@@ -1349,3 +1349,59 @@ and local runs cannot drift.
 - Comment-only `.tpl` edits render byte-identical output to empty files
   (Smarty `{* *}` comments produce no output), so no visual regression
   is possible; CI re-runs green on push.
+
+## A-5 — Image to Text OCR placeholder (closed 2026-10-11)
+
+| Field | Information |
+|---|---|
+| Gap | `docs/UNFINISHED_MODULES.md` A-5: `CloudHost247_tool_image_to_text()` returned `'status' => 'placeholder'` — server-side OCR never implemented, while the catalog promised an opt-in server path. |
+| Status | **Complete.** The handler performs real OCR via OCR.space; the opt-in is enforced server-side and gated in both frontends; the catalog describes the shipped behaviour. |
+
+### Resolution
+
+- Server (`includes/tools/productivity_tools.php`): the handler now
+  requires the explicit `server_ocr` opt-in flag (re-checked here so
+  direct API calls cannot bypass consent), accepts the image as a
+  multipart upload or base64, validates the bytes in memory (finfo
+  MIME + `getimagesize`, ≤ 1 MB, ≤ 8000 px per side, JPG/PNG/GIF/BMP/
+  TIFF only — the raster formats the provider accepts), and POSTs to
+  `https://api.ocr.space/parse/image` with the key from the existing
+  `ocr_api_key` module setting. The transport is a dedicated cURL
+  block with TLS verification on (the shared module helper disables
+  it), a 20 s timeout inside the Runner's 25 s budget, and provider
+  failures mapped to user-safe errors (invalid key, usage limit,
+  timeout, unreadable image). Images are never written to disk and
+  never logged. A missing key yields a requires-configuration error,
+  not a placeholder.
+- Legacy bundle (`assets/js/CloudHost247-tools.js`): precise file
+  `accept` list, an opt-in checkbox in the form def, a submit gate
+  that refuses to upload until consent is ticked, and a renderer for
+  the extracted text with stats.
+- Route-split module (`assets/js/tools/image-to-text.js`): rewritten
+  for the JSON page transport — the picked file is read to a data URL
+  in a `mount()` hook (700 KB client cap so base64 fits the 1 MB
+  request limit), `validate()` blocks submits without a file or
+  without consent, and the module is marked `sensitive` so image data
+  stays out of localStorage history and share links.
+- Catalog (`config/cloudhost247-tools.php`): `exec` `hybrid` →
+  `server`, `inputs` updated, new `sensitive` flag, and the
+  description rewritten to the shipped behaviour. The `hybrid` value
+  promised a browser-local OCR engine that exists nowhere in the
+  tree; no code ships that promise any more. A vendored in-browser
+  engine (Tesseract-style, cf. the vendored QR decoder) remains a
+  possible future enhancement — it would be a new feature, not a
+  stub completion.
+
+### Completion evidence
+
+- New `tests/OcrTest.php`: 69 assertions covering opt-in allowlist,
+  both intake paths, validation, key configuration, the stubbed
+  success path (text/stats/payload shape), and every mapped failure —
+  69/69 green, full PHP suite 601/601.
+- JS suites green (`tools` 845 incl. the new `sensitive` parity
+  assertion, `core` 68, `qr` 36); `node --check` clean on both
+  edited bundles.
+- Manual QA path for the site admin: set `OCR API Key` in the module
+  settings (free keys at ocr.space/ocrapi/freekey), upload a clear
+  photo with the consent box ticked, and expect extracted text; the
+  provider's shared `helloworld` key works for a one-off smoke test.

@@ -307,7 +307,8 @@
             { name: 'domain', label: 'Domain Name', type: 'text', placeholder: 'example.com', required: true }
         ],
         'image_to_text': [
-            { name: 'image', label: 'Upload Image', type: 'file', accept: 'image/*' }
+            { name: 'image', label: 'Upload Image', type: 'file', accept: 'image/jpeg,image/png,image/gif,image/bmp,image/tiff' },
+            { name: 'server_ocr', label: 'I agree to send this image to the server-side OCR service', type: 'checkbox' }
         ],
 
         // Gaming Tools
@@ -1001,8 +1002,18 @@
             return html;
         },
         'image_to_text': function(data) {
-            var html = '<div class="alert alert-info">' + escapeHtml(data.note) + '</div>';
-            html += '<p>' + escapeHtml(data.instructions) + '</p>';
+            if (data.error) return '<div class="alert alert-danger">' + escapeHtml(data.error) + '</div>';
+            var html = '';
+            if (data.text) {
+                html += '<pre class="mt-3"><code>' + escapeHtml(data.text) + '</code></pre>';
+                var stats = [];
+                if (data.characters !== undefined) stats.push(data.characters + ' characters');
+                if (data.words !== undefined) stats.push(data.words + ' words');
+                if (data.lines !== undefined) stats.push(data.lines + ' lines');
+                if (data.engine) stats.push(data.engine);
+                if (stats.length) html += '<p class="text-muted">' + escapeHtml(stats.join(' · ')) + '</p>';
+            }
+            if (data.note) html += '<div class="alert alert-info">' + escapeHtml(data.note) + '</div>';
             return html;
         },
 
@@ -1245,6 +1256,18 @@
                 resultContent: resultContent,
                 errorDiv: errorDiv
             });
+            return;
+        }
+
+        // Privacy: tools with an explicit server-side opt-in checkbox must
+        // not upload anything until the visitor consents.
+        var optIn = form.querySelector('input[name="server_ocr"]');
+        if (optIn && !optIn.checked) {
+            if (loading) loading.style.display = 'none';
+            if (errorDiv) {
+                errorDiv.textContent = 'Server-side OCR needs your explicit opt-in. Tick "I agree to send this image to the server-side OCR service" and submit again.';
+                errorDiv.style.display = 'block';
+            }
             return;
         }
 

@@ -15,6 +15,7 @@ php modules/addons/CloudHost247_tools/tests/Ipv6Test.php
 php modules/addons/CloudHost247_tools/tests/HandlerTest.php
 php modules/addons/CloudHost247_tools/tests/ClientIpTest.php
 php modules/addons/CloudHost247_tools/tests/LegacyAjaxTest.php
+php modules/addons/CloudHost247_tools/tests/OcrTest.php
 ```
 
 Or run the whole suite through the bundled runner, which uses a real
@@ -41,6 +42,7 @@ Exit code is non-zero if any assertion fails, so the suite is CI-ready.
 | `ClientIpTest.php` | 6 | H-1 regression: the legacy client-IP helper ignores spoofed `X-Forwarded-For` / `CF-Connecting-IP` unless `REMOTE_ADDR` is listed in `CLOUDHOST247_TRUSTED_PROXIES` |
 | `HandlerTest.php` | 72 | Every one of the 91 catalog handlers resolves to a callable function, plus behaviour of the newly written handlers: text/binary in four bases with UTF-8 round trips, email syntax paths, three runic alphabets with digraph precedence, invisible-character generate/detect/clean, Wi-Fi QR build/parse with escaping round trips, speed-test clamping |
 | `LegacyAjaxTest.php` | 61 | The live `action=ajax` endpoint delegates to `CloudHost247ToolsRunner`; all 46 `exec=client` tools are refused server-side by slug **and** by the legacy handler id the bundle posts; the refusal states the privacy guarantee; every client tool ships a browser module; `Runner::redact()` masks password/cvv/card/token input and drops `csrf_token`; `respondLegacy()` preserves the `{success,data}` / `{success,message}` contract and never emits internals |
+| `OcrTest.php` | 69 | Image-to-Text behaviour, offline via a stubbed OCR transport and injected test settings: the opt-in allowlist, multipart and base64 intake, byte validation (type/size/dimensions), key configuration, the success payload shape, and every mapped provider/transport failure |
 
 ## Regenerating the catalog fixture
 

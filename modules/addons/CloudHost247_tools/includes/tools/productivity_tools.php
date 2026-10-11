@@ -451,13 +451,270 @@ function CloudHost247_tool_bimi_checker($post)
     ];
 }
 
+// ---------------------------------------------------------------------
+//  Image to Text (server-side OCR via OCR.space)
+// ---------------------------------------------------------------------
+
+/**
+ * POST an OCR request to OCR.space and return the raw transport outcome.
+ *
+ * Uses its own cURL block rather than CloudHost247_tools_curl(), because the
+ * API key travels in the request header and TLS verification must stay
+ * enabled. Returns ['http_code' => int, 'body' => string, 'curl_error' => string].
+ *
+ * Tests replace the network call by setting
+ * $GLOBALS['CloudHost247_tools_ocr_stub'] to a callable receiving
+ * ($apiKey, $fields) and returning the same shape.
+ */
+function CloudHost247_tools_ocr_post($apiKey, array $fields)
+{
+    $stub = $GLOBALS['CloudHost247_tools_ocr_stub'] ?? null;
+    if (is_callable($stub)) {
+        return call_user_func($stub, $apiKey, $fields);
+    }
+
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL => 'https://api.ocr.space/parse/image',
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => http_build_query($fields),
+        CURLOPT_HTTPHEADER => ['apikey: ' . $apiKey],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 20,          // Runner budget is 25 s; leave headroom.
+        CURLOPT_CONNECTTIMEOUT => 8,
+        CURLOPT_SSL_VERIFYPEER => true, // Never disabled: key + user images in flight.
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_USERAGENT => 'CloudHost247-Tools/1.0',
+    ]);
+    $body = curl_exec($ch);
+    $errno = curl_errno($ch);
+    $error = $errno !== 0 ? (string) curl_error($ch) : '';
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+
+    return [
+        'http_code' => $httpCode,
+        'body' => is_string($body) ? $body : '',
+        'curl_error' => $error,
+    ];
+}
+
 function CloudHost247_tool_image_to_text($post)
 {
-    return [
-        'note' => 'OCR functionality requires a third-party OCR API key configured in module settings.',
-        'status' => 'placeholder',
-        'instructions' => 'Upload an image to extract text using OCR technology.',
+    // Privacy: server-side OCR runs only on explicit opt-in. The frontends
+    // gate the submit on this checkbox, and the flag is re-checked here so
+    // direct API calls cannot bypass consent.
+    $optIn = $post['server_ocr'] ?? '';
+    $optedIn = $optIn === true || $optIn === 1
+        || in_array(strtolower(trim((string) $optIn)), ['1', 'on', 'yes', 'true'], true);
+    if (!$optedIn) {
+        return ['error' => 'Server-side OCR needs your explicit opt-in. Tick "I agree to send this image to the server-side OCR service" and submit again — nothing is uploaded without it.'];
+    }
+
+    // Collect the image bytes. The legacy frontend posts a multipart upload;
+    // the JSON API path carries the image as base64 (data URL or raw). The
+    // bytes are validated in memory and never written to disk.
+    $bytes = null;
+    if (isset($_FILES['image']) && is_array($_FILES['image'])) {
+        $uploadError = (int) ($_FILES['image']['error'] ?? UPLOAD_ERR_NO_FILE);
+        if ($uploadError === UPLOAD_ERR_OK) {
+            $tmp = $_FILES['image']['tmp_name'] ?? '';
+            if (!is_string($tmp) || $tmp === '' || !is_readable($tmp)) {
+                return ['error' => 'The uploaded image could not be read. Please try again.'];
+            }
+            $bytes = @file_get_contents($tmp);
+            if ($bytes === false || $bytes === '') {
+                return ['error' => 'The uploaded image was empty. Please choose a valid image file.'];
+            }
+        } elseif ($uploadError !== UPLOAD_ERR_NO_FILE) {
+            $uploadErrors = [
+                UPLOAD_ERR_INI_SIZE => 'The image exceeds the server upload limit. Choose a file up to 1 MB.',
+                UPLOAD_ERR_FORM_SIZE => 'The image exceeds the form upload limit. Choose a file up to 1 MB.',
+                UPLOAD_ERR_PARTIAL => 'The image was only partially uploaded. Please try again.',
+                UPLOAD_ERR_NO_TMP_DIR => 'The server is missing a temporary upload folder. The site administrator needs to fix the PHP upload_tmp_dir setting.',
+                UPLOAD_ERR_CANT_WRITE => 'The server could not save the uploaded image. Please try again later.',
+                UPLOAD_ERR_EXTENSION => 'The image upload was blocked by a server extension. Please try again later.',
+            ];
+            return ['error' => $uploadErrors[$uploadError] ?? 'The image upload failed. Please try again.'];
+        }
+        // UPLOAD_ERR_NO_FILE falls through to the base64 field below.
+    }
+
+    if ($bytes === null) {
+        $raw = trim((string) ($post['image_base64'] ?? ''));
+        if ($raw === '') {
+            return ['error' => 'No image was received. Choose an image file (JPG, PNG, GIF, BMP or TIFF, up to 1 MB) and submit again.'];
+        }
+        // Strip a data-URL prefix if present; the declared type is untrusted
+        // and ignored — the bytes themselves are validated below.
+        $raw = preg_replace('#^data:[^;,]+;base64,#i', '', $raw);
+        $raw = preg_replace('/\s+/', '', $raw);
+        if ($raw === '' || !preg_match('#^[A-Za-z0-9+/]*={0,2}$#', $raw)) {
+            return ['error' => 'The image data was not valid base64. Please choose the image file again.'];
+        }
+        $bytes = base64_decode($raw, true);
+        if ($bytes === false || $bytes === '') {
+            return ['error' => 'The image data could not be decoded. Please choose the image file again.'];
+        }
+    }
+
+    // Service limit: the OCR.space free plan rejects files over 1 MB.
+    if (strlen($bytes) > 1048576) {
+        return ['error' => 'The image is larger than 1 MB, which is the maximum the OCR service accepts. Resize or compress it and try again.'];
+    }
+
+    // Validate the actual bytes, never the client-declared type or filename.
+    // Only the raster formats the provider accepts are allowed (WebP and PDF
+    // are intentionally excluded).
+    $mimeToFiletype = [
+        'image/jpeg' => 'JPG',
+        'image/png' => 'PNG',
+        'image/gif' => 'GIF',
+        'image/bmp' => 'BMP',
+        'image/x-ms-bmp' => 'BMP',
+        'image/tiff' => 'TIF',
     ];
+    $mime = null;
+    if (function_exists('finfo_open')) {
+        $finfo = @finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo !== false) {
+            $detected = @finfo_buffer($finfo, $bytes);
+            if (is_string($detected) && $detected !== '') {
+                $mime = $detected;
+            }
+            @finfo_close($finfo);
+        }
+    }
+    $dims = @getimagesizefromstring($bytes);
+    if ($dims === false) {
+        return ['error' => 'That file is not a readable image. Supported formats: JPG, PNG, GIF, BMP, TIFF.'];
+    }
+    if ($mime === null) {
+        $mime = $dims['mime'] ?? null;
+    }
+    $filetype = $mimeToFiletype[$mime] ?? null;
+    if ($filetype === null) {
+        return ['error' => 'Unsupported image format. The OCR service accepts JPG, PNG, GIF, BMP and TIFF images up to 1 MB.'];
+    }
+    if ($dims[0] <= 0 || $dims[1] <= 0 || $dims[0] > 8000 || $dims[1] > 8000) {
+        return ['error' => 'The image dimensions are outside the supported range (up to 8000 x 8000 pixels).'];
+    }
+
+    // The API key lives in module settings; tests override it via $GLOBALS
+    // so no database is needed offline.
+    $testSettings = $GLOBALS['CloudHost247_tools_test_settings'] ?? null;
+    if (is_array($testSettings) && array_key_exists('ocr_api_key', $testSettings)) {
+        $apiKey = trim((string) $testSettings['ocr_api_key']);
+    } else {
+        $apiKey = function_exists('CloudHost247_tools_get_setting')
+            ? trim((string) CloudHost247_tools_get_setting('ocr_api_key', ''))
+            : '';
+    }
+    if ($apiKey === '') {
+        return ['error' => 'Server-side OCR is not configured on this site yet. The site administrator can add an OCR API key (free from ocr.space) in the CloudHost247 Tools module settings.'];
+    }
+
+    // A stubbed transport (tests) needs no cURL; production always does.
+    if (!function_exists('curl_init') && empty($GLOBALS['CloudHost247_tools_ocr_stub'])) {
+        return ['error' => 'Server-side OCR needs the PHP cURL extension, which is not installed on this server.'];
+    }
+
+    $res = CloudHost247_tools_ocr_post($apiKey, [
+        'base64Image' => 'data:' . $mime . ';base64,' . base64_encode($bytes),
+        'language' => 'eng',
+        'isOverlayRequired' => 'false',
+        'filetype' => $filetype,
+        'scale' => 'true', // Matches the provider demo; helps low-resolution scans.
+        'OCREngine' => '2',
+    ]);
+
+    if (($res['curl_error'] ?? '') !== '') {
+        return ['error' => 'The OCR service could not be reached. Please try again later.'];
+    }
+    if ((int) ($res['http_code'] ?? 0) !== 200) {
+        return ['error' => 'The OCR service returned an unexpected response (HTTP ' . (int) ($res['http_code'] ?? 0) . '). Please try again later.'];
+    }
+    $data = json_decode($res['body'] ?? '', true);
+    if (!is_array($data)) {
+        return ['error' => 'The OCR service returned an unreadable response. Please try again later.'];
+    }
+
+    $exitCode = (string) ($data['OCRExitCode'] ?? '');
+    $results = isset($data['ParsedResults']) && is_array($data['ParsedResults'])
+        ? $data['ParsedResults']
+        : [];
+    $texts = [];
+    $firstError = '';
+    foreach ($results as $r) {
+        if (!is_array($r)) {
+            continue;
+        }
+        $t = isset($r['ParsedText']) && is_string($r['ParsedText']) ? $r['ParsedText'] : '';
+        if ($t !== '') {
+            $texts[] = $t;
+        }
+        if ($firstError === '') {
+            $msg = (isset($r['ErrorMessage']) && is_string($r['ErrorMessage']) ? $r['ErrorMessage'] : '')
+                . ' ' . (isset($r['ErrorDetails']) && is_string($r['ErrorDetails']) ? $r['ErrorDetails'] : '');
+            $firstError = trim($msg);
+        }
+    }
+
+    if ($exitCode === '1' || ($exitCode === '2' && $texts !== [])) {
+        $text = str_replace(["\r\n", "\r"], "\n", trim(implode("\n", $texts)));
+        $processingMs = isset($data['ProcessingTimeInMilliseconds'])
+            ? (int) $data['ProcessingTimeInMilliseconds']
+            : null;
+        if ($text === '') {
+            return [
+                'text' => '',
+                'characters' => 0,
+                'lines' => 0,
+                'words' => 0,
+                'engine' => 'OCR.space Engine 2',
+                'processing_ms' => $processingMs,
+                'note' => 'No text was detected in this image. Clear, high-contrast photos of printed text work best.',
+            ];
+        }
+        $words = preg_split('/\s+/u', $text);
+        return [
+            'text' => $text,
+            'characters' => mb_strlen($text, 'UTF-8'),
+            'lines' => substr_count($text, "\n") + 1,
+            'words' => $words === false ? 0 : count($words),
+            'engine' => 'OCR.space Engine 2',
+            'processing_ms' => $processingMs,
+            'note' => $exitCode === '2'
+                ? 'The image was only partially parsed. Extracted with server-side OCR after your explicit opt-in.'
+                : 'Extracted with server-side OCR after your explicit opt-in.',
+        ];
+    }
+
+    // Error path: prefer the per-result message, fall back to top-level.
+    $providerMsg = $firstError;
+    if ($providerMsg === '') {
+        $top = (isset($data['ErrorMessage']) && is_string($data['ErrorMessage']) ? $data['ErrorMessage'] : '')
+            . ' ' . (isset($data['ErrorDetails']) && is_string($data['ErrorDetails']) ? $data['ErrorDetails'] : '');
+        $providerMsg = trim($top);
+    }
+    $lower = strtolower($providerMsg);
+    if ($lower !== '' && (strpos($lower, 'api key') !== false || strpos($lower, 'apikey') !== false || strpos($lower, 'unauthor') !== false)) {
+        return ['error' => 'The site’s OCR API key was rejected by the provider. The site administrator needs to check the key in the module settings.'];
+    }
+    if (strpos($lower, 'throttl') !== false || strpos($lower, 'rate limit') !== false || strpos($lower, 'quota') !== false || (strpos($lower, 'exceed') !== false && strpos($lower, 'request') !== false)) {
+        return ['error' => 'The OCR service usage limit was reached. Please try again later.'];
+    }
+    if (strpos($lower, 'timeout') !== false || strpos($lower, 'timed out') !== false) {
+        return ['error' => 'The OCR service timed out. Try again with a smaller or clearer image.'];
+    }
+    if ($providerMsg !== '') {
+        $short = mb_strlen($providerMsg, 'UTF-8') > 200
+            ? mb_substr($providerMsg, 0, 200, 'UTF-8') . '…'
+            : $providerMsg;
+        return ['error' => 'The OCR service could not read this image (' . $short . '). Try a clearer, higher-contrast photo.'];
+    }
+    return ['error' => 'The OCR service could not read this image. Try a clearer, higher-contrast photo.'];
 }
 
 // ---------------------------------------------------------------------
