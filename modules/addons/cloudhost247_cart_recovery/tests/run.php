@@ -832,6 +832,184 @@ $tests['Hook failures are swallowed so the cart and checkout keep working'] = fu
     return $errors === array() && (int) RecoveryService::table()->count() === 0;
 };
 
+// ------------------------------------------------- deep audit follow-ups (B-13)
+
+$tests['A stale sending claim is reaped and the reminder still goes out'] = function () {
+    ch247_cart_fresh();
+    $id = ch247_capture_authenticated();
+    ch247_make_due($id, 1);
+    // Simulate a worker that died between claiming and reporting back.
+    $stale = date('Y-m-d H:i:s', time() - 3600);
+    Capsule::table(Schema::REMINDER_LOGS)->insert(array(
+        'recovery_id' => $id,
+        'reminder_number' => 1,
+        'email' => 'buyer@example.com',
+        'template_name' => EmailService::templateName(1),
+        'status' => 'sending',
+        'attempts' => 1,
+        'created_at' => $stale,
+        'updated_at' => $stale,
+    ));
+    $result = ReminderService::process();
+    $log = Capsule::table(Schema::REMINDER_LOGS)->where('recovery_id', $id)->where('reminder_number', 1)->first();
+    return $result['reaped'] === 1
+        && $result['sent'] === 1
+        && count($GLOBALS['CH247_MAIL_SENT']) === 1
+        && $log->status === 'sent';
+};
+
+$tests['A fresh sending claim is left alone for its worker'] = function () {
+    ch247_cart_fresh();
+    $id = ch247_capture_authenticated();
+    ch247_make_due($id, 1);
+    $recent = date('Y-m-d H:i:s', time() - 60);
+    Capsule::table(Schema::REMINDER_LOGS)->insert(array(
+        'recovery_id' => $id,
+        'reminder_number' => 1,
+        'email' => 'buyer@example.com',
+        'template_name' => EmailService::templateName(1),
+        'status' => 'sending',
+        'attempts' => 1,
+        'created_at' => $recent,
+        'updated_at' => $recent,
+    ));
+    $result = ReminderService::process();
+    $log = Capsule::table(Schema::REMINDER_LOGS)->where('recovery_id', $id)->where('reminder_number', 1)->first();
+    return $result['reaped'] === 0
+        && $result['sent'] === 0
+        && count($GLOBALS['CH247_MAIL_SENT']) === 0
+        && $log->status === 'sending';
+};
+
+$tests['Unsubscribing never regresses a converted record'] = function () {
+    ch247_cart_fresh();
+    $id = ch247_capture_authenticated();
+    $record = RecoveryService::find($id);
+    $raw = TokenService::open($record->token_ciphertext);
+    RecoveryService::convert($id, 55, 100.00, 'NGN');
+    if (RecoveryService::find($id)->status !== Schema::STATUS_CONVERTED) { return false; }
+    // The customer clicks an old unsubscribe link after ordering.
+    $result = RecoveryService::unsubscribe(TokenService::unsubscribeToken($raw));
+    $row = RecoveryService::find($id);
+    return $result['ok'] === true
+        && $row->status === Schema::STATUS_CONVERTED
+        && (float) $row->recovered_revenue === 100.00
+        && RecoveryService::isSuppressed('buyer@example.com', 42);
+};
+
+$tests['Admin unsubscribe stops every open cart for the same customer'] = function () {
+    ch247_cart_fresh();
+    $first = ch247_capture_authenticated(null, 42, 'buyer@example.com');
+    // A second open record for the same client (production duplicates arise
+    // from concurrent first captures on two devices).
+    $second = RecoveryService::table()->insertGetId(array(
+        'client_id' => 42,
+        'session_key' => hash('sha256', 'other-device'),
+        'email' => 'buyer@example.com',
+        'status' => Schema::STATUS_ACTIVE,
+        'token_hash' => hash('sha256', 'other-device-token'),
+        'token_expires_at' => date('Y-m-d H:i:s', time() + 86400),
+        'cart_snapshot' => CartSnapshot::encode(CartSnapshot::capture(ch247_cart_sample(), 'NGN')),
+        'last_reminder_number' => 0,
+        'first_seen_at' => RecoveryService::now(),
+        'last_activity_at' => RecoveryService::now(),
+        'created_at' => RecoveryService::now(),
+        'updated_at' => RecoveryService::now(),
+    ));
+    $_SERVER['REQUEST_METHOD'] = 'POST';
+    $_REQUEST['token'] = str_repeat('ab', 16);
+    AdminController::handle(
+        array('modulelink' => 'addonmodules.php?module=cloudhost247_cart_recovery'),
+        array('action' => 'unsubscribe_customer', 'recovery_id' => $first),
+        array()
+    );
+    $_SERVER['REQUEST_METHOD'] = 'GET';
+    return RecoveryService::find($first)->status === Schema::STATUS_UNSUBSCRIBED
+        && RecoveryService::find($second)->status === Schema::STATUS_UNSUBSCRIBED
+        && RecoveryService::isSuppressed('buyer@example.com', 42);
+};
+
+$tests['Reminder merge variables escape customer-supplied markup in both transports'] = function () {
+    ch247_cart_fresh();
+    // Guest transport (WHMCS mailer, rendered body).
+    $guest = RecoveryService::attachEmail('victim@example.com', 0, hash('sha256', 'guest'), array(
+        'cart' => ch247_cart_sample(),
+        'first_name' => '<img src=x onerror=alert(1)>',
+    ));
+    ch247_make_due($guest, 1);
+    ReminderService::process();
+    $mail = $GLOBALS['CH247_MAIL_SENT'][0];
+    if ($mail['transport'] !== 'whmcs-mail') { return false; }
+    if (strpos($mail['body'], '<img src=x') !== false) { return false; }
+    if (strpos($mail['body'], '&lt;img') === false) { return false; }
+    // Client transport (localAPI customvars).
+    ch247_cart_fresh();
+    $id = ch247_capture_authenticated();
+    RecoveryService::table()->where('id', $id)->update(array('first_name' => '<b>evil</b>'));
+    ch247_make_due($id, 1);
+    ReminderService::process();
+    $sent = $GLOBALS['CH247_MAIL_SENT'][0];
+    return $sent['transport'] === 'localapi'
+        && $sent['variables']['customer_first_name'] === '&lt;b&gt;evil&lt;/b&gt;'
+        && $sent['variables']['customer_name'] === '&lt;b&gt;evil&lt;/b&gt; Ng';
+};
+
+$tests['Guest subject lines cannot smuggle header line breaks'] = function () {
+    ch247_cart_fresh();
+    Capsule::table('tblemailtemplates')->insert(array(
+        'name' => EmailService::templateName(1),
+        'subject' => 'Hi {$customer_first_name}, your cart is saved',
+    ));
+    $crlf = chr(13) . chr(10);
+    $id = RecoveryService::attachEmail('guest2@example.com', 0, hash('sha256', 'guest2'), array(
+        'cart' => ch247_cart_sample(),
+        'first_name' => 'Gina' . $crlf . 'Bcc: evil@example.com',
+    ));
+    ch247_make_due($id, 1);
+    ReminderService::process();
+    $subject = $GLOBALS['CH247_MAIL_SENT'][0]['subject'];
+    return strpos($subject, chr(13)) === false
+        && strpos($subject, chr(10)) === false
+        && strpos($subject, 'GinaBcc: evil@example.com') !== false;
+};
+
+$tests['Search treats percent, underscore and backslash as literal characters'] = function () {
+    ch247_cart_fresh();
+    ch247_capture_authenticated(null, 11, 'pct100%@example.com');
+    $under = ch247_capture_authenticated(null, 12, 'c12@example.com');
+    RecoveryService::table()->where('id', $under)->update(array('first_name' => 'under_score'));
+    $slash = ch247_capture_authenticated(null, 13, 'c13@example.com');
+    $bs = chr(92);
+    RecoveryService::table()->where('id', $slash)->update(array('first_name' => 'back' . $bs . 'slash'));
+    $decoy = ch247_capture_authenticated(null, 14, 'c14@example.com');
+    RecoveryService::table()->where('id', $decoy)->update(array('first_name' => 'underXscore'));
+    if (count(Analytics::records('', '100%@example.com')['rows']) !== 1) { return false; }
+    if (count(Analytics::records('', 'under_score')['rows']) !== 1) { return false; }
+    if (count(Analytics::records('', 'underXscore')['rows']) !== 1) { return false; }
+    if (count(Analytics::records('', 'back' . $bs . 'slash')['rows']) !== 1) { return false; }
+    return count(Analytics::records('', 'backXslash')['rows']) === 0;
+};
+
+$tests['Releasing a lock owned by someone else leaves it untouched'] = function () {
+    ch247_cart_fresh();
+    if (!Lock::acquire('cron')) { return false; }
+    // Simulate a takeover: the lease now belongs to another worker.
+    $hijack = date('Y-m-d H:i:s', time() + 600) . '|hijackerowner1234';
+    Capsule::table(Schema::SETTINGS)->where('setting', 'lock:cron')->update(array('value' => $hijack));
+    if (Lock::release('cron')) { return false; }
+    $row = Capsule::table(Schema::SETTINGS)->where('setting', 'lock:cron')->first();
+    return $row->value === $hijack;
+};
+
+$tests['Recovered revenue is summed across converted records'] = function () {
+    ch247_cart_fresh();
+    $a = ch247_capture_authenticated(null, 21, 'a21@example.com');
+    $b = ch247_capture_authenticated(null, 22, 'b22@example.com');
+    RecoveryService::convert($a, 101, 100.00, 'NGN');
+    RecoveryService::convert($b, 102, 25.50, 'NGN');
+    return Analytics::summary()['recovered_revenue'] === 125.5;
+};
+
 // ------------------------------------------------------------------------- run
 
 $failed = 0;

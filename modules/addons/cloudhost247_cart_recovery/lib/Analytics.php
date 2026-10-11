@@ -33,12 +33,7 @@ final class Analytics
         $failed = (int) Capsule::table(Schema::REMINDER_LOGS)->where('status', 'failed')->count();
         $pending = (int) Capsule::table(Schema::REMINDER_LOGS)->whereIn('status', array('pending', 'sending'))->count();
 
-        $revenue = 0.0;
-        foreach (RecoveryService::table()->where('status', Schema::STATUS_CONVERTED)->get() as $row) {
-            if (isset($row->recovered_revenue) && is_numeric($row->recovered_revenue)) {
-                $revenue += (float) $row->recovered_revenue;
-            }
-        }
+        $revenue = (float) RecoveryService::table()->where('status', Schema::STATUS_CONVERTED)->sum('recovered_revenue');
 
         return array(
             'total_carts' => array_sum($counts),
@@ -79,7 +74,7 @@ final class Analytics
             $search = trim((string) $search);
             if ($search !== '') {
                 $query->where(function ($q) use ($search) {
-                    $like = '%' . str_replace(array('%', '_'), array('\%', '\_'), $search) . '%';
+                    $like = '%' . str_replace(array('\\', '%', '_'), array('\\\\', '\%', '\_'), $search) . '%';
                     $q->where('email', 'like', $like)
                         ->orWhere('first_name', 'like', $like)
                         ->orWhere('last_name', 'like', $like);

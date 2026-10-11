@@ -67,11 +67,17 @@ final class Lock
         if (!$row || substr((string) $row->value, -strlen($owner)) !== $owner) {
             return false;
         }
-        Capsule::table(Schema::SETTINGS)->where('setting', $key)->update(array(
-            'value' => date('Y-m-d H:i:s', time() - 1) . '|released',
-            'updated_at' => date('Y-m-d H:i:s'),
-        ));
-        return true;
+        // Conditional on the full value read above: a lease stolen between
+        // the read and this write (expiry plus a faster worker) is never
+        // cleared out from under its new owner.
+        $cleared = Capsule::table(Schema::SETTINGS)
+            ->where('setting', $key)
+            ->where('value', (string) $row->value)
+            ->update(array(
+                'value' => date('Y-m-d H:i:s', time() - 1) . '|released',
+                'updated_at' => date('Y-m-d H:i:s'),
+            ));
+        return (bool) $cleared;
     }
 
     public static function heldBy()

@@ -16,13 +16,21 @@ use WHMCS\Database\Capsule;
 final class ReminderService
 {
     /**
+     * A 'sending' claim untouched for this long is treated as orphaned — its
+     * worker died (OOM-kill, timeout, SIGKILL) between the claim and the
+     * status update. Thirty minutes is far beyond any genuine send, while
+     * the attempts counter still bounds poison records.
+     */
+    const CLAIM_STALE_AFTER = 1800;
+
+    /**
      * Process one batch of due reminders.
      *
      * @return array counters for the run
      */
     public static function process($limit = null)
     {
-        $result = array('marked_abandoned' => 0, 'sent' => 0, 'failed' => 0, 'skipped' => 0, 'expired' => 0, 'processed' => 0);
+        $result = array('marked_abandoned' => 0, 'sent' => 0, 'failed' => 0, 'skipped' => 0, 'expired' => 0, 'processed' => 0, 'reaped' => 0);
         if (!SettingsRepository::enabled('enabled')) {
             $result['disabled'] = true;
             return $result;
@@ -31,6 +39,7 @@ final class ReminderService
         $limit = max(1, min(500, $limit));
 
         $result['marked_abandoned'] = RecoveryService::markAbandoned($limit);
+        $result['reaped'] = self::reapStaleClaims();
 
         $now = RecoveryService::now();
         $rows = RecoveryService::table()
@@ -184,6 +193,45 @@ final class ReminderService
             Log::error('reminder.failed', array('recovery_id' => (int) $recovery->id, 'reminder_number' => (int) $number, 'error' => $safe));
             return 'failed';
         }
+    }
+
+    /**
+     * Recover reminders whose worker never reported back. Without this a
+     * stuck 'sending' row wedges its record: deliver() refuses it forever
+     * and the schedule never advances. The reset is idempotent (same values
+     * either way), so overlapping runs cannot double-send — the send itself
+     * still goes through the single-winner claim in deliver().
+     *
+     * @return int number of orphaned claims reset
+     */
+    private static function reapStaleClaims()
+    {
+        $cutoff = date('Y-m-d H:i:s', time() - self::CLAIM_STALE_AFTER);
+        $stale = Capsule::table(Schema::REMINDER_LOGS)
+            ->where('status', 'sending')
+            ->where('updated_at', '<', $cutoff)
+            ->get();
+        $count = 0;
+        foreach ($stale as $row) {
+            $now = RecoveryService::now();
+            $reset = Capsule::table(Schema::REMINDER_LOGS)
+                ->where('id', $row->id)
+                ->where('status', 'sending')
+                ->update(array(
+                    'status' => 'failed',
+                    'failed_at' => $now,
+                    'error_message' => 'Sending worker did not complete; rescheduled.',
+                    'updated_at' => $now,
+                ));
+            if ($reset) {
+                $count++;
+                Log::error('reminder.claim_reaped', array(
+                    'recovery_id' => (int) $row->recovery_id,
+                    'reminder_number' => (int) $row->reminder_number,
+                ));
+            }
+        }
+        return $count;
     }
 
     /** Record the sent reminder on the recovery row and schedule the next one. */

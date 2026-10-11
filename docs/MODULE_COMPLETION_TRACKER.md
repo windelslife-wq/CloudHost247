@@ -1084,6 +1084,95 @@ Third of the four. Scope: outbound message construction and delivery — `lib/Tr
 
 Not covered by this pass: `lib/Http/AdminPortal.php` (2,015 lines — the largest file in the addon), `lib/Campaign/CampaignService.php` (946), `lib/Automation/AutomationService.php` (739), `lib/Audience/SegmentService.php` and `lib/Campaign/Renderer.php` (template rendering of subscriber-supplied fields).
 
+### Follow-up (2026-10-11): `cloudhost247_cart_recovery` full audit — 8 findings, all fixed
+
+Last of the four, and the only module that remained at baseline depth. Unlike
+the three passes above, this one covered the whole module line by line (~3,100
+lines of `lib/` plus hooks, cron, the public recover/unsubscribe endpoint, the
+admin screen and both migrations), because the module is small enough to make
+that economical. **8 findings, all fixed, each with a regression test.** Suite
+grew 61 → 70 assertions, green, plus lint and the 15 static checks. A negative
+control (new tests against the pre-fix `lib/`) fails exactly the 7
+behaviour-changing tests and nothing else.
+
+**Fixed:**
+
+- **Unsubscribe regressed terminal records (data integrity, medium).**
+  `RecoveryService::unsubscribe()` transitioned the clicked record
+  unconditionally, so a converted customer clicking an old unsubscribe link
+  flipped `converted` → `unsubscribed`, silently deleting a conversion and
+  orphaning its revenue from analytics. Fix: new
+  `RecoveryService::suppressRecipient()` records the suppression but only
+  transitions *open* records; the public endpoint and the admin action both
+  use it. The refactor also closed a minor inconsistency where the admin
+  action stopped one record while the public path stopped all sibling carts
+  for the same recipient.
+- **Stuck `sending` claims wedged records until token expiry (robustness,
+  medium).** `deliver()` refuses rows in `sending`, but a worker that died
+  between the claim and the status update (OOM-kill, timeout, SIGKILL) left
+  the row there forever: no further reminder, no schedule advance, silent
+  until the 7-day token expiry. Fix: `process()` now reaps claims untouched
+  for 30+ minutes back to `failed` (logged, counted as `reaped`). The reset
+  is idempotent and the send still goes through the single-winner claim, so
+  overlapping runs cannot double-send; `attempts` is preserved so the retry
+  budget still bounds poison records.
+- **Guest-controlled names merged raw into HTML reminder bodies (email HTML
+  injection, low-medium).** Guest checkout supplies both the recipient
+  address (unauthenticated) and the name, and both reached the HTML body
+  unescaped — an attacker could send arbitrary markup (tracking/phishing
+  content; scripts are neutered by clients) to any address. Fix: new
+  `EmailService::htmlVars()` escapes every merge variable at the HTML sinks
+  (guest body, client `customvars`), except intentionally-HTML `cart_items`.
+- **CR/LF in merge variables reached the guest subject (header injection,
+  low).** Defence in depth on top of whatever the mailer strips: new
+  `EmailService::headerVars()` removes line breaks from subject and display
+  name values.
+- **LIKE-escape missed the backslash (minor correctness).** The admin search
+  escaped `%`/`_` but not `\`, so a backslash in the query changed the
+  meaning of the next character. One-line fix, plus the test fake's LIKE now
+  implements true MySQL escape semantics (it previously treated `\%` as a
+  wildcard too).
+- **`Lock::release()` cleared the lease unconditionally (minor hardening).**
+  The ownership re-read closed most of the race, but the final UPDATE is now
+  conditional on the full value read, so a lease stolen in the microsecond
+  window is never cleared from under its new owner.
+- **Dashboard summed revenue in PHP (perf).** `Analytics::summary()` loaded
+  every converted row to total `recovered_revenue`; it is now a SQL `SUM()`.
+  Behaviour-identical, O(1) memory.
+
+**Checked and sound (no change):** token lifecycle (Module 14's conclusions
+re-verified, including that `TokenService::equals()` is genuinely used by the
+decrypt-verify in `deliver()`); snapshot allow-list + deny pattern + depth
+and length caps + re-sanitise on restore (session poisoning closed; WHMCS
+recalculates prices at checkout anyway); the idempotent send claim
+(UNIQUE key + conditional UPDATE, still the backstop under overlapping
+workers); suppression honoured at capture and send time; admin auth
+(Foundation guard + `Manage Addon Modules` permission), CSRF (`check_token`
+on every POST, no state-changing GET); every admin echo escaped (also
+enforced by the static suite); no raw SQL, no `mail()`/SMTP stack, no
+dynamic code execution, no weak randomness anywhere in the module; cron is
+CLI-only via a server-set SAPI check; recovery redirect targets the
+server-configured SystemURL (no open redirect); response codes on the public
+endpoint (404/410) leak nothing enumerable against 256-bit tokens; reusable
+recovery links until expiry and fail-open client lookup are accepted design,
+reviewed, not findings.
+
+**Observations recorded, not defects:** (1) concurrent first captures (two
+devices, same client) can insert duplicate open records — PHP session
+locking makes this rare and the consequence is a duplicate reminder, not a
+security issue; (2) `OrderRevenue` falls back to the client's latest order
+when WHMCS omits both ids, which can misattribute revenue in a case the
+hooks should never produce; (3) `MigrationRunner` can throw a create-table
+race if two first-install crons overlap — self-heals on the next run;
+(4) info-level logs are silent when Foundation is absent (errors still reach
+`logModuleCall`/`error_log`); (5) `tests/*.php` execute over HTTP like every
+other module suite in this repo — benign output (pass/fail against in-memory
+fakes), but a repo-wide `deny` for `*/tests/` at the webserver layer would
+apply to all 17 suites, not just this one.
+
+Not covered by this pass: live WHMCS runtime behaviour (E-2); the README
+was re-read and remains accurate, no changes needed.
+
 ### Note on the four node_modules symlinks
 
 `cloudhost247ai`, `cloudhost247_cart_recovery`, `cloudhost247marketing` and `cloudhost247passkey` each needed `node_modules` for the php-wasm runners. That directory is a symlink to `cloudhost247services/node_modules` and is **gitignored for `CloudHost247_tools` and `cloudhost247cloudflare` only**. The four symlinks created here are untracked and were not committed — a fresh clone needs `npm i @php-wasm/node` in each module. Worth adding to `.gitignore` alongside the existing two entries.

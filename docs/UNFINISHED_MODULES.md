@@ -9,7 +9,7 @@ Two independent methods were used, and a module/artifact appears below if **eith
    recorded in `docs/MODULE_COMPLETION_TRACKER.md`, plus modules in `docs/MODULES.md`
    that have **no completion record at all**.
 
-Summary: **7 stub-code artifacts** (incl. 2 missing adapter classes; 4 empty theme templates done via A-8 2026-10-11), **18 partially complete modules**, **7 modules with no completion record**, **2 unauditable modules**, **1 project-level gap** (E-1 done 2026-10-11; E-2 live validation remains).
+Summary: **7 stub-code artifacts** (incl. 2 missing adapter classes; 4 empty theme templates done via A-8 2026-10-11), **17 partially complete modules** (B-13 done 2026-10-11), **7 modules with no completion record**, **2 unauditable modules**, **1 project-level gap** (E-1 done 2026-10-11; E-2 live validation remains).
 
 ---
 
@@ -56,7 +56,7 @@ feed, software inventory, HR/IT/ATS systems, asset register, etc.)
 | B-10 | DNS checker spec (delivered inside `CloudHost247_tools`) | The standalone `dnschecker` addon was **never installed**; functionality folded in. Owner items pending: live UDP resolver check on production, caching decision, browser check. | Module 5 |
 | B-11 | `modules/addons/tools_center` | `external-api/tools/productivity.php` `qrScanner()`/`qrGenerator()` remain (unused, no longer called — owner decision to remove or keep). T-8: TLS verification off in page-fetch tools (accepted). Wildcard CORS header (`Access-Control-Allow-Origin: *`) unchanged. Browser + live WHMCS checks pending. | Module 2/11 |
 | B-12 | `modules/addons/cloudhost247passkey` | Documented limitations: secondary WHMCS users (`tblusers`) login handoff returns `SERVICE_UNAVAILABLE` until verified per-install; **Passkey + 2FA in one flow not implemented**; interactive Entra ID sign-in not enabled; no remember-me cookies; per-role staff permissions "arrive in a later phase". | PASSKEY.md §18 |
-| B-13 | `modules/addons/cloudhost247_cart_recovery` | Only module still at **baseline audit depth** (recovery-link security reviewed and sound; rest of the module not deep-audited). | Module 14 |
+| B-13 | `modules/addons/cloudhost247_cart_recovery` | **Done 2026-10-11 — deep audit complete.** Full line-by-line audit of the module (~3,100 lines lib + entry points); 8 findings, all fixed with regression tests (suite 61 → 70 assertions, green). No module remains at baseline audit depth. | Module 14 follow-up |
 | B-14 | `modules/addons/domainbroker` | Owner items pending: B-9 (`rdap_enabled` default), a live WHMCS run, and a real RDAP lookup. | Module 4 |
 | B-15 | Announcement Bar (`templates/hostx/includes/announcementbar.tpl`) | Complete against spec but **no automated tests**; AB-3 informational item recorded. | Module 10 |
 | B-16 | `modules/addons/cloudhost247cloudflare` (+ `modules/servers/cloudhost247cloudflare`) | No live run; test suite was created by the audit pass (60 assertions). Remaining coverage gap recorded. | Module 12 |
