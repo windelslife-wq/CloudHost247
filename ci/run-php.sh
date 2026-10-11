@@ -69,7 +69,7 @@ mod_cloudflare()   { run_php 'modules/addons/cloudhost247cloudflare/tests/01_Sec
 mod_affiliate()    { run_php 'modules/addons/customaffiliate/tests/CommissionTest.php'; }
 mod_phones()       { run_php 'modules/addons/phoneservices/tests/WebhookVerifierTest.php'; }
 mod_smm()          { run_php 'modules/addons/smmaddon/tests/AdminSecurityTest.php'; }
-mod_hostxemail()   { run_php 'modules/servers/hostx_email/tests/WebhookAuthTest.php'; }
+mod_hostxemail()   { run_php 'modules/servers/hostx_email/tests/WebhookAuthTest.php'; run_php 'modules/servers/hostx_email/tests/CryptoMigrationTest.php'; }
 mod_hostxtools()   { run_php 'modules/addons/hostx_tools/tests/ClientIpTest.php'; }
 mod_toolscenter()  { run_php 'modules/addons/tools_center/tests/outbound-guard.php'; }
 mod_smtphosting()  { run_php 'modules/servers/Smtphosting/tests/run.php'; }

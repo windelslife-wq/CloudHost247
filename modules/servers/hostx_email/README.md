@@ -154,11 +154,39 @@ validation handshake (`validationToken`) only echoes the token and changes nothi
 - **Webhook Processing**: Real-time status updates from providers
 
 ### Security
-- **Encrypted Credentials**: AES-256 encryption for API keys
+- **Encrypted Credentials**: AES-256-GCM (authenticated) under WHMCS's own encryption hash; pre-v1 rows keep reading during migration (see Credential encryption upgrade below)
 - **Input Validation**: All user inputs sanitized and validated
 - **Rate Limiting**: Not implemented in this module. Webhooks are authenticated (see above); add throttling at the web server or WAF if needed.
 - **Webhook Verification**: Every webhook is authenticated before processing (see Webhook authentication above)
 - **Audit Logging**: All API calls logged with sanitized credentials
+
+### Credential encryption upgrade (v1)
+
+Secrets used to be encrypted under a key derived from the public SystemURL
+with unauthenticated AES-256-CBC. New ciphertext is versioned (`hxem:v1:`),
+authenticated (AES-256-GCM), and keyed by WHMCS's own `$cc_encryption_hash`.
+Reads accept both formats, so the module keeps working while rows migrate.
+
+One-time migration on the WHMCS host (CLI only, dry run by default):
+
+```
+cd modules/servers/hostx_email
+php upgrade/migrate-credentials.php            # report; writes nothing
+php upgrade/migrate-credentials.php --confirm  # rewrite legacy cells to v1
+```
+
+Back up the database first. The tool scans `tblservers` (username,
+password), `tblhosting` (password) and `tblproducts` (configoption7),
+re-wraps values exactly as found, never writes a cell it cannot classify,
+and lists anything needing manual review. Exit codes: 0 clean, 2 review
+needed, 1 could not run.
+
+Encrypting a fresh secret for pasting into a WHMCS field (never pass a
+secret on the command line — use stdin):
+
+```
+printf '%s' 'the-secret' | php upgrade/migrate-credentials.php --encrypt-stdin
+```
 
 ## API Reference
 

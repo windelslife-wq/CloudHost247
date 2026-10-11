@@ -19,8 +19,13 @@ if (!defined("WHMCS")) {
 use WHMCS\Database\Capsule;
 
 /**
- * Encryption key for API credentials
- * 
+ * Legacy encryption key for API credentials.
+ *
+ * DEPRECATED for new writes: the key is derived from the public SystemURL, so
+ * anyone with database read access can decrypt (finding H-4). It is kept only
+ * so hostx_email_decrypt_legacy() can still read rows that predate the v1
+ * format. New ciphertext always uses hostx_email_get_v1_key().
+ *
  * @return string
  */
 function hostx_email_get_encryption_key()
@@ -28,32 +33,144 @@ function hostx_email_get_encryption_key()
     $systemUrl = Capsule::table('tblconfiguration')
         ->where('setting', 'SystemURL')
         ->value('value');
-    
+
     return hash('sha256', $systemUrl . 'HostXEmail_v1.0.0');
 }
 
 /**
- * Encrypt sensitive data
- * 
+ * The real secret backing v1 ciphertext: WHMCS's own encryption hash from
+ * configuration.php. Returns '' when unavailable (never a weak fallback).
+ *
+ * @return string
+ */
+function hostx_email_get_secret()
+{
+    if (isset($GLOBALS['cc_encryption_hash']) && is_string($GLOBALS['cc_encryption_hash']) && $GLOBALS['cc_encryption_hash'] !== '') {
+        return $GLOBALS['cc_encryption_hash'];
+    }
+    return '';
+}
+
+/**
+ * 32-byte v1 data key derived from the WHMCS secret with domain separation.
+ * Returns '' when no secret is available; callers must fail closed.
+ *
+ * @return string
+ */
+function hostx_email_get_v1_key()
+{
+    $secret = hostx_email_get_secret();
+    if ($secret === '') {
+        return '';
+    }
+    return hash('sha256', 'hostx-email-v1:' . $secret, true);
+}
+
+/**
+ * Encrypt sensitive data (v1 format: AES-256-GCM, authenticated).
+ *
+ * Output is 'hxem:v1:' followed by base64(nonce . tag . ciphertext). Fails
+ * closed: throws when no secret is configured or the platform lacks GCM, so
+ * a secret is never protected by a weak or missing key.
+ *
  * @param string $data
  * @return string
+ * @throws RuntimeException
  */
 function hostx_email_encrypt($data)
 {
     if (empty($data)) {
         return '';
     }
-    
-    $key = hostx_email_get_encryption_key();
-    $iv = openssl_random_pseudo_bytes(16);
-    $encrypted = openssl_encrypt($data, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
-    
-    return base64_encode($iv . $encrypted);
+
+    $key = hostx_email_get_v1_key();
+    if ($key === '') {
+        throw new RuntimeException('HostX Email: no encryption secret configured ($cc_encryption_hash is missing). Refusing to encrypt.');
+    }
+    if (!in_array('aes-256-gcm', openssl_get_cipher_methods(), true)) {
+        throw new RuntimeException('HostX Email: this PHP build lacks AES-256-GCM. Refusing to encrypt.');
+    }
+
+    $nonce = random_bytes(12);
+    $tag = '';
+    $encrypted = openssl_encrypt((string) $data, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $nonce, $tag, 'hostx-email-v1', 16);
+    if ($encrypted === false || $tag === '') {
+        throw new RuntimeException('HostX Email: encryption failed.');
+    }
+
+    return 'hxem:v1:' . base64_encode($nonce . $tag . $encrypted);
 }
 
 /**
- * Decrypt sensitive data
- * 
+ * Decrypt a v1 payload. Returns the plaintext, or false when the value is not
+ * verifiable (wrong key, tampered, truncated, or no secret configured).
+ *
+ * @param string $data Full stored value including the 'hxem:v1:' prefix.
+ * @return string|false
+ */
+function hostx_email_decrypt_v1($data)
+{
+    if (!is_string($data) || substr($data, 0, 8) !== 'hxem:v1:') {
+        return false;
+    }
+    $key = hostx_email_get_v1_key();
+    if ($key === '') {
+        return false;
+    }
+    $raw = base64_decode(substr($data, 8), true);
+    if ($raw === false || strlen($raw) < 12 + 16 + 1) {
+        return false;
+    }
+    $nonce = substr($raw, 0, 12);
+    $tag = substr($raw, 12, 16);
+    $encrypted = substr($raw, 28);
+    $decrypted = openssl_decrypt($encrypted, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $nonce, $tag, 'hostx-email-v1');
+    if ($decrypted === false) {
+        return false;
+    }
+    return $decrypted;
+}
+
+/**
+ * Decrypt a legacy (pre-v1) payload: AES-256-CBC under the SystemURL-derived
+ * key, unauthenticated (findings H-4/H-6). Kept byte-for-byte so rows written
+ * before the v1 upgrade keep reading during and after migration. Never used
+ * for new writes.
+ *
+ * @param string $data
+ * @return string '' on any failure (same contract as before).
+ */
+function hostx_email_decrypt_legacy($data)
+{
+    if (empty($data)) {
+        return '';
+    }
+
+    try {
+        $key = hostx_email_get_encryption_key();
+        $data = base64_decode($data);
+
+        if ($data === false || strlen($data) < 16) {
+            return '';
+        }
+
+        $iv = substr($data, 0, 16);
+        $encrypted = substr($data, 16);
+
+        $decrypted = openssl_decrypt($encrypted, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
+
+        return $decrypted !== false ? $decrypted : '';
+
+    } catch (Exception $e) {
+        return '';
+    }
+}
+
+/**
+ * Decrypt sensitive data. Reads v1 ciphertext first and falls back to the
+ * legacy format, so rows migrate transparently (see
+ * upgrade/migrate-credentials.php). Returns '' on any failure.
+ *
  * @param string $data
  * @return string
  */
@@ -62,25 +179,54 @@ function hostx_email_decrypt($data)
     if (empty($data)) {
         return '';
     }
-    
-    try {
-        $key = hostx_email_get_encryption_key();
-        $data = base64_decode($data);
-        
-        if ($data === false || strlen($data) < 16) {
-            return '';
+
+    if (is_string($data) && substr($data, 0, 8) === 'hxem:v1:') {
+        $decrypted = hostx_email_decrypt_v1($data);
+        if ($decrypted !== false && $decrypted !== '') {
+            return $decrypted;
         }
-        
-        $iv = substr($data, 0, 16);
-        $encrypted = substr($data, 16);
-        
-        $decrypted = openssl_decrypt($encrypted, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
-        
-        return $decrypted !== false ? $decrypted : '';
-        
-    } catch (Exception $e) {
-        return '';
     }
+
+    return hostx_email_decrypt_legacy($data);
+}
+
+/**
+ * True when the value is v1 ciphertext that verifies under the current key.
+ * Used by the migration to skip rows that are already upgraded.
+ *
+ * @param string $data
+ * @return bool
+ */
+function hostx_email_is_current($data)
+{
+    if (!is_string($data) || $data === '' || substr($data, 0, 8) !== 'hxem:v1:') {
+        return false;
+    }
+    $decrypted = hostx_email_decrypt_v1($data);
+    return $decrypted !== false && $decrypted !== '';
+}
+
+/**
+ * Migrate one stored inner value to v1.
+ *
+ * Returns the v1 ciphertext when $data holds a legacy value that decrypts;
+ * otherwise returns $data unchanged (already v1, empty, or undecryptable and
+ * needing manual review). Pure: it never touches the database.
+ *
+ * @param string $data
+ * @return string
+ * @throws RuntimeException when a migration is needed but no secret exists.
+ */
+function hostx_email_migrate_value($data)
+{
+    if (!is_string($data) || $data === '' || hostx_email_is_current($data)) {
+        return $data;
+    }
+    $plain = hostx_email_decrypt_legacy($data);
+    if ($plain === '') {
+        return $data;
+    }
+    return hostx_email_encrypt($plain);
 }
 
 /**
@@ -892,4 +1038,186 @@ function hostx_email_deactivate()
         'status' => 'success',
         'description' => 'HostX Email module deactivated. Database tables preserved for data integrity.',
     ];
+}
+
+/**
+ * Unwrap one stored cell from WHMCS core encryption.
+ *
+ * Returns [inner, wrapped]. A value is only accepted as wrapped when the
+ * unwrapped content is itself meaningful (v1, or legacy-decryptable);
+ * otherwise the raw value is analysed as-is, so a plaintext column is never
+ * misread through a garbage unwrap.
+ *
+ * @param string $raw
+ * @return array
+ */
+function hostx_email_unwrap_storage($raw)
+{
+    if (!function_exists('decrypt')) {
+        return [$raw, false];
+    }
+    try {
+        $inner = @decrypt($raw);
+    } catch (\Throwable $e) {
+        return [$raw, false];
+    }
+    if (!is_string($inner) || $inner === '' || $inner === $raw) {
+        return [$raw, false];
+    }
+    if (hostx_email_is_current($inner) || hostx_email_decrypt_legacy($inner) !== '') {
+        return [$inner, true];
+    }
+    return [$raw, false];
+}
+
+/**
+ * Migrate one database cell to v1. Updates $report in place; writes only
+ * when $dryRun is false. A cell already v1, empty, or undecryptable is never
+ * written; undecryptable cells land in $report['manual'] for review.
+ *
+ * @param string $table
+ * @param int|string $id
+ * @param string $column
+ * @param mixed $raw
+ * @param bool $dryRun
+ * @param array $report
+ * @return void
+ */
+function hostx_email_migrate_cell($table, $id, $column, $raw, $dryRun, array &$report)
+{
+    $label = $table . ':' . $id . ':' . $column;
+    $report['scanned']++;
+    if ($raw === null || $raw === '') {
+        $report['empty']++;
+        return;
+    }
+    $raw = (string) $raw;
+    list($inner, $wrapped) = hostx_email_unwrap_storage($raw);
+    if (hostx_email_is_current($inner)) {
+        $report['current']++;
+        return;
+    }
+    try {
+        $migrated = hostx_email_migrate_value($inner);
+    } catch (\Throwable $e) {
+        $report['manual'][] = $label;
+        $report['errors'][] = $label . ': ' . $e->getMessage();
+        return;
+    }
+    if ($migrated === $inner) {
+        $report['manual'][] = $label;
+        return;
+    }
+    if ($dryRun) {
+        $report['migrated']++;
+        return;
+    }
+    $store = $migrated;
+    if ($wrapped) {
+        if (!function_exists('encrypt')) {
+            $report['manual'][] = $label;
+            $report['errors'][] = $label . ': WHMCS encrypt() is unavailable; leaving the legacy value in place.';
+            return;
+        }
+        try {
+            $store = encrypt($migrated);
+        } catch (\Throwable $e) {
+            $report['manual'][] = $label;
+            $report['errors'][] = $label . ': re-wrap failed: ' . $e->getMessage();
+            return;
+        }
+        if (!is_string($store) || $store === '') {
+            $report['manual'][] = $label;
+            $report['errors'][] = $label . ': re-wrap produced no output; leaving the legacy value in place.';
+            return;
+        }
+    }
+    try {
+        Capsule::table($table)->where('id', $id)->update([$column => $store]);
+    } catch (\Throwable $e) {
+        $report['manual'][] = $label;
+        $report['errors'][] = $label . ': write failed: ' . $e->getMessage();
+        return;
+    }
+    $report['migrated']++;
+}
+
+/**
+ * One-time credential migration: legacy ciphertext -> v1 (findings H-4/H-6).
+ *
+ * Scans every column this module reads through hostx_email_decrypt():
+ * tblservers (username, password), tblhosting (password) and tblproducts
+ * (configoption7). Each cell is unwrapped from WHMCS core encryption when
+ * wrapped, classified (v1 / legacy / unknown) and — unless 'dry_run' is set
+ * — rewritten in v1 form, re-wrapped exactly as found.
+ *
+ * Options: ['dry_run' => bool] (default true: report only, write nothing).
+ * In a dry run 'migrated' counts cells that WOULD be rewritten.
+ *
+ * @param array $options
+ * @return array Report with scanned/migrated/current/empty counts, 'manual'
+ *               (list of 'table:id:column' needing review) and 'errors'.
+ */
+function hostx_email_migrate_credentials(array $options = [])
+{
+    $dryRun = !isset($options['dry_run']) || !empty($options['dry_run']);
+    $report = ['scanned' => 0, 'migrated' => 0, 'current' => 0, 'empty' => 0, 'manual' => [], 'errors' => []];
+
+    if (hostx_email_get_secret() === '') {
+        $report['errors'][] = 'no encryption secret configured ($cc_encryption_hash is missing); refusing to run.';
+        return $report;
+    }
+
+    try {
+        $hostingRows = Capsule::table('tblhosting')->where('servertype', 'hostx_email')->get();
+    } catch (\Throwable $e) {
+        $hostingRows = [];
+        $report['errors'][] = 'could not read tblhosting: ' . $e->getMessage();
+    }
+    $linkedServerIds = [];
+    foreach ($hostingRows as $row) {
+        $row = (array) $row;
+        if (!empty($row['server'])) {
+            $linkedServerIds[(int) $row['server']] = true;
+        }
+        hostx_email_migrate_cell('tblhosting', $row['id'], 'password', isset($row['password']) ? $row['password'] : null, $dryRun, $report);
+    }
+
+    // Servers: match by module type, plus any server linked from a
+    // hostx_email service (robust if the type column differs by version).
+    $serverRows = [];
+    try {
+        $serverRows = Capsule::table('tblservers')->where('type', 'hostx_email')->get();
+        if (!empty($linkedServerIds)) {
+            $extra = Capsule::table('tblservers')->whereIn('id', array_keys($linkedServerIds))->get();
+            foreach ($extra as $row) {
+                $serverRows[] = $row;
+            }
+        }
+    } catch (\Throwable $e) {
+        $report['errors'][] = 'could not read tblservers: ' . $e->getMessage();
+    }
+    $seenServers = [];
+    foreach ($serverRows as $row) {
+        $row = (array) $row;
+        if (isset($seenServers[(int) $row['id']])) {
+            continue;
+        }
+        $seenServers[(int) $row['id']] = true;
+        hostx_email_migrate_cell('tblservers', $row['id'], 'username', isset($row['username']) ? $row['username'] : null, $dryRun, $report);
+        hostx_email_migrate_cell('tblservers', $row['id'], 'password', isset($row['password']) ? $row['password'] : null, $dryRun, $report);
+    }
+
+    try {
+        $productRows = Capsule::table('tblproducts')->where('servertype', 'hostx_email')->get();
+    } catch (\Throwable $e) {
+        $productRows = [];
+        $report['errors'][] = 'could not read tblproducts: ' . $e->getMessage();
+    }
+    foreach ($productRows as $row) {
+        $row = (array) $row;
+        hostx_email_migrate_cell('tblproducts', $row['id'], 'configoption7', isset($row['configoption7']) ? $row['configoption7'] : null, $dryRun, $report);
+    }
+
+    return $report;
 }
