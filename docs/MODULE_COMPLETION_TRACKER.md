@@ -1218,8 +1218,15 @@ and local runs cannot drift.
   mounts): **126/126 suite files green**, plus Node `core` 68/0, `qr`
   36/0, `tools` 845/0, `tools_center` 43/43 with jsdom 24, Python
   static 15/15 — every count matches this tracker.
-- Post-push: GitHub Actions run on the branch must be green (validates
-  the native 7.4/8.3 legs, composer install, and fixture keygen, which
-  the sandbox cannot run).
+- Post-push: GitHub Actions run `38096863878` is green 5/5 on real PHP
+  8.3/7.4 + Node 22 + Python. The first CI run already paid for itself:
+  `php -l` caught a PHP 8 production fatal no suite exercised —
+  unparenthesized `a ? b : c ?: d` in Smtphosting
+  `Packages/WhmcsService/Service.php:112` (file could not load at all on
+  PHP 8) — fixed with behavior-preserving parens (`9f12bc0`).
+  TOKEN_PARSE-based lints cannot see this class of error (it is raised
+  at compile time, and `token_get_all(TOKEN_PARSE)` only parses), which
+  is why the native `php -l` sweep exists. `ci/php-lint.sh` also emits
+  file-level `::error::` annotations so future failures name the file.
 - Not covered (unchanged): E-2 live runs; group C modules with no
   suites; D-8 encoded modules.
