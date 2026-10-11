@@ -9,11 +9,40 @@ require_once dirname(dirname(dirname(__DIR__))) . "/addons/soyoustart/classes/Ap
 
 
 use \WGSModule\Soyoustart\classes\ApiCall;
+use WHMCS\Database\Capsule;
+use WHMCS\Module\Server\Soyoustart\AjaxAuth;
 
 
 
 global $whmcs;
 
+// The legacy endpoint must not trust client-supplied account/server identifiers.
+if (empty($_SESSION['adminid']) || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST'
+    || !isset($_POST['serviceId']) || !ctype_digit((string) $_POST['serviceId'])
+    || (int) $_POST['serviceId'] < 1) {
+    http_response_code(403);
+    exit;
+}
+require_once __DIR__ . '/../lib/AjaxAuth.php';
+$serviceId = (int) $_POST['serviceId'];
+$service = Capsule::table('tblhosting')->where('id', $serviceId)->first();
+$product = $service ? Capsule::table('tblproducts')->where('id', $service->packageid)->first() : null;
+$serverName = ($service && $product)
+    ? Capsule::table('tblcustomfieldsvalues')
+        ->join('tblcustomfields', 'tblcustomfieldsvalues.fieldid', '=', 'tblcustomfields.id')
+        ->where('tblcustomfieldsvalues.relid', $serviceId)
+        ->where('tblcustomfields.relid', $product->id)
+        ->where('tblcustomfields.fieldname', 'like', 'ovh_server_name%')
+        ->value('tblcustomfieldsvalues.value') : null;
+$context = AjaxAuth::context($_SESSION['adminid'], $_SERVER['REQUEST_METHOD'],
+    $serviceId, $service, $product, $serverName);
+if ($context === null) {
+    http_response_code(403);
+    exit;
+}
+$ovhServerName = $context['server'];
+$accountId = $context['account'];
+$location = $context['location'];
 $apiCall = new ApiCall();
 
 
@@ -24,11 +53,11 @@ if ($whmcs->get_req_var("getCompatibleOS") == "getCompatibleOS") {
 
 
 
-    $ovhServerName = $whmcs->get_req_var("ovhServerName");
+    // ovhServerName derived from the service record.
 
-    $accountId = $whmcs->get_req_var("accountId");
+    // accountId derived from the service record.
 
-    $location = $whmcs->get_req_var("location");
+    // location derived from the service record.
 
 
 
@@ -38,10 +67,14 @@ if ($whmcs->get_req_var("getCompatibleOS") == "getCompatibleOS") {
 
     $html = '';
 
-    foreach ($compatibleOs["result"]->ovh  as $value) {
-
-        $html .= '<option value="' . $value . '">' . ucfirst(str_replace('-', " ", str_replace('_', " ", $value))) . '</option>';
-
+    if (($compatibleOs['httpcode'] ?? 0) != 200) {
+        echo json_encode($compatibleOs);
+        exit;
+    }
+    foreach ($compatibleOs["result"]->ovh ?? [] as $value) {
+        $safeValue = htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+        $safeLabel = htmlspecialchars(ucfirst(str_replace('-', ' ', str_replace('_', ' ', (string) $value))), ENT_QUOTES, 'UTF-8');
+        $html .= '<option value="' . $safeValue . '">' . $safeLabel . '</option>';
     }
 
     echo json_encode(["html" => $html, "installationStatus" => $installationStatus]);
@@ -52,11 +85,11 @@ if ($whmcs->get_req_var("getCompatibleOS") == "getCompatibleOS") {
 
 
 
-    $location = $whmcs->get_req_var("location");
+    // location derived from the service record.
 
-    $accountId = $whmcs->get_req_var("accountId");
+    // accountId derived from the service record.
 
-    $ovhServerName = $whmcs->get_req_var("ovhServerName");
+    // ovhServerName derived from the service record.
 
 
 
@@ -78,16 +111,20 @@ elseif ($whmcs->get_req_var("cancleReinstallation") == "cancleReinstallation") {
 
 
 
-    $location = $whmcs->get_req_var("location");
+    // location derived from the service record.
 
-    $accountId = $whmcs->get_req_var("accountId");
+    // accountId derived from the service record.
 
-    $ovhServerName = $whmcs->get_req_var("ovhServerName");
+    // ovhServerName derived from the service record.
 
 
 
-    $taskId = (!isset($_SESSION["installationTaskId"])? 12345 :$_SESSION["installationTaskId"]);
+    $taskId = (int) ($_SESSION["installationTaskId"] ?? 0);
 
+    if ($taskId < 1) {
+        http_response_code(400);
+        exit;
+    }
     $response = $apiCall->post("/dedicated/server/{$ovhServerName}/task/{$taskId}/cancel", $accountId, $location, [], "Cancel Re-intallation", true);
 
 
@@ -106,11 +143,11 @@ elseif ($whmcs->get_req_var("getInstallationStatus") == "getInstallationStatus")
 
 
 
-    $location = $whmcs->get_req_var("location");
+    // location derived from the service record.
 
-    $accountId = $whmcs->get_req_var("accountId");
+    // accountId derived from the service record.
 
-    $ovhServerName = $whmcs->get_req_var("ovhServerName");
+    // ovhServerName derived from the service record.
 
 
 
@@ -134,9 +171,9 @@ elseif ($whmcs->get_req_var("iPaction") == "getFirewallRules") {
 
 
 
-    $accountId = $whmcs->get_req_var("accountId");
+    // accountId derived from the service record.
 
-    $location = $whmcs->get_req_var("location");
+    // location derived from the service record.
 
     $ipblock = urlencode($whmcs->get_req_var("ipblock"));
 

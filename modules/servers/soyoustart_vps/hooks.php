@@ -503,7 +503,7 @@ add_hook('InvoicePaid', 1, function ($vars) {
                     logActivity('SoYouStart additional IP payment skipped: product configuration is incomplete', 'soyoustart');
                     return;
                 }
-                $ovhPaymentMethod = $helper->get_data("mod_soyoustart_pricesetting", ["server" => "OVH", "servertype" => "VPS"], "first");
+                $ovhPaymentMethod = $helper->get_data("mod_soyoustart_pricesetting", ["server" => "OVH", "servertype" => ($params["configoption1"] ?? "")], "first");
                 $paymentmethod = isset($ovhPaymentMethod->paymentmethod) ? $ovhPaymentMethod->paymentmethod : '';
                 $orderid = $additionipDatas->iporderid;
                 $paymentresponse = $apiCall->getpaymentdetail($params, $orderid, $paymentmethod, $pid, $serviceId, $ovhAccountData, $location);

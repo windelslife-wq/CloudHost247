@@ -1588,7 +1588,7 @@ Patching rationale: Module 13 recorded the sibling addon as do-not-fork, but `ma
 | VS-14 | `viewIpDetails` interpolated the client `ipblock` request value into the API path. Now parsed and `FILTER_VALIDATE_IP`-checked (400-style HTML error otherwise). | Low | Fixed |
 | VS-15 | Firewall-rule `sequese` and both snapshot `taskID` values interpolated raw into API paths. Now `(int)`-cast. | Low | Fixed |
 | VS-16 | Unguarded `explode(...)[1]` / `->value` / `->paymentmethod` reads across CreateAccount, ClientArea and the hook (malformed product config → warning spam + confusing API calls). New `soyoustart_vps_cfgPart()` helper (11 account-id sites); CreateAccount fails fast with a clear message; ClientArea surfaces a contact-support error; the hook skips with an activity-log line. | Low | Fixed |
-| VS-23 | `createIPsHtml()` is called by the client IP-details branch but defined nowhere — clicking it fatals (an `Error`, uncaught by `catch (Exception)`). Now calls the real `createIpDetailsHtmlvps()` with the full responses. (Sibling C-5 has the same undefined call at `soyoustart.php:718` — flagged for the C-5 turn, not touched here.) | Medium (functional) | Fixed |
+| VS-23 | `createIPsHtml()` is called by the client IP-details branch but defined nowhere — clicking it fatals (an `Error`, uncaught by `catch (Exception)`). Now calls the real `createIpDetailsHtmlvps()` with the full responses. (The sibling C-5 had the same undefined call; now fixed as SD-3 in Module 20.) | Medium (functional) | Fixed |
 | VS-24 | Additional-IP modal always showed price 0 with no currency (`$clientCurrency[" rate"]` / `[" prefix"]` — spaced keys that never exist). Keys fixed; server-side charge path already used real values, so display-only. | Low | Fixed |
 
 ### Findings (open — vendor-JS or owner-side)
@@ -1830,3 +1830,50 @@ Not a finding — endpoint concatenation deliberately preserved: `baseUrl` (`…
 - Mutation probes, each caught and each reverted (backup/restore): `== 0` → `=== 0` (LP-24 check red), one IDOR guard removed (static pin + 3 behavioural checks red), LP-2 cast removed (static pin red + production TypeError reproduced in two suites), extend clamp removed (clamp check red).
 - Fresh-clone proof: `cache/`+`logs/` guards deleted, suite re-ran green with guards self-healed by construction.
 - Not evidence: no live run; vendor HTTP shapes follow the code-implied contract, `\|escape` is pinned statically (no Smarty offline), and WHMCS-core rendering/hook firing is assumed, not executed.
+
+## Module 20 — soyoustart (WGS OVH dedicated-server provisioning, C-5)
+
+| Field | Information |
+|---|---|
+| Module | `modules/servers/soyoustart/` — 18 original PHP files (~5,134 lines), CRLF vendor drop from WGS OVH v8.0.8; entry `soyoustart.php`, `lib/SoyoustartServer.php`, admin hook, standalone `ajax/ajax.php`, client Smarty template and client JS. Shares the addon transport/Helper and an InvoicePaid hook in `soyoustart_vps`. |
+| Specification | WHMCS provisioning contract and existing OVH request shapes, as implied by the vendor code. No verified external OVH checkout contract. |
+| Status | **Audited and targeted fixes applied (SD-1–SD-14).** New offline suite **131 checks, 0 failures** (30 load + 53 auth/invoice + 16 escape/robustness + 32 source/parse), `mod_soyoustart` in CI (23 steps). No WHMCS/OVH live run. The open vendor/owner decisions below remain explicit. |
+
+Module 13's do-not-fork decision covered the **addon** and its unpatched SO-1/SO-2 credential/path findings. The server provisioning files already share an in-tree hardened transport (see Module 16). This pass makes small, pinned server fixes plus two one-line shared-module corrections; it does **not** rotate the addon application keys, change its transport contract, or attempt the cross-surface CSRF/ACL redesign.
+
+### Fixed findings
+
+| ID | Finding | Severity | Change |
+|---|---|---|---|
+| SD-1 | Client-area IP actions took any `ip`/`ipblock` and used the account-wide OVH credentials — a client could query or alter another server's IP when multiple servers share an account. | High | `manage_ips` now queries the server's assigned IP list before any IP-specific action and uses strict membership (404 on foreign block / failed lookup). `addAdditionalIp` remains the only non-IP-specific action. |
+| SD-2 | Additional-IP order path referenced **undefined** `$additionalIpPrice`, `createAdditionalIpInvoice()`, and `InsertIpData()` — OVH checkout could succeed, then invoice creation fataled, leaving an orphaned purchase. | High (money/functional) | Price fetched before dispatch; quantity (1–256), userid and finite positive price checked **before** OVH cart. Real invoice (server-priced `price × qty`, unpaid) + row insert methods added to lib, with unit tests. Post-checkout invoice/row failures are still non-atomic (SD-O4). |
+| SD-3 | Client `getIpDetails` called undefined `createIPsHtml()` (fatal). | Medium | Calls the existing `createIpDetailsHtml()` with the full API response, matching the admin path. |
+| SD-4 | CreateAccount wrote `"ovh_server_location", $location` as two numeric array elements, so the custom field was never set — breaking subsequent service actions. | Medium | Correct `"ovh_server_location" => $location` map. |
+| SD-5 | Client→admin stored XSS: API name/reverse/IP/description, provider messages and language strings rendered raw across ~175 concatenations in the lib HTML builders and admin/client response branches, plus ~169 Smarty expressions. | Medium | `escapeHtml` (ENT_QUOTES UTF-8) at HTML/attribute sinks, `|escape` on template outputs; client/admin OS option HTML escaped. Behavioural XSS fixtures + static template/source pins; no Smarty runtime offline. Client JS growl/`.html` sinks remain open (SD-O1). |
+| SD-6 | Untrusted IP/task/sequence/mitigation identifiers reached API paths. | Low–Medium | IP format guard for detail routes; `(int)` task/sequence/boot ids; URL-encoded mitigation IPs. SD-1 also scopes client IP actions. |
+| SD-7 | Unknown monitoring actions used undefined `$data` when calling OVH. | Low | HTTP 400 JSON, no call. |
+| SD-8 | Inactive license path returned `$license['ststus']` (undefined key). | Trivial | Corrected to `status`. |
+| SD-9 | Admin-tab save errors were logged as `soyoustart_vps`, confusing the module audit trail. | Trivial | Correct log module name. |
+| SD-10 | CreateAccount indexed malformed `configoption2/3/4` and Domain without guards (warnings and stray OVH carts); unassigned server client area used undefined `serverInfo`/`hardwareInfo`/`processor`/`errors` fields. | Low | Product/account/payment settings fail fast before cart; sensible display defaults. Fresh service custom-field insert in shared `Helper` now checks the nullable row safely. |
+| SD-11 | Standalone `/ajax/ajax.php` accepted arbitrary `accountId`, `ovhServerName`, `location` from an unauthenticated request; could trigger server reinstall/cancel under a configured OVH account. | **High** | Mandatory WHMCS admin session + POST + positive service id; service/product/custom-field lookup from WHMCS, strict module+identifier validation; ignore client-supplied identifiers. All four admin AJAX calls and DataTables POST now send serviceId. `AjaxAuth::context` is unit tested. |
+| SD-12 | Cancel reinstall used a **hardcoded task ID 12345** when the session had none. | Low | Reject missing/zero task id (400). |
+| SD-13 | Lib `getServiceConfigs()` swallowed exceptions and returned null; FTP progress used undefined `$percent` when quota missing; feature settings indexed missing key. | Low | Return `[]`, initialise progress, default settings. |
+| SD-14 | Shared `soyoustart_vps` InvoicePaid hook always chose **VPS** payment settings even for a dedicated-server additional-IP invoice from C-5. | Medium (money) | Choose the product's `configoption1`, matching CreateAccount's configured payment method. C-4 suite remains green. |
+
+### Open and deliberately untouched
+
+| ID | Finding | Reason |
+|---|---|---|
+| SD-O1 | Client/admin vendor JS uses growl `.html()` with provider error messages and some `.html()` self-echoes. | Vendor JS sweep deferred; HTML builders are escaped but the JS message sink still needs a separate review. |
+| SD-O2 | No explicit CSRF tokens on the client-area AJAX actions or admin-tab / standalone admin AJAX; per-service feature hiding is UI-only. | Needs token plumbing and server-side ACL mapping across JS + PHP (same owner decision as VS-18/VS-19); not inferred offline. |
+| SD-O3 | Shared addon `InvoicePaid` hook calls `UpdateConfigOption` for additional-IP invoices and updates a `Snapshot` option (also dereferences null on unrelated invoices); dedicated-server IPs should not gain snapshot quantity. | Addon vendor logic and WHMCS product semantics require owner review; not changed here. |
+| SD-O4 | OVH checkout precedes WHMCS invoice and tracking-row insertion. If localAPI/DB fails after checkout, reconciliation is manual; no atomic OVH/WHMCS transaction or retry key. | Cross-system workflow redesign, not solvable with an offline micro-patch. |
+| SD-O5 | `soyoustart_Renew()` is an empty implementation that returns success; the vendor may renew automatically, but WHMCS's callback does not renew at OVH. | Owner must confirm billing contract before connecting a paid OVH endpoint. |
+| SD-O6 | Floating CDN versions/no SRI; `ipinfo.io` visitor-IP call; `CheckLicense` network call on each create/client visit. | Same vendor-side owner concerns as VS-20/VS-22/VS-21. |
+| SD-O7 | The shared addon still has SO-1/SO-2 (hardcoded application keys, unvalidated `getOs` endpoint); this C-5 pass does not change those. | Module 13 fork-vs-replace/rotation decision remains open. |
+
+### Completion evidence and limits
+
+- **131/131 offline assertions**, four independent PHP suites. Both C-4 (165/165) and C-5 suites run green on php-wasm 8.3. CI step invokes the same self-contained PHP files natively. PHP entry/lib/ajax/hooks parsed via `token_get_all(TOKEN_PARSE)` and real entry/lib loads; `bash -n ci/run-php.sh` clean.
+- Four mutations caught then byte-restored: wrong module check (2 failures), HTML escaper disabled (multiple failures), positive-price check inverted, IP-ownership membership forced true. Green rechecked after restore.
+- Not evidence: no live OVH checkout, no real WHMCS admin session/hook rendering or Smarty execution. Admin and client dispatcher branch order is pinned statically; most branches are not executed against real WHMCS. The independent addon findings and open workflow risks above are **not** declared fixed.

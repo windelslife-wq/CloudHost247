@@ -951,7 +951,7 @@ class Helper
                 if ($custom_field_data) {
                     $field_value = Capsule::table('tblcustomfieldsvalues')->where("fieldid", "=", $custom_field_data->id)->where("relid", "=", $serviceid)->first();
                     /* checking field value exist */
-                    if ($field_value->id) {
+                    if (!empty($field_value->id)) {
                         /* updating */
                         $field_value = Capsule::table('tblcustomfieldsvalues')->where("fieldid", "=", $custom_field_data->id)->where("relid", "=", $serviceid)->update(["value" => $value]);
                     } else {
