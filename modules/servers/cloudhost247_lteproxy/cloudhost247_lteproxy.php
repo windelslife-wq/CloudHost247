@@ -30,6 +30,7 @@ use CloudHost247\LTEProxy\ApiException;
 use CloudHost247\LTEProxy\Logger;
 use CloudHost247\LTEProxy\Cache;
 use CloudHost247\LTEProxy\Helpers;
+use WHMCS\Database\Capsule;
 
 // Module metadata
 const CH247_LTEPROXY_VERSION = '1.0.0';
@@ -222,11 +223,16 @@ function cloudhost247_lteproxy_CreateAccount(array $params): string
     try {
         $logger->info('Creating proxy account', ['service_id' => $params['serviceid']]);
 
+        // Retry-safe: an existing order id means a previous attempt already provisioned.
+        if (!empty($params['username'])) {
+            return 'success';
+        }
+
         $api = getCh247ApiClient($params);
 
         // Build order parameters
         $orderParams = [
-            'quantity' => (int) ($params['configoptions']['quantity'] ?? $params['configoption4'] ?? 1),
+            'quantity' => (int) ($params['configoptions']['quantity'] ?? 1),
             'region' => $params['configoptions']['region'] ?? $params['configoption9'] ?? 'us',
             'carrier' => $params['configoptions']['carrier'] ?? $params['configoption10'] ?? 'verizon',
             'proxy_type' => $params['configoptions']['proxy_type'] ?? $params['configoption5'] ?? 'SOCKS5',
@@ -239,10 +245,15 @@ function cloudhost247_lteproxy_CreateAccount(array $params): string
             'service_id' => $params['serviceid'],
         ];
 
-        // Add IP whitelist if applicable
+        // Add IP whitelist if applicable (explicit order value wins; request IP is a last resort)
         if (in_array($orderParams['auth_type'], ['ip_whitelist', 'both'], true)) {
-            $orderParams['client_ip'] = Helpers::getClientIp();
+            $orderParams['client_ip'] = $params['customfields']['client_ip']
+                ?? $params['configoptions']['client_ip']
+                ?? Helpers::getClientIp();
         }
+
+        // Clamp + normalise (unknown regions/carriers fail fast here, not at the vendor)
+        $orderParams = array_merge($orderParams, Helpers::sanitizeOrderParams($orderParams));
 
         // Determine if this is a 1:1 proxy order
         $isOneByOne = (int) ($params['configoptions']['proxy_mode'] ?? 0) === 1;
@@ -256,12 +267,16 @@ function cloudhost247_lteproxy_CreateAccount(array $params): string
         if (isset($response['success']) && $response['success'] === true) {
             $orderId = $response['data']['order_id'] ?? '';
 
-            // Store order reference
+            // Store order reference (append: never clobber admin notes)
+            $existingNotes = (string) Capsule::table('tblhosting')
+                ->where('id', $params['serviceid'])
+                ->value('notes');
+            $orderNote = 'CloudHost247 Proxy Order: ' . $orderId;
             Capsule::table('tblhosting')
                 ->where('id', $params['serviceid'])
                 ->update([
                     'username' => $orderId,
-                    'notes' => 'CloudHost247 Proxy Order: ' . $orderId,
+                    'notes' => $existingNotes === '' ? $orderNote : $existingNotes . "\n" . $orderNote,
                 ]);
 
             // Log the order
@@ -271,12 +286,7 @@ function cloudhost247_lteproxy_CreateAccount(array $params): string
                 'region' => $orderParams['region'],
             ]);
 
-            // Send notification
-            sendCh247Notification(
-                $params['clientsdetails']['userid'],
-                'Proxy Order Activated',
-                'Your LTE proxy order has been activated. Order ID: ' . $orderId
-            );
+            // Notifications are sent by the InvoicePaid / AfterModuleCreate hooks.
 
             return 'success';
         }
@@ -355,11 +365,15 @@ function cloudhost247_lteproxy_SuspendAccount(array $params): string
         }
 
         // Note: API may not have a direct suspend endpoint
-        // We'll store the suspended state locally
+        // We'll store the suspended state locally (appended; admin notes preserved)
+        $existingNotes = (string) Capsule::table('tblhosting')
+            ->where('id', $params['serviceid'])
+            ->value('notes');
+        $suspendNote = 'SUSPENDED - ' . ($params['suspendreason'] ?? 'Manual suspension');
         Capsule::table('tblhosting')
             ->where('id', $params['serviceid'])
             ->update([
-                'notes' => 'SUSPENDED - ' . ($params['suspendreason'] ?? 'Manual suspension'),
+                'notes' => $existingNotes === '' ? $suspendNote : $existingNotes . "\n" . $suspendNote,
             ]);
 
         $logger->logModuleAction('suspend', (int) $params['serviceid'], ['order_id' => $orderId]);
@@ -390,11 +404,18 @@ function cloudhost247_lteproxy_UnsuspendAccount(array $params): string
             return 'No order ID found.';
         }
 
-        // Restore the order note
+        // Drop our suspend marker; keep everything else (incl. admin notes)
+        $existingNotes = (string) Capsule::table('tblhosting')
+            ->where('id', $params['serviceid'])
+            ->value('notes');
+        $restoredNotes = (string) preg_replace('/\\n?SUSPENDED - [^\\n]*/', '', $existingNotes);
+        if (trim($restoredNotes) === '') {
+            $restoredNotes = 'CloudHost247 Proxy Order: ' . $orderId;
+        }
         Capsule::table('tblhosting')
             ->where('id', $params['serviceid'])
             ->update([
-                'notes' => 'CloudHost247 Proxy Order: ' . $orderId,
+                'notes' => $restoredNotes,
             ]);
 
         $logger->logModuleAction('unsuspend', (int) $params['serviceid'], ['order_id' => $orderId]);
@@ -436,11 +457,7 @@ function cloudhost247_lteproxy_Renew(array $params): string
                 'duration' => $duration,
             ]);
 
-            sendCh247Notification(
-                $params['clientsdetails']['userid'],
-                'Proxy Order Renewed',
-                'Your LTE proxy order has been renewed for ' . $duration . ' days.'
-            );
+            // The AfterModuleRenew hook notifies the client.
 
             return 'success';
         }
@@ -476,6 +493,10 @@ function cloudhost247_lteproxy_ChangePassword(array $params): string
 
         if (empty($orderId)) {
             return 'No order ID found.';
+        }
+
+        if ($newPassword === '') {
+            return 'No new password supplied.';
         }
 
         $api = getCh247ApiClient($params);
@@ -565,7 +586,7 @@ function cloudhost247_lteproxy_AdminServicesTabFields(array $params): array
 
     $fields = [];
     $fields['Order ID'] = !empty($orderId)
-        ? '<code>' . htmlspecialchars($orderId) . '</code>'
+        ? '<code>' . htmlspecialchars($orderId, ENT_QUOTES, 'UTF-8') . '</code>'
         : '<span class="label label-warning">Not Provisioned</span>';
 
     return $fields;
@@ -581,8 +602,6 @@ function cloudhost247_lteproxy_ClientArea(array $params): array
 {
     $logger = getCh247Logger($params);
     $orderId = $params['username'] ?? '';
-
-    $requestedAction = $_GET['action'] ?? 'dashboard';
 
     try {
         $api = getCh247ApiClient($params);
@@ -626,7 +645,6 @@ function cloudhost247_lteproxy_ClientArea(array $params): array
                 'balance' => $balance['data']['balance'] ?? 0,
                 'accountInfo' => $accountInfo['data'] ?? [],
                 'moduleVersion' => CH247_LTEPROXY_VERSION,
-                'requestedAction' => $requestedAction,
                 'csrfToken' => Helpers::generateCsrfToken(),
                 'serviceId' => $params['serviceid'],
                 'regions' => Helpers::getRegions(),
@@ -891,8 +909,8 @@ function getCh247Config(array $params): array
         'log_level' => $params['configoption16'] ?? 'INFO',
         'cache_enabled' => (bool) ($params['configoption17'] ?? true),
         'rate_limit_requests' => (int) ($params['configoption18'] ?? 60),
-        'log_directory' => __DIR__ . '/logs',
-        'cache_directory' => __DIR__ . '/cache',
+        'log_directory' => $params['ch247_log_dir'] ?? __DIR__ . '/logs',
+        'cache_directory' => $params['ch247_cache_dir'] ?? __DIR__ . '/cache',
     ];
 }
 

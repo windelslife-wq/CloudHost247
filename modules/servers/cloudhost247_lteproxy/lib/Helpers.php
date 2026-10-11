@@ -160,7 +160,7 @@ class Helpers
      */
     public static function isValidCarrier(string $carrier): bool
     {
-        return array_key_exists(strtolower($carrier), self::US_CARRIERS);
+        return array_key_exists(strtolower($carrier), self::getAllCarriers());
     }
 
     /**
@@ -261,7 +261,7 @@ class Helpers
         $password = $proxy['password'] ?? '';
 
         if (!empty($username) && !empty($password)) {
-            return sprintf('%s://%s:%s@%s:%s', $type, $username, $password, $host, $port);
+            return sprintf('%s://%s:%s@%s:%s', $type, rawurlencode($username), rawurlencode($password), $host, $port);
         }
 
         return sprintf('%s://%s:%s', $type, $host, $port);
@@ -308,7 +308,7 @@ class Helpers
         }
 
         if ($days < 30) {
-            $weeks = floor($days / 7);
+            $weeks = (int) floor($days / 7);
             $remaining = $days % 7;
 
             if ($remaining === 0) {
@@ -318,7 +318,7 @@ class Helpers
             return $weeks . ' week' . ($weeks > 1 ? 's' : '') . ' ' . $remaining . ' day' . ($remaining > 1 ? 's' : '');
         }
 
-        $months = floor($days / 30);
+        $months = (int) floor($days / 30);
         $remaining = $days % 30;
 
         if ($remaining === 0) {
@@ -462,7 +462,7 @@ class Helpers
      */
     public static function generateRandomString(int $length = 16): string
     {
-        return bin2hex(random_bytes(ceil($length / 2)));
+        return bin2hex(random_bytes((int) ceil($length / 2)));
     }
 
     /**
@@ -639,6 +639,43 @@ class Helpers
     }
 
     /**
+     * Check that a proxy id belongs to an order's proxy list (IDOR guard).
+     *
+     * @param array $proxies Order proxy rows (each with an id key)
+     * @param string $proxyId Proxy id to look for
+     * @return bool
+     */
+    public static function proxyBelongsToOrder(array $proxies, string $proxyId): bool
+    {
+        if ($proxyId === '') {
+            return false;
+        }
+
+        foreach ($proxies as $proxy) {
+            if ((string) ($proxy['id'] ?? '') === $proxyId) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Clamp an exception code to a valid HTTP error status.
+     *
+     * @param int $code Exception code
+     * @return int
+     */
+    public static function safeHttpStatus(int $code): int
+    {
+        if ($code >= 400 && $code < 600) {
+            return $code;
+        }
+
+        return 500;
+    }
+
+    /**
      * Send JSON response
      *
      * @param array $data Response data
@@ -647,6 +684,10 @@ class Helpers
      */
     public static function jsonResponse(array $data, int $status = 200): void
     {
+        if (!empty($GLOBALS['CH247_TEST_JSON_THROW'])) {
+            throw new JsonResponseException($data, $status);
+        }
+
         http_response_code($status);
         header('Content-Type: application/json; charset=utf-8');
         header('X-Content-Type-Options: nosniff');
@@ -689,5 +730,26 @@ class Helpers
         ], $data);
 
         self::jsonResponse($response, 200);
+    }
+}
+
+/**
+ * Thrown instead of exiting when the CH247_TEST_JSON_THROW seam is set.
+ *
+ * Extends \Error (not \Exception) deliberately: the ajax endpoints wrap
+ * dispatch in catch (\Exception), which must never swallow the seam or
+ * every response would degrade to the generic 500 handler.
+ */
+class JsonResponseException extends \Error
+{
+    /** @var array */
+    public $data;
+    /** @var int */
+    public $status;
+    public function __construct(array $data, int $status)
+    {
+        $this->data = $data;
+        $this->status = $status;
+        parent::__construct($data['error'] ?? 'JSON response', $status);
     }
 }

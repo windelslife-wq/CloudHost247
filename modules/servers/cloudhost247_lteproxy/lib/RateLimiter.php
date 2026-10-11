@@ -53,8 +53,42 @@ class RateLimiter
             @mkdir($cacheDir, 0755, true);
         }
 
+        self::writeAccessGuards($cacheDir);
+
         $this->cacheFile = $cacheDir . '/rate_limit.json';
         $this->loadRequests();
+    }
+
+    /**
+     * Drop index.php + .htaccess guards so runtime files are never web-readable.
+     *
+     * @param string $dir Directory to protect
+     * @return void
+     */
+    private static function writeAccessGuards(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $indexFile = $dir . '/index.php';
+        if (!file_exists($indexFile)) {
+            @file_put_contents($indexFile, "<?php\n// Silence is golden.\n");
+        }
+
+        $htaccessFile = $dir . '/.htaccess';
+        if (!file_exists($htaccessFile)) {
+            @file_put_contents(
+                $htaccessFile,
+                "# CloudHost247 LTE Proxy - deny web access to runtime files\n" .
+                "<IfModule mod_authz_core.c>\n" .
+                "    Require all denied\n" .
+                "</IfModule>\n" .
+                "<IfModule !mod_authz_core.c>\n" .
+                "    Deny from all\n" .
+                "</IfModule>\n"
+            );
+        }
     }
 
     /**

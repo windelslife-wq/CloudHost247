@@ -1744,3 +1744,89 @@ Not a finding — endpoint concatenation deliberately preserved: `baseUrl` (`…
 - Executed: **121 checks, 0 failures** (48 load + 21 config/create + 11 lifecycle + 21 clientarea + 20 helper).
 - Mutation probes, each caught and each restored byte-identical (md5): removed `encrypt()` (2 failures), removed the RD-1 guard (fatal reproduced, suite red), removed log masking (1 failure).
 - Not evidence: no live run; panel HTTP shapes follow the code-implied vendor contract, `|escape` is pinned statically (no Smarty offline), and WHMCS-core tab rendering is assumed, not executed.
+
+## Module 19 — cloudhost247_lteproxy (LTE proxy provisioning)
+
+| Field | Information |
+|---|---|
+| Module | `modules/servers/cloudhost247_lteproxy/` — entry `cloudhost247_lteproxy.php`, `lib/` (ApiClient, Helpers, Cache, Logger, RateLimiter, ApiException + new AjaxHandlers), 3 ajax endpoints, `hooks/` (AdminSidebar, Notifications, Automation) + new `hooks.php` bootstrap, Smarty admin/client templates, admin + client JS. Vendor client for `api.cloudhost247.com` (key + secret auth). |
+| Specification | WHMCS server-module contract + the vendor API as implied by the code (no public vendor docs found; endpoint shapes are pinned, not assumed). |
+| Status | **Audited; twenty-seven findings fixed (LP-1–LP-27).** New offline suite **430 checks, 0 failures** (`modules/servers/cloudhost247_lteproxy/tests/`, php-wasm runner + `mod_lteproxy` CI step). No live run. |
+
+### Findings (fixed)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| LP-1 | **IDOR across the client ajax API:** every order-scoped handler took `proxy_id` from POST with no ownership check, so any authenticated client could rotate, reveal, or reconfigure any other client's proxies. All handlers now take the session order id and verify membership via the new `Helpers::proxyBelongsToOrder()` (404 on foreign id). Caught statically (per-handler pins) and behaviourally (foreign-proxy 404s). | High | Fixed |
+| LP-2 | **Total client-area outage on PHP 8:** `generateRandomString()` passed `ceil()`'s float to `random_bytes(int)` — a TypeError on every call, and `generateCsrfToken()` calls it, so ClientArea fatals and no CSRF token can ever be minted (PHP 7.4 coerced silently, which hid it). Cast to `(int)`. | High (PHP 8) | Fixed |
+| LP-3 | **Hooks never loaded:** the `hooks/` implementations had no bootstrap and WHMCS only autoloads `/includes/hooks/`, so all automation/notifications were silently dead. New `hooks.php` loader + installer step. | Medium | Fixed |
+| LP-4 | **Quantity fell back to the API timeout:** the missing-quantity fallback was `configoption4`, which is `api_timeout` (30) — one missing field ordered 30 proxies. Fallback removed (default 1). | Medium-High | Fixed |
+| LP-5 | **Cron terminated zero-date services:** `strtotime('0000-00-00')` returns year 0 (not false), so services with unset due dates computed hugely-negative days and were auto-cancelled with 'expired' mails. The raw value is now tested (`''` / zero date / zero datetime) before `strtotime`, with a `false` guard. | Medium-High | Fixed |
+| LP-6 | **Retries replayed purchases:** transport-error and 502/503/504 retries replayed every method including POST `/buy` (double-purchase on a slow vendor). New `isIdempotentMethod()` gate — only GET/HEAD/PUT/DELETE retry. | Medium | Fixed |
+| LP-7 | **Client JS XSS sweep:** 20+ unescaped `${}` interpolations rendered vendor/derived strings into `innerHTML` (proxy rows, speed cards, batch/rotation/history renderers). All escaped at the site; `CSS.escape()` on the `querySelector` sink; `encodeURIComponent` on URL params. A per-occurrence static rule now requires every interpolation to open with an escaper or a whitelisted static-output expression. | Medium | Fixed |
+| LP-8 | **Raw template outputs:** ~40 unescaped `{$...}` across the admin dashboard, settings, client dashboard, and error templates (HTML text, attributes, JS string/number contexts). All carry `\|escape` / `\|json_encode` / `\|escape:'javascript'` as the context demands; pinned statically (no Smarty offline). | Low-Medium | Fixed |
+| LP-9 | **Create double-ordered on retry:** no idempotency — a retry after any edge failure purchased again. Create now returns `success` when the service already stores an order id (RD-4/SP-1 mirror). | Medium-Low | Fixed |
+| LP-10 | **Wrong client IP whitelisted:** ip-whitelist orders always used the request IP, ignoring the ordered/explicit `client_ip`. Explicit custom-field/config value now wins; request IP is the last resort. | Medium-Low | Fixed |
+| LP-11 | **Credentials into the log:** HTTP response bodies were logged raw (proxy passwords/auth), and a non-scalar vendor error code fatals the typed `ApiException::$errorCode`. Responses pass through `maskSensitiveData()`; error codes are scalar-guarded. | Low-Medium | Fixed |
+| LP-12 | **`unserialize()` on cache files:** cache read/cleanup unserialised file contents (object injection if the cache dir is ever writable by another principal). JSON encode/decode throughout. | Low-Medium | Fixed |
+| LP-13 | **Raw `$_GET['action']` into the template** (`requestedAction`) — reflected XSS. Removed; the dashboard no longer takes an action var. | Low-Medium | Fixed |
+| LP-14 | **InvoicePaid set every next due date to +30 days** regardless of billing cycle. Per-cycle interval table (Monthly → +1 month, …, Triennially; +30 days fallback). | Low-Medium | Fixed |
+| LP-15 | **Admin notes destroyed** by create/suspend/unsuspend (blind `notes` overwrite; unsuspend also wiped suspension history). Create/suspend append; unsuspend strips only our marker. | Low-Medium | Fixed |
+| LP-16 | **Duplicate client mails:** inline Create/Renew notifications plus the AfterModule hooks both fired on the same event. Notifications are hook-owned exactly-once (InvoicePaid covers hook-triggered creates). | Low | Fixed |
+| LP-17 | **Dead admin sidebar registration** used the wrong hook API and linked nonexistent addon pages. Removed (the module has no addon pages to link). | Low | Fixed |
+| LP-18 | **CSRF token via GET** on stats.php (token leaks into logs/referrers); the other two endpoints already used POST. Aligned to POST. | Low | Fixed |
+| LP-19 | **proxy-test 500s disclosed `$e->getMessage()`** (paths, driver text, vendor internals) to any authenticated client. Generic message; detail stays in the server log. | Low | Fixed |
+| LP-20 | **Raw exception codes reached `http_response_code()`** (ValueError on 0/out-of-range vendor codes). New `Helpers::safeHttpStatus()` clamp at all three endpoints. | Low | Fixed |
+| LP-21 | **Vendor codes crashed error handling:** a non-int `code` in an error payload hit the `ApiException` int `$code` (TypeError), and scalar-JSON responses slipped past validation. `is_int` guard with HTTP-code fallback; non-array payloads rejected. | Low | Fixed |
+| LP-22 | **`isValidCarrier()` rejected every non-US carrier** (checked the US-only map). Now checks the full carrier map. | Low | Fixed |
+| LP-23 | **Proxy URLs broke on special characters** (raw user/password interpolation). `rawurlencode()` on both credentials. | Low | Fixed |
+| LP-24 | **Formatting bugs:** `formatDuration()` compared float `floor()` with `===` and printed '1 months' (`(int)` casts added); quality rating used `=== 0` so string `'0.0'` packet loss misgraded Excellent → Good (`== 0`). | Low | Fixed |
+| LP-25 | **Runtime dirs web-readable:** no guards in `logs/`/`cache`, no silencers anywhere. 10 depth-correct `index.php` silencers + root `.htaccess` shipped; Logger/Cache/RateLimiter self-heal guards on construction; installer writes them too. | Low | Fixed |
+| LP-26 | **Input-hardening bundle:** unclamped curl timeout (`max(1, …)`), unvalidated `client_ip` in updateProxyAuth (`FILTER_VALIDATE_IP`), empty-password ChangePassword reaching the vendor (fail-fast), unvalidated region/carrier reaching the vendor (`sanitizeOrderParams` fail-fast in Create), admin-tab escape missing `ENT_QUOTES`/charset. | Low-Trivial | Fixed |
+| LP-27 | **~700 lines of handler code duplicated across the three ajax mains** (untestable, drifted apart — e.g. LP-18/LP-19 existed in only some copies). Extracted into `lib/AjaxHandlers.php`; mains are now thin dispatchers. Restructure, not a vuln. | — | Fixed |
+
+### Findings (open / deliberately untouched)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| LP-O1 | `hooks.php` must be copied to `/includes/hooks/cloudhost247_lteproxy.php` by hand (WHMCS has no module-hook autoload). Installer step 6 documents it. | Low | Open (owner action) |
+| LP-O2 | Suspend/Unsuspend are WHMCS-local note changes with no vendor call (the vendor exposes no suspend endpoint; noted in-code). Services keep running while suspended. | Low-Medium | Open (vendor gap) |
+| LP-O3 | `admin.js` keeps one static `innerHTML` sink (a fixed loading spinner, no interpolation). Pinned as 'single static sink' — provably unexploitable, left alone. | — | Accepted |
+| LP-O4 | `getQualityClass()` falls back to `'fair'` for unknown ratings (vendor sends a fixed 5-literal set today). Cosmetic default; left as designed. | — | Accepted |
+| LP-O5 | New code keeps the module's PHP 7.4-parseable baseline (a `match` introduced mid-audit was rewritten as if/elseif); statically pinned. | — | Accepted |
+
+### Checked and found sound
+
+- Terminate calls `cancelOrder` (no RD-O1 mirror); renew calls `extendOrder`; auth/region/carrier/type/rotation updates all reach the vendor.
+- Order-scoping of the ajax mains: session → service → order id chain verified per endpoint, including the batch-test username fallback.
+- Clamp discipline preserved in the extraction: extend 1–365, rotation 1–1440, buy quantity ≥ 1, trial gated on the product flag.
+- RateLimiter window math, Cache TTL/expiry/size caps, and log-level filtering verified against the real classes.
+- `getClientIp()` proxy-header trust is unchanged: it is only a last resort now (LP-10), never a sole source for auth decisions.
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `cloudhost247_lteproxy.php` | LP-4, LP-9, LP-10, LP-15, LP-16, LP-26 (password/region/ENT_QUOTES), LP-13; test-dir config seams. |
+| `lib/AjaxHandlers.php` (new, ~800 lines) | LP-27 extraction; LP-1 guards; LP-24 quality fix; LP-16/LP-18/LP-19/LP-20 applied uniformly. |
+| `ajax/proxy-operations.php`, `ajax/proxy-test.php`, `ajax/stats.php` | Thin dispatchers (LP-27); `$orderId` threading (LP-1); `safeHttpStatus` (LP-20); generic 500s (LP-19). |
+| `lib/ApiClient.php` | LP-6 retry gate, LP-21 code guards, LP-26 timeout clamp + IP validation; static HTTP seam (tests). |
+| `lib/Helpers.php` | LP-1/LP-20 helpers, LP-22, LP-23, LP-24, LP-2; `JsonResponseException` (`\Error`, so endpoint `catch (\Exception)` cannot swallow the test seam). |
+| `lib/Cache.php` | LP-12 JSON; LP-25 self-healing guards. |
+| `lib/Logger.php` | LP-11 masking; LP-25 guards. |
+| `lib/RateLimiter.php`, `lib/ApiException.php` | LP-25 guards; LP-11/LP-21 scalar guards. |
+| `hooks/Automation.php` | LP-5 zero-date guard, LP-14 cycle table, LP-16 activation notice. |
+| `hooks/AdminSidebar.php`, `hooks/Notifications.php`, `hooks.php` (new) | LP-17 removal; missing `Capsule` imports; LP-3 bootstrap. |
+| `install.php` | LP-25 installer guards, AjaxHandlers core-file entry, LP-O1 copy step. |
+| `templates/` (4 files) | LP-8 escapes. |
+| `assets/js/client.js` | LP-7 escape sweep + selector/URL sinks. |
+| 10 `index.php` silencers + root `.htaccess` (new) | LP-25. |
+| `tests/` (new: bootstrap + doubles + 8 suites + run.mjs) | 430 checks: real-file load + static security pins, Helpers/ApiClient/Cache/Logger/RateLimiter behaviour, ajax-handler behaviour via doubles, entry + hook execution, real-endpoint-file dispatch, template/JS static rules. |
+| `ci/run-php.sh`, `docs/CI.md` | New `mod_lteproxy` step (22 steps); count updated. |
+
+### Completion evidence
+
+- Executed: **430 checks, 0 failures** (111 load/static + 69 helpers + 38 cache/logger/limiter + 34 API client + 55 ajax handlers + 80 entry/hooks + 20 endpoint dispatch + 23 templates/JS).
+- Mutation probes, each caught and each reverted (backup/restore): `== 0` → `=== 0` (LP-24 check red), one IDOR guard removed (static pin + 3 behavioural checks red), LP-2 cast removed (static pin red + production TypeError reproduced in two suites), extend clamp removed (clamp check red).
+- Fresh-clone proof: `cache/`+`logs/` guards deleted, suite re-ran green with guards self-healed by construction.
+- Not evidence: no live run; vendor HTTP shapes follow the code-implied contract, `\|escape` is pinned statically (no Smarty offline), and WHMCS-core rendering/hook firing is assumed, not executed.

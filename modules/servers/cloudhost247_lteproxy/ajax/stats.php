@@ -18,6 +18,7 @@ require_once __DIR__ . '/../lib/Cache.php';
 require_once __DIR__ . '/../lib/Helpers.php';
 require_once __DIR__ . '/../lib/RateLimiter.php';
 require_once __DIR__ . '/../lib/ApiClient.php';
+require_once __DIR__ . '/../lib/AjaxHandlers.php';
 
 use WHMCS\Database\Capsule;
 use CloudHost247\LTEProxy\ApiClient;
@@ -28,7 +29,7 @@ if (!isset($_SESSION['uid'])) {
     Helpers::jsonError('Unauthorized', 401);
 }
 
-$csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_GET['csrf_token'] ?? '';
+$csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
 if (!Helpers::validateCsrfToken($csrfToken)) {
     Helpers::jsonError('Invalid token', 403);
 }
@@ -112,144 +113,6 @@ try {
     Helpers::jsonError('Failed to load statistics', 500);
 }
 
-function getUsageStats(ApiClient $api, string $orderId): void
-{
-    if (empty($orderId)) {
-        Helpers::jsonSuccess(['stats' => null]);
-    }
 
-    $proxies = $api->getOrderProxies($orderId);
-    $proxyList = $proxies['data'] ?? [];
 
-    $totalRequests = 0;
-    $totalBandwidth = 0;
-    $activeProxies = 0;
-    $regionCounts = [];
-    $carrierCounts = [];
 
-    foreach ($proxyList as $proxy) {
-        if (($proxy['status'] ?? '') === 'active') {
-            $activeProxies++;
-        }
-
-        $totalRequests += $proxy['request_count'] ?? 0;
-        $totalBandwidth += $proxy['bandwidth_used'] ?? 0;
-
-        $region = $proxy['region'] ?? 'unknown';
-        $regionCounts[$region] = ($regionCounts[$region] ?? 0) + 1;
-
-        $carrier = $proxy['carrier'] ?? 'unknown';
-        $carrierCounts[$carrier] = ($carrierCounts[$carrier] ?? 0) + 1;
-    }
-
-    Helpers::jsonSuccess([
-        'stats' => [
-            'total_proxies' => count($proxyList),
-            'active_proxies' => $activeProxies,
-            'inactive_proxies' => count($proxyList) - $activeProxies,
-            'total_requests' => number_format($totalRequests),
-            'total_bandwidth' => Helpers::formatBytes($totalBandwidth),
-            'region_distribution' => $regionCounts,
-            'carrier_distribution' => $carrierCounts,
-        ],
-    ]);
-}
-
-function getOrderHistory(ApiClient $api, string $orderId): void
-{
-    if (empty($orderId)) {
-        Helpers::jsonSuccess(['history' => []]);
-    }
-
-    $activeOrders = $api->getOrders(['order_id' => $orderId]);
-    $expiredOrders = $api->getExpiredOrders(['order_id' => $orderId]);
-
-    $history = [];
-
-    foreach ($activeOrders['data'] ?? [] as $order) {
-        $history[] = [
-            'id' => $order['id'] ?? '',
-            'status' => $order['status'] ?? 'unknown',
-            'type' => 'active',
-            'quantity' => $order['quantity'] ?? 0,
-            'region' => $order['region'] ?? '',
-            'carrier' => $order['carrier'] ?? '',
-            'created_at' => Helpers::formatDate($order['created_at'] ?? ''),
-            'expires_at' => Helpers::formatDate($order['expires_at'] ?? ''),
-        ];
-    }
-
-    foreach ($expiredOrders['data'] ?? [] as $order) {
-        $history[] = [
-            'id' => $order['id'] ?? '',
-            'status' => 'expired',
-            'type' => 'expired',
-            'quantity' => $order['quantity'] ?? 0,
-            'region' => $order['region'] ?? '',
-            'carrier' => $order['carrier'] ?? '',
-            'created_at' => Helpers::formatDate($order['created_at'] ?? ''),
-            'expires_at' => Helpers::formatDate($order['expires_at'] ?? ''),
-        ];
-    }
-
-    // Sort by created date descending
-    usort($history, function ($a, $b) {
-        return strtotime($b['created_at'] ?? '0') <=> strtotime($a['created_at'] ?? '0');
-    });
-
-    Helpers::jsonSuccess(['history' => $history]);
-}
-
-function getRotationStatus(ApiClient $api, string $orderId): void
-{
-    if (empty($orderId)) {
-        Helpers::jsonSuccess(['rotations' => []]);
-    }
-
-    $proxies = $api->getOrderProxies($orderId);
-    $proxyList = $proxies['data'] ?? [];
-
-    $rotations = [];
-
-    foreach ($proxyList as $proxy) {
-        $rotations[] = [
-            'proxy_id' => $proxy['id'] ?? '',
-            'ip' => $proxy['ip'] ?? '',
-            'rotation_type' => $proxy['rotation_type'] ?? 'manual',
-            'rotation_interval' => $proxy['rotation_interval'] ?? 60,
-            'last_rotated' => $proxy['last_rotated'] ?? '',
-            'next_rotation' => $proxy['next_rotation'] ?? '',
-            'time_until_next' => !empty($proxy['next_rotation'])
-                ? max(0, (int) floor((strtotime($proxy['next_rotation']) - time()) / 60))
-                : 0,
-        ];
-    }
-
-    Helpers::jsonSuccess(['rotations' => $rotations]);
-}
-
-function getAccountSummary(ApiClient $api): void
-{
-    try {
-        $account = $api->getAccountInfo();
-        $balance = $api->getBalance();
-
-        Helpers::jsonSuccess([
-            'account' => [
-                'status' => $account['data']['status'] ?? 'unknown',
-                'api_version' => $account['data']['api_version'] ?? '1.0',
-                'rate_limit' => $account['data']['rate_limit'] ?? 60,
-            ],
-            'balance' => [
-                'amount' => $balance['data']['balance'] ?? 0,
-                'currency' => $balance['data']['currency'] ?? 'USD',
-                'formatted' => '$' . number_format($balance['data']['balance'] ?? 0, 2),
-            ],
-        ]);
-    } catch (\Exception $e) {
-        Helpers::jsonSuccess([
-            'account' => ['status' => 'unknown'],
-            'balance' => ['amount' => 0, 'formatted' => '$0.00'],
-        ]);
-    }
-}

@@ -1,0 +1,14 @@
+# CloudHost 247 LTE Proxy: block direct web access to non-endpoint files.
+# The ajax/ endpoints must stay web-accessible; everything matched below is
+# server-side only (templates, caches, logs) or inert without WHMCS.
+Options -Indexes
+
+<FilesMatch "\.(log|cache|tpl|md)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>

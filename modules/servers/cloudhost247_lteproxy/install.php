@@ -96,6 +96,19 @@ if (!is_dir($cachePath)) {
     mkdir($cachePath, 0755, true);
 }
 
+// Protect runtime directories from web access
+foreach ([$logsPath, $cachePath] as $runtimeDir) {
+    $indexFile = $runtimeDir . '/index.php';
+    if (!file_exists($indexFile)) {
+        file_put_contents($indexFile, "<?php\n// Silence is golden.\n");
+    }
+    $htaccessFile = $runtimeDir . '/.htaccess';
+    if (!file_exists($htaccessFile)) {
+        file_put_contents($htaccessFile, "# CloudHost247 LTE Proxy - deny web access to runtime files\n<IfModule mod_authz_core.c>\n    Require all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n    Deny from all\n</IfModule>\n");
+    }
+    echo "[OK] Web-access guards in place: " . basename($runtimeDir) . "\n";
+}
+
 // Check file permissions
 echo "\nChecking file permissions...\n";
 
@@ -126,6 +139,7 @@ $coreFiles = [
     'lib/Logger.php',
     'lib/Cache.php',
     'lib/Helpers.php',
+    'lib/AjaxHandlers.php',
     'lib/RateLimiter.php',
 ];
 
@@ -182,6 +196,7 @@ echo "2. Go to Setup > Products/Services > Products/Services\n";
 echo "3. Create a new product and select 'CloudHost247 LTE Proxy' as the module\n";
 echo "4. Configure your API credentials in the module settings\n";
 echo "5. Test the API connection\n";
+echo "6. Copy hooks.php to /includes/hooks/cloudhost247_lteproxy.php so the automation hooks load\n";
 echo "\n";
 
 echo "For support, contact CloudHost247 Isc.\n";

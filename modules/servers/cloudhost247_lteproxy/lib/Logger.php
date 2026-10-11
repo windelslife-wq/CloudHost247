@@ -59,7 +59,41 @@ class Logger
             @mkdir($logDir, 0755, true);
         }
 
+        self::writeAccessGuards($logDir);
+
         $this->logFile = $logDir . '/cloudhost247_lteproxy.log';
+    }
+
+    /**
+     * Drop index.php + .htaccess guards so runtime files are never web-readable.
+     *
+     * @param string $dir Directory to protect
+     * @return void
+     */
+    private static function writeAccessGuards(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $indexFile = $dir . '/index.php';
+        if (!file_exists($indexFile)) {
+            @file_put_contents($indexFile, "<?php\n// Silence is golden.\n");
+        }
+
+        $htaccessFile = $dir . '/.htaccess';
+        if (!file_exists($htaccessFile)) {
+            @file_put_contents(
+                $htaccessFile,
+                "# CloudHost247 LTE Proxy - deny web access to runtime files\n" .
+                "<IfModule mod_authz_core.c>\n" .
+                "    Require all denied\n" .
+                "</IfModule>\n" .
+                "<IfModule !mod_authz_core.c>\n" .
+                "    Deny from all\n" .
+                "</IfModule>\n"
+            );
+        }
     }
 
     /**
@@ -166,7 +200,7 @@ class Logger
         }
 
         if ($responseBody !== null) {
-            $context['response'] = $responseBody;
+            $context['response'] = $this->maskSensitiveData($responseBody);
         }
 
         $level = $httpCode >= 400 ? 'ERROR' : 'DEBUG';

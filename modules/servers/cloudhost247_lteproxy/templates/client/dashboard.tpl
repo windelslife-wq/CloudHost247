@@ -1,7 +1,7 @@
 {* CloudHost247 Isc LTE Proxy Client Dashboard *}
 {* Version: 1.0.0 *}
 
-<div class="ch247-lteproxy-dashboard" data-service-id="{$serviceId}" data-csrf-token="{$csrfToken}">
+<div class="ch247-lteproxy-dashboard" data-service-id="{$serviceId|escape}" data-csrf-token="{$csrfToken|escape}">
     {* Module Header *}
     <div class="ch247-header">
         <div class="ch247-header-content">
@@ -10,7 +10,7 @@
                 <h2>CloudHost247 LTE Proxy Dashboard</h2>
             </div>
             <div class="ch247-header-meta">
-                <span class="ch247-version">v{$moduleVersion}</span>
+                <span class="ch247-version">v{$moduleVersion|escape}</span>
                 {if $orderId}
                     <span class="ch247-badge ch247-badge-success">Active</span>
                 {else}
@@ -137,7 +137,7 @@
                         <label>New Region</label>
                         <select class="ch247-select" id="region-select">
                             {foreach from=$regions key=key item=name}
-                                <option value="{$key}">{$name}</option>
+                                <option value="{$key|escape}">{$name|escape}</option>
                             {/foreach}
                         </select>
                     </div>
@@ -160,7 +160,7 @@
                         <label>New Carrier</label>
                         <select class="ch247-select" id="carrier-select">
                             {foreach from=$carriers key=key item=name}
-                                <option value="{$key}">{$name}</option>
+                                <option value="{$key|escape}">{$name|escape}</option>
                             {/foreach}
                         </select>
                     </div>
@@ -183,7 +183,7 @@
                         <label>Protocol</label>
                         <select class="ch247-select" id="proxy-type-select">
                             {foreach from=$proxyTypes item=type}
-                                <option value="{$type}">{$type}</option>
+                                <option value="{$type|escape}">{$type|escape}</option>
                             {/foreach}
                         </select>
                     </div>
@@ -206,7 +206,7 @@
                         <label>Auth Method</label>
                         <select class="ch247-select" id="auth-type-select">
                             {foreach from=$authTypes key=key item=name}
-                                <option value="{$key}">{$name|replace:'_':' '|capitalize}</option>
+                                <option value="{$name|escape}">{$name|replace:'_':' '|capitalize}</option>
                             {/foreach}
                         </select>
                     </div>
@@ -280,7 +280,7 @@
         <div class="ch247-setup-info">
             <div class="ch247-info-item">
                 <i class="fas fa-info-circle"></i>
-                <span>Service ID: {$serviceId}</span>
+                <span>Service ID: {$serviceId|escape}</span>
             </div>
             <div class="ch247-info-item">
                 <i class="fas fa-clock"></i>
@@ -310,15 +310,15 @@
 
 <script>
 window.CH247Config = {
-    serviceId: {$serviceId},
-    csrfToken: '{$csrfToken}',
-    orderId: '{$orderId}',
-    ajaxUrl: '{$systemurl}modules/servers/cloudhost247_lteproxy/ajax/',
-    regions: {json_encode($regions)},
-    carriers: {json_encode($carriers)},
-    proxyTypes: {json_encode($proxyTypes)},
-    rotationTypes: {json_encode($rotationTypes)},
-    authTypes: {json_encode($authTypes)},
-    connectionTypes: {json_encode($connectionTypes)}
+    serviceId: {$serviceId|json_encode},
+    csrfToken: {$csrfToken|json_encode},
+    orderId: {$orderId|json_encode},
+    ajaxUrl: '{$systemurl|escape:'javascript'}modules/servers/cloudhost247_lteproxy/ajax/',
+    regions: {$regions|json_encode},
+    carriers: {$carriers|json_encode},
+    proxyTypes: {$proxyTypes|json_encode},
+    rotationTypes: {$rotationTypes|json_encode},
+    authTypes: {$authTypes|json_encode},
+    connectionTypes: {$connectionTypes|json_encode}
 };
 </script>

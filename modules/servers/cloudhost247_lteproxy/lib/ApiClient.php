@@ -60,6 +60,31 @@ class ApiClient
     /** @var int Retry delay in milliseconds */
     private const RETRY_DELAY_MS = 1000;
 
+    /** @var callable|null Test seam: scripted HTTP transport, (method, url, body, headers) => sim array */
+    private static $httpHandler = null;
+
+    /**
+     * Override the HTTP transport (offline tests only; null restores curl).
+     *
+     * @param callable|null $handler Test transport
+     * @return void
+     */
+    public static function setHttpHandler(?callable $handler): void
+    {
+        self::$httpHandler = $handler;
+    }
+
+    /**
+     * Only idempotent methods may be retried: replaying POST /buy would double-purchase.
+     *
+     * @param string $method HTTP method
+     * @return bool
+     */
+    public static function isIdempotentMethod(string $method): bool
+    {
+        return in_array(strtoupper($method), ['GET', 'HEAD', 'PUT', 'DELETE'], true);
+    }
+
     /**
      * Constructor
      *
@@ -71,7 +96,7 @@ class ApiClient
         $this->apiBaseUrl = rtrim($config['api_base_url'] ?? 'https://api.cloudhost247.com', '/');
         $this->apiKey = $config['api_key'] ?? '';
         $this->apiSecret = $config['api_secret'] ?? '';
-        $this->timeout = (int) ($config['api_timeout'] ?? 30);
+        $this->timeout = max(1, (int) ($config['api_timeout'] ?? 30));
         $this->sslVerify = (bool) ($config['api_ssl_verify'] ?? true);
         $this->logger = $logger;
         $this->rateLimiter = new RateLimiter($config);
@@ -359,6 +384,10 @@ class ApiClient
             throw new ApiException('Invalid auth type. Allowed: ' . implode(', ', $allowedAuthTypes), 400);
         }
 
+        if (isset($authParams['client_ip']) && !filter_var($authParams['client_ip'], FILTER_VALIDATE_IP)) {
+            throw new ApiException('Invalid IP address format', 400);
+        }
+
         return $this->makeRequest('POST', '/proxies/' . urlencode($proxyId) . '/auth', $authParams);
     }
 
@@ -531,9 +560,17 @@ class ApiClient
 
         $url = $this->apiBaseUrl . $endpoint;
 
-        $ch = curl_init();
-
         $headers = $this->defaultHeaders;
+
+        if (self::$httpHandler !== null) {
+            $sim = call_user_func(self::$httpHandler, $method, $url, $body, $headers);
+            $response = $sim['response'] ?? false;
+            $httpCode = (int) ($sim['http_code'] ?? 0);
+            $totalTime = 0.0;
+            $curlError = (string) ($sim['error'] ?? '');
+            $curlErrno = (int) ($sim['errno'] ?? 0);
+        } else {
+        $ch = curl_init();
 
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -579,30 +616,29 @@ class ApiClient
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $totalTime = curl_getinfo($ch, CURLINFO_TOTAL_TIME);
+        $curlError = $response === false ? curl_error($ch) : '';
+        $curlErrno = $response === false ? curl_errno($ch) : 0;
+
+        curl_close($ch);
+        }
 
         $this->lastHttpCode = $httpCode;
 
         if ($response === false) {
-            $curlError = curl_error($ch);
-            $curlErrno = curl_errno($ch);
-            curl_close($ch);
-
             $this->logger->error('CURL request failed', [
                 'endpoint' => $endpoint,
                 'error' => $curlError,
                 'errno' => $curlErrno,
             ]);
 
-            // Retry on transient errors
-            if ($retryCount < self::MAX_RETRIES && $this->isRetryableError($curlErrno)) {
+            // Retry transient errors for idempotent methods only (never replay a purchase)
+            if ($retryCount < self::MAX_RETRIES && self::isIdempotentMethod($method) && $this->isRetryableError($curlErrno)) {
                 usleep(self::RETRY_DELAY_MS * 1000 * ($retryCount + 1));
                 return $this->makeRequest($method, $endpoint, $body, $retryCount + 1);
             }
 
             throw new ApiException('API request failed: ' . $curlError, 0);
         }
-
-        curl_close($ch);
 
         // Record request in rate limiter
         $this->rateLimiter->recordRequest();
@@ -623,7 +659,7 @@ class ApiClient
         // Parse JSON response
         $decoded = json_decode($response, true);
 
-        if (json_last_error() !== JSON_ERROR_NONE) {
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
             $this->logger->error('Invalid JSON response', [
                 'endpoint' => $endpoint,
                 'response_preview' => substr($response, 0, 500),
@@ -634,7 +670,7 @@ class ApiClient
         // Check API-level errors
         if (isset($decoded['success']) && $decoded['success'] === false) {
             $errorMessage = $decoded['message'] ?? $decoded['error'] ?? 'Unknown API error';
-            $errorCode = $decoded['code'] ?? $httpCode;
+            $errorCode = isset($decoded['code']) && is_int($decoded['code']) ? $decoded['code'] : $httpCode;
 
             $this->logger->warning('API returned error', [
                 'endpoint' => $endpoint,
@@ -676,12 +712,12 @@ class ApiClient
         ]);
 
         // Retry on specific status codes
-        if ($retryCount < self::MAX_RETRIES && in_array($httpCode, [502, 503, 504], true)) {
+        if ($retryCount < self::MAX_RETRIES && self::isIdempotentMethod($method) && in_array($httpCode, [502, 503, 504], true)) {
             usleep(self::RETRY_DELAY_MS * 1000 * ($retryCount + 1));
             return $this->makeRequest($method, $endpoint, $body, $retryCount + 1);
         }
 
-        throw new ApiException($errorMessage, $httpCode, $decoded ?? null);
+        throw new ApiException($errorMessage, $httpCode, is_array($decoded) ? $decoded : null);
     }
 
     /**

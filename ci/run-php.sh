@@ -70,6 +70,7 @@ mod_blockonomics() { run_glob 'modules/gateways/blockonomics/tests/*Test.php'; }
 mod_soyoustart_vps() { run_glob 'modules/servers/soyoustart_vps/tests/*Test.php'; }
 mod_smmprovisioning() { run_glob 'modules/servers/smmprovisioning/tests/*Test.php'; }
 mod_rdp() { run_glob 'modules/servers/RDP/tests/*Test.php'; }
+mod_lteproxy() { run_glob 'modules/servers/cloudhost247_lteproxy/tests/*Test.php'; }
 mod_affiliate()    { run_php 'modules/addons/customaffiliate/tests/CommissionTest.php'; run_php 'modules/addons/customaffiliate/tests/RefundUpgradeTest.php'; }
 mod_phones()       { run_php 'modules/addons/phoneservices/tests/WebhookVerifierTest.php'; }
 mod_smm()          { run_php 'modules/addons/smmaddon/tests/AdminSecurityTest.php'; }
@@ -126,7 +127,7 @@ mod_lint() {
     fi
 }
 
-MODULES="tools apps services ai marketing domainbroker digital cloudflare blockonomics soyoustart_vps smmprovisioning rdp affiliate phones smm hostxemail hostxtools toolscenter smtphosting cartrecovery passkey"
+MODULES="tools apps services ai marketing domainbroker digital cloudflare blockonomics soyoustart_vps smmprovisioning rdp lteproxy affiliate phones smm hostxemail hostxtools toolscenter smtphosting cartrecovery passkey"
 
 run_all() {
     local m
@@ -164,7 +165,7 @@ for target in "$@"; do
         all) run_all ;;
         legacy74) run_legacy74 ;;
         lint) mod_lint ;;
-        tools|apps|services|ai|marketing|domainbroker|digital|cloudflare|blockonomics|soyoustart_vps|smmprovisioning|rdp|affiliate|phones|smm|hostxemail|hostxtools|toolscenter|smtphosting|cartrecovery|passkey)
+        tools|apps|services|ai|marketing|domainbroker|digital|cloudflare|blockonomics|soyoustart_vps|smmprovisioning|rdp|lteproxy|affiliate|phones|smm|hostxemail|hostxtools|toolscenter|smtphosting|cartrecovery|passkey)
             echo "=== module: $target ==="
             "mod_$target" || true
             ;;

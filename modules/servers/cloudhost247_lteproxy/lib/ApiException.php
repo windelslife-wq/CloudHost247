@@ -55,7 +55,8 @@ class ApiException extends \Exception
         parent::__construct($message, $code, $previous);
 
         $this->errorData = $errorData;
-        $this->errorCode = $errorData['code'] ?? $errorData['error_code'] ?? null;
+        $rawCode = $errorData['code'] ?? $errorData['error_code'] ?? null;
+        $this->errorCode = is_scalar($rawCode) ? (string) $rawCode : null;
         $this->endpoint = $endpoint;
         $this->httpMethod = $httpMethod;
         $this->requestBody = $requestBody;

@@ -48,6 +48,12 @@
                 batchTestBtn.addEventListener('click', () => this.runBatchTest());
             }
 
+            // Delegated proxy-row actions (no inline handlers: row data is untrusted)
+            const proxyTbody = document.getElementById('proxy-table-body');
+            if (proxyTbody) {
+                proxyTbody.addEventListener('click', (e) => this.handleRowAction(e));
+            }
+
             // Run speed test
             const speedTestBtn = document.getElementById('run-speed-test');
             if (speedTestBtn) {
@@ -127,7 +133,7 @@
         /**
          * Make authenticated AJAX request
          */
-        async request(endpoint, options = {}) {
+        async request(endpoint, options = {}, action = '') {
             const url = this.config.ajaxUrl + endpoint;
             const csrfToken = this.config.csrfToken;
 
@@ -146,10 +152,13 @@
             const settings = { ...defaults, ...options };
             settings.headers = { ...defaults.headers, ...(options.headers || {}) };
 
-            // Add service ID to URL params
+            // Add service ID (and GET action) to URL params. The CSRF token
+            // travels in the X-CSRF-Token header only, never in the URL.
             const separator = url.includes('?') ? '&' : '?';
-            const urlWithParams = url + separator + 'service_id=' + encodeURIComponent(this.config.serviceId) +
-                '&csrf_token=' + encodeURIComponent(csrfToken);
+            let urlWithParams = url + separator + 'service_id=' + encodeURIComponent(this.config.serviceId);
+            if (action) {
+                urlWithParams += '&action=' + encodeURIComponent(action);
+            }
 
             try {
                 const response = await fetch(urlWithParams, settings);
@@ -204,38 +213,38 @@
             }
 
             tbody.innerHTML = proxies.map(proxy => `
-                <tr data-proxy-id="${proxy.id}">
+                <tr data-proxy-id="${this.escapeHtml(proxy.id)}">
                     <td>
                         <div class="ch247-proxy-info">
-                            <span class="ch247-proxy-ip">${proxy.ip}:${proxy.port}</span>
-                            <span class="ch247-proxy-meta">${proxy.formatted_proxy}</span>
+                            <span class="ch247-proxy-ip">${this.escapeHtml(proxy.ip)}:${this.escapeHtml(proxy.port)}</span>
+                            <span class="ch247-proxy-meta">${this.escapeHtml(proxy.formatted_proxy)}</span>
                         </div>
                     </td>
-                    <td><span class="ch247-badge ch247-badge-info">${proxy.type}</span></td>
-                    <td>${proxy.region.toUpperCase()}</td>
-                    <td>${proxy.carrier}</td>
+                    <td><span class="ch247-badge ch247-badge-info">${this.escapeHtml(proxy.type)}</span></td>
+                    <td>${this.escapeHtml(String(proxy.region || '').toUpperCase())}</td>
+                    <td>${this.escapeHtml(proxy.carrier)}</td>
                     <td>
                         <span class="ch247-status ch247-status-${proxy.status === 'active' ? 'online' : 'offline'}">
-                            ${proxy.status}
+                            ${this.escapeHtml(proxy.status)}
                         </span>
                     </td>
-                    <td>${proxy.time_remaining}</td>
+                    <td>${this.escapeHtml(proxy.time_remaining)}</td>
                     <td>
                         <div class="ch247-table-actions">
-                            <button class="ch247-action-btn" title="Copy proxy" onclick="CH247.copyProxy('${proxy.formatted_proxy}')">
+                            <button class="ch247-action-btn" title="Copy proxy" data-action="copy" data-id="${this.escapeHtml(proxy.id)}">
                                 <i class="fas fa-copy"></i>
                             </button>
-                            <button class="ch247-action-btn" title="Copy format" onclick="CH247.copyProxy('${proxy.copy_format}')">
+                            <button class="ch247-action-btn" title="Copy format" data-action="copyfmt" data-id="${this.escapeHtml(proxy.id)}">
                                 <i class="fas fa-clipboard"></i>
                             </button>
-                            <button class="ch247-action-btn" title="Rotate IP" onclick="CH247.rotateIp('${proxy.id}')">
+                            <button class="ch247-action-btn" title="Rotate IP" data-action="rotate" data-id="${this.escapeHtml(proxy.id)}">
                                 <i class="fas fa-sync-alt"></i>
                             </button>
                             ${proxy.is_1by1 ? `
-                            <button class="ch247-action-btn" title="Reveal IP" onclick="CH247.revealIp('${proxy.id}')">
+                            <button class="ch247-action-btn" title="Reveal IP" data-action="reveal" data-id="${this.escapeHtml(proxy.id)}">
                                 <i class="fas fa-eye"></i>
                             </button>` : ''}
-                            <button class="ch247-action-btn" title="Test proxy" onclick="CH247.testProxy('${proxy.id}')">
+                            <button class="ch247-action-btn" title="Test proxy" data-action="test" data-id="${this.escapeHtml(proxy.id)}">
                                 <i class="fas fa-tachometer-alt"></i>
                             </button>
                         </div>
@@ -264,7 +273,7 @@
             ];
 
             const options = this.proxies.map(p =>
-                `<option value="${p.id}">${p.ip}:${p.port}</option>`
+                `<option value="${this.escapeHtml(p.id)}">${this.escapeHtml(p.ip)}:${this.escapeHtml(p.port)}</option>`
             ).join('');
 
             selects.forEach(id => {
@@ -298,6 +307,35 @@
         },
 
         /**
+         * Handle delegated clicks on proxy-row action buttons
+         */
+        handleRowAction(event) {
+            const btn = event.target.closest('[data-action]');
+            if (!btn) return;
+
+            const proxy = this.proxies.find(p => String(p.id) === btn.dataset.id);
+            if (!proxy) return;
+
+            switch (btn.dataset.action) {
+                case 'copy':
+                    this.copyProxy(proxy.formatted_proxy);
+                    break;
+                case 'copyfmt':
+                    this.copyProxy(proxy.copy_format);
+                    break;
+                case 'rotate':
+                    this.rotateIp(proxy.id);
+                    break;
+                case 'reveal':
+                    this.revealIp(proxy.id);
+                    break;
+                case 'test':
+                    this.testProxy(proxy.id);
+                    break;
+            }
+        },
+
+        /**
          * Copy proxy to clipboard
          */
         async copyProxy(text) {
@@ -320,7 +358,7 @@
          * Rotate IP for a proxy
          */
         async rotateIp(proxyId) {
-            const btn = document.querySelector(`tr[data-proxy-id="${proxyId}"] .fa-sync-alt`);
+            const btn = document.querySelector(`tr[data-proxy-id="${CSS.escape(proxyId)}"] .fa-sync-alt`);
             if (btn) btn.classList.add('fa-spin');
 
             try {
@@ -406,19 +444,19 @@
                 const content = `
                     <div class="ch247-speed-metrics" style="margin-bottom:20px">
                         <div class="ch247-speed-metric">
-                            <div class="ch247-speed-metric-value">${summary.total || 0}</div>
+                            <div class="ch247-speed-metric-value">${this.escapeHtml(summary.total || 0)}</div>
                             <div class="ch247-speed-metric-label">Total</div>
                         </div>
                         <div class="ch247-speed-metric">
-                            <div class="ch247-speed-metric-value ch247-quality-excellent">${summary.alive || 0}</div>
+                            <div class="ch247-speed-metric-value ch247-quality-excellent">${this.escapeHtml(summary.alive || 0)}</div>
                             <div class="ch247-speed-metric-label">Alive</div>
                         </div>
                         <div class="ch247-speed-metric">
-                            <div class="ch247-speed-metric-value ch247-quality-poor">${summary.dead || 0}</div>
+                            <div class="ch247-speed-metric-value ch247-quality-poor">${this.escapeHtml(summary.dead || 0)}</div>
                             <div class="ch247-speed-metric-label">Dead</div>
                         </div>
                         <div class="ch247-speed-metric">
-                            <div class="ch247-speed-metric-value">${summary.success_rate || 0}%</div>
+                            <div class="ch247-speed-metric-value">${this.escapeHtml(summary.success_rate || 0)}%</div>
                             <div class="ch247-speed-metric-label">Success Rate</div>
                         </div>
                     </div>
@@ -428,10 +466,10 @@
                             <tbody>
                                 ${results.map(r => `
                                     <tr>
-                                        <td>${r.ip || r.proxy_id}</td>
+                                        <td>${this.escapeHtml(r.ip || r.proxy_id)}</td>
                                         <td><span class="ch247-status ch247-status-${r.alive ? 'online' : 'offline'}">${r.alive ? 'Alive' : 'Dead'}</span></td>
-                                        <td>${r.speed || 'N/A'}</td>
-                                        <td>${r.latency || 'N/A'}</td>
+                                        <td>${this.escapeHtml(r.speed || 'N/A')}</td>
+                                        <td>${this.escapeHtml(r.latency || 'N/A')}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -514,7 +552,7 @@
                     return `
                         <div class="ch247-speed-card">
                             <div class="ch247-speed-header">
-                                <span class="ch247-proxy-ip">${proxy.ip}:${proxy.port}</span>
+                                <span class="ch247-proxy-ip">${this.escapeHtml(proxy.ip)}:${this.escapeHtml(proxy.port)}</span>
                                 <span class="ch247-badge ch247-badge-danger">Failed</span>
                             </div>
                             <p>Test failed - could not reach proxy</p>
@@ -529,27 +567,27 @@
                     <div class="ch247-speed-card">
                         <div class="ch247-speed-header">
                             <div>
-                                <span class="ch247-proxy-ip">${proxy.ip}:${proxy.port}</span>
+                                <span class="ch247-proxy-ip">${this.escapeHtml(proxy.ip)}:${this.escapeHtml(proxy.port)}</span>
                                 <span class="ch247-status ch247-status-${aliveData.alive ? 'online' : 'offline'}" style="margin-left:10px">${aliveData.alive ? 'Online' : 'Offline'}</span>
                             </div>
-                            ${speedData ? `<span class="ch247-quality-${qualityClass}">${quality}</span>` : ''}
+                            ${speedData ? `<span class="ch247-quality-${this.escapeHtml(qualityClass)}">${this.escapeHtml(quality)}</span>` : ''}
                         </div>
                         ${speedData ? `
                         <div class="ch247-speed-metrics">
                             <div class="ch247-speed-metric">
-                                <div class="ch247-speed-metric-value">${speedData.download_speed ? speedData.download_speed.formatted : 'N/A'}</div>
+                                <div class="ch247-speed-metric-value">${this.escapeHtml(speedData.download_speed ? speedData.download_speed.formatted : 'N/A')}</div>
                                 <div class="ch247-speed-metric-label">Download</div>
                             </div>
                             <div class="ch247-speed-metric">
-                                <div class="ch247-speed-metric-value">${speedData.upload_speed ? speedData.upload_speed.formatted : 'N/A'}</div>
+                                <div class="ch247-speed-metric-value">${this.escapeHtml(speedData.upload_speed ? speedData.upload_speed.formatted : 'N/A')}</div>
                                 <div class="ch247-speed-metric-label">Upload</div>
                             </div>
                             <div class="ch247-speed-metric">
-                                <div class="ch247-speed-metric-value">${speedData.latency_ms}ms</div>
+                                <div class="ch247-speed-metric-value">${this.escapeHtml(speedData.latency_ms)}ms</div>
                                 <div class="ch247-speed-metric-label">Latency</div>
                             </div>
                             <div class="ch247-speed-metric">
-                                <div class="ch247-speed-metric-value">${speedData.packet_loss_percent}%</div>
+                                <div class="ch247-speed-metric-value">${this.escapeHtml(speedData.packet_loss_percent)}%</div>
                                 <div class="ch247-speed-metric-label">Packet Loss</div>
                             </div>
                         </div>
@@ -586,20 +624,20 @@
                         <div class="ch247-speed-metric-label">Status</div>
                     </div>
                     <div class="ch247-speed-metric">
-                        <div class="ch247-speed-metric-value">${aliveData.response_time_ms}ms</div>
+                        <div class="ch247-speed-metric-value">${this.escapeHtml(aliveData.response_time_ms)}ms</div>
                         <div class="ch247-speed-metric-label">Response Time</div>
                     </div>
                 </div>
             `;
 
             if (aliveData.ip) {
-                html += `<p><strong>IP:</strong> ${aliveData.ip}</p>`;
+                html += `<p><strong>IP:</strong> ${this.escapeHtml(aliveData.ip)}</p>`;
             }
             if (aliveData.location) {
-                html += `<p><strong>Location:</strong> ${aliveData.location}</p>`;
+                html += `<p><strong>Location:</strong> ${this.escapeHtml(aliveData.location)}</p>`;
             }
             if (aliveData.isp) {
-                html += `<p><strong>ISP:</strong> ${aliveData.isp}</p>`;
+                html += `<p><strong>ISP:</strong> ${this.escapeHtml(aliveData.isp)}</p>`;
             }
 
             if (speedData) {
@@ -608,15 +646,15 @@
                     <h4>Speed Test Results</h4>
                     <div class="ch247-speed-metrics">
                         <div class="ch247-speed-metric">
-                            <div class="ch247-speed-metric-value">${speedData.download_speed ? speedData.download_speed.formatted : 'N/A'}</div>
+                            <div class="ch247-speed-metric-value">${this.escapeHtml(speedData.download_speed ? speedData.download_speed.formatted : 'N/A')}</div>
                             <div class="ch247-speed-metric-label">Download</div>
                         </div>
                         <div class="ch247-speed-metric">
-                            <div class="ch247-speed-metric-value">${speedData.latency_ms}ms</div>
+                            <div class="ch247-speed-metric-value">${this.escapeHtml(speedData.latency_ms)}ms</div>
                             <div class="ch247-speed-metric-label">Latency</div>
                         </div>
                         <div class="ch247-speed-metric">
-                            <div class="ch247-speed-metric-value">${speedData.packet_loss_percent}%</div>
+                            <div class="ch247-speed-metric-value">${this.escapeHtml(speedData.packet_loss_percent)}%</div>
                             <div class="ch247-speed-metric-label">Loss</div>
                         </div>
                     </div>
@@ -769,20 +807,20 @@
                 container.innerHTML = rotations.map(r => `
                     <div class="ch247-rotation-card">
                         <div class="ch247-rotation-card-header">
-                            <span class="ch247-proxy-ip">${r.ip || r.proxy_id}</span>
-                            <span class="ch247-badge ch247-badge-info">${r.rotation_type}</span>
+                            <span class="ch247-proxy-ip">${this.escapeHtml(r.ip || r.proxy_id)}</span>
+                            <span class="ch247-badge ch247-badge-info">${this.escapeHtml(r.rotation_type)}</span>
                         </div>
                         <div class="ch247-stat-info" style="margin-bottom:8px">
                             <span class="ch247-stat-label">Rotation Interval</span>
-                            <span class="ch247-stat-value" style="font-size:16px">${r.rotation_interval} min</span>
+                            <span class="ch247-stat-value" style="font-size:16px">${this.escapeHtml(r.rotation_interval)} min</span>
                         </div>
                         ${r.next_rotation ? `
                         <div class="ch247-stat-info">
                             <span class="ch247-stat-label">Next Rotation In</span>
-                            <span class="ch247-rotation-timer" data-minutes="${r.time_until_next}">${r.time_until_next} min</span>
+                            <span class="ch247-rotation-timer" data-minutes="${this.escapeHtml(r.time_until_next)}">${this.escapeHtml(r.time_until_next)} min</span>
                         </div>
                         ` : ''}
-                        ${r.last_rotated ? `<p style="font-size:11px;color:var(--ch247-text-muted);margin-top:8px">Last rotated: ${r.last_rotated}</p>` : ''}
+                        ${r.last_rotated ? `<p style="font-size:11px;color:var(--ch247-text-muted);margin-top:8px">Last rotated: ${this.escapeHtml(r.last_rotated)}</p>` : ''}
                     </div>
                 `).join('');
 
@@ -836,15 +874,15 @@
                 container.innerHTML = history.map(h => `
                     <div class="ch247-history-item">
                         <div>
-                            <strong>Order #${h.id}</strong>
-                            <span class="ch247-badge ch247-badge-${h.type === 'active' ? 'success' : 'danger'}" style="margin-left:8px">${h.type}</span>
+                            <strong>Order #${this.escapeHtml(h.id)}</strong>
+                            <span class="ch247-badge ch247-badge-${h.type === 'active' ? 'success' : 'danger'}" style="margin-left:8px">${this.escapeHtml(h.type)}</span>
                             <p style="margin:4px 0 0;font-size:12px;color:var(--ch247-text-muted)">
-                                ${h.quantity} proxies - ${h.region} - ${h.carrier}
+                                ${this.escapeHtml(h.quantity)} proxies - ${this.escapeHtml(h.region)} - ${this.escapeHtml(h.carrier)}
                             </p>
                         </div>
                         <div style="text-align:right">
-                            <p style="margin:0;font-size:12px">${h.created_at}</p>
-                            ${h.expires_at ? `<p style="margin:4px 0 0;font-size:11px;color:var(--ch247-text-muted)">Expires: ${h.expires_at}</p>` : ''}
+                            <p style="margin:0;font-size:12px">${this.escapeHtml(h.created_at)}</p>
+                            ${h.expires_at ? `<p style="margin:4px 0 0;font-size:11px;color:var(--ch247-text-muted)">Expires: ${this.escapeHtml(h.expires_at)}</p>` : ''}
                         </div>
                     </div>
                 `).join('');
@@ -903,9 +941,12 @@
          * Escape HTML
          */
         escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+            return String(text === null || text === undefined ? '' : text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
         },
     };
 
