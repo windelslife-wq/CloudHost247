@@ -488,20 +488,6 @@ var toolDefinitions = {
         ]
     },
     // Productivity
-    qrGenerator: {
-        title: 'QR Code Generator',
-        fields: [
-            {name: 'data', label: 'Data / URL', type: 'text', placeholder: 'https://example.com', required: true},
-            {name: 'size', label: 'Size (px)', type: 'number', value: '300', min: 100, max: 1000},
-            {name: 'level', label: 'Error Correction', type: 'select', options: ['L', 'M', 'Q', 'H'], value: 'M'}
-        ]
-    },
-    qrScanner: {
-        title: 'QR Scanner',
-        fields: [
-            {name: 'image', label: 'QR image (PNG, JPG, GIF, WebP or BMP, max 5 MB). Decoded in your browser; the image is not uploaded.', type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp,image/bmp', required: true}
-        ]
-    },
     loremIpsum: {
         title: 'Lorem Ipsum Generator',
         fields: [

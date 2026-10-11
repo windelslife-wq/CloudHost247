@@ -45,8 +45,6 @@ step node templates/hostx/tests/announcementbar.test.mjs
 # Syntax gate for the shipped browser bundles touched by the audits.
 for js in \
     modules/addons/tools_center/js/tools-center.js \
-    modules/addons/tools_center/js/qr-scanner.js \
-    modules/addons/tools_center/js/qr-generator.js \
     modules/addons/CloudHost247_tools/assets/js/CloudHost247-tools.js \
     modules/addons/CloudHost247_tools/assets/js/tools-core.js ; do
     step node --check "$js"

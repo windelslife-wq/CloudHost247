@@ -156,8 +156,6 @@ $toolCategories = [
         'icon' => 'fa-bolt',
         'description' => 'Generators, calculators, and utilities',
         'tools' => [
-            ['action' => 'qrGenerator', 'name' => 'QR Code Generator', 'desc' => 'Create QR codes'],
-            ['action' => 'qrScanner', 'name' => 'QR Scanner', 'desc' => 'Decode QR codes'],
             ['action' => 'loremIpsum', 'name' => 'Lorem Ipsum', 'desc' => 'Generate placeholder text'],
             ['action' => 'timeCard', 'name' => 'Time Card', 'desc' => 'Calculate work hours'],
             ['action' => 'binChecker', 'name' => 'BIN Checker', 'desc' => 'Bank identification lookup'],

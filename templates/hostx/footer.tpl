@@ -34,9 +34,6 @@
 <script src="{$WEB_ROOT}/templates/{$template}/js/ion.rangeSlider.min.js"></script>
 <script src="{$WEB_ROOT}/templates/{$template}/js/custom.js"></script>   
 <script src="{$WEB_ROOT}/templates/{$template}/js/custom_scripts.js"></script>
-{if $overridesJs}
-	<script src="{$WEB_ROOT}/templates/{$template}/js/overrides/override.js"></script>
-{/if} 
 <div id="fullpage-overlay" class="hidden">
     <div class="outer-wrapper">
         <div class="inner-wrapper">
