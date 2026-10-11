@@ -3,6 +3,7 @@ namespace DigitalProducts\Services;
 
 use DigitalProducts\Core\Audit;
 use DigitalProducts\Core\Clock;
+use DigitalProducts\Core\Settings;
 use DigitalProducts\License;
 use DigitalProducts\Security\TokenService;
 use WHMCS\Database\Capsule;
@@ -36,7 +37,7 @@ class EntitlementService
         }
         $licenseKey = null;
         if ($service->license_enabled) {
-            $licenseKey = $this->license->generateLicense(['product_id' => $service->dp_product_id, 'service_id' => $service->id, 'client_id' => $service->userid, 'entitlement_id' => $entitlement->id, 'domain' => $service->domain]);
+            $licenseKey = $this->license->generateLicense(['product_id' => $service->dp_product_id, 'service_id' => $service->id, 'client_id' => $service->userid, 'entitlement_id' => $entitlement->id, 'domain' => $service->domain, 'domain_limit' => Settings::int('license_default_domain_limit'), 'activation_limit' => Settings::int('license_default_activations_limit')]);
         }
         // Email is best effort and recorded so a replayed payment hook does not resend it.
         if (empty($entitlement->email_sent_at)) $this->sendEmail($service, $entitlement, $licenseKey);

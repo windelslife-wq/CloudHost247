@@ -19,6 +19,11 @@ class Settings
         'api_rate_limit' => '60',
         'log_retention_days' => '0',
         'debug_logging' => 'off',
+        // D-6 (b): global license-issuance defaults. 0 = unlimited, so nothing
+        // changes until an operator sets a cap. Stored per license at grant
+        // time; existing licenses keep their stored limits.
+        'license_default_domain_limit' => '0',
+        'license_default_activations_limit' => '0',
     ];
     const SECRET_KEYS = ['encryption_key', 'api_secret', 'storage_secret'];
     protected static $cache;
@@ -81,7 +86,9 @@ class Settings
         }
         $path = trim((string) ($values['storage_path'] ?? self::get('storage_path')));
         if ($path !== '' && strpos($path, "\0") !== false) throw new ValidationException('Invalid storage path.');
-        return ['download_limit' => $limit, 'link_expiry_hours' => $expiry, 'max_upload_size' => $max, 'access_mode' => $mode, 'storage_path' => $path];
+        $domainCap = max(0, (int) ($values['license_default_domain_limit'] ?? self::get('license_default_domain_limit')));
+        $activationsCap = max(0, (int) ($values['license_default_activations_limit'] ?? self::get('license_default_activations_limit')));
+        return ['download_limit' => $limit, 'link_expiry_hours' => $expiry, 'max_upload_size' => $max, 'access_mode' => $mode, 'storage_path' => $path, 'license_default_domain_limit' => $domainCap, 'license_default_activations_limit' => $activationsCap];
     }
 
     public static function set($key, $value)
