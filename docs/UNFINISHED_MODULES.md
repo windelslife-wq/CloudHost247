@@ -9,7 +9,7 @@ Two independent methods were used, and a module/artifact appears below if **eith
    recorded in `docs/MODULE_COMPLETION_TRACKER.md`, plus modules in `docs/MODULES.md`
    that have **no completion record at all**.
 
-Summary: **5 stub-code artifacts** (2 missing adapter classes done via A-9 2026-10-11; 4 empty theme templates done via A-8 2026-10-11; OCR placeholder done via A-5 2026-10-11; tools entry point done via A-6 2026-10-11), **17 partially complete modules** (B-2, B-3, B-5, B-9, B-13, B-15 done 2026-10-11), **7 modules with no completion record** (C-6 done 2026-10-11), **2 unauditable modules**, **1 project-level gap** (E-1 done 2026-10-11; E-2 live validation remains).
+Summary: **5 stub-code artifacts** (2 missing adapter classes done via A-9 2026-10-11; 4 empty theme templates done via A-8 2026-10-11; OCR placeholder done via A-5 2026-10-11; tools entry point done via A-6 2026-10-11), **17 partially complete modules** (B-2, B-3, B-5, B-9, B-13, B-15 done 2026-10-11), **7 modules with no completion record** (C-6, C-7 done 2026-10-11), **2 unauditable modules**, **1 project-level gap** (E-1 done 2026-10-11; E-2 live validation remains).
 
 ---
 
@@ -79,7 +79,7 @@ The tracker's own rule counts them as unfinished.
 | C-4 | `modules/servers/soyoustart_vps` | 16 PHP files, 4,139 lines | none |
 | C-5 | `modules/servers/soyoustart` | 18 PHP files, 5,134 lines | none (audited as Module 13, findings **not** patched) |
 | C-6 | `modules/servers/cloudhost247cloudflare` | 1 PHP file, 139 lines. **Done 2026-10-11 — audited + 51-check suite.** Two findings fixed: unescaped admin-tab values (CF-S1, Low) and a dead import + missing `??` guard (CF-S2, Trivial). Contracts, idempotent terminate, fail-closed logging and the escaped client template all pinned; wired into the `mod_cloudflare` CI step. | Suite 51 checks, green |
-| C-7 | `modules/gateways/blockonomics` + `blockonomics.php` + `callback/blockonomics.php` | 15 PHP files, 3,042 lines | none |
+| C-7 | `modules/gateways/blockonomics` + `blockonomics.php` + `callback/blockonomics.php` | 17 PHP files, ~3,700 lines. **Done 2026-10-11 — audited + 247-check suite.** Eleven findings fixed: garbage-hash guard (BN-1), hash MAC (BN-2), `->name` reads (BN-3), poller CLI-only + single-flight (BN-4, Medium), curl timeouts (BN-5), USDT Test Setup (BN-6), USDT attempt isolation (BN-7), JSON/`is_countable`/`Throwable` hardening (BN-8/9/10), output escaping (BN-11). New `mod_blockonomics` CI step. | Suite 247 checks, green |
 
 ---
 

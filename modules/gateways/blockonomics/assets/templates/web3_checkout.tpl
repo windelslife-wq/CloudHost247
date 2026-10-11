@@ -26,7 +26,7 @@
                         
                         <div>
                             <span class="blockonomics-icon-cart"></span>
-                            {$order->value} {$order->currency}
+                            {$order->value} {$order->currency|escape}
                         </div>
                     </th>
                 </tr>
@@ -42,7 +42,7 @@
                 </div>
                 <div style="text-align:right;min-width:220px;">
                     <span style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">Receiving address</span><br>
-                    <code style="font-size:12px;word-break:break-all;">{$usdt_address}</code>
+                    <code style="font-size:12px;word-break:break-all;">{$usdt_address|escape}</code>
                 </div>
             </div>
 
@@ -140,7 +140,7 @@ var blockonomics_data = JSON.stringify({
     finish_order_url: '{$WEB_ROOT}/modules/gateways/blockonomics/payment.php?finish_order={$order_hash}',
     contract_address: '{$contract_address}',
     order_amount: '{$order_amount}',
-    usdt_receivers_address: '{$usdt_address}',
+    usdt_receivers_address: '{$usdt_address|escape:'javascript'}',
     chain_id:'{$chain_id}',
     crypto: JSON.parse('{json_encode($crypto)}'),
 })

@@ -1508,3 +1508,52 @@ ll, not a subdirectory.
   `/tools/api/my-ip` without a token (419) and via a page submit
   (200). If mod_rewrite is off, the same pages answer at
   `modules/addons/CloudHost247_tools/front.php?route=<path>`.
+
+## Module 15 — blockonomics (WHMCS payment gateway)
+
+| Field | Information |
+|---|---|
+| Module | `modules/gateways/blockonomics.php` (entry) + `modules/gateways/blockonomics/` (core, payment page, USDT poller, upgrade, Test Setup, lang, 5 checkout templates) + `modules/gateways/callback/blockonomics.php` — 17 PHP files, ~3,700 lines. The `cloudhost247/` governance layer and the Services-side console were already assured (`docs/BLOCKONOMICS_AUDIT.md`, services suites 11/12); C-7 covered the gateway's own files, which had no tests. |
+| Specification | `docs/BLOCKONOMICS.md` (authority, enforcement, money-integrity rules) plus the stock upstream Blockonomics/WHMCS behaviour the gateway extends. |
+| Status | **Audited; eleven findings fixed (BN-1–BN-11).** New offline suite **247 checks, 0 failures** (`modules/gateways/blockonomics/tests/`, php-wasm runner + `mod_blockonomics` CI step). No live run. |
+
+### Findings (all fixed)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| BN-1 | Garbage order hashes reached address generation: any hex string in `show_order`/`get_order` burned a live provider address (BTC) and then hit a fatal assigning properties on a string. `processOrderHash()` / `process_token_order()` / `redirect_finish_order()` now reject undecryptable hashes with HTTP 400 before any provider or DB work (overridable seams so the suite executes the path). | Low-Medium | Fixed |
+| BN-2 | Order hashes were AES-128-CBC with a static IV and no MAC — malleable in principle. Now Encrypt-then-MAC (HMAC-SHA256 over the ciphertext prepended); anything without a valid MAC — including pre-C-7 hashes — fails closed. Only in-flight checkout hashes break across the deploy. Analysis: targeted amount forgery was already infeasible (id and value share the IV-bound first block), so this is defence in depth. | Low | Fixed |
+| BN-3 | `->name` read on the array returned by `getSupportedCurrencies()` (4 sites): blank currency name in invoice notes + warning spam on every waiting-callback and USDT report. Now `['name']` with a code fallback. | Low | Fixed |
+| BN-4 | The USDT poller (an infinite daemon) was web-reachable with no access control — every HTTP hit ran the loop to `max_execution_time`, and concurrent loops widened the double-credit race. Now CLI-only (403 otherwise) plus a non-blocking single-flight lock. | Medium | Fixed |
+| BN-5 | No curl timeouts in `getNewAddress()`, `fetchPrice()` and the poller (a hung provider wedged checkout or stalled all USDT crediting). Now connect 10 s / total 30 s everywhere `doCurlCall()` already had one. | Low | Fixed |
+| BN-6 | Test Setup died or misdiagnosed whenever USDT was active: it probed a bogus `usdt.blockonomics.co` hostname (`exit()` mid-JSON) or reported via the BCH endpoint. USDT is now skipped (its readiness is governed by `Policy::usdtReadiness`); a failed callback update now reports instead of returning null (BN-6b). | Low-Medium | Fixed |
+| BN-7 | Repeat/concurrent USDT payments for one invoice collided: same deterministic pseudo-address meant a duplicate-key 500, an overwritten txid (first payment orphaned), or absorption into another currency's pending order. Pseudo-addresses are now unique per attempt and the report flow resolves a USDT row specifically — second payments get their own credited rows. | Low-Medium | Fixed |
+| BN-8 | `update_callback()` built JSON by string concatenation (a quote in SystemURL/xpub broke the request). Now `json_encode()`. | Low | Fixed |
+| BN-9 | Non-countable provider bodies in `check_get_callbacks_response_body()` raised `TypeError`. Now guarded by `is_countable()`. | Low | Fixed |
+| BN-10 | The poller caught `Exception` but not `Error`, so one poison order killed the daemon. Now catches `\Throwable` and continues. | Low | Fixed |
+| BN-11 | Unescaped output: hash-derived `$order->currency`, provider-derived `$order->addr` / `$payment_uri` in the checkout templates (HTML + JS contexts), and query-derived `$txid`/`$addr` in the callback's admin invoice note. All escaped context-appropriately. | Low | Fixed |
+
+### Checked and found sound
+
+- Callback: constant-time secret check, 400/404 discipline, expiry finalises without credit, amount math through `Policy::classifyAmount`, replay trio (suffixed transid, settled-invoice check, terminal-order check), sanitised gateway log. Raw-txid reuse across addresses is deliberately allowed (multi-address transactions); the secret is the auth boundary (audit §24's global-txid claim is the USDT report path's property).
+- Poller: ERC-20 selector + field offsets verified correct, contract and recipient enforced, confirmation gate fail-closed, tx-exists guard before `addInvoicePayment`. Cross-method double-pay (card + USDT) resolves as WHMCS credit balance — accepted, documented.
+- Money math: credit base (converted vs plain invoice), fiat→crypto conversion incl. margin, per-currency decimals, display formatting — all pinned; `Policy` inputs re-pinned at the gateway boundary.
+- Entry/upgrade: link fails closed when governance is down, Test Setup and upgrade are admin-gated, upgrade deletes files only (no row deletes).
+
+### Changes made
+
+| File | Change |
+|---|---|
+| `blockonomics/blockonomics.php` | BN-1/BN-2/BN-3/BN-5/BN-6/BN-6b/BN-7/BN-8/BN-9 + test seams + `fetchPrice` protected. |
+| `callback/blockonomics.php` | BN-3 name fix + BN-11 note escaping. |
+| `blockonomics/pollTransactionStatus.php` | BN-4 CLI guard + single-flight, BN-5 timeouts, BN-10 `Throwable`, dead line removed. |
+| `assets/templates/checkout.tpl`, `web3_checkout.tpl` | BN-11 escaping. |
+| `tests/` (new: bootstrap + 6 suites + run.mjs) | 247 checks via WHMCS/Capsule/Bridge fakes, real `Policy`, eval-loaded real class. |
+| `ci/run-php.sh`, `docs/CI.md` | New `mod_blockonomics` step (18 steps); count updated. |
+
+### Completion evidence
+
+- Executed: **247 checks, 0 failures** (41 hash + 58 flow + 35 diagnostics + 36 money + 64 statics + 13 entry).
+- Mutation probes, each caught and each restored byte-identical (`diff -q`): neutered MAC verify (2 failures), removed template escape (2 failures), removed CLI guard (1 failure).
+- Not evidence: no live run; the callback/poller/payment scripts are covered by static pins (they cannot be included offline) while every pure/method dependency they use is executed.
+- Ops note: USDT crediting needs `exec()` (the payment page spawns the poller daemon); on hosts without it USDT orders stall at status 0. No cron fallback is documented upstream.

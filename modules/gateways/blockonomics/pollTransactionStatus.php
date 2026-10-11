@@ -1,4 +1,11 @@
 <?php
+// CLI-only: this file is an infinite polling daemon (spawned by
+// Blockonomics::start_polling_job()). A web hit must never run it.
+if (PHP_SAPI !== 'cli') {
+    http_response_code(403);
+    exit('Forbidden.');
+}
+
 require_once __DIR__ . '/../../../init.php';
 require_once __DIR__ . '/../../../includes/gatewayfunctions.php';
 require_once __DIR__ . '/../../../includes/invoicefunctions.php';
@@ -14,6 +21,19 @@ $blockonomics = new Blockonomics();
 // Fetch module and API configuration
 $gatewayModuleName = 'blockonomics';
 $gatewayParams = getGatewayVariables($gatewayModuleName);
+
+// Single-flight: concurrent daemons widen the double-credit race, so a
+// second copy exits when the lock is already held. If the lock file
+// itself cannot be created we log and continue - no polling at all would
+// stall every USDT order, while a duplicate daemon only risks a retry log.
+$ch247PollLock = @fopen(sys_get_temp_dir() . '/blockonomics_usdt_poll.lock', 'c');
+if ($ch247PollLock !== false) {
+    if (!flock($ch247PollLock, LOCK_EX | LOCK_NB)) {
+        exit();
+    }
+} elseif (function_exists('logModuleCall')) {
+    logModuleCall('Blockonomics', 'Polling', 'lock file unavailable, continuing unlocked', '');
+}
 
 // CloudHost247 governance: when USDT is administratively disabled we keep
 // verifying in-flight orders (a disable only forbids NEW payments), but if
@@ -50,6 +70,8 @@ function logMessage($action, $request, $response) {
 function performCurlRequest($url) {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     $response = curl_exec($ch);
     curl_close($ch);
     return $response;
@@ -79,8 +101,6 @@ function pollTransactionStatus($order) {
     process($order, $result, $confirmations);
     logMessage("Polling", " Requested Transaction $txHash to check whether it is completed successfully or not.", "Completed");
     return;
-
-    logMessage("Polling","Request checks whether transaction ended: $txHash","Ended");
 }
 
 function process($order, $result, $confirmations = 2) {
@@ -208,7 +228,7 @@ do {
                 sleep(1);
             }
         }
-    } catch (Exception $e) {
+    } catch (\Throwable $e) {
         logMessage("Error", "An error occurred during polling transaction status", $e->getMessage());
     }
 } while (true);

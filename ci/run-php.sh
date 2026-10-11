@@ -66,6 +66,7 @@ mod_marketing()    { run_glob 'modules/addons/cloudhost247marketing/tests/*Test.
 mod_domainbroker() { run_glob 'modules/addons/domainbroker/tests/*Test.php'; }
 mod_digital()      { run_glob 'modules/addons/digitalproducts/tests/*Test.php'; }
 mod_cloudflare()   { run_php 'modules/addons/cloudhost247cloudflare/tests/01_SecurityCoreTest.php'; run_php 'modules/servers/cloudhost247cloudflare/tests/01_ServerModuleTest.php'; }
+mod_blockonomics() { run_glob 'modules/gateways/blockonomics/tests/*Test.php'; }
 mod_affiliate()    { run_php 'modules/addons/customaffiliate/tests/CommissionTest.php'; run_php 'modules/addons/customaffiliate/tests/RefundUpgradeTest.php'; }
 mod_phones()       { run_php 'modules/addons/phoneservices/tests/WebhookVerifierTest.php'; }
 mod_smm()          { run_php 'modules/addons/smmaddon/tests/AdminSecurityTest.php'; }
@@ -122,7 +123,7 @@ mod_lint() {
     fi
 }
 
-MODULES="tools apps services ai marketing domainbroker digital cloudflare affiliate phones smm hostxemail hostxtools toolscenter smtphosting cartrecovery passkey"
+MODULES="tools apps services ai marketing domainbroker digital cloudflare blockonomics affiliate phones smm hostxemail hostxtools toolscenter smtphosting cartrecovery passkey"
 
 run_all() {
     local m
@@ -160,7 +161,7 @@ for target in "$@"; do
         all) run_all ;;
         legacy74) run_legacy74 ;;
         lint) mod_lint ;;
-        tools|apps|services|ai|marketing|domainbroker|digital|cloudflare|affiliate|phones|smm|hostxemail|hostxtools|toolscenter|smtphosting|cartrecovery|passkey)
+        tools|apps|services|ai|marketing|domainbroker|digital|cloudflare|blockonomics|affiliate|phones|smm|hostxemail|hostxtools|toolscenter|smtphosting|cartrecovery|passkey)
             echo "=== module: $target ==="
             "mod_$target" || true
             ;;
