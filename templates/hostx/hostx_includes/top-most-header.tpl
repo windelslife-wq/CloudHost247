@@ -18,24 +18,14 @@
 						 <li><a href="tel:+{$hostx_theme_settings.country_calling_code_phone}{$hostx_theme_settings.phone}" class="telephoneanchor"><i class="fa fa-phone"></i> <span>(+{$hostx_theme_settings.country_calling_code_phone}) {$hostx_theme_settings.phone}</span></a></li>
 					 {/if}
 				 {/if}
-				 {if $languagechangeenabled && count($locales) > 1}
-					 <li class="languageDiv"><a href="#" data-toggle="dropdown"><span id="sLanguage"><img src="{$WEB_ROOT}/templates/{$template}/flags/blank.gif" class="flag flag-{$hxselectedlanguage.flagcode}" alt="{$hxselectedlanguage.localisedName}" /> {$hxselectedlanguage.localisedName}</span> <i class="fa fa-sort-desc"></i></a>
-						 <div class="dropdown-menu flag_drop" id="languageList"> 
-							 {foreach $hxlanguagesflags as $locale}
-								 <a class="dropdown-item" href="{$currentpagelinkback}language={$locale.language}"><img src="{$WEB_ROOT}/templates/{$template}/flags/blank.gif" class="flag flag-{$locale.flagcode}" alt="{$locale.localisedName}" /> {$locale.localisedName}</a>
-							 {/foreach}
-						 </div>
-					 </li> 
-				 {/if}
-				 {if !$loggedin && $currencies && ($hostx_theme_settings.disable_multi_crrency) == 'on' }
-					 <li class="currencyDiv"><a href="#" data-toggle="dropdown"><span id="sCurrency">{$hxselectedcurrency.prefix} {$hxselectedcurrency.code}</span> <i class="fa fa-sort-desc"></i></a>
-						 <div class="dropdown-menu" id="currencyList"> 
-							 {foreach from=$currencies item=listcurr}
-								 <a class="dropdown-item" href="{$currentpagelinkback}currency={$listcurr.id}">{$listcurr.prefix} {$listcurr.code}</a>
-							 {/foreach}
-						 </div>
-					 </li>
-				 {/if}
+				 {* CloudHost247 i18n: unified language + currency switcher.
+				    Replaces the old languageDiv/currencyDiv pair. The old control had three
+				    defects: it hid the currency selector from every logged-in client, it had
+				    no mobile variant, and it was a hover-only dropdown with no keyboard path
+				    and no accessible name. *}
+				 <li class="ch247-switcher-item">
+				     {include file="$template/includes/language-currency-switcher.tpl"}
+				 </li>
 				 {if !$loggedin}
 					 <li class="hover mblshow"><a href="{$WEB_ROOT}/clientarea.php"><i class="fa fa-user"></i></a></li>
 				 {else}
@@ -79,24 +69,14 @@
 							<li><a href="tel:+{$hostx_theme_settings.country_calling_code_phone}{$hostx_theme_settings.phone}" class="telephoneanchor"><i class="fa fa-phone"></i> <span>(+{$hostx_theme_settings.country_calling_code_phone}) {$hostx_theme_settings.phone}</span></a></li>
 						{/if}
 					{/if}
-					{if $languagechangeenabled && count($locales) > 1}
-						<li class="languageDiv"><a href="#" data-toggle="dropdown"><span id="sLanguage"><img src="{$WEB_ROOT}/templates/{$template}/flags/blank.gif" class="flag flag-{$hxselectedlanguage.flagcode}" alt="{$hxselectedlanguage.localisedName}" /> {$hxselectedlanguage.localisedName}</span> <i class="fa fa-sort-desc"></i></a>
-							<div class="dropdown-menu flag_drop" id="languageList"> 
-								{foreach $hxlanguagesflags as $locale}
-									<a class="dropdown-item" href="{$currentpagelinkback}language={$locale.language}"><img src="{$WEB_ROOT}/templates/{$template}/flags/blank.gif" class="flag flag-{$locale.flagcode}" alt="{$locale.localisedName}" /> {$locale.localisedName}</a>
-								{/foreach}
-							</div>
-						</li> 
-					{/if}
-					{if !$loggedin && $currencies && ($hostx_theme_settings.disable_multi_crrency) == 'on' }
-						<li class="currencyDiv"><a href="#" data-toggle="dropdown"><span id="sCurrency">{$hxselectedcurrency.prefix} {$hxselectedcurrency.code}</span> <i class="fa fa-sort-desc"></i></a>
-							<div class="dropdown-menu" id="currencyList"> 
-								{foreach from=$currencies item=listcurr}
-									<a class="dropdown-item" href="{$currentpagelinkback}currency={$listcurr.id}">{$listcurr.prefix} {$listcurr.code}</a>
-								{/foreach}
-							</div>
-						</li>
-					{/if}
+					{* CloudHost247 i18n: unified language + currency switcher.
+					   Replaces the old languageDiv/currencyDiv pair. The old control had three
+					   defects: it hid the currency selector from every logged-in client, it had
+					   no mobile variant, and it was a hover-only dropdown with no keyboard path
+					   and no accessible name. *}
+					<li class="ch247-switcher-item">
+					    {include file="$template/includes/language-currency-switcher.tpl"}
+					</li>
 					{if !$loggedin}
 						<li class="hover mblshow"><a href="{$WEB_ROOT}/clientarea.php"><i class="fa fa-user"></i></a></li>
 					{else}
@@ -152,24 +132,14 @@
 						 <li><a href="tel:+{$hostx_theme_settings.country_calling_code_phone}{$hostx_theme_settings.phone}" class="telephoneanchor"><i class="fa fa-phone"></i> <span>(+{$hostx_theme_settings.country_calling_code_phone}) {$hostx_theme_settings.phone}</span></a></li>
 					 {/if}
 				 {/if}
-				 {if $languagechangeenabled && count($locales) > 1}
-					 <li class="languageDiv"><a href="#" data-toggle="dropdown"><span id="sLanguage"><img src="{$WEB_ROOT}/templates/{$template}/flags/blank.gif" class="flag flag-{$hxselectedlanguage.flagcode}" alt="{$hxselectedlanguage.localisedName}" /> {$hxselectedlanguage.localisedName}</span> <i class="fa fa-sort-desc"></i></a>
-						 <div class="dropdown-menu flag_drop" id="languageList"> 
-							 {foreach $hxlanguagesflags as $locale}
-								 <a class="dropdown-item" href="{$currentpagelinkback}language={$locale.language}"><img src="{$WEB_ROOT}/templates/{$template}/flags/blank.gif" class="flag flag-{$locale.flagcode}" alt="{$locale.localisedName}" /> {$locale.localisedName}</a>
-							 {/foreach}
-						 </div>
-					 </li> 
-				 {/if}
-				 {if !$loggedin && $currencies && ($hostx_theme_settings.disable_multi_crrency) == 'on' }
-					 <li class="currencyDiv"><a href="#" data-toggle="dropdown"><span id="sCurrency">{$hxselectedcurrency.prefix} {$hxselectedcurrency.code}</span> <i class="fa fa-sort-desc"></i></a>
-						 <div class="dropdown-menu" id="currencyList"> 
-							 {foreach from=$currencies item=listcurr}
-								 <a class="dropdown-item" href="{$currentpagelinkback}currency={$listcurr.id}">{$listcurr.prefix} {$listcurr.code}</a>
-							 {/foreach}
-						 </div>
-					 </li>
-				 {/if}
+				 {* CloudHost247 i18n: unified language + currency switcher.
+				    Replaces the old languageDiv/currencyDiv pair. The old control had three
+				    defects: it hid the currency selector from every logged-in client, it had
+				    no mobile variant, and it was a hover-only dropdown with no keyboard path
+				    and no accessible name. *}
+				 <li class="ch247-switcher-item">
+				     {include file="$template/includes/language-currency-switcher.tpl"}
+				 </li>
 				 {if !$loggedin}
 					 <li class="hover mblshow"><a href="{$WEB_ROOT}/clientarea.php"><i class="fa fa-user"></i></a></li>
 				 {else}

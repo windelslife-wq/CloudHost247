@@ -1,0 +1,390 @@
+/*!
+ * CloudHost247 — unified language / currency switcher.
+ *
+ * Design constraints this file is written against:
+ *
+ *  1. It lives inside `.right_navi` next to the cart and account links, so it
+ *     must not grow the header, must not wrap, and must not shift the mega
+ *     menu. Width is capped and the trigger text ellipsises.
+ *  2. It must never cause horizontal overflow: the panel is anchored to the
+ *     right edge of its own group and clamps to the viewport
+ *     (`max-width: min(20rem, calc(100vw - 2rem))`).
+ *  3. Focus is always visible. `:focus-visible` gets a brand-coloured ring and
+ *     the fallback `:focus` keeps a ring for older browsers.
+ *  4. Respects `prefers-reduced-motion` and `forced-colors`.
+ *  5. Works without JavaScript: the panel is only hidden once the enhancer
+ *     has added `.ch247-js` to <html>.
+ *
+ * Brand tokens (from templates/hostx/css/main-style.css):
+ *   --ch247-red   #f51322
+ *   --ch247-teal  #17494d
+ */
+
+.ch247-switcher {
+    --ch247-red: #f51322;
+    --ch247-teal: #17494d;
+    --ch247-switcher-fg: #404040;
+    --ch247-switcher-muted: #6b7280;
+    --ch247-switcher-border: #e3e6e8;
+    --ch247-switcher-surface: #fff;
+    --ch247-switcher-radius: 8px;
+    --ch247-switcher-shadow: 0 6px 24px rgba(23, 73, 77, 0.16);
+
+    position: relative;
+    display: inline-flex;
+    align-items: stretch;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1.35;
+    /* Contain everything this component paints: no layout escape, no overflow. */
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.ch247-switcher *,
+.ch247-switcher *::before,
+.ch247-switcher *::after {
+    box-sizing: border-box;
+}
+
+.ch247-switcher__group {
+    position: relative;
+    display: inline-flex;
+    min-width: 0;
+}
+
+/* --------------------------------------------------------------- trigger --- */
+
+.ch247-switcher__trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    max-width: 12.5rem;
+    margin: 0;
+    padding: 5px 9px;
+    border: 1px solid var(--ch247-switcher-border);
+    border-radius: var(--ch247-switcher-radius);
+    background: var(--ch247-switcher-surface);
+    color: var(--ch247-switcher-fg);
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    /* Stop a long endonym from stretching the header. */
+    white-space: nowrap;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+}
+
+.ch247-switcher__trigger:hover {
+    border-color: #c9ced2;
+    color: var(--ch247-teal);
+}
+
+.ch247-switcher__trigger:focus {
+    outline: 2px solid var(--ch247-red);
+    outline-offset: 2px;
+}
+
+.ch247-switcher__trigger:focus-visible {
+    outline: 2px solid var(--ch247-red);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(245, 19, 34, 0.18);
+}
+
+.ch247-switcher__trigger[aria-expanded="true"] {
+    border-color: var(--ch247-teal);
+    color: var(--ch247-teal);
+}
+
+.ch247-switcher__label {
+    display: inline-flex;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.ch247-switcher__label-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ch247-switcher__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    color: var(--ch247-teal);
+}
+
+.ch247-switcher__icon--symbol {
+    width: auto;
+    min-width: 16px;
+    font-weight: 700;
+    color: var(--ch247-teal);
+}
+
+.ch247-switcher__chevron {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    margin-left: 1px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translateY(-2px) rotate(45deg);
+    transition: transform 0.18s ease;
+}
+
+.ch247-switcher__trigger[aria-expanded="true"] .ch247-switcher__chevron {
+    transform: translateY(1px) rotate(-135deg);
+}
+
+/* ----------------------------------------------------------------- panel --- */
+
+.ch247-switcher__panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 1070;
+    /* Never wider than the viewport minus a small gutter: this is the guard
+       against the horizontal scrollbar a right-anchored dropdown usually
+       introduces on a narrow phone. */
+    width: max-content;
+    max-width: min(20rem, calc(100vw - 2rem));
+    padding: 8px;
+    border: 1px solid var(--ch247-switcher-border);
+    border-radius: var(--ch247-switcher-radius);
+    background: var(--ch247-switcher-surface);
+    box-shadow: var(--ch247-switcher-shadow);
+}
+
+/* Only the JS-enhanced version hides the panel; without JS it stays open. */
+.ch247-js .ch247-switcher__panel[hidden] {
+    display: none;
+}
+
+.ch247-switcher__heading {
+    margin: 2px 6px 6px;
+    color: var(--ch247-switcher-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.ch247-switcher__list {
+    margin: 0;
+    padding: 0;
+    max-height: min(60vh, 22rem);
+    overflow-y: auto;
+    list-style: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.ch247-switcher__item + .ch247-switcher__item {
+    border-top: 1px solid #f1f3f4;
+}
+
+.ch247-switcher__option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 7px 8px;
+    border-radius: 6px;
+    color: var(--ch247-switcher-fg);
+    text-decoration: none;
+}
+
+.ch247-switcher__option:hover,
+.ch247-switcher__option:focus {
+    background: #f4f7f8;
+    color: var(--ch247-teal);
+    text-decoration: none;
+}
+
+.ch247-switcher__option:focus-visible {
+    outline: 2px solid var(--ch247-red);
+    outline-offset: -2px;
+}
+
+.ch247-switcher__option.is-selected {
+    background: rgba(23, 73, 77, 0.07);
+    color: var(--ch247-teal);
+    font-weight: 700;
+}
+
+.ch247-switcher__option-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.ch247-switcher__option-native {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.ch247-switcher__option-english {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ch247-switcher-muted);
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.ch247-switcher__symbol {
+    flex: 0 0 auto;
+    min-width: 22px;
+    font-weight: 700;
+    text-align: center;
+    color: var(--ch247-teal);
+}
+
+.ch247-switcher__flag {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 11px;
+}
+
+.ch247-switcher__tick {
+    margin-left: auto;
+    padding-left: 4px;
+    color: var(--ch247-teal);
+}
+
+.ch247-switcher__badge {
+    margin-left: auto;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: #eef3f3;
+    color: var(--ch247-teal);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.ch247-switcher__option.is-locked {
+    opacity: 0.72;
+}
+
+.ch247-switcher__hint {
+    margin: 6px 6px 2px;
+    color: var(--ch247-switcher-muted);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.ch247-switcher__notice {
+    display: block;
+    margin-top: 4px;
+    color: #8a4b00;
+}
+
+/* --------------------------------------------------------------- mobile ---- */
+
+.ch247-switcher--mobile {
+    display: flex;
+    width: 100%;
+    gap: 8px;
+    padding: 10px 12px;
+}
+
+.ch247-switcher--mobile .ch247-switcher__group {
+    flex: 1 1 50%;
+    min-width: 0;
+}
+
+.ch247-switcher--mobile .ch247-switcher__trigger {
+    width: 100%;
+    min-height: 44px;
+    max-width: none;
+    padding: 8px 10px;
+}
+
+.ch247-switcher--mobile .ch247-switcher__panel {
+    /* Full width of the group, clamped to the viewport: no overflow, no
+       second horizontal scroll region inside the off-canvas menu. */
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: calc(100vw - 24px);
+}
+
+.ch247-switcher--mobile .ch247-switcher__option {
+    min-height: 44px;
+}
+
+/* ------------------------------------------------------------ responsive --- */
+
+@media (max-width: 767px) {
+    .ch247-switcher {
+        font-size: 12px;
+    }
+
+    .ch247-switcher__trigger {
+        max-width: 9rem;
+        min-height: 36px;
+    }
+
+    /* On a phone the endonym is noise; the code/name is what people scan. */
+    .ch247-switcher__option-english {
+        font-size: 10px;
+    }
+}
+
+@media (max-width: 479px) {
+    .ch247-switcher__group--language .ch247-switcher__label,
+    .ch247-switcher__group--currency .ch247-switcher__label {
+        /* Keep the tap target, drop the text before the layout can wrap. */
+        max-width: 4.5rem;
+    }
+}
+
+/* --------------------------------------------------------------- a11y ------ */
+
+@media (prefers-reduced-motion: reduce) {
+    .ch247-switcher__trigger,
+    .ch247-switcher__chevron {
+        transition: none;
+    }
+}
+
+@media (forced-colors: active) {
+    .ch247-switcher__trigger,
+    .ch247-switcher__panel {
+        border: 1px solid CanvasText;
+    }
+
+    .ch247-switcher__option.is-selected {
+        background: Highlight;
+        color: HighlightText;
+    }
+
+    .ch247-switcher__trigger:focus-visible,
+    .ch247-switcher__option:focus-visible {
+        outline: 2px solid CanvasText;
+    }
+}
+
+/* Screen-reader-only helper, in case the theme does not already provide one. */
+.ch247-switcher .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}

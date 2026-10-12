@@ -33,6 +33,8 @@ jobs:
       - name: Install passkey WebAuthn dependencies
         run: composer install --working-dir modules/addons/cloudhost247passkey --no-interaction --no-progress --prefer-dist
 
+      - name: i18n (language + currency subsystems)
+        run: ci/run-php.sh i18n
       - name: tools (CloudHost247_tools)
         run: ci/run-php.sh tools
       - name: apps (cloudhost247apps)
@@ -127,6 +129,23 @@ jobs:
 
       - name: php -l over the repo (ionCube modules excluded)
         run: ci/php-lint.sh
+
+  encoding:
+    name: Text encoding guard (U+F0B7)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      # Fails the build if U+F0B7, mojibake, replacement characters or fused
+      # bullets appear in any text file. Documented exclusions are asserted,
+      # not merely tolerated: a stale exclusion fails this step.
+      - name: repo-wide encoding scan
+        run: python3 ci/check-encoding.py
 
   python-static:
     name: Python static checks

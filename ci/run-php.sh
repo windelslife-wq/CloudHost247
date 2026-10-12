@@ -6,6 +6,7 @@
 # Used by .github/workflows/ci.yml and by developers locally:
 #
 #   ci/run-php.sh all          # everything (PHP 8.x)
+#   ci/run-php.sh i18n         # internationalisation + currency suites only
 #   ci/run-php.sh legacy74     # modules with documented PHP 7.4 support
 #   ci/run-php.sh apps ai ...  # one or more named modules (see MODULES below)
 #   ci/run-php.sh lint         # load/parse gates only
@@ -58,6 +59,18 @@ run_glob() {
     fi
 }
 
+mod_i18n() {
+    run_glob 'tests/i18n/*Test.php'
+    # WHMCS override completeness: every key in lang/overrides/english.php must
+    # have a non-empty value in each shipped language. This one takes an
+    # argument, so it cannot go through run_php() (which passes a single
+    # filename) — it exits non-zero when anything is missing.
+    echo "--- php ci/apply-override-translations.php --check"
+    if ! "$PHP_BIN" ci/apply-override-translations.php --check; then
+        echo "FAILED (exit non-zero): ci/apply-override-translations.php --check"
+        FAILURES=$((FAILURES + 1))
+    fi
+}
 mod_tools()        { run_glob 'modules/addons/CloudHost247_tools/tests/*Test.php'; }
 mod_apps()         { run_glob 'modules/addons/cloudhost247apps/tests/*Test.php'; }
 mod_services()     { run_glob 'modules/addons/cloudhost247services/tests/*Test.php'; }
@@ -128,7 +141,7 @@ mod_lint() {
     fi
 }
 
-MODULES="tools apps services ai marketing domainbroker digital cloudflare blockonomics soyoustart_vps soyoustart smmprovisioning rdp lteproxy affiliate phones smm hostxemail hostxtools toolscenter smtphosting cartrecovery passkey"
+MODULES="i18n tools apps services ai marketing domainbroker digital cloudflare blockonomics soyoustart_vps soyoustart smmprovisioning rdp lteproxy affiliate phones smm hostxemail hostxtools toolscenter smtphosting cartrecovery passkey"
 
 run_all() {
     local m
@@ -144,6 +157,10 @@ run_all() {
 # each of these suites was executed green on PHP 7.4.33). Everything else
 # targets PHP 8.x (the php-wasm runners pin 8.3).
 run_legacy74() {
+    # The i18n library is written to PHP 7.4 syntax; its suite skips the ICU
+    # cross-checks when ext/intl is absent rather than failing.
+    echo "=== module: i18n ==="
+    mod_i18n || true
     echo "=== module: tools ==="
     mod_tools || true
     echo "=== module: digital ==="
@@ -166,7 +183,7 @@ for target in "$@"; do
         all) run_all ;;
         legacy74) run_legacy74 ;;
         lint) mod_lint ;;
-        tools|apps|services|ai|marketing|domainbroker|digital|cloudflare|blockonomics|soyoustart_vps|smmprovisioning|rdp|lteproxy|affiliate|phones|smm|hostxemail|hostxtools|toolscenter|smtphosting|cartrecovery|passkey)
+        i18n|tools|apps|services|ai|marketing|domainbroker|digital|cloudflare|blockonomics|soyoustart_vps|smmprovisioning|rdp|lteproxy|affiliate|phones|smm|hostxemail|hostxtools|toolscenter|smtphosting|cartrecovery|passkey)
             echo "=== module: $target ==="
             "mod_$target" || true
             ;;

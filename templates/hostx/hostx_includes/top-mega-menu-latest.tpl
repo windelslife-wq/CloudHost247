@@ -12,20 +12,11 @@
                      </a>
                   {/if}
                </div>
-               {if $languagechangeenabled && count($locales) > 1}
-                  <div class="country-sec">
-                     <ul class="counrty-inner">
-                        <li>
-                           <a href="#"><i class="fa fa-globe"></i>{$hxselectedlanguage.localisedName}<i class="fa fa-chevron-down"></i></a>
-                           <div class="country-dropdown"> 
-                              {foreach $hxlanguagesflags as $locale}
-                                 <a class="dropdown-item" href="{$currentpagelinkback}language={$locale.language}"><img src="{$WEB_ROOT}/templates/{$template}/flags/blank.gif" class="flag flag-{$locale.flagcode}" alt="{$locale.localisedName}" /> {$locale.localisedName}</a>
-                              {/foreach}
-                           </div>
-                        </li>
-                     </ul>
-                  </div> 
-               {/if}
+               {* CloudHost247 i18n: unified language + currency switcher (see
+                  includes/language-currency-switcher.tpl for the accessibility contract). *}
+               <div class="country-sec">
+                   {include file="$template/includes/language-currency-switcher.tpl"}
+               </div>
             </div>
             <div class="right-sec">
             {if $sidebarHostxRemove eq 'true' || $templatefile eq 'homepage' || !$loggedin || $filename == 'cart' || $templatefile == 'products' || $templatefile == 'configureproductdomain' || $templatefile == 'domain-renewals' || $templatefile == 'store/weebly/index' || $templatefile == 'store/ssl/index' || $templatefile == 'store/codeguard/index' || $templatefile == 'store/sitelock/index' || $templatefile == 'store/spamexperts/index' || $templatefile == 'store/sitelockvpn/index' || $templatefile == 'store/marketgoo/index' || $templatefile == 'store/ox/index' || $templatefile == 'store/sitebuilder/index' || $templatefile == 'store/order' || $templatefile == 'store/cpanelseo/index' || $templatefile == 'store/nordvpn/index' || $templatefile == 'store/threesixtymonitoring/index' || $templatefile == 'store/xovinow/index'}
@@ -154,24 +145,14 @@
                                     <li><a href="tel:+{$hostx_theme_settings.country_calling_code_phone}{$hostx_theme_settings.phone}" class="telephoneanchor"><i class="fa fa-phone"></i><span> (+{$hostx_theme_settings.country_calling_code_phone}) {$hostx_theme_settings.phone}</span></a></li>
                                  {/if}
                            {/if}
-                           {if $languagechangeenabled && count($locales) > 1}
-                                 <li class="languageDiv"><a href="#" data-toggle="dropdown"><span id="sLanguage"><img src="{$WEB_ROOT}/templates/{$template}/flags/blank.gif" class="flag flag-{$hxselectedlanguage.flagcode}" alt="{$hxselectedlanguage.localisedName}" /> {$hxselectedlanguage.localisedName}</span> <i class="fa fa-sort-desc"></i></a>
-                                    <div class="dropdown-menu flag_drop" id="languageList"> 
-                                       {foreach $hxlanguagesflags as $locale}
-                                             <a class="dropdown-item" href="{$currentpagelinkback}language={$locale.language}"><img src="{$WEB_ROOT}/templates/{$template}/flags/blank.gif" class="flag flag-{$locale.flagcode}" alt="{$locale.localisedName}" /> {$locale.localisedName}</a>
-                                       {/foreach}
-                                    </div>
-                                 </li> 
-                           {/if}
-                           {if !$loggedin && $currencies && ($hostx_theme_settings.disable_multi_crrency) == 'on' }
-                                 <li class="currencyDiv"><a href="#" data-toggle="dropdown"><span id="sCurrency">{$hxselectedcurrency.prefix} {$hxselectedcurrency.code}</span> <i class="fa fa-sort-desc"></i></a>
-                                    <div class="dropdown-menu" id="currencyList"> 
-                                       {foreach from=$currencies item=listcurr}
-                                             <a class="dropdown-item" href="{$currentpagelinkback}currency={$listcurr.id}">{$listcurr.prefix} {$listcurr.code}</a>
-                                       {/foreach}
-                                    </div>
-                                 </li>
-                           {/if}
+                           {* CloudHost247 i18n: unified language + currency switcher.
+                              Replaces the old languageDiv/currencyDiv pair. The old control had three
+                              defects: it hid the currency selector from every logged-in client, it had
+                              no mobile variant, and it was a hover-only dropdown with no keyboard path
+                              and no accessible name. *}
+                           <li class="ch247-switcher-item">
+                               {include file="$template/includes/language-currency-switcher.tpl"}
+                           </li>
                            {if !$loggedin}
                                  <li class="hover mblshow"><a href="{$WEB_ROOT}/clientarea.php"><i class="fa fa-user"></i></a></li>
                            {else}
