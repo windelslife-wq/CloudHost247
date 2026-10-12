@@ -308,6 +308,19 @@ html:not(.ch247-js) .ch247-switcher__panel[hidden] {
     color: #8a4b00;
 }
 
+/* "We set this automatically" hint. Informational, never a barrier: it sits
+   inside the panel next to the options that change it, and is announced once
+   by the screen reader through role="status" rather than stealing focus. */
+.ch247-switcher__detected {
+    display: block;
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px dotted currentColor;
+    color: #4a5568;
+    font-size: .8125rem;
+    line-height: 1.45;
+}
+
 /* --------------------------------------------------------------- mobile ---- */
 
 .ch247-switcher--mobile {

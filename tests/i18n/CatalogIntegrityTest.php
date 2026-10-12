@@ -212,6 +212,8 @@ $identicalAllowlist = array(
     'nav_ssl_certificates',       // "SSL" is not translated
     'nav_whois',                  // WHOIS is a protocol name
     'nav_tld_directory',          // TLD is not translated
+    'footer_public_cloud',        // product name, sold as "Public Cloud"
+    'footer_private_cloud',       // product name, sold as "Private Cloud"
 );
 
 foreach ($locales as $code) {

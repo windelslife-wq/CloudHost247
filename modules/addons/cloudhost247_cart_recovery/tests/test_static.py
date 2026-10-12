@@ -135,10 +135,50 @@ class CartRecoveryStaticTests(unittest.TestCase):
             self.assertTrue(safe, "unescaped echo in admin template: " + expression)
 
     def test_public_endpoint_never_prints_internal_errors(self):
+        # The page body lives in RecoveryPage; the endpoint is the shell around
+        # it. Both have to hold the line.
         recover = read(os.path.join(MODULE, "recover.php"))
+        page = read(os.path.join(LIB, "RecoveryPage.php"))
         self.assertIn("catch (\\Throwable $e)", recover)
         self.assertNotIn("$e->getMessage()", recover)
-        self.assertIn("X-Robots-Tag", recover)
+        self.assertNotIn("$e->getMessage()", page)
+        self.assertIn("X-Robots-Tag", page)
+
+    def test_public_pages_are_not_hardcoded_to_english(self):
+        """A French-speaking customer must not get an English recovery page.
+
+        The endpoint renders its own document, so no hook or theme can supply
+        the language for it. Anything user-visible has to come from the
+        catalogue, and the <html> element has to declare what was chosen.
+        """
+        sources = {
+            name: read(os.path.join(MODULE, name))
+            for name in ("recover.php", "lib/RecoveryPage.php")
+        }
+        for name, body in sources.items():
+            self.assertNotIn('lang="en"', body, name + " hardcodes the page language")
+            self.assertNotIn("lang='en'", body, name + " hardcodes the page language")
+        self.assertIn("Locale::tag()", sources["lib/RecoveryPage.php"])
+        self.assertIn("Locale::direction()", sources["lib/RecoveryPage.php"])
+        # No English sentence left inline: every string is a catalogue key.
+        for prose in ("You have been unsubscribed", "This cart link has expired",
+                      "Something went wrong", "Return to the store"):
+            for name, body in sources.items():
+                self.assertNotIn(prose, body, name + " still contains " + prose)
+
+    def test_recovery_strings_live_in_the_shared_catalogue(self):
+        """Translating the module must be adding a file, not editing PHP."""
+        english = read(os.path.join(ROOT, "lang", "site", "en", "cart-recovery.php"))
+        self.assertIn("'recover_return_to_store'", english)
+        site = os.path.join(ROOT, "lang", "site")
+        locales = sorted(name for name in os.listdir(site) if os.path.isdir(os.path.join(site, name)))
+        self.assertTrue(locales, "no locales shipped under lang/site")
+        for locale in locales:
+            path = os.path.join(site, locale, "cart-recovery.php")
+            self.assertTrue(os.path.isfile(path), locale + " has no recovery catalogue")
+            body = read(path)
+            for key in re.findall(r"^    '([a-z_]+)'\s*=>", english, re.M):
+                self.assertIn("'%s'" % key, body, "%s is missing %s" % (locale, key))
 
     def test_hooks_never_break_the_cart(self):
         hooks = read(os.path.join(MODULE, "hooks.php"))

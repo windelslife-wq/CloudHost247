@@ -39,7 +39,7 @@ if (!function_exists('cloudhost247_i18n_config')) {
             'name'        => 'CloudHost247 Internationalization',
             'description' => 'Language and currency switching, translation catalog management and locale-aware formatting for the whole site.',
             'author'      => 'CloudHost247',
-            'version'     => '1.1.0',
+            'version'     => '1.2.0',
             'language'    => 'english',
             'fields'      => array(
                 'rate_ttl' => array(
@@ -48,6 +48,85 @@ if (!function_exists('cloudhost247_i18n_config')) {
                     'Size'         => '10',
                     'Default'      => '21600',
                     'Description'  => 'How long a fetched rate table is reused before the configured source is asked again. 21600 = 6 hours.',
+                ),
+
+                // ------------------------------------------- auto-detection --
+                'detect_enabled' => array(
+                    'FriendlyName' => 'Automatic language &amp; currency detection',
+                    'Type'         => 'yesno',
+                    'Default'      => 'yes',
+                    'Description'  => 'Detect the language from the browser and the currency from the visitor\'s country when they have not chosen one. A customer\'s own choice always wins.',
+                ),
+                'trusted_proxies' => array(
+                    'FriendlyName' => 'Trusted proxies (CIDRs)',
+                    'Type'         => 'textarea',
+                    'Rows'         => '4',
+                    'Cols'         => '60',
+                    'Default'      => '',
+                    'Description'  => 'Comma or newline separated. Forwarded headers (X-Forwarded-For, CF-IPCountry, …) are only believed when the connection came from one of these ranges. Leave empty to ignore them entirely — the safe default. Cloudflare ranges: https://www.cloudflare.com/ips/',
+                ),
+                'country_header' => array(
+                    'FriendlyName' => 'Edge country header',
+                    'Type'         => 'text',
+                    'Size'         => '30',
+                    'Default'      => 'CF-IPCountry',
+                    'Description'  => 'Header your CDN sets with the visitor\'s ISO country code. Read only from a trusted proxy.',
+                ),
+                'geo_endpoint' => array(
+                    'FriendlyName' => 'IP geolocation endpoint',
+                    'Type'         => 'text',
+                    'Size'         => '60',
+                    'Default'      => '',
+                    'Description'  => 'Optional. A URL containing {ip}, e.g. https://ipwho.is/{ip}. Leave empty to skip geolocation and use the default currency. No request is made until you set this.',
+                ),
+                'geo_field' => array(
+                    'FriendlyName' => 'Country field (dot path)',
+                    'Type'         => 'text',
+                    'Size'         => '30',
+                    'Default'      => 'country_code',
+                    'Description'  => 'Where the two-letter country code sits in the JSON response, e.g. country_code or data.country.code.',
+                ),
+                'geo_allowed_hosts' => array(
+                    'FriendlyName' => 'Geolocation hosts (allowlist)',
+                    'Type'         => 'text',
+                    'Size'         => '60',
+                    'Default'      => '',
+                    'Description'  => 'Host names the endpoint may use, comma separated. Required before any lookup is made, so a changed setting cannot turn this into an open proxy.',
+                ),
+                'geo_timeout' => array(
+                    'FriendlyName' => 'Geolocation timeout (seconds)',
+                    'Type'         => 'text',
+                    'Size'         => '5',
+                    'Default'      => '2',
+                    'Description'  => 'A slow provider must never slow a page. On timeout the default currency is used.',
+                ),
+                'geo_ttl' => array(
+                    'FriendlyName' => 'Geolocation cache TTL (seconds)',
+                    'Type'         => 'text',
+                    'Size'         => '10',
+                    'Default'      => '86400',
+                    'Description'  => 'How long a country result is reused. Cached under a salted hash, never with the raw IP.',
+                ),
+                'use_region_hint' => array(
+                    'FriendlyName' => 'Use the browser language region as a currency hint',
+                    'Type'         => 'yesno',
+                    'Default'      => 'no',
+                    'Description'  => 'Off by default: a language tag states a language, not where the visitor pays from. Weaker than geolocation and only used when geolocation finds nothing.',
+                ),
+                'country_currency_overrides' => array(
+                    'FriendlyName' => 'Country &rarr; currency overrides',
+                    'Type'         => 'textarea',
+                    'Rows'         => '3',
+                    'Cols'         => '60',
+                    'Default'      => '',
+                    'Description'  => 'Optional, e.g. "NG=NGN, DE=EUR". Wins over the built-in ISO 4217 table but is still filtered through your enabled WHMCS currencies.',
+                ),
+                'cookie_days' => array(
+                    'FriendlyName' => 'Remember an explicit choice (days)',
+                    'Type'         => 'text',
+                    'Size'         => '5',
+                    'Default'      => '180',
+                    'Description'  => 'How long a visitor\'s own language/currency choice is kept when they are not logged in. HttpOnly and SameSite=Lax.',
                 ),
             ),
         );
@@ -179,6 +258,30 @@ if (!function_exists('cloudhost247_i18n_completeness')) {
     }
 }
 
+if (!function_exists('cloudhost247_i18n_detection_settings')) {
+    /**
+     * Raw module settings, keyed by name.
+     *
+     * @return array
+     */
+    function cloudhost247_i18n_detection_settings()
+    {
+        $settings = array();
+        try {
+            $rows = \WHMCS\Database\Capsule::table('tbladdonmodules')
+                ->where('module', 'cloudhost247_i18n')
+                ->get();
+            foreach ($rows as $row) {
+                $settings[$row->setting] = (string) $row->value;
+            }
+        } catch (\Throwable $e) {
+            // Settings table unavailable: the defaults apply.
+        }
+
+        return $settings;
+    }
+}
+
 if (!function_exists('cloudhost247_i18n_output')) {
     /**
      * Admin area page.
@@ -273,6 +376,68 @@ if (!function_exists('cloudhost247_i18n_output')) {
             echo '</tr>';
         }
 
+        echo '</tbody></table></div>';
+
+        echo '<h2>Automatic detection</h2>';
+
+        $detection = $i18n->detection();
+        $settings = cloudhost247_i18n_detection_settings();
+        $detector = $i18n->detector();
+        $map = new \CloudHost247\I18n\Detection\CountryCurrencyMap();
+        $yes = '<span class="label label-success">yes</span>';
+        $no = '<span class="label label-default">no</span>';
+
+        echo '<div class="table-responsive"><table class="table table-striped table-bordered"><tbody>';
+        echo '<tr><th style="width:22em">Detection enabled</th><td>' . (!empty($detection['detection_enabled']) ? $yes : $no) . '</td></tr>';
+        echo '<tr><th>Geolocation source</th><td>' . htmlspecialchars(
+            $detector !== null ? $detector->explain()['geo_source'] : 'not configured',
+            ENT_QUOTES,
+            'UTF-8'
+        ) . '</td></tr>';
+        echo '<tr><th>Trusted proxies</th><td>' . (empty($settings['trusted_proxies'])
+            ? 'none — forwarded headers are ignored'
+            : (int) count(preg_split('/[\\s,]+/', trim($settings['trusted_proxies'])) ?: array()) . ' range(s)')
+            . '</td></tr>';
+        echo '<tr><th>Country for this request</th><td>' . htmlspecialchars(
+            isset($detection['request']['country']['country']) ? $detection['request']['country']['country'] : 'unknown',
+            ENT_QUOTES,
+            'UTF-8'
+        ) . '</td></tr>';
+
+        // Coverage: how much of the ISO country table this shop can actually
+        // act on. A country whose currency is not enabled is not a failure,
+        // it is simply a visitor who gets the default currency.
+        $enabled = 0;
+        foreach ($map->toArray() as $country => $currencies) {
+            if ($map->resolve($country, $i18n->currencies()) !== null) {
+                $enabled++;
+            }
+        }
+        echo '<tr><th>Countries with an enabled currency</th><td>' . (int) $enabled
+            . ' of ' . (int) $map->size() . '</td></tr>';
+        echo '<tr><th>Explicit choice remembered for</th><td>' . (int) (isset($settings['cookie_days']) ? $settings['cookie_days'] : 180)
+            . ' days (HttpOnly, SameSite=Lax)</td></tr>';
+        echo '</tbody></table></div>';
+
+        echo '<p>Precedence for both settings: <strong>an explicit choice</strong> (switcher, '
+            . '<code>?language=</code>, <code>?currency=</code>) <strong>&rarr; the account preference</strong> '
+            . '<strong>&rarr; automatic detection</strong> <strong>&rarr; the configured default</strong>. '
+            . 'Detection is only consulted when nothing has been chosen, and a detected value is stored '
+            . 'separately so a later choice always replaces it. Client billing currency '
+            . '(<code>tblclients.currency</code>) and historical invoices are never rewritten.</p>';
+
+        $sample = array('NG', 'GB', 'US', 'DE', 'FR', 'JP', 'BR', 'IN', 'ZA', 'CA');
+        echo '<div class="table-responsive"><table class="table table-striped table-bordered"><thead><tr>'
+            . '<th>Country</th><th>Maps to</th><th>Offered?</th></tr></thead><tbody>';
+        foreach ($sample as $country) {
+            $candidates = $map->candidates($country);
+            $resolved = $map->resolve($country, $i18n->currencies());
+            echo '<tr><td><code>' . htmlspecialchars($country, ENT_QUOTES, 'UTF-8') . '</code></td>'
+                . '<td><code>' . htmlspecialchars(implode(', ', $candidates), ENT_QUOTES, 'UTF-8') . '</code></td>'
+                . '<td>' . ($resolved !== null
+                    ? htmlspecialchars($resolved->getCode(), ENT_QUOTES, 'UTF-8')
+                    : '<span class="text-muted">default currency (not enabled)</span>') . '</td></tr>';
+        }
         echo '</tbody></table></div>';
 
         echo '<h2>Exchange rates</h2>';

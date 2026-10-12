@@ -18,6 +18,8 @@ declare(strict_types=1);
 
 namespace CloudHost247\I18n;
 
+use CloudHost247\I18n\Detection\DetectionResult;
+
 final class SwitcherViewModel
 {
     /** @var Preferences */
@@ -123,8 +125,81 @@ final class SwitcherViewModel
             ),
             'labels' => $this->labels(),
             'notice' => $this->notice($transactionCurrency),
+            'detection' => $this->detection(),
             'canonical' => EquivalentUrl::canonical($this->currentUri),
         );
+    }
+
+    /**
+     * What automatic detection contributed, for the switcher's own hint and
+     * for the `data-ch247-detection` attribute the browser tests read.
+     *
+     * Only an *automatic* choice is announced. A stored preference or a
+     * default is not "detected", and saying so would be a lie about where the
+     * setting came from.
+     *
+     * @return array<string,mixed>
+     */
+    private function detection(): array
+    {
+        $language = $this->preferences->resolveLanguage();
+        $currency = $this->preferences->resolveCurrency();
+
+        $languageMessage = null;
+        if ($language->isDetected() && $language->getSource() === DetectionResult::SOURCE_BROWSER) {
+            $languageMessage = $this->translator->trans('detection_auto_language', array(
+                'name' => $language->getValue()->getNativeName(),
+            ));
+        }
+
+        $currencyMessage = null;
+        if ($currency->isDetected()
+            && in_array($currency->getSource(), array(DetectionResult::SOURCE_GEOLOCATION, DetectionResult::SOURCE_REGION_HINT), true)
+        ) {
+            $currencyMessage = $this->translator->trans('detection_auto_currency', array(
+                'code' => $currency->getValue()->getCode(),
+            ));
+        }
+
+        $messages = array_values(array_filter(array($languageMessage, $currencyMessage)));
+
+        return array(
+            'enabled'     => $this->preferences->detector() !== null,
+            'detected'    => $language->isDetected() || $currency->isDetected(),
+            'language'    => array(
+                'code'     => $language->getValue()->getCode(),
+                'source'   => $language->getSource(),
+                'detected' => $language->isDetected(),
+                'explicit' => $language->isExplicit(),
+            ),
+            'currency'    => array(
+                'code'     => $currency->getValue()->getCode(),
+                'id'       => $currency->getValue()->getId(),
+                'source'   => $currency->getSource(),
+                'detected' => $currency->isDetected(),
+                'explicit' => $currency->isExplicit(),
+            ),
+            'country'     => $this->countryCode(),
+            'language_message' => $languageMessage,
+            'currency_message' => $currencyMessage,
+            'messages'    => $messages,
+            'message'     => $messages ? implode(' ', $messages) : null,
+            'hint'        => $messages ? $this->translator->trans('detection_change_hint') : null,
+        );
+    }
+
+    /**
+     * @return string|null
+     */
+    private function countryCode()
+    {
+        $detector = $this->preferences->detector();
+        if ($detector === null) {
+            return null;
+        }
+        $country = $detector->country();
+
+        return $country !== null ? $country->getCountry() : null;
     }
 
     private function languageUrl(string $code): string

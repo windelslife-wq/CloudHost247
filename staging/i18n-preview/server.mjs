@@ -138,8 +138,49 @@ function indexHtml() {
 ${table}
     </tbody>
   </table>
+${detectionTable(pagesDir)}
 </main>`
     );
+}
+
+function detectionTable(dir) {
+    const file = path.join(dir, 'detection.json');
+    if (!fs.existsSync(file)) {
+        return '';
+    }
+    const scenarios = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!scenarios.length) {
+        return '';
+    }
+
+    const rows = scenarios
+        .map(
+            (s) => `<tr>
+<td><a href="/p/${escapeHtml(s.name)}">${escapeHtml(s.label)}</a></td>
+<td><code>${escapeHtml(s.accept_language ?? '')}</code></td>
+<td><code>${escapeHtml(s.ip ?? '')}</code></td>
+<td><code>${escapeHtml(String(s.country ?? 'unknown'))}</code></td>
+<td><strong>${escapeHtml(s.language)}</strong> <span class="muted">(${escapeHtml(s.source_language)})</span></td>
+<td><strong>${escapeHtml(s.currency)}</strong> <span class="muted">(${escapeHtml(s.source_currency)})</span></td>
+<td>${escapeHtml(s.expect)}</td>
+</tr>`
+        )
+        .join('\n');
+
+    return `
+  <h2 style="margin-top:28px">Automatic detection scenarios</h2>
+  <p class="lede">
+    Each row is the same first page view, rendered by the real
+    <code>Detector</code>: the language comes from the browser, the currency from
+    the visitor's country filtered through the currencies WHMCS has enabled.
+    A saved preference wins over both.
+  </p>
+  <table class="grid">
+    <thead><tr><th>Scenario</th><th>Accept-Language</th><th>IP</th><th>Country</th><th>Language</th><th>Currency</th><th>Expected</th></tr></thead>
+    <tbody>
+${rows}
+    </tbody>
+  </table>`;
 }
 
 function pageHtml(name) {
@@ -149,7 +190,7 @@ function pageHtml(name) {
     }
 
     const backHref = '/';
-    const priceRows = Object.values(page.prices)
+    const priceRows = Object.values(page.prices || {})
         .map((p) => {
             if (!p.available) {
                 return `<tr>
@@ -173,6 +214,26 @@ function pageHtml(name) {
         .join('\n');
 
     const renderedBody = page.body ? `<section class="panel actual-page"><h2>Actual translated page template</h2>${page.body}</section>` : '';
+    const detectionPanel = page.scenario
+        ? `<section class="panel">
+    <h2>Automatic detection</h2>
+    <p class="lede">${escapeHtml(page.label)}</p>
+    <table class="grid">
+      <tbody>
+        <tr><th>Accept-Language</th><td><code>${escapeHtml(page.accept_language)}</code></td></tr>
+        <tr><th>IP (fixture)</th><td><code>${escapeHtml(page.ip)}</code></td></tr>
+        <tr><th>Country resolved</th><td><code>${escapeHtml(String(page.country ?? 'unknown'))}</code></td></tr>
+        <tr><th>Language chosen</th><td><strong>${escapeHtml(page.language_name)} (${escapeHtml(page.language)})</strong> <span class="muted">from ${escapeHtml(page.language_source)}</span></td></tr>
+        <tr><th>Currency chosen</th><td><strong>${escapeHtml(page.currency)}</strong> <span class="muted">from ${escapeHtml(page.currency_source)}</span></td></tr>
+        <tr><th>Expected</th><td>${escapeHtml(page.expect)}</td></tr>
+      </tbody>
+    </table>
+    ${page.message ? `<p class="note">${escapeHtml(page.message)}</p>` : ''}
+    <p class="hint">${page.detected
+        ? 'Both settings were detected automatically. Every option below is a real link that overrides them.'
+        : 'Nothing was detected as new: a saved preference or the default is in use, so no automatic-choice notice is shown.'}</p>
+  </section>`
+        : '';
     const body = `
 <header class="preview-bar">
   <a href="${backHref}">← all snapshots</a>
@@ -185,6 +246,7 @@ function pageHtml(name) {
 <main class="wrap">
 
   ${renderedBody}
+  ${detectionPanel}
   <section class="panel">
     <h2>Desktop header</h2>
     <div class="device" data-device="desktop">
@@ -242,12 +304,12 @@ ${priceRows}
   <section class="panel">
     <h2>Locale-aware formatting</h2>
     <dl class="samples">
-      <dt>Number</dt><dd><code>${escapeHtml(page.sample.number)}</code></dd>
-      <dt>Decimal</dt><dd><code>${escapeHtml(page.sample.decimal)}</code></dd>
-      <dt>Percent</dt><dd><code>${escapeHtml(page.sample.percent)}</code></dd>
-      <dt>Date (medium)</dt><dd><code>${escapeHtml(page.sample.date_medium)}</code></dd>
-      <dt>Date (full)</dt><dd><code>${escapeHtml(page.sample.date_full)}</code></dd>
-      <dt>Rate source</dt><dd><code>${escapeHtml(Object.values(page.prices)[0]?.rate_source || 'n/a')}</code></dd>
+      <dt>Number</dt><dd><code>${escapeHtml(page.sample?.number ?? 'n/a')}</code></dd>
+      <dt>Decimal</dt><dd><code>${escapeHtml(page.sample?.decimal ?? 'n/a')}</code></dd>
+      <dt>Percent</dt><dd><code>${escapeHtml(page.sample?.percent ?? 'n/a')}</code></dd>
+      <dt>Date (medium)</dt><dd><code>${escapeHtml(page.sample?.date_medium ?? 'n/a')}</code></dd>
+      <dt>Date (full)</dt><dd><code>${escapeHtml(page.sample?.date_full ?? 'n/a')}</code></dd>
+      <dt>Rate source</dt><dd><code>${escapeHtml(Object.values(page.prices || {})[0]?.rate_source || 'n/a')}</code></dd>
     </dl>
   </section>
 

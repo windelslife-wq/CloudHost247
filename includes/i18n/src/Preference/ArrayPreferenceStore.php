@@ -16,7 +16,7 @@ namespace CloudHost247\I18n\Preference;
 
 use CloudHost247\I18n\Contracts\PreferenceStoreInterface;
 
-final class ArrayPreferenceStore implements PreferenceStoreInterface
+final class ArrayPreferenceStore implements PreferenceStoreInterface, NamedPreferenceStoreInterface
 {
     /** @var array<string,mixed> */
     private $values;
@@ -24,14 +24,20 @@ final class ArrayPreferenceStore implements PreferenceStoreInterface
     /** @var bool */
     private $writable;
 
+    /** @var string */
+    private $name;
+
     /**
-     * @param array $values
-     * @param bool  $writable
+     * @param array  $values
+     * @param bool   $writable
+     * @param string $name    Provenance label; named so tests can assert which
+     *                        store supplied a value.
      */
-    public function __construct(array $values = array(), bool $writable = true)
+    public function __construct(array $values = array(), bool $writable = true, string $name = 'memory')
     {
         $this->values = $values;
         $this->writable = $writable;
+        $this->name = $name;
     }
 
     /**
@@ -64,6 +70,11 @@ final class ArrayPreferenceStore implements PreferenceStoreInterface
     public function isWritable(): bool
     {
         return $this->writable;
+    }
+
+    public function storeName(): string
+    {
+        return $this->name;
     }
 
     /**

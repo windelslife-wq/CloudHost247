@@ -763,3 +763,7 @@ $_LANG['ch247_domain_auctions_nav'] = 'Domain auctions';
 $_LANG['ch247_auction_watchlist'] = 'Auction watchlist';
 $_LANG['ch247_service_requests'] = 'Service requests';
 $_LANG['ch247_logo_projects'] = 'Logo projects';
+
+/* CloudHost247: fallback-footer headings (footer_block.tpl) */
+$_LANG['footerdomainservices'] = 'Domain Services';
+$_LANG['footergrowthservices'] = 'Grow Online';

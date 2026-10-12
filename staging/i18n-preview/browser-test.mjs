@@ -107,6 +107,59 @@ try {
     await page.goto(`${base}/refund-policy.php?language=invalid&currency=9999`, { waitUntil: 'networkidle0' });
     check('invalid selections preserve safe current pair', page.url().endsWith('/p/de-gbp-refund-policy'), page.url());
 
+    /* -------------------------------------- automatic detection scenarios -- */
+
+    // The detection pages are the real switcher rendered from a first visit:
+    // no saved preference, the language from the browser header and the
+    // currency from the visitor's country. They must be just as usable as the
+    // hand-picked snapshots — and must always offer a way to change them.
+    const detectionCases = [
+        { name: 'detection-new-english', language: 'en', currency: 'NGN', detected: true },
+        { name: 'detection-united-kingdom', language: 'en', currency: 'GBP', detected: true },
+        { name: 'detection-euro-area', language: 'de', currency: 'EUR', detected: true },
+        { name: 'detection-unmapped', language: 'en', currency: 'NGN', detected: true },
+        { name: 'detection-returning', language: 'de', currency: 'GBP', detected: false },
+    ];
+
+    for (const scenario of detectionCases) {
+        for (const width of [320, 375, 768, 1280]) {
+            await page.setViewport({ width, height: 900 });
+            await page.goto(`${base}/p/${scenario.name}`, { waitUntil: 'networkidle0' });
+            const tag = `${scenario.name}/${width}`;
+
+            check(`${tag}: no page overflow`, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+            check(`${tag}: language chip`, (await page.$eval('[data-device="desktop"] [data-ch247-switcher-group="language"] .ch247-switcher__label-text', (el) => el.textContent.trim())).length > 0);
+            check(`${tag}: currency chip is ${scenario.currency}`, await page.$eval(
+                '[data-device="desktop"] [data-ch247-switcher-group="currency"] .ch247-switcher__label-text',
+                (el, expected) => el.textContent.trim() === expected,
+                scenario.currency
+            ));
+
+            for (const device of ['desktop', 'mobile']) {
+                const group = `[data-device="${device}"] [data-ch247-switcher-group="currency"]`;
+                const button = `${group} button`;
+                await page.click(button);
+                check(`${tag}/${device}: opens`, await page.$eval(button, (el) => el.getAttribute('aria-expanded') === 'true'));
+                check(`${tag}/${device}: every currency is a real link`, await page.$$eval(`${group} a[data-ch247-switcher-option]`, (els) => els.length >= 4 && els.every((a) => a.getAttribute('href').includes('currency='))));
+                const bounds = await page.$eval(`${group} [data-ch247-switcher-panel]`, (el) => {
+                    const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, width: innerWidth };
+                });
+                check(`${tag}/${device}: panel fits the viewport`, bounds.left >= -1 && bounds.right <= bounds.width + 1, JSON.stringify(bounds));
+                await page.keyboard.press('Escape');
+            }
+
+            const noticeCount = await page.$$eval('[data-ch247-detection-notice]', (els) => els.length);
+            check(`${tag}: ${scenario.detected ? 'an automatic choice is explained' : 'a saved choice is not called automatic'}`,
+                scenario.detected ? noticeCount >= 2 : noticeCount === 0, String(noticeCount));
+        }
+    }
+
+    // A detected currency is overridable in one click, on the same page.
+    await page.setViewport({ width: 375, height: 900 });
+    await page.goto(`${base}/p/detection-euro-area`, { waitUntil: 'networkidle0' });
+    const overrideHref = await page.$eval('[data-device="mobile"] [data-ch247-switcher-group="currency"] a[data-ch247-switcher-option]', (el) => el.getAttribute('href'));
+    check('the detected currency can be overridden from the switcher', overrideHref.includes('web-hosting.php?currency=') || overrideHref.includes('currency='), overrideHref);
+
     await page.setJavaScriptEnabled(false);
     await page.goto(`${base}/p/fr-eur-faqs`, { waitUntil: 'networkidle0' });
     check('no-JS panels are visible and links usable', await page.$eval('[data-device="mobile"] [data-ch247-switcher-panel]', (el) => getComputedStyle(el).display !== 'none'));

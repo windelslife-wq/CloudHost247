@@ -290,3 +290,132 @@ if (!function_exists('ch247_make_i18n')) {
         return \CloudHost247\I18n\I18n::reset($config);
     }
 }
+
+/* --------------------------------------------- automatic-detection helpers -- */
+
+if (!function_exists('ch247_geo_locator')) {
+    /**
+     * A fixture geolocation source: IP (or CIDR) => ISO country.
+     *
+     * @param array  $map    e.g. ['203.0.113.7' => 'GB', '198.51.100.0/24' => 'DE'].
+     * @param string $source
+     *
+     * @return \CloudHost247\I18n\Detection\ArrayGeoLocator
+     */
+    function ch247_geo_locator(array $map, $source = 'fixture geo')
+    {
+        return new \CloudHost247\I18n\Detection\ArrayGeoLocator($map, $source);
+    }
+}
+
+if (!function_exists('ch247_fixture_countries')) {
+    /**
+     * Countries used across the detection scenarios.
+     *
+     * NGN (default) <- NG ; GBP <- GB ; USD <- US ; EUR <- DE/FR/NL ; JPY <- JP
+     * (enabled but deliberately unrateable); INR <- IN (not enabled at all).
+     *
+     * @return array
+     */
+    function ch247_fixture_countries()
+    {
+        return array(
+            '203.0.113.7'      => 'NG',
+            '198.51.100.4'     => 'GB',
+            '192.0.2.44'       => 'US',
+            '198.51.100.9'     => 'DE',
+            '198.51.100.11'    => 'FR',
+            '198.51.100.12'    => 'JP',
+            '198.51.100.13'    => 'IN',
+            '198.51.100.14'    => 'CA',
+            '198.51.100.15'    => 'AQ',
+            '198.51.100.16'    => 'BR',
+            '203.0.113.99'     => 'XX', // the "unknown" value Cloudflare sends
+            '2001:db8::7'      => 'DE',
+        );
+    }
+}
+
+/**
+ * Captures cookie writes instead of sending them.
+ *
+ * PHP's setcookie() cannot be observed from a CLI test, so the store is handed
+ * this recorder as its transport. Everything else — validation, expiry, the
+ * HttpOnly/SameSite flags — is the real code path.
+ */
+if (!class_exists('Ch247CookieRecorder')) {
+    final class Ch247CookieRecorder
+    {
+        /** @var array<string,array{value:string,options:array}> */
+        public $sent = array();
+
+        /** @var array<string,true> */
+        public $cleared = array();
+
+        /**
+         * @param string      $name
+         * @param string|null $value
+         * @param array       $options
+         *
+         * @return bool
+         */
+        public function send($name, $value, array $options)
+        {
+            if ($value === null) {
+                $this->cleared[$name] = true;
+                unset($this->sent[$name]);
+
+                return true;
+            }
+            $this->sent[$name] = array('value' => (string) $value, 'options' => $options);
+
+            return true;
+        }
+
+        /**
+         * @return callable
+         */
+        public function sender()
+        {
+            return array($this, 'send');
+        }
+    }
+}
+
+if (!function_exists('ch247_cookie_recorder')) {
+    /**
+     * @return Ch247CookieRecorder
+     */
+    function ch247_cookie_recorder()
+    {
+        return new Ch247CookieRecorder();
+    }
+}
+
+if (!function_exists('ch247_make_i18n_for')) {
+    /**
+     * Boot an I18n instance for one simulated visitor.
+     *
+     * @param array $overrides Detection/cookie/request options; see the
+     *                         scenario sections in AutoDetectionTest.php.
+     *
+     * @return \CloudHost247\I18n\I18n
+     */
+    function ch247_make_i18n_for(array $overrides = array())
+    {
+        $config = array(
+            'root'            => CH247_REPO_ROOT,
+            'default_locale'  => 'en',
+            'currency_source' => new \CloudHost247\I18n\StaticCurrencySource(ch247_fixture_currencies(), 'test fixture'),
+            'rate_source'     => new \CloudHost247\I18n\Rate\StaticRateSource(
+                'NGN',
+                ch247_fixture_rates(),
+                'test fixture',
+                '2026-10-12T06:00:00+00:00'
+            ),
+            'logger'          => null,
+        );
+
+        return \CloudHost247\I18n\I18n::reset(array_merge($config, $overrides));
+    }
+}

@@ -1010,6 +1010,330 @@ $tests['Recovered revenue is summed across converted records'] = function () {
     return Analytics::summary()['recovered_revenue'] === 125.5;
 };
 
+// ------------------------------------------------------------------- language
+//
+// recover.php renders its own document: no client-area hook runs there, so it
+// resolves the visitor's language itself. These pin the two halves — the
+// catalogue every locale ships, and the rule the endpoint follows.
+
+/** The directory holding lang/site/ and includes/i18n/. */
+function ch247_recovery_root()
+{
+    $dir = dirname(__DIR__);
+    for ($i = 0; $i < 8; $i++) {
+        if (is_dir($dir . '/lang/site') && is_file($dir . '/includes/i18n/autoload.php')) {
+            return $dir;
+        }
+        $dir = dirname($dir);
+    }
+
+    return null;
+}
+
+/** @return array<string,string> */
+function ch247_recovery_catalog($locale)
+{
+    $root = ch247_recovery_root();
+    $file = $root . '/lang/site/' . $locale . '/cart-recovery.php';
+
+    return is_file($file) ? (array) require $file : array();
+}
+
+/** Locale directories that ship a site catalogue at all. */
+function ch247_recovery_locales()
+{
+    $dir = ch247_recovery_root() . '/lang/site';
+    $out = array();
+    foreach (scandir($dir) as $entry) {
+        if (strpos($entry, '.') !== 0 && is_dir($dir . '/' . $entry)) {
+            $out[] = $entry;
+        }
+    }
+    sort($out);
+
+    return $out;
+}
+
+/**
+ * Boot the shared i18n instance the way the endpoint does, minus the database.
+ *
+ * Must be called *after* the superglobals are staged: the library snapshots
+ * $_COOKIE when it boots.
+ */
+function ch247_recovery_boot_i18n()
+{
+    $root = ch247_recovery_root();
+    require_once $root . '/includes/i18n/autoload.php';
+    \CloudHost247\I18n\I18n::reset(array(
+        'root' => $root,
+        'detection' => array('enabled' => false),
+        'currency_source' => new \CloudHost247\I18n\StaticCurrencySource(array(
+            array('id' => 1, 'code' => 'NGN', 'prefix' => '₦', 'suffix' => '', 'format' => 2, 'rate' => 1.0, 'default' => 1),
+            array('id' => 2, 'code' => 'USD', 'prefix' => '$', 'suffix' => '', 'format' => 2, 'rate' => 0.00065, 'default' => 0),
+            array('id' => 3, 'code' => 'GBP', 'prefix' => '£', 'suffix' => '', 'format' => 2, 'rate' => 0.00051, 'default' => 0),
+        ), 'cart recovery test'),
+    ));
+}
+
+/** Point the addon at a store, so the rendered page includes its home link. */
+function ch247_recovery_system_url($url)
+{
+    \WHMCS\Database\Capsule::table('tblconfiguration')->updateOrInsert(
+        array('setting' => 'SystemURL'),
+        array('value' => $url)
+    );
+}
+
+/**
+ * Stage a request, run $body, put the superglobals back.
+ *
+ * The whole $_SESSION is swapped rather than just the addon's namespace: the
+ * session store also reads WHMCS's own $_SESSION['Language'], which an
+ * earlier test's ?language= wrote, so unsetting one key is not enough.
+ */
+function ch247_recovery_request(array $cookie, array $query, $body)
+{
+    $saved = array(
+        'cookie' => isset($_COOKIE) ? $_COOKIE : array(),
+        'get' => isset($_GET) ? $_GET : array(),
+        'session' => isset($_SESSION) ? $_SESSION : array(),
+    );
+    $_COOKIE = $cookie;
+    $_GET = $query;
+    $_SESSION = array();
+    try {
+        return call_user_func($body);
+    } finally {
+        $_COOKIE = $saved['cookie'];
+        $_GET = $saved['get'];
+        $_SESSION = $saved['session'];
+        \CloudHost247\CartRecovery\Locale::reset();
+    }
+}
+
+$tests['The English recovery catalogue matches the fallback list in Locale'] = function () {
+    $en = ch247_recovery_catalog('en');
+    $fallback = \CloudHost247\CartRecovery\Locale::DEFAULTS;
+    if (count($en) !== count($fallback)) {
+        return false;
+    }
+    foreach ($fallback as $key => $value) {
+        if (!isset($en[$key]) || $en[$key] !== $value) {
+            return false;
+        }
+    }
+
+    return true;
+};
+
+$tests['Every shipped locale carries the complete recovery catalogue'] = function () {
+    $en = array_keys(ch247_recovery_catalog('en'));
+    sort($en);
+    $locales = ch247_recovery_locales();
+    if (!$en || count($locales) < 5) {
+        return false;
+    }
+    foreach ($locales as $locale) {
+        $catalog = ch247_recovery_catalog($locale);
+        $keys = array_keys($catalog);
+        sort($keys);
+        if ($keys !== $en) {
+            return false;
+        }
+        foreach ($catalog as $value) {
+            if (!is_string($value) || trim($value) === '') {
+                return false;
+            }
+        }
+    }
+
+    return true;
+};
+
+$tests['Recovery pages are translated, not English placeholders'] = function () {
+    $en = ch247_recovery_catalog('en');
+    foreach (ch247_recovery_locales() as $locale) {
+        if ($locale === 'en') {
+            continue;
+        }
+        $catalog = ch247_recovery_catalog($locale);
+        foreach ($en as $key => $english) {
+            // A translated locale that repeats the English verbatim is a
+            // placeholder nobody finished, not a translation.
+            if (!isset($catalog[$key]) || $catalog[$key] === $english) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+};
+
+$tests['Every key the recovery endpoint renders exists in the catalogue'] = function () {
+    $source = (string) file_get_contents(dirname(__DIR__) . '/recover.php')
+        . (string) file_get_contents(dirname(__DIR__) . '/lib/RecoveryPage.php');
+    preg_match_all("/'(recover_[a-z_]+)'/", $source, $matches);
+    $keys = array_unique($matches[1]);
+    if (count($keys) < 15) {
+        return false;
+    }
+    foreach ($keys as $key) {
+        if (!array_key_exists($key, \CloudHost247\CartRecovery\Locale::DEFAULTS)) {
+            return false;
+        }
+    }
+
+    return true;
+};
+
+$tests['The endpoint declares the active language instead of hardcoding English'] = function () {
+    $endpoint = (string) file_get_contents(dirname(__DIR__) . '/recover.php');
+    $page = (string) file_get_contents(dirname(__DIR__) . '/lib/RecoveryPage.php');
+    if (strpos($endpoint, 'lang="en"') !== false || strpos($page, 'lang="en"') !== false) {
+        return false;
+    }
+    foreach (array('Locale::tag()', 'Locale::direction()') as $call) {
+        if (strpos($page, $call) === false) {
+            return false;
+        }
+    }
+    // No leftover English prose anywhere on the path: every visible sentence
+    // comes from a catalogue key.
+    foreach (array(
+        'You have been unsubscribed',
+        'This cart link has expired',
+        'Something went wrong',
+        'Return to the store',
+    ) as $prose) {
+        if (strpos($endpoint, $prose) !== false || strpos($page, $prose) !== false) {
+            return false;
+        }
+    }
+
+    return true;
+};
+
+$tests['An unknown key degrades to the key itself, never to a blank'] = function () {
+    return \CloudHost247\CartRecovery\Locale::trans('recover_key_that_does_not_exist')
+        === 'recover_key_that_does_not_exist';
+};
+
+$tests['A customer who chose French on the storefront gets a French recovery page'] = function () {
+    return ch247_recovery_request(array('ch247_language' => 'fr'), array(), function () {
+        ch247_recovery_boot_i18n();
+        \CloudHost247\CartRecovery\Locale::reset();
+
+        return \CloudHost247\CartRecovery\Locale::code() === 'fr'
+            && \CloudHost247\CartRecovery\Locale::tag() === 'fr-FR'
+            && \CloudHost247\CartRecovery\Locale::direction() === 'ltr'
+            && \CloudHost247\CartRecovery\Locale::trans('recover_expired_title') === 'Ce lien de panier a expiré'
+            && \CloudHost247\CartRecovery\Locale::trans('recover_return_to_store') === 'Retour à la boutique';
+    });
+};
+
+$tests['A Brazilian customer gets the pt-BR tag on the html element'] = function () {
+    return ch247_recovery_request(array('ch247_language' => 'pt-BR'), array(), function () {
+        ch247_recovery_boot_i18n();
+        \CloudHost247\CartRecovery\Locale::reset();
+
+        return \CloudHost247\CartRecovery\Locale::code() === 'pt-BR'
+            && \CloudHost247\CartRecovery\Locale::tag() === 'pt-BR';
+    });
+};
+
+$tests['?language= on the recovery link overrides the remembered cookie'] = function () {
+    return ch247_recovery_request(
+        array('ch247_language' => 'de'),
+        array('language' => 'fr'),
+        function () {
+            ch247_recovery_boot_i18n();
+            \CloudHost247\CartRecovery\Locale::reset();
+
+            return \CloudHost247\CartRecovery\Locale::code() === 'fr'
+                && \CloudHost247\CartRecovery\Locale::trans('recover_expired_title') === 'Ce lien de panier a expiré';
+        }
+    );
+};
+
+$tests['A tampered or unsupported cookie falls back to English, not to a crash'] = function () {
+    $ok = true;
+    foreach (array('zz-ZZ', '<script>alert(1)</script>', '../../etc/passwd', 'FRENCH', '') as $bad) {
+        $ok = $ok && ch247_recovery_request(array('ch247_language' => $bad), array(), function () {
+            ch247_recovery_boot_i18n();
+            \CloudHost247\CartRecovery\Locale::reset();
+
+            return \CloudHost247\CartRecovery\Locale::code() === 'en'
+                && \CloudHost247\CartRecovery\Locale::trans('recover_expired_title') === 'This cart link has expired';
+        });
+    }
+
+    return $ok;
+};
+
+$tests['No cookie at all means English, and no detection is run on the endpoint'] = function () {
+    return ch247_recovery_request(array(), array(), function () {
+        ch247_recovery_boot_i18n();
+        \CloudHost247\CartRecovery\Locale::reset();
+
+        // A token link opens from a mailbox, not the storefront: guessing a
+        // language from the network the customer happens to be on would beat
+        // the language they actually chose, so the endpoint opts out.
+        return \CloudHost247\CartRecovery\Locale::code() === 'en'
+            && \CloudHost247\I18n\I18n::boot()->detector() === null
+            && \CloudHost247\I18n\I18n::boot()->detection()['language']['reason'] === 'detection_disabled';
+    });
+};
+
+$tests['The rendered French page declares fr-FR and carries no English prose'] = function () {
+    return ch247_recovery_request(array('ch247_language' => 'fr'), array(), function () {
+        ch247_recovery_boot_i18n();
+        ch247_recovery_system_url('https://shop.example.test/');
+        \CloudHost247\CartRecovery\Locale::reset();
+        ob_start();
+        \CloudHost247\CartRecovery\RecoveryPage::render('recover_expired_title', 'recover_expired_body', 410);
+        $html = (string) ob_get_clean();
+
+        return strpos($html, 'lang="fr-FR"') !== false
+            && strpos($html, 'Ce lien de panier a expiré') !== false
+            && strpos($html, 'Retour à la boutique') !== false
+            && strpos($html, 'href="https://shop.example.test"') !== false
+            && strpos($html, 'This cart link has expired') === false
+            && strpos($html, 'Return to the store') === false;
+    });
+};
+
+$tests['The rendered English page is unchanged, and still declares a language'] = function () {
+    return ch247_recovery_request(array(), array(), function () {
+        ch247_recovery_boot_i18n();
+        ch247_recovery_system_url('https://shop.example.test/');
+        \CloudHost247\CartRecovery\Locale::reset();
+        ob_start();
+        \CloudHost247\CartRecovery\RecoveryPage::render('recover_unsubscribed_title', 'recover_unsubscribed_body');
+        $html = (string) ob_get_clean();
+
+        return strpos($html, 'lang="en-US"') !== false
+            && strpos($html, 'You have been unsubscribed') !== false
+            && strpos($html, 'Return to the store') !== false
+            && strpos($html, 'recover_') === false
+            && strpos($html, '<!doctype html>') === 0;
+    });
+};
+
+$tests['A customer-supplied string can never be injected into the page'] = function () {
+    return ch247_recovery_request(array('ch247_language' => 'fr'), array('language' => 'fr'), function () {
+        ch247_recovery_boot_i18n();
+        ch247_recovery_system_url('https://shop.example.test/');
+        \CloudHost247\CartRecovery\Locale::reset();
+        ob_start();
+        \CloudHost247\CartRecovery\RecoveryPage::render('recover_error_title', 'recover_error_body', 500);
+        $html = (string) ob_get_clean();
+
+        return strpos($html, '<script') === false
+            && strpos($html, 'onerror=') === false
+            && strpos($html, 'Something went wrong') === false;
+    });
+};
+
 // ------------------------------------------------------------------------- run
 
 $failed = 0;

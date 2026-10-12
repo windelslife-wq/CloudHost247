@@ -41,6 +41,9 @@ return array(
         'switcher_close'             => 'Menü schließen',
         'switcher_no_options'        => 'Keine weiteren Optionen verfügbar',
         'switcher_help'              => 'Ihre Auswahl für Sprache und Währung ist unabhängig voneinander und wird für Ihren nächsten Besuch gespeichert.',
+        'detection_auto_language'    => 'Wir haben die Sprache automatisch anhand Ihrer Browsereinstellungen auf {name} gesetzt.',
+        'detection_auto_currency'    => 'Wir haben die Währung automatisch anhand Ihres Standorts auf {code} gesetzt.',
+        'detection_change_hint'      => 'Sie können beides hier jederzeit ändern; Ihre Auswahl wird gespeichert.',
 
         // ------------------------------------------------------- currency ----
         'currency_indicative_help'    => 'Nur zur Orientierung umgerechnet. Abgerechnet wird in {charged}.',

@@ -762,3 +762,7 @@ $_LANG['domainbrokersendmessage'] = 'Nachricht senden';
 $_LANG['domainbrokerescrownote'] = 'Ihre Gelder werden sicher verwahrt und erst an den Verkäufer ausgezahlt, wenn die Domainübertragung bestätigt ist.';
 $_LANG['domainbrokerhistorynote'] = 'Jede Verhandlungsrunde wird dauerhaft aufbewahrt — nichts in diesem Verlauf wird jemals überschrieben.';
 $_LANG['domainbrokernofee'] = 'Ihnen wird nie etwas berechnet, bevor Sie ein Angebot schriftlich angenommen haben.';
+
+/* CloudHost247: fallback-footer headings (footer_block.tpl) */
+$_LANG['footerdomainservices'] = 'Domain-Services';
+$_LANG['footergrowthservices'] = 'Online wachsen';

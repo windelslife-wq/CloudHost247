@@ -761,3 +761,7 @@ $_LANG['domainbrokersendmessage'] = 'Enviar mensaje';
 $_LANG['domainbrokerescrownote'] = 'Sus fondos se mantienen en depósito y solo se liberan al vendedor una vez confirmada la transferencia del dominio.';
 $_LANG['domainbrokerhistorynote'] = 'Cada ronda de negociación se conserva permanentemente — nada de este historial se sobrescribe jamás.';
 $_LANG['domainbrokernofee'] = 'Nunca se le cobra hasta que haya aceptado una oferta por escrito.';
+
+/* CloudHost247: fallback-footer headings (footer_block.tpl) */
+$_LANG['footerdomainservices'] = 'Servicios de dominios';
+$_LANG['footergrowthservices'] = 'Crezca en línea';
