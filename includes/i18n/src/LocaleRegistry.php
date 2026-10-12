@@ -66,6 +66,9 @@ final class LocaleRegistry
             $this->locales[$code] = $locale;
         }
 
+        if (!isset($this->locales[$this->defaultCode]) && isset($this->locales['en'])) {
+            $this->defaultCode = 'en';
+        }
         if (!isset($this->locales[$this->defaultCode])) {
             $this->locales[$this->defaultCode] = new Locale(
                 $this->defaultCode,

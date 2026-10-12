@@ -130,10 +130,14 @@ final class RateTable
      *
      * @return float|null
      */
-    public function rate(string $code)
+    public function rate(string $code, string $to = null)
     {
         $code = strtoupper($code);
-
+        if ($to !== null) {
+            $to = strtoupper($to);
+            return isset($this->rates[$code], $this->rates[$to])
+                ? $this->rates[$to] / $this->rates[$code] : null;
+        }
         return isset($this->rates[$code]) ? $this->rates[$code] : null;
     }
 

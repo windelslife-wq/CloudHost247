@@ -2,7 +2,7 @@
 """CloudHost247 — repo-wide text encoding guard.
 
 Task 3 of the internationalization brief: remove every accidental
-U+F0B7 (UTF-8 EF 8B B7) from the repository and keep it out.
+U+F0B7 (UTF-8 EF 82 B7) from the repository and keep it out.
 
 U+F0B7 is a private-use codepoint. It appears in real-world content because
 Microsoft Word (and the Symbol/Wingdings fonts it uses for bullets) maps the
@@ -41,8 +41,9 @@ Only text files are scanned. Binary files are skipped by content sniffing, not
 by extension, because a .txt that is really a PNG would otherwise be destroyed
 by an automated fix and a .php that is really UTF-8 must still be checked.
 
-Baseline (verified 2026-10): U+F0B7 does not occur anywhere in this
-repository — not in a text file and not in a binary. The brief's example path
+Baseline (verified 2026-10): U+F0B7 occurs in zero project text files.
+A byte-pattern match in a compressed PNG stream and ICU dev data is classified
+separately below; binary bytes are not rendered text. The brief's example path
 shared/site/content/legal/*.txt does not exist in this checkout and never has
 in its git history, so there was nothing there to clean.
 
@@ -68,6 +69,7 @@ Exit code is 0 when the tree is clean, 1 when findings remain.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
 import sys
@@ -127,7 +129,7 @@ FUSED_BULLET = re.compile(r"(?:(?<=^)|(?<=[\s>]))([\u2022\u25cf\u25aa\u25e6\u221
 # Directories that are build output, vendored, or never hand-edited content.
 SKIP_DIRS = {
     ".git",
-    ".github",
+    ".cache",  # generated, pinned dev dependencies / template compiler cache
     "node_modules",
     "vendor",
     "cache",
@@ -182,6 +184,8 @@ EXEMPTIONS = (
     {
         "path": "modules/servers/Smtphosting/templates/admin/assets/js/layers-ui.js",
         "class": "vendored-upstream",
+        "line": 4549,
+        "line_sha256": "4da127794a88f82bceef62399a192150fcd42621cafcfbe2ad53b7bef2b14103",
         "reason": (
             "Upstream heat-layer library. Line 4549 lost three U+2212 MINUS SIGN "
             "characters to U+FFFD somewhere before it was vendored; the damage is "
@@ -193,6 +197,8 @@ EXEMPTIONS = (
     {
         "path": "modules/servers/Smtphosting/templates/client/default/assets/js/layers-ui.js",
         "class": "vendored-upstream",
+        "line": 4549,
+        "line_sha256": "4da127794a88f82bceef62399a192150fcd42621cafcfbe2ad53b7bef2b14103",
         "reason": (
             "Same vendored library as the admin copy above; same three U+FFFD "
             "characters in the same comment."
@@ -217,11 +223,14 @@ EXEMPTIONS = (
     },
 )
 
-EXEMPT_PATHS = {entry["path"] for entry in EXEMPTIONS}
+EXEMPT_PATHS = {entry["path"] for entry in EXEMPTIONS if entry["class"] != "vendored-upstream"}
+LINE_EXEMPTIONS = {entry["path"]: entry for entry in EXEMPTIONS if entry["class"] == "vendored-upstream"}
 
 
 def is_binary(data: bytes) -> bool:
     """Content sniff, not extension sniffing."""
+    if data.startswith((b"\xff\xfe", b"\xfe\xff", b"\x00\x00\xfe\xff")):
+        return False  # BOM-marked UTF-16/32 is text, not a binary exception.
     if b"\x00" in data[:8192]:
         return True
     # A high proportion of non-text control bytes means this is not a text file.
@@ -235,7 +244,11 @@ def is_binary(data: bytes) -> bool:
 
 def decode(data: bytes):
     """Return (text, encoding) or (None, None) if the file is not decodable."""
-    for enc in ("utf-8", "utf-8-sig", "cp1252", "latin-1"):
+    if data.startswith((b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff")):
+        return data.decode("utf-32"), "utf-32"
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16"), "utf-16"
+    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
         try:
             return data.decode(enc), enc
         except UnicodeDecodeError:
@@ -245,10 +258,8 @@ def decode(data: bytes):
 
 def iter_files(root: str):
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and not d.startswith("."))
+        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
         for name in sorted(filenames):
-            if name.startswith("."):
-                continue
             full = os.path.join(dirpath, name)
             rel = os.path.relpath(full, root).replace(os.sep, "/")
             if rel in EXEMPT_PATHS:
@@ -258,12 +269,14 @@ def iter_files(root: str):
             yield full, rel
 
 
-def scan_file(text: str):
+def scan_file(text: str, exempt_lines=frozenset()):
     """Return a list of (kind, line_number, excerpt) for one file's text."""
     findings = []
-    lines = text.splitlines()
+    lines = text.split("\n")  # splitlines() silently consumes U+2028/U+2029 before detection.
 
     for number, line in enumerate(lines, start=1):
+        if number in exempt_lines:
+            continue
         excerpt = line.strip()[:120]
 
         if TARGET in line or any(b in line for b in PRIVATE_BULLETS):
@@ -319,37 +332,39 @@ def main() -> int:
 
     # 1. Assert the documented exclusions still describe reality. A stale
     #    exclusion is a hole in the guard, so it must fail loudly.
-    for entry in EXEMPTIONS:
+    invalid_exclusions = 0
+    project_scan = os.path.exists(os.path.join(root, ".git")) or os.path.isfile(os.path.join(root, "ci/check-encoding.py"))
+    for entry in EXEMPTIONS if project_scan else ():
         path = os.path.join(root, entry["path"])
         if not os.path.exists(path):
-            print(
-                f"NOTE: documented exclusion is gone: {entry['path']}\n"
-                f"      Remove it from EXEMPTIONS in ci/check-encoding.py."
-            )
+            if entry["class"] == "vendored":
+                continue  # Optional, gitignored dev ICU data is not required in CI.
+            print(f"STALE EXCLUSION {entry['path']}: file no longer exists; retire this exception")
+            invalid_exclusions += 1
             continue
-
         with open(path, "rb") as handle:
             data = handle.read()
-
         if entry["class"] == "binary":
-            if not is_binary(data):
-                print(f"NOTE: exclusion {entry['path']} is no longer binary; it should be scanned.")
-            if TARGET.encode("utf-8") not in data:
-                print(f"NOTE: exclusion {entry['path']} no longer contains the target bytes.")
+            if not is_binary(data) or TARGET.encode("utf-8") not in data:
+                print(f"STALE EXCLUSION {entry['path']}: binary classification no longer applies")
+                invalid_exclusions += 1
             continue
-
+        if entry["class"] == "vendored":
+            continue
         text, _ = decode(data)
-        if text is None:
-            continue
-        hits = [f for f in scan_file(text)]
-        if not hits:
-            print(
-                f"NOTE: exclusion {entry['path']} has no remaining findings; "
-                f"it can be removed from EXEMPTIONS in ci/check-encoding.py."
-            )
+        if entry["class"] == "vendored-upstream":
+            lines = text.splitlines()
+            number = entry["line"]
+            line = lines[number - 1] if len(lines) >= number else ""
+            if hashlib.sha256(line.encode("utf-8")).hexdigest() != entry["line_sha256"]:
+                print(f"STALE EXCLUSION {entry['path']}:{number}: upstream comment changed; reclassify/retire exception")
+                invalid_exclusions += 1
+        elif not scan_file(text):
+            print(f"STALE EXCLUSION {entry['path']}: deliberate fixture no longer present")
+            invalid_exclusions += 1
 
     # 2. Walk the tree.
-    total = 0
+    total = invalid_exclusions
     scanned = 0
     fixed = 0
     by_kind = {}
@@ -374,7 +389,14 @@ def main() -> int:
             continue
 
         scanned += 1
-        findings = scan_file(text)
+        exemption = LINE_EXEMPTIONS.get(rel)
+        exempt_lines = set()
+        if exemption:
+            lines = text.splitlines()
+            number = exemption["line"]
+            if len(lines) >= number and hashlib.sha256(lines[number - 1].encode("utf-8")).hexdigest() == exemption["line_sha256"]:
+                exempt_lines.add(number)
+        findings = scan_file(text, exempt_lines)
 
         if not findings:
             continue

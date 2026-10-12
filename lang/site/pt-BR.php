@@ -21,6 +21,8 @@ return array(
         'flag'         => 'br',
         'direction'    => 'ltr',
         'status'       => 'complete',
+        'status_scope' => 'declared_catalogs',
+        'site_status'  => 'partial',
         'fallback'     => 'pt',
         'plural_rule'  => 'pt',
         'intl_tag'     => 'pt-BR',

@@ -66,15 +66,15 @@
                                 <p>{$refundData.contact.content}</p>
                                 <ul class="term-list contact-list">
                                     <li>
-                                        <strong>Email:</strong>
+                                        <strong>{$LANG.ch247_refundpolicy_17507dcf84}</strong>
                                         <a href="mailto:{$refundData.contact.email}">{$refundData.contact.email}</a>
                                     </li>
                                     <li>
-                                        <strong>Website:</strong>
+                                        <strong>{$LANG.ch247_refundpolicy_cf2fb5335e}</strong>
                                         <a href="https://{$refundData.contact.website}" target="_blank" rel="noopener">{$refundData.contact.website}</a>
                                     </li>
                                     <li>
-                                        <strong>Support:</strong> Open a ticket through our client <a href="{$WEB_ROOT}/submitticket.php">{$refundData.contact.portal}</a>.
+                                        <strong>{$LANG.ch247_refundpolicy_99126e703e}</strong> {$LANG.ch247_policy_open_ticket_prefix} <a href="{$WEB_ROOT}/submitticket.php">{$refundData.contact.portal}</a>.
                                     </li>
                                 </ul>
                             </div>

@@ -66,15 +66,15 @@
                                 <p>{$trademarkData.contact.content}</p>
                                 <ul class="term-list contact-list">
                                     <li>
-                                        <strong>Email:</strong>
+                                        <strong>{$LANG.ch247_trademarkpolicy_17507dcf84}</strong>
                                         <a href="mailto:{$trademarkData.contact.email}">{$trademarkData.contact.email}</a>
                                     </li>
                                     <li>
-                                        <strong>Website:</strong>
+                                        <strong>{$LANG.ch247_trademarkpolicy_cf2fb5335e}</strong>
                                         <a href="https://{$trademarkData.contact.website}" target="_blank" rel="noopener">{$trademarkData.contact.website}</a>
                                     </li>
                                     <li>
-                                        <strong>Support:</strong> Open a ticket through our client <a href="{$WEB_ROOT}/submitticket.php">{$trademarkData.contact.portal}</a>.
+                                        <strong>{$LANG.ch247_trademarkpolicy_99126e703e}</strong> {$LANG.ch247_policy_open_ticket_prefix} <a href="{$WEB_ROOT}/submitticket.php">{$trademarkData.contact.portal}</a>.
                                     </li>
                                 </ul>
                             </div>

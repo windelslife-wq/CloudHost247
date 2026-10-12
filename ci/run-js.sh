@@ -43,6 +43,11 @@ step node modules/addons/tools_center/tests/run-tests.js
 step node templates/hostx/tests/announcementbar.test.mjs
 step node templates/hostx/tests/i18n-switcher.test.mjs
 
+# Compile/render the actual page and switcher templates with Smarty, not a
+# regex-based mock renderer. This is dev tooling; WHMCS supplies Smarty in prod.
+step node staging/i18n-preview/prepare.mjs
+step "$PHP_BIN" tests/staging/RenderedTemplatesTest.php
+
 # Syntax gate for the shipped browser bundles touched by the audits.
 for js in \
     modules/addons/tools_center/js/tools-center.js \

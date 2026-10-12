@@ -9,16 +9,16 @@
  */
 
 define('CLIENTAREA', true);
-require $_SERVER['DOCUMENT_ROOT'] . '/init.php';
-require 'configadminioncontroller.php';
+require_once __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/ch247_content.php';
 
 use WHMCS\ClientArea;
 use WHMCS\Authentication\CurrentUser;
 
 $ca = new ClientArea();
-$ca->setPageTitle('Trademark & Copyright Infringement Policy');
+$ca->setPageTitle(ch247_page_title('trademark-policy', 'Trademark & Copyright Infringement Policy'));
 $ca->addToBreadCrumb('index.php', Lang::trans('globalsystemname'));
-$ca->addToBreadCrumb('trademark-policy.php', 'Trademark & Copyright Infringement Policy');
+$ca->addToBreadCrumb('trademark-policy.php', ch247_page_title('trademark-policy', 'Trademark & Copyright Infringement Policy'));
 $ca->initPage();
 
 /**
@@ -151,6 +151,6 @@ $trademarkSections = [
     ]
 ];
 
-$ca->assign('trademarkData', $trademarkSections);
+$ca->assign('trademarkData', ch247_content('trademark-policy', $trademarkSections));
 $ca->setTemplate('trademarkpolicy');
 $ca->output();

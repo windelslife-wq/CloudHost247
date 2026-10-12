@@ -11,8 +11,8 @@
  *     language complete until its translations are done and checked";
  *   - the current currency configuration: which WHMCS currencies are enabled,
  *     which rates are known, how old they are and where they came from;
- *   - a "Refresh rates now" action that asks WHMCS to re-run its own
- *     configured currency-feed update, so no rate is ever invented here.
+ *   - a cache reload action that re-reads configured WHMCS rates. Native
+ *     WHMCS automation, not an undocumented API call, owns feed updates.
  *
  * @package    WHMCS
  * @copyright  Copyright (c) CloudHost247 Isc
@@ -39,7 +39,7 @@ if (!function_exists('cloudhost247_i18n_config')) {
             'name'        => 'CloudHost247 Internationalization',
             'description' => 'Language and currency switching, translation catalog management and locale-aware formatting for the whole site.',
             'author'      => 'CloudHost247',
-            'version'     => '1.0.0',
+            'version'     => '1.1.0',
             'language'    => 'english',
             'fields'      => array(
                 'rate_ttl' => array(
@@ -48,12 +48,6 @@ if (!function_exists('cloudhost247_i18n_config')) {
                     'Size'         => '10',
                     'Default'      => '21600',
                     'Description'  => 'How long a fetched rate table is reused before the configured source is asked again. 21600 = 6 hours.',
-                ),
-                'show_indicative_notice' => array(
-                    'FriendlyName' => 'Label converted prices as indicative',
-                    'Type'         => 'yesno',
-                    'Default'      => 'on',
-                    'Description'  => 'Shows a note next to prices that are converted from another currency, and keeps the charged currency visible.',
                 ),
             ),
         );
@@ -66,7 +60,25 @@ if (!function_exists('cloudhost247_i18n_activate')) {
      */
     function cloudhost247_i18n_activate()
     {
-        return array('status' => 'success', 'description' => 'CloudHost247 Internationalization is ready. No database changes are required.');
+        try {
+            $schema = \WHMCS\Database\Capsule::schema();
+            if (!$schema->hasTable('mod_cloudhost247_i18n_preferences')) {
+                $schema->create('mod_cloudhost247_i18n_preferences', function ($table) {
+                    $table->unsignedInteger('client_id')->primary();
+                    $table->unsignedInteger('display_currency')->nullable();
+                });
+            }
+            return array('status' => 'success', 'description' => 'Ready. Browsing-currency preferences are stored separately; billing currencies and invoices are not modified.');
+        } catch (\Throwable $e) {
+            return array('status' => 'error', 'description' => 'Could not create the browsing-preference table. Check the database permissions.');
+        }
+    }
+}
+
+if (!function_exists('cloudhost247_i18n_upgrade')) {
+    function cloudhost247_i18n_upgrade(array $vars)
+    {
+        return cloudhost247_i18n_activate(); // Idempotent additive migration.
     }
 }
 
@@ -98,7 +110,7 @@ if (!function_exists('cloudhost247_i18n_i18n')) {
 
         try {
             $root = dirname(__DIR__, 3);
-            $instance = I18n::boot(array('root' => $root));
+            $instance = I18n::boot(array('root' => $root, 'rate_cache' => new \CloudHost247\I18n\Rate\FileRateCache($root . '/modules/addons/cloudhost247_i18n/cache/rates.json')));
         } catch (Throwable $e) {
             $instance = null;
         }
@@ -124,9 +136,7 @@ if (!function_exists('cloudhost247_i18n_completeness')) {
         $total = 0;
         $referenceMessages = array();
         foreach ($catalogs->messages($reference) as $key => $value) {
-            if (!is_array($value)) {
-                $referenceMessages[(string) $key] = (string) $value;
-            }
+            $referenceMessages[(string) $key] = $value;
         }
         $total = count($referenceMessages);
 
@@ -135,9 +145,7 @@ if (!function_exists('cloudhost247_i18n_completeness')) {
             $meta = $catalogs->meta($code);
             $messages = array();
             foreach ($catalogs->messages($code) as $key => $value) {
-                if (!is_array($value)) {
-                    $messages[(string) $key] = (string) $value;
-                }
+                $messages[(string) $key] = $value;
             }
 
             $missing = array();
@@ -145,7 +153,8 @@ if (!function_exists('cloudhost247_i18n_completeness')) {
             foreach ($referenceMessages as $key => $value) {
                 if (!array_key_exists($key, $messages)) {
                     $missing[] = $key;
-                } elseif (trim($messages[$key]) === '') {
+                } elseif ((is_array($messages[$key]) && \CloudHost247\I18n\PluralRule::validateForms($messages[$key]))
+                    || (!is_array($messages[$key]) && trim((string) $messages[$key]) === '')) {
                     $empty[] = $key;
                 }
             }
@@ -153,7 +162,7 @@ if (!function_exists('cloudhost247_i18n_completeness')) {
             $translated = $total - count($missing) - count($empty);
             $rows[$code] = array(
                 'code'        => $code,
-                'name'        => isset($meta['name']) ? $meta['name'] : $code,
+                'name'        => isset($meta['english_name']) ? $meta['english_name'] : $code,
                 'native_name' => isset($meta['native_name']) ? $meta['native_name'] : $code,
                 'status'      => isset($meta['status']) ? $meta['status'] : 'unknown',
                 'complete'    => $total > 0 && $translated === $total,
@@ -191,7 +200,13 @@ if (!function_exists('cloudhost247_i18n_output')) {
         $action = isset($_REQUEST['ch247action']) ? (string) $_REQUEST['ch247action'] : '';
 
         if ($action === 'refreshrates') {
-            cloudhost247_i18n_refresh_rates($i18n);
+            if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST'
+                && function_exists('check_token')) {
+                check_token('WHMCS.admin.default');
+                cloudhost247_i18n_refresh_rates($i18n);
+            } else {
+                echo '<div class="alert alert-danger">A valid admin POST token is required.</div>';
+            }
         }
 
         $rows = cloudhost247_i18n_completeness($i18n);
@@ -205,9 +220,10 @@ if (!function_exists('cloudhost247_i18n_output')) {
 
         $modulelink = isset($vars['modulelink']) ? $vars['modulelink'] : '';
 
-        echo '<h2>Translation completeness</h2>';
+        echo '<h2>Catalog coverage</h2>';
+        echo '<div class="alert alert-warning">Catalog parity is not a site-wide translation sign-off. Several older policy, service and utility templates still contain English. See docs/I18N_STATUS.md and complete the licensed-WHMCS staging checklist before release.</div>';
         echo '<p>The reference catalog is <strong>English (' . (int) (isset($rows['en']['total']) ? $rows['en']['total'] : 0) . ' strings)</strong>. '
-            . 'A language is only ever shown as <em>complete</em> when every key is present and non-empty; '
+            . 'A catalog is only ever shown as <em>complete</em> when every key is present and non-empty; '
             . 'the gate that enforces this also runs in CI.</p>';
         echo '<div class="table-responsive"><table class="table table-striped table-bordered"><thead><tr>'
             . '<th>Language</th><th>Code</th><th>WHMCS name</th><th>Status</th><th>Translated</th><th style="width:180px">Coverage</th><th>Missing / empty</th>'
@@ -220,7 +236,7 @@ if (!function_exists('cloudhost247_i18n_output')) {
             echo '<td><code>' . htmlspecialchars($row['code'], ENT_QUOTES, 'UTF-8') . '</code></td>';
             echo '<td><code>' . htmlspecialchars($row['whmcs_name'], ENT_QUOTES, 'UTF-8') . '</code></td>';
             echo '<td>' . ($row['complete']
-                ? '<span class="label label-success">Complete</span>'
+                ? '<span class="label label-success">Catalog-complete</span>'
                 : '<span class="label label-default">' . htmlspecialchars($row['status'], ENT_QUOTES, 'UTF-8') . '</span>') . '</td>';
             echo '<td>' . (int) $row['translated'] . ' / ' . (int) $row['total'] . '</td>';
             echo '<td><div class="progress" style="margin-bottom:0"><div class="progress-bar progress-bar-' . $barClass . '" role="progressbar" style="width:' . (int) $row['percent'] . '%">' . (int) $row['percent'] . '%</div></div></td>';
@@ -261,10 +277,12 @@ if (!function_exists('cloudhost247_i18n_output')) {
 
         echo '<h2>Exchange rates</h2>';
         echo '<p><strong>Source:</strong> ' . ($rateSource !== '' ? htmlspecialchars($rateSource, ENT_QUOTES, 'UTF-8') : 'not fetched yet') . '</p>';
-        echo '<p><strong>Last updated:</strong> ' . ($rateStamp ? htmlspecialchars(date('Y-m-d H:i:s', $rateStamp), ENT_QUOTES, 'UTF-8') : 'never') . '</p>';
+        echo '<p><strong>Cache retrieved at:</strong> ' . ($rateStamp ? htmlspecialchars(date('Y-m-d H:i:s', $rateStamp), ENT_QUOTES, 'UTF-8') : 'never') . '</p>';
         echo '<p>Rates are cached and timestamped. If a rate cannot be obtained the price is not converted and no '
             . 'rate is invented — the page shows the catalogue price in its own currency instead.</p>';
 
+        echo '<p><strong>Feed update time:</strong> ' . ($rates !== null && $rates->getAsOf() ? htmlspecialchars($rates->getAsOf(), ENT_QUOTES, 'UTF-8') : 'not supplied by this WHMCS schema') . '</p>';
+        echo '<p>WHMCS\'s native currency automation updates the feed. This addon only reads the configured rates; reloading the cache does not imply a new feed update.</p>';
         if ($rates !== null) {
             echo '<div class="table-responsive"><table class="table table-striped table-bordered"><thead><tr><th>Pair</th><th>Rate</th></tr></thead><tbody>';
             foreach ($currencies as $currency) {
@@ -279,16 +297,17 @@ if (!function_exists('cloudhost247_i18n_output')) {
         }
 
         echo '<form method="post" action="' . htmlspecialchars($modulelink, ENT_QUOTES, 'UTF-8') . '">'
+            . (function_exists('generate_token') ? generate_token('form') : '')
             . '<input type="hidden" name="ch247action" value="refreshrates">'
-            . '<button type="submit" class="btn btn-primary">Refresh rates from the configured source</button>'
+            . '<button type="submit" class="btn btn-primary">Reload configured rates into the cache</button>'
             . '</form>';
     }
 }
 
 if (!function_exists('cloudhost247_i18n_refresh_rates')) {
     /**
-     * Ask WHMCS to re-run its own currency-feed automation, then drop our
-     * cached table so the next page view re-reads it.
+     * Reload only configured WHMCS rates into the shared cache. Native WHMCS
+     * automation owns provider updates; no undocumented API is called here.
      *
      * Deliberately reuses WHMCS's configured provider rather than calling an
      * external API from here: one source of truth, one set of credentials, no
@@ -301,21 +320,18 @@ if (!function_exists('cloudhost247_i18n_refresh_rates')) {
     function cloudhost247_i18n_refresh_rates(I18n $i18n)
     {
         try {
-            $updated = localAPI('UpdateCurrencyRates', array());
-            if (isset($updated['result']) && $updated['result'] === 'success') {
-                $i18n->clearRateCache();
-                if (function_exists('logActivity')) {
-                    logActivity('CloudHost247 i18n: currency rates refreshed on admin request.');
-                }
-                echo '<div class="alert alert-success">Currency rates refreshed from the configured source.</div>';
-
-                return;
-            }
-            echo '<div class="alert alert-warning">WHMCS could not refresh the rates: '
-                . htmlspecialchars(isset($updated['message']) ? $updated['message'] : 'unknown error', ENT_QUOTES, 'UTF-8')
-                . '. Check <em>Setup → Currencies → Exchange Rates</em>.</div>';
+            // WHMCS exposes no documented UpdateCurrencyRates local API. Do
+            // not guess one or pretend to have refreshed an external feed.
+            // Re-read only the configured table; WHMCS's native daily cron owns
+            // feed updates. Use the same file cache as the frontend hook.
+            $cache = new \CloudHost247\I18n\Rate\FileRateCache(dirname(__DIR__, 3) . '/modules/addons/cloudhost247_i18n/cache/rates.json');
+            $cache->clear();
+            $i18n->clearRateCache();
+            $i18n->rates();
+            echo '<div class="alert alert-success">Reloaded configured rates from WHMCS. This does not fetch new exchange rates; use WHMCS currency-rate automation for that.</div>';
         } catch (Throwable $e) {
-            echo '<div class="alert alert-danger">' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div>';
+            echo '<div class="alert alert-danger">Could not reload configured rates.</div>';
+            if (function_exists('logActivity')) logActivity('CloudHost247 rate-cache reload failed: ' . $e->getMessage());
         }
     }
 }

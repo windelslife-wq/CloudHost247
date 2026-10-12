@@ -1,3 +1,6 @@
+{assign var=ch247Copy_companyName value=$companyName|escape:'html'}
+{assign var=ch247Copy_effectiveDate value=$effectiveDate|escape:'html'}
+{assign var=ch247Copy_jurisdiction value=$jurisdiction|escape:'html'}
 {* Terms & Conditions Template *}
 {* Template: templates/hostx/termsofservice.tpl *}
 {* Compatible with WHMCS 8.x+ *}
@@ -340,8 +343,7 @@
             <div class="terms-hero-content">
                 <h1>{$pageTitle}</h1>
                 <p class="effective-date">
-                    <i class="far fa-calendar-alt" style="margin-right:6px;"></i>
-                    Effective Date: {$effectiveDate}
+                    {$LANG.ch247_termsofservice_64b0077cd7|replace:'{effectiveDate}':$ch247Copy_effectiveDate}
                 </p>
             </div>
         </div>
@@ -353,8 +355,8 @@
             
             <!-- Introduction -->
             <div class="terms-intro">
-                <p>Welcome to <strong>{$companyName}</strong>. These Terms & Conditions ("Terms," "Agreement") govern your access to and use of our websites, products, and services (collectively, the "Services"). By accessing or using our Services, you agree to be bound by these Terms.</p>
-                <p>If you do not agree with any part of these Terms, you may not access or use our Services.</p>
+                <p>{$LANG.ch247_termsofservice_9ef524fa29|replace:'{companyName}':$ch247Copy_companyName}</p>
+                <p>{$LANG.ch247_termsofservice_c71fa764dc}</p>
             </div>
 
             <!-- Section: Account Terms -->
@@ -363,12 +365,12 @@
                     <div class="section-icon">
                         <i class="fas fa-user-shield"></i>
                     </div>
-                    <h2>Account Registration & Security</h2>
+                    <h2>{$LANG.ch247_termsofservice_7d74e1af23}</h2>
                 </div>
                 <div class="section-content">
-                    <p>You must be at least 18 years old and have the legal capacity to enter into a binding contract. You must provide accurate, complete, and up-to-date information when registering for our Services.</p>
-                    <p>You are responsible for maintaining the confidentiality of your account credentials and for all activities under your account. You agree to notify us immediately of any unauthorized access or security breach.</p>
-                    <p>We reserve the right to suspend or terminate accounts if we suspect fraudulent or abusive activity.</p>
+                    <p>{$LANG.ch247_termsofservice_0ab67f3093}</p>
+                    <p>{$LANG.ch247_termsofservice_0a601b480c}</p>
+                    <p>{$LANG.ch247_termsofservice_771a63579e}</p>
                 </div>
             </section>
 
@@ -378,12 +380,12 @@
                     <div class="section-icon">
                         <i class="fas fa-server"></i>
                     </div>
-                    <h2>Service Usage Terms</h2>
+                    <h2>{$LANG.ch247_termsofservice_56a6c979bf}</h2>
                 </div>
                 <div class="section-content">
-                    <p>You agree not to use our Services to violate any applicable laws or regulations, engage in spamming, phishing, or distribution of malware, host or transmit illegal, harmful, or obscene content, infringe intellectual property rights of others, or interfere with or disrupt the operation of our Services or networks.</p>
-                    <p>We reserve the right to remove content, suspend accounts, or terminate Services for violations. All content, trademarks, and materials on our website are owned by {$companyName} or our licensors. You are granted a limited, non-exclusive, non-transferable license to use our Services for personal or business purposes in accordance with these Terms.</p>
-                    <p>We aim to provide 99.9% uptime for hosting services but do not guarantee uninterrupted service. Scheduled maintenance will be communicated in advance whenever possible. Emergency maintenance may be performed without notice.</p>
+                    <p>{$LANG.ch247_termsofservice_e890ebecb9}</p>
+                    <p>{$LANG.ch247_termsofservice_e8da729df1|replace:'{companyName}':$ch247Copy_companyName}</p>
+                    <p>{$LANG.ch247_termsofservice_24c122157c}</p>
                 </div>
             </section>
 
@@ -393,12 +395,12 @@
                     <div class="section-icon">
                         <i class="fas fa-credit-card"></i>
                     </div>
-                    <h2>Payments & Billing Terms</h2>
+                    <h2>{$LANG.ch247_termsofservice_6271937a00}</h2>
                 </div>
                 <div class="section-content">
-                    <p>All fees are due according to the billing cycle agreed upon during purchase. Payments must be made via accepted payment methods listed on our website.</p>
-                    <p>Failure to pay may result in suspension or termination of Services. All fees are non-refundable unless otherwise stated in our Refund Policy.</p>
-                    <p>Third-party services we provide access to or integrate with are subject to their own terms. We are not responsible for their content, policies, or performance.</p>
+                    <p>{$LANG.ch247_termsofservice_2b04f0a36a}</p>
+                    <p>{$LANG.ch247_termsofservice_524e9fa0f0}</p>
+                    <p>{$LANG.ch247_termsofservice_97390408e6}</p>
                 </div>
             </section>
 
@@ -408,12 +410,12 @@
                     <div class="section-icon">
                         <i class="fas fa-user-check"></i>
                     </div>
-                    <h2>User Responsibilities & Indemnification</h2>
+                    <h2>{$LANG.ch247_termsofservice_1920807708}</h2>
                 </div>
                 <div class="section-content">
-                    <p>You agree to use the Services only for lawful purposes and in compliance with all applicable laws and regulations. You are solely responsible for any content you upload, transmit, or store using our Services.</p>
-                    <p>You agree to indemnify, defend, and hold harmless {$companyName}, its employees, and affiliates from any claims, damages, or expenses arising from your use of the Services or violation of these Terms.</p>
-                    <p>Your use of our Services is subject to our Privacy Policy, which explains how we collect, use, and protect your personal information.</p>
+                    <p>{$LANG.ch247_termsofservice_4fae030045}</p>
+                    <p>{$LANG.ch247_termsofservice_9937b3441f|replace:'{companyName}':$ch247Copy_companyName}</p>
+                    <p>{$LANG.ch247_termsofservice_64206b821e}</p>
                 </div>
             </section>
 
@@ -423,11 +425,11 @@
                     <div class="section-icon">
                         <i class="fas fa-balance-scale"></i>
                     </div>
-                    <h2>Limitations of Liability</h2>
+                    <h2>{$LANG.ch247_termsofservice_21ca8411a7}</h2>
                 </div>
                 <div class="section-content">
-                    <p>To the maximum extent permitted by law, {$companyName} shall not be liable for any indirect, incidental, or consequential damages. Our total liability for any claim shall not exceed the amount you paid for the Services in the 12 months prior to the claim.</p>
-                    <p>Our Services are provided "as is" and "as available" without warranties of any kind, either express or implied. We do not warrant that the Services will be error-free, secure, or uninterrupted.</p>
+                    <p>{$LANG.ch247_termsofservice_5e1f5e59ff|replace:'{companyName}':$ch247Copy_companyName}</p>
+                    <p>{$LANG.ch247_termsofservice_4b8513d8fa}</p>
                 </div>
             </section>
 
@@ -437,12 +439,12 @@
                     <div class="section-icon">
                         <i class="fas fa-times-circle"></i>
                     </div>
-                    <h2>Termination Policy</h2>
+                    <h2>{$LANG.ch247_termsofservice_f5dfacb9af}</h2>
                 </div>
                 <div class="section-content">
-                    <p>We may suspend or terminate your account if you violate these Terms, if payment is overdue, or if required by law or court order.</p>
-                    <p>You may terminate your account at any time by contacting our support team. Upon termination, your right to use the Services will immediately cease, and we may delete your data in accordance with our data retention policies.</p>
-                    <p>All provisions of these Terms which by their nature should survive termination shall survive termination, including ownership provisions, warranty disclaimers, indemnity, and limitations of liability.</p>
+                    <p>{$LANG.ch247_termsofservice_05bcf24d10}</p>
+                    <p>{$LANG.ch247_termsofservice_5625f521f0}</p>
+                    <p>{$LANG.ch247_termsofservice_9cda8b6d94}</p>
                 </div>
             </section>
 
@@ -452,16 +454,16 @@
                     <div class="section-icon">
                         <i class="fas fa-envelope"></i>
                     </div>
-                    <h2>Contact Information</h2>
+                    <h2>{$LANG.ch247_termsofservice_7c01aec3b1}</h2>
                 </div>
                 <div class="section-content">
-                    <p>For questions or concerns about these Terms, please contact our support team using the details below. We reserve the right to modify these Terms at any time. Changes will be posted on our website with an updated "Effective Date." Continued use of our Services after changes means you accept the new Terms.</p>
+                    <p>{$LANG.ch247_termsofservice_3b8656d6cb}</p>
                     
                     <div class="contact-block">
                         <div class="contact-item">
                             <i class="fas fa-envelope"></i>
                             <div>
-                                <div class="contact-label">Email Support</div>
+                                <div class="contact-label">{$LANG.ch247_termsofservice_79bed99f1f}</div>
                                 <div class="contact-value">
                                     <a href="mailto:{$supportEmail}">{$supportEmail}</a>
                                 </div>
@@ -470,7 +472,7 @@
                         <div class="contact-item">
                             <i class="fas fa-globe"></i>
                             <div>
-                                <div class="contact-label">Website</div>
+                                <div class="contact-label">{$LANG.ch247_termsofservice_b5a229ac8b}</div>
                                 <div class="contact-value">
                                     <a href="{$companyUrl}" target="_blank" rel="noopener">www.cloudhost247.com</a>
                                 </div>
@@ -479,7 +481,7 @@
                         <div class="contact-item">
                             <i class="fas fa-gavel"></i>
                             <div>
-                                <div class="contact-label">Governing Law</div>
+                                <div class="contact-label">{$LANG.ch247_termsofservice_fa3141a378}</div>
                                 <div class="contact-value">{$jurisdiction}</div>
                             </div>
                         </div>
@@ -489,8 +491,8 @@
 
             <!-- Footer Meta -->
             <div class="terms-footer-meta">
-                <p>These Terms & Conditions were last updated on <strong>{$effectiveDate}</strong>.</p>
-                <p class="jurisdiction">Governing Law: {$jurisdiction} &mdash; Nigerian Courts have exclusive jurisdiction.</p>
+                <p>{$LANG.ch247_termsofservice_a7f67428c4|replace:'{effectiveDate}':$ch247Copy_effectiveDate}</p>
+                <p class="jurisdiction">{$LANG.ch247_termsofservice_a53536db4f|replace:'{jurisdiction}':$ch247Copy_jurisdiction}</p>
             </div>
 
         </div>

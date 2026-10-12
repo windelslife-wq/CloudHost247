@@ -1,0 +1,18 @@
+{
+  "name": "cloudhost247-i18n-preview",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Dev-only real-Smarty preview and browser verification; not deployed with WHMCS",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "node build.mjs",
+    "preview": "node server.mjs",
+    "test:browser": "node browser-test.mjs"
+  },
+  "devDependencies": {
+    "@php-wasm/node": "3.1.54",
+    "@sparticuz/chromium": "153.0.0",
+    "axe-core": "4.14.0",
+    "puppeteer-core": "25.13.0"
+  }
+}

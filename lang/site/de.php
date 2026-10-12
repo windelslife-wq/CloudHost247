@@ -18,6 +18,8 @@ return array(
         'flag'         => 'de',
         'direction'    => 'ltr',
         'status'       => 'complete',
+        'status_scope' => 'declared_catalogs',
+        'site_status'  => 'partial',
         'plural_rule'  => 'de',
         'intl_tag'     => 'de-DE',
     ),

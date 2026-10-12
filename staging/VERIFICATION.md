@@ -16,7 +16,7 @@ Record who checked, when, and the staging URL at the bottom.
 | A3 | It lists all five shipped languages with readable native names. | ☐ |
 | A4 | Selecting a language applies site-wide, not just on the current page. | ☐ |
 | A5 | Selecting a language keeps you on the equivalent page, query string included. | ☐ |
-| A6 | Localised slugs resolve both ways (`/web-hosting.php` ↔ `/hebergement-web.php`). | ☐ |
+| A6 | Native WHMCS language URLs preserve the actual path; no nonexistent translated slugs. | ☐ |
 | A7 | Product codes, TLDs, domain names and technical identifiers are unchanged. | ☐ |
 | A8 | The choice persists across navigation. | ☐ |
 | A9 | The choice persists in a new session (cookie / session). | ☐ |
@@ -84,9 +84,9 @@ Record who checked, when, and the staging URL at the bottom.
 | # | Check | Pass |
 |---|---|---|
 | E1 | `python3 ci/check-encoding.py` reports `TOTAL=0`. | ☐ |
-| E2 | The two documented exclusions still describe real files. | ☐ |
+| E2 | Documented binary/fixture exclusions and pinned upstream comment lines still describe real files. | ☐ |
 | E3 | No page shows a box, a blank or a stray glyph where a bullet should be. | ☐ |
-| E4 | Legal and policy wording is byte-identical to the approved English text. | ☐ |
+| E4 | Approved English visible wording/reference arrays pass their hash gates; translations have human legal/linguistic approval. | ☐ |
 
 ## F. Regressions
 
@@ -94,7 +94,7 @@ Record who checked, when, and the staging URL at the bottom.
 |---|---|---|
 | F1 | `ci/run-php.sh i18n` — all suites green. | ☐ |
 | F2 | `ci/run-js.sh` — all suites green, including the switcher conformance suite. | ☐ |
-| F3 | `ci/php-lint.sh` — no syntax errors introduced. | ☐ |
+| F3 | `ci/php-lint.sh` — no syntax errors introduced (native PHP in CI). | ☐ |
 | F4 | `python3 ci/check-encoding.py` — clean. | ☐ |
 | F5 | Cart and checkout complete successfully end to end. | ☐ |
 | F6 | Existing invoice totals are unchanged. | ☐ |

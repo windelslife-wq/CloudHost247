@@ -18,6 +18,15 @@ use WHMCS\Database\Capsule;
 
 if (!function_exists('get_currency')) {
     function get_currency(){
+        // Marketing prices follow browsing currency. Billing/account currency
+        // is read separately below and NEVER changed by this display helper.
+        $i18n = function_exists('ch247_i18n_instance') ? ch247_i18n_instance() : null;
+        if ($i18n !== null && $i18n->preferences()->getCurrency()->getCode() !== '') {
+            $selected = $i18n->preferences()->getCurrency();
+            return (object) array('id' => $selected->getId(), 'code' => $selected->getCode(),
+                'prefix' => $selected->getPrefix(), 'suffix' => $selected->getSuffix(),
+                'format' => $selected->getFormat());
+        }
         $clientCurrency = '';
         if (isset($_SESSION['uid']) && !empty($_SESSION['uid'])) {
             $clientCurrency = Capsule::table('tblclients')->select('currency')->where('id', $_SESSION['uid'])->get();
@@ -67,5 +76,33 @@ if (!function_exists('wgs_pricing_format_data')) {
     	}else{
     		return formatCurrency($priceProduct,$currencyId)->toPrefixed();
     	}
+    }
+}
+
+
+if (!function_exists('wgs_prepare_product_prices')) {
+    /** Bind GetProducts data to the shared resolver, never to a symbol-only conversion. */
+    function wgs_prepare_product_prices(array $product, $billing = null): array
+    {
+        $i18n = ch247_i18n_instance();
+        if ($i18n === null) {
+            // An incomplete deployment must not make up prices.
+            return array('raw' => array_fill_keys(array('monthly','quarterly','semiannually','annually','biennially','triennially'), -1),
+                'formatted' => array(), 'charge_ids' => array(), 'details' => array());
+        }
+        if ($billing === null && !empty($_SESSION['uid'])) {
+            try {
+                $client = Capsule::table('tblclients')->select('currency')->where('id', (int) $_SESSION['uid'])->first();
+                if ($client) {
+                    $billing = $i18n->currencies()->find((int) $client->currency);
+                }
+            } catch (\Throwable $e) {
+                // A logged-in account with unknown billing currency must not
+                // advertise a guessed payable amount.
+                return array('raw' => array_fill_keys(array('monthly','quarterly','semiannually','annually','biennially','triennially'), -1),
+                    'formatted' => array(), 'charge_ids' => array(), 'details' => array());
+            }
+        }
+        return (new \CloudHost247\I18n\Whmcs\ProductPricePresenter($i18n))->present($product, $billing);
     }
 }

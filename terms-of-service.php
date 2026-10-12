@@ -15,6 +15,7 @@
 define('CLIENTAREA', true);
 
 require_once __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/ch247_content.php';
 
 use WHMCS\ClientArea;
 use WHMCS\Session;
@@ -22,9 +23,9 @@ use WHMCS\Session;
 $ca = new ClientArea();
 
 // Set page metadata
-$ca->setPageTitle('Terms & Conditions');
+$ca->setPageTitle(ch247_page_title('terms-of-service', 'Terms & Conditions'));
 $ca->addToBreadCrumb('index.php', $_LANG['globalsystemname'] ?? 'Home');
-$ca->addToBreadCrumb('terms-of-service.php', 'Terms & Conditions');
+$ca->addToBreadCrumb('terms-of-service.php', ch247_page_title('terms-of-service', 'Terms & Conditions'));
 
 // Determine if user is logged in
 $isLoggedIn = $ca->isLoggedIn();
@@ -40,14 +41,14 @@ if ($isLoggedIn) {
 // Assign Smarty variables for template use
 $ca->assign('WEB_ROOT', $CONFIG['SystemURL'] ?? '');
 $ca->assign('template', $ca->getClientAreaTemplate() ?? 'hostx');
-$ca->assign('pageTitle', 'Terms & Conditions');
+$ca->assign('pageTitle', ch247_page_title('terms-of-service', 'Terms & Conditions'));
 $ca->assign('isLoggedIn', $isLoggedIn);
 $ca->assign('clientName', $clientName);
-$ca->assign('effectiveDate', 'August 14, 2025');
+$ca->assign('effectiveDate', ch247_date('2025-08-14'));
 $ca->assign('companyName', 'CloudHost247 Isc');
 $ca->assign('supportEmail', 'support@cloudhost247.com');
 $ca->assign('companyUrl', 'https://www.cloudhost247.com');
-$ca->assign('jurisdiction', 'Federal Republic of Nigeria');
+$ca->assign('jurisdiction', ch247_text('ch247_jurisdiction_nigeria', 'Federal Republic of Nigeria'));
 
 // Terms content sections
 $ca->assign('termsSections', [

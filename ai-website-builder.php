@@ -13,6 +13,7 @@ use Chs\Http\Landing;
 use WHMCS\ClientArea;
 
 require_once __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/ch247_content.php';
 require_once __DIR__ . '/modules/addons/cloudhost247services/autoload.php';
 
 $ca = Landing::start('chs-ai-builder', 'AI Website Builder', 'ai-website-builder.php');

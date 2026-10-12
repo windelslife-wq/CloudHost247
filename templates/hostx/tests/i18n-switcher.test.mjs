@@ -237,10 +237,13 @@ for (const rel of headerFiles) {
         exists(file) && /\{include file="\$template\/(includes|hostx_includes)\/language-currency-switcher(-mobile)?\.tpl"\}/.test(read(file)));
 }
 
-check('every desktop mount point wraps the component in an <li>', () => {
+check('desktop mounts use a valid wrapper for their navigation context', () => {
     for (const rel of headerFiles.slice(0, 4)) {
         const src = read(path.join(themeDir, rel));
-        if (!src.includes('ch247-switcher-item')) return `${rel} has no <li> wrapper`;
+        const latest = rel.endsWith('top-mega-menu-latest.tpl');
+        if (latest ? !src.includes('class="country-sec"') : !src.includes('ch247-switcher-item')) {
+            return `${rel} has no valid wrapper`;
+        }
     }
     return true;
 });

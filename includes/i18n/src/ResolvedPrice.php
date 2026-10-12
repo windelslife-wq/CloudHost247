@@ -8,7 +8,8 @@
  * behind a formatted string, because they have very different legal and
  * commercial meanings:
  *
- *  - EXACT       the shop has a real price in that currency. Charge this.
+ *  - EXACT       the shop has a configured price in the display currency.
+ *                If billing is locked elsewhere, it is still reference-only.
  *  - INDICATIVE  the shop has no price in that currency, so the amount was
  *                converted with a configured rate. Display-only guidance; the
  *                checkout still charges the transaction currency.
@@ -80,9 +81,10 @@ final class ResolvedPrice
      *
      * @return self
      */
-    public static function exact(Money $money, string $transactionCurrency)
+    public static function exact(Money $money, string $transactionCurrency, Money $transactionAmount = null)
     {
-        return new self($money, self::SOURCE_CATALOG, $transactionCurrency, $money);
+        return new self($money, self::SOURCE_CATALOG, $transactionCurrency,
+            $transactionAmount !== null ? $transactionAmount : ($money->getCurrency() === strtoupper($transactionCurrency) ? $money : null));
     }
 
     /**
@@ -122,9 +124,9 @@ final class ResolvedPrice
      *
      * @return self
      */
-    public static function unavailable(string $transactionCurrency)
+    public static function unavailable(string $transactionCurrency, Money $transactionAmount = null)
     {
-        return new self(null, self::SOURCE_NONE, $transactionCurrency);
+        return new self(null, self::SOURCE_NONE, $transactionCurrency, $transactionAmount);
     }
 
     public function isAvailable(): bool
@@ -145,7 +147,8 @@ final class ResolvedPrice
      */
     public function isIndicative(): bool
     {
-        return $this->source === self::SOURCE_CONVERTED;
+        return $this->source === self::SOURCE_CONVERTED
+            || ($this->money !== null && $this->money->getCurrency() !== $this->transactionCurrency);
     }
 
     /**

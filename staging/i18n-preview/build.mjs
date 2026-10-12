@@ -13,11 +13,12 @@
  *   2. php-wasm, for machines and CI sandboxes with no PHP installed:
  *        node staging/i18n-preview/build.mjs --wasm
  *
- * The php-wasm path needs no npm install: the package is already vendored in
+ * The php-wasm path can use the services module dev installation under
  * the repo at modules/addons/cloudhost247services/node_modules (the module test
  * runners use it). Both paths execute the same PHP file, so the output is
  * identical — only the interpreter differs.
  */
+import { prepareSmarty } from './prepare.mjs';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -140,6 +141,8 @@ async function runWasm() {
 }
 
 /* ---------------------------------------------------------------- main ---- */
+
+await prepareSmarty();
 
 if (!fs.existsSync(renderPhp)) {
     console.error('render.php not found at ' + renderPhp);

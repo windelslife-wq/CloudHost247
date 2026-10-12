@@ -38,6 +38,9 @@ final class SwitcherViewModel
     /** @var RateTable|null */
     private $rates;
 
+    /** @var callable|null Converts a locale code into a platform language value. */
+    private $languageValue;
+
     /**
      * @param Preferences      $preferences
      * @param Translator       $translator
@@ -52,7 +55,8 @@ final class SwitcherViewModel
         CurrencySelector $currencySelector,
         string $currentUri,
         array $routeMap = array(),
-        RateTable $rates = null
+        RateTable $rates = null,
+        $languageValue = null
     ) {
         $this->preferences = $preferences;
         $this->translator = $translator;
@@ -60,6 +64,7 @@ final class SwitcherViewModel
         $this->currentUri = $currentUri;
         $this->routeMap = $routeMap;
         $this->rates = $rates;
+        $this->languageValue = is_callable($languageValue) ? $languageValue : null;
     }
 
     /**
@@ -83,7 +88,7 @@ final class SwitcherViewModel
                 'flag' => $option->getFlagCode(),
                 'direction' => $option->getDirection(),
                 'selected' => $option->getCode() === $locale->getCode(),
-                'url' => EquivalentUrl::forLanguage($this->currentUri, $option->getCode(), $this->routeMap),
+                'url' => $this->languageUrl($option->getCode()),
                 'lang' => $option->getIntlTag(),
                 'hreflang' => str_replace('_', '-', $option->getIntlTag()),
             );
@@ -122,6 +127,16 @@ final class SwitcherViewModel
         );
     }
 
+    private function languageUrl(string $code): string
+    {
+        $url = EquivalentUrl::forLanguage($this->currentUri, $code, $this->routeMap);
+        if ($this->languageValue === null) {
+            return $url;
+        }
+        $value = (string) call_user_func($this->languageValue, $code);
+        return preg_replace('/([?&]language=)[^&#]*/', '$1' . rawurlencode($value), $url);
+    }
+
     /**
      * Translated labels and accessible names for the switcher.
      *
@@ -133,9 +148,12 @@ final class SwitcherViewModel
             'switcher_group_label',
             'switcher_language_label',
             'switcher_language_button',
+            'switcher_choose_language',
             'switcher_language_selected',
             'switcher_currency_label',
             'switcher_currency_button',
+            'switcher_choose_currency',
+            'currency_default_badge',
             'switcher_currency_selected',
             'switcher_open',
             'switcher_close',
@@ -148,9 +166,11 @@ final class SwitcherViewModel
 
         $labels = array();
         foreach ($keys as $key) {
-            $labels[$key] = $this->translator->trans($key);
+            $labels[$key] = $this->translator->transRaw($key);
         }
 
+        $labels['switcher_language_button'] .= ' — ' . $this->translator->transRaw('switcher_current_language', array('name' => $this->preferences->getLocale()->getNativeName()));
+        $labels['switcher_currency_button'] .= ' — ' . $this->translator->transRaw('switcher_current_currency', array('code' => $this->preferences->getCurrency()->getCode()));
         return $labels;
     }
 

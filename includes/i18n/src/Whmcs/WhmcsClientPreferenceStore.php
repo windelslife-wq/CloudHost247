@@ -2,12 +2,13 @@
 /**
  * CloudHost247 — internationalisation & currency.
  *
- * Persists the customer's language and currency on their WHMCS client record
- * so the choice survives a new session, a new device and a cleared cookie.
+ * Uses WHMCS's native account language and stores the browsing currency
+ * separately from the account's billing currency. NEVER write tblclients.currency:
+ * WHMCS historical invoice currency is tied to that field. A switcher must not
+ * reinterpret old invoices, services or transactions by changing it.
  *
- * Both columns already exist on `tblclients` and are the same fields WHMCS's
- * own language/currency switching writes, so nothing here is a parallel
- * mechanism that could drift out of sync with the platform.
+ * The additive mod_cloudhost247_i18n_preferences table is created on addon
+ * activation. If it is absent/read-only, the session preference still works.
  *
  * @package    CloudHost247\I18n
  * @copyright  Copyright (c) CloudHost247 Isc
@@ -62,10 +63,11 @@ final class WhmcsClientPreferenceStore implements PreferenceStoreInterface
         }
 
         if ($key === 'language') {
-            return isset($row['language']) && $row['language'] !== '' ? $row['language'] : $default;
+            return isset($row['language']) && $row['language'] !== '' ? WhmcsLocale::toCode((string) $row['language']) : $default;
         }
         if ($key === 'currency') {
-            return isset($row['currency']) && $row['currency'] !== '' ? (int) $row['currency'] : $default;
+            return !empty($row['display_currency']) ? (int) $row['display_currency']
+                : (!empty($row['currency']) ? (int) $row['currency'] : $default);
         }
 
         return $default;
@@ -79,9 +81,9 @@ final class WhmcsClientPreferenceStore implements PreferenceStoreInterface
         }
 
         if ($key === 'language') {
-            $this->write($clientId, array('language' => (string) $value));
+            $this->write($clientId, array('language' => WhmcsLocale::toWhmcsName((string) $value)));
         } elseif ($key === 'currency') {
-            $this->write($clientId, array('currency' => (int) $value));
+            $this->write($clientId, array('display_currency' => (int) $value));
         }
     }
 
@@ -147,7 +149,20 @@ final class WhmcsClientPreferenceStore implements PreferenceStoreInterface
                 ->where('id', $clientId)
                 ->first();
 
-            return $row === null ? null : get_object_vars($row);
+            if ($row === null) {
+                return null;
+            }
+            $values = get_object_vars($row);
+            try {
+                $preference = \WHMCS\Database\Capsule::table('mod_cloudhost247_i18n_preferences')
+                    ->where('client_id', $clientId)->first();
+                if ($preference && !empty($preference->display_currency)) {
+                    $values['display_currency'] = (int) $preference->display_currency;
+                }
+            } catch (\Throwable $e) {
+                // Addon not activated yet: do not create tables on a page view.
+            }
+            return $values;
         } catch (\Throwable $e) {
             return null;
         }
@@ -172,9 +187,14 @@ final class WhmcsClientPreferenceStore implements PreferenceStoreInterface
         }
 
         try {
-            \WHMCS\Database\Capsule::table('tblclients')
-                ->where('id', $clientId)
-                ->update($values);
+            if (isset($values['language'])) {
+                \WHMCS\Database\Capsule::table('tblclients')->where('id', $clientId)
+                    ->update(array('language' => $values['language']));
+            }
+            if (isset($values['display_currency'])) {
+                \WHMCS\Database\Capsule::table('mod_cloudhost247_i18n_preferences')
+                    ->updateOrInsert(array('client_id' => $clientId), array('display_currency' => $values['display_currency']));
+            }
         } catch (\Throwable $e) {
             // A read-only database must never break page rendering; the
             // session store still carries the preference for this visit.

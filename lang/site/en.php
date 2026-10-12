@@ -30,6 +30,8 @@ return array(
         'flag'         => 'us',
         'direction'    => 'ltr',
         'status'       => 'complete',
+        'status_scope' => 'declared_catalogs',
+        'site_status'  => 'complete',
         'plural_rule'  => 'en',
         'intl_tag'     => 'en-US',
     ),

@@ -172,6 +172,7 @@ function pageHtml(name) {
         })
         .join('\n');
 
+    const renderedBody = page.body ? `<section class="panel actual-page"><h2>Actual translated page template</h2>${page.body}</section>` : '';
     const body = `
 <header class="preview-bar">
   <a href="${backHref}">← all snapshots</a>
@@ -183,6 +184,7 @@ function pageHtml(name) {
 
 <main class="wrap">
 
+  ${renderedBody}
   <section class="panel">
     <h2>Desktop header</h2>
     <div class="device" data-device="desktop">
@@ -273,9 +275,10 @@ ${priceRows}
 /* ----------------------------------------------------------------- server -- */
 
 const server = http.createServer((req, res) => {
-    let pathname;
+    let pathname, requestUrl;
     try {
-        pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+        requestUrl = new URL(req.url, 'http://preview.invalid');
+        pathname = decodeURIComponent(requestUrl.pathname);
     } catch (error) {
         res.writeHead(400).end('Bad request');
         return;
@@ -286,7 +289,7 @@ const server = http.createServer((req, res) => {
     if (pathname.startsWith('/assets/theme/')) {
         const relative = pathname.slice('/assets/theme/'.length);
         const file = path.join(themeDir, relative);
-        if (!file.startsWith(themeDir) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+        if (!file.startsWith(themeDir + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
             res.writeHead(404).end('Not found');
             return;
         }
@@ -307,9 +310,42 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    const index = readPageIndex();
+    const cookies = Object.fromEntries((req.headers.cookie || '').split(';').filter(Boolean).map((part) => {
+        const at = part.indexOf('='); return [part.slice(0, at).trim(), part.slice(at + 1)];
+    }));
+    let previous;
+    try { previous = JSON.parse(decodeURIComponent(cookies.ch247_preview_state || '{}')); } catch { previous = {}; }
+    const refererName = (req.headers.referer || '').match(/\/p\/([A-Za-z0-9._-]+)/)?.[1];
+    const referred = refererName ? index.find((p) => p.name === refererName) : null;
+    const candidate = referred || previous || {};
+    const state = {
+        locale: typeof candidate.locale === 'string' && index.some((p) => p.locale === candidate.locale) ? candidate.locale : 'en',
+        currency: typeof candidate.currency === 'string' && index.some((p) => p.currency === candidate.currency) ? candidate.currency : index[0]?.currency,
+    };
+    const nativePage = index.find((p) => new URL(p.uri || '/', 'http://preview.invalid').pathname === pathname);
+    if (nativePage) {
+        const requestedLanguage = (requestUrl.searchParams.get('language') || state.locale || 'en').toLowerCase();
+        const language = index.find((p) => p.locale.toLowerCase() === requestedLanguage || p.language_value === requestedLanguage)?.locale
+            || state.locale || 'en';
+        const requestedCurrency = requestUrl.searchParams.get('currency') || state.currency || index[0].currency;
+        const currency = index.find((p) => String(p.currency_id) === requestedCurrency || p.currency === requestedCurrency.toUpperCase())?.currency
+            || state.currency || index[0].currency;
+        const destination = index.find((p) => p.page === nativePage.page && p.locale === language && p.currency === currency) || nativePage;
+        res.writeHead(302, { Location: `/p/${destination.name}` });
+        res.end();
+        return;
+    }
+
     if (pathname.startsWith('/p/')) {
-        res.writeHead(200, { 'Content-Type': MIME['.html'] });
-        res.end(pageHtml(pathname.slice(3)));
+        const name = pathname.slice(3);
+        const snapshot = readPage(name);
+        const headers = { 'Content-Type': MIME['.html'] };
+        if (snapshot) {
+            headers['Set-Cookie'] = `ch247_preview_state=${encodeURIComponent(JSON.stringify({ locale: snapshot.locale, currency: snapshot.currency }))}; Path=/; HttpOnly; SameSite=Lax`;
+        }
+        res.writeHead(snapshot ? 200 : 404, headers);
+        res.end(pageHtml(name));
         return;
     }
 
@@ -322,7 +358,7 @@ function previewCss() {
 :root { --ink:#17494d; --red:#f51322; --line:#e3e6e8; --muted:#6b7280; }
 * { box-sizing: border-box; }
 body { margin:0; font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:#404040; background:#f4f6f7; }
-.preview-bar { display:flex; align-items:center; gap:12px; padding:10px 18px; background:var(--ink); color:#fff; font-size:13px; }
+.preview-bar { display:flex; flex-wrap:wrap; overflow-wrap:anywhere; align-items:center; gap:12px; padding:10px 18px; background:var(--ink); color:#fff; font-size:13px; }
 .preview-bar a { color:#fff; text-decoration:none; border-bottom:1px solid rgba(255,255,255,.4); }
 .preview-bar .spacer { flex:1; }
 .preview-bar .crumb a { color:#fff; }
@@ -333,10 +369,10 @@ h2 { font-size:17px; color:var(--ink); margin:0 0 12px; }
 .note, .hint { color:var(--muted); font-size:13px; }
 .note { background:#fff8e6; border-left:3px solid #f0ad4e; padding:8px 12px; margin:12px 0; }
 .panel { background:#fff; border:1px solid var(--line); border-radius:10px; padding:18px; margin:0 0 18px; }
-.device { border:1px dashed #c9ced2; border-radius:8px; padding:12px; background:#fafbfb; overflow-x:auto; }
+.device { overflow:visible; border:1px dashed #c9ced2; border-radius:8px; padding:12px; background:#fafbfb; }
 .device[data-device="desktop"] { max-width:100%; }
 .device[data-device="mobile"] { max-width:360px; }
-.fake-header { display:flex; align-items:center; gap:18px; padding:10px 14px; background:#fff; border-bottom:1px solid var(--line); min-width:640px; }
+.fake-header { display:flex; flex-wrap:wrap; align-items:center; gap:18px; padding:10px 14px; background:#fff; border-bottom:1px solid var(--line); min-width:0; }
 .fake-logo { font-weight:800; color:var(--red); font-size:17px; white-space:nowrap; }
 .fake-nav { display:flex; gap:14px; flex:1; }
 .fake-nav a { color:#404040; text-decoration:none; font-size:14px; }
@@ -345,20 +381,22 @@ h2 { font-size:17px; color:var(--ink); margin:0 0 12px; }
 .drawer-title { font-weight:700; color:var(--ink); padding:6px 2px 10px; }
 .drawer-nav { display:flex; flex-direction:column; }
 .drawer-nav a { padding:10px 2px; border-top:1px solid #f1f3f4; color:#404040; text-decoration:none; }
-table.grid { width:100%; border-collapse:collapse; font-size:14px; }
+table.grid { overflow-wrap:anywhere; width:100%; border-collapse:collapse; font-size:14px; }
 table.grid th, table.grid td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); }
 table.grid th { color:var(--ink); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
 .badge { display:inline-block; padding:1px 7px; border-radius:999px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
 .badge-indicative { background:#fff3cd; color:#8a4b00; }
 .badge-exact { background:#e3f3e6; color:#1d6b2c; }
 .muted { color:var(--muted); }
-dl.samples { display:grid; grid-template-columns:max-content 1fr; gap:6px 18px; margin:0; font-size:14px; }
+dl.samples { display:grid; grid-template-columns:minmax(0, max-content) minmax(0, 1fr); gap:6px 18px; margin:0; font-size:14px; }
 dl.samples dt { color:var(--muted); }
 dl.samples dd { margin:0; }
 ol.steps { margin:0; padding-left:20px; font-size:14px; }
 ol.steps li { margin-bottom:5px; }
+.actual-page { overflow-wrap:anywhere; }
+.actual-page .container { width:100%; max-width:100%; padding-inline:12px; }
 kbd { background:#f1f3f4; border:1px solid #d8dcde; border-bottom-width:2px; border-radius:4px; padding:1px 5px; font:12px ui-monospace,SFMono-Regular,Menlo,monospace; }
-code { background:#f1f3f4; padding:1px 5px; border-radius:4px; font:13px ui-monospace,SFMono-Regular,Menlo,monospace; }
+code { overflow-wrap:anywhere; word-break:break-word; background:#f1f3f4; padding:1px 5px; border-radius:4px; font:13px ui-monospace,SFMono-Regular,Menlo,monospace; }
 `;
 }
 

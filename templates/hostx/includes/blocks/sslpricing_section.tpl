@@ -28,7 +28,7 @@
           </div>
           <div class="price_group {if count($productsData) eq '1'}single-product-slider{elseif count($productsData) eq '2'}double-product-slider{/if}">
             <div id="productList">
-                {foreach from=$productsData item=productData}              
+                {foreach from=$productsData item=productData}
                     <div class="price_sect {if count($productsData) eq '1' || count($productsData) eq '2'}price-select-single-double{/if}">
                       {if count($productsData) eq '1' || count($productsData) eq '2'}
                         <div class="single-double-product-block">
@@ -73,15 +73,15 @@
                           <a href="cart.php?a=add&pid={$productData.pid}" class="button03 blpr monthly" {if $productsDataCycles.free}style="display: block;"{/if}>{$LANG.homeordernow}</a>
                         {/if}
                         {if !$productsDataCycles.onetime || !$productsDataCycles.free}
-                          <a href="cart.php?a=add&pid={$productData.pid}&billingcycle=monthly" class="button03 blpr monthly" {if $productsDataCycles.monthly}style="display: block;"{/if}>{$LANG.homeordernow}</a>  
-                          <a href="cart.php?a=add&pid={$productData.pid}&billingcycle=quarterly" class="button03 blpr quarterly" {if !$productsDataCycles.monthly && $productsDataCycles.quarterly}style="display: block;"{/if}>{$LANG.homeordernow}</a>  
-                          <a href="cart.php?a=add&pid={$productData.pid}&billingcycle=semiannually" class="button03 blpr semiannually" {if !$productsDataCycles.monthly && !$productsDataCycles.quarterly && $productsDataCycles.semiannually}style="display: block;"{/if}>{$LANG.homeordernow}</a>  
-                          <a href="cart.php?a=add&pid={$productData.pid}&billingcycle=annually" class="button03 blpr annually" {if !$productsDataCycles.monthly && !$productsDataCycles.quarterly && !$productsDataCycles.semiannually && $productsDataCycles.annually}style="display: block;"{/if}>{$LANG.homeordernow}</a>
-                          <a href="cart.php?a=add&pid={$productData.pid}&billingcycle=biennially" class="button03 blpr biennially"{if !$productsDataCycles.monthly && !$productsDataCycles.quarterly && !$productsDataCycles.semiannually && !$productsDataCycles.annually && $productsDataCycles.biennially}style="display: block;"{/if}>{$LANG.homeordernow}</a>
-                          <a href="cart.php?a=add&pid={$productData.pid}&billingcycle=triennially" class="button03 blpr triennially" {if !$productsDataCycles.monthly && !$productsDataCycles.quarterly && !$productsDataCycles.semiannually && !$productsDataCycles.annually && !$productsDataCycles.biennially && $productsDataCycles.triennially}style="display: block;"{/if}>{$LANG.homeordernow}</a>
-                        {/if} 						
+                          <a href="cart.php?a=add&pid={$productData.pid}&billingcycle=monthly{if $productData.ch247ChargeCurrencies.monthly}&currency={$productData.ch247ChargeCurrencies.monthly}{/if}" class="button03 blpr monthly" {if $productsDataCycles.monthly}style="display: block;"{/if}>{$LANG.homeordernow}</a>
+                          <a href="cart.php?a=add&pid={$productData.pid}&billingcycle=quarterly{if $productData.ch247ChargeCurrencies.quarterly}&currency={$productData.ch247ChargeCurrencies.quarterly}{/if}" class="button03 blpr quarterly" {if !$productsDataCycles.monthly && $productsDataCycles.quarterly}style="display: block;"{/if}>{$LANG.homeordernow}</a>
+                          <a href="cart.php?a=add&pid={$productData.pid}&billingcycle=semiannually{if $productData.ch247ChargeCurrencies.semiannually}&currency={$productData.ch247ChargeCurrencies.semiannually}{/if}" class="button03 blpr semiannually" {if !$productsDataCycles.monthly && !$productsDataCycles.quarterly && $productsDataCycles.semiannually}style="display: block;"{/if}>{$LANG.homeordernow}</a>
+                          <a href="cart.php?a=add&pid={$productData.pid}&billingcycle=annually{if $productData.ch247ChargeCurrencies.annually}&currency={$productData.ch247ChargeCurrencies.annually}{/if}" class="button03 blpr annually" {if !$productsDataCycles.monthly && !$productsDataCycles.quarterly && !$productsDataCycles.semiannually && $productsDataCycles.annually}style="display: block;"{/if}>{$LANG.homeordernow}</a>
+                          <a href="cart.php?a=add&pid={$productData.pid}&billingcycle=biennially{if $productData.ch247ChargeCurrencies.biennially}&currency={$productData.ch247ChargeCurrencies.biennially}{/if}" class="button03 blpr biennially"{if !$productsDataCycles.monthly && !$productsDataCycles.quarterly && !$productsDataCycles.semiannually && !$productsDataCycles.annually && $productsDataCycles.biennially}style="display: block;"{/if}>{$LANG.homeordernow}</a>
+                          <a href="cart.php?a=add&pid={$productData.pid}&billingcycle=triennially{if $productData.ch247ChargeCurrencies.triennially}&currency={$productData.ch247ChargeCurrencies.triennially}{/if}" class="button03 blpr triennially" {if !$productsDataCycles.monthly && !$productsDataCycles.quarterly && !$productsDataCycles.semiannually && !$productsDataCycles.annually && !$productsDataCycles.biennially && $productsDataCycles.triennially}style="display: block;"{/if}>{$LANG.homeordernow}</a>
+                        {/if}
                       </div>
-                    </div>              
+                    </div>
                 {/foreach}
             </div>
           </div>

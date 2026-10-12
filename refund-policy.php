@@ -9,16 +9,16 @@
  */
 
 define('CLIENTAREA', true);
-require $_SERVER['DOCUMENT_ROOT'] . '/init.php';
-require 'configadminioncontroller.php';
+require_once __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/ch247_content.php';
 
 use WHMCS\ClientArea;
 use WHMCS\Authentication\CurrentUser;
 
 $ca = new ClientArea();
-$ca->setPageTitle('Refund Policy');
+$ca->setPageTitle(ch247_page_title('refund-policy', 'Refund Policy'));
 $ca->addToBreadCrumb('index.php', Lang::trans('globalsystemname'));
-$ca->addToBreadCrumb('refund-policy.php', 'Refund Policy');
+$ca->addToBreadCrumb('refund-policy.php', ch247_page_title('refund-policy', 'Refund Policy'));
 $ca->initPage();
 
 /**
@@ -144,6 +144,6 @@ $refundSections = [
     ]
 ];
 
-$ca->assign('refundData', $refundSections);
+$ca->assign('refundData', ch247_content('refund-policy', $refundSections));
 $ca->setTemplate('refundpolicy');
 $ca->output();

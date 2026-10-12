@@ -74,9 +74,6 @@
 					   defects: it hid the currency selector from every logged-in client, it had
 					   no mobile variant, and it was a hover-only dropdown with no keyboard path
 					   and no accessible name. *}
-					<li class="ch247-switcher-item">
-					    {include file="$template/includes/language-currency-switcher.tpl"}
-					</li>
 					{if !$loggedin}
 						<li class="hover mblshow"><a href="{$WEB_ROOT}/clientarea.php"><i class="fa fa-user"></i></a></li>
 					{else}

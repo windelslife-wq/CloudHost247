@@ -9,12 +9,12 @@
         <div class="row">
             <div class="col-12">
                 <div class="hero-content text-center">
-                    <h1>Frequently Asked Questions</h1>
-                    <p class="hero-subtitle">Find answers to the most common questions about our services, policies, and processes.</p>
+                    <h1>{$LANG.ch247_faqs_a3d458e1bd}</h1>
+                    <p class="hero-subtitle">{$LANG.ch247_faqs_70e5c99b29}</p>
                     <div class="breadcrumb-wrapper">
                         <ol class="breadcrumb">
                             <li class="breadcrumb-item"><a href="index.php">{$LANG.globalsystemname}</a></li>
-                            <li class="breadcrumb-item active" aria-current="page">Frequently Asked Questions</li>
+                            <li class="breadcrumb-item active" aria-current="page">{$LANG.ch247_faqs_a3d458e1bd}</li>
                         </ol>
                     </div>
                 </div>
@@ -29,7 +29,7 @@
         <div class="row justify-content-center">
             <div class="col-lg-10 col-xl-8">
                 <div class="faq-intro">
-                    <p class="text-muted text-center mb-5">Welcome to the CloudHost247 Isc FAQ section. We've compiled answers to help you get the most out of our services. Can't find what you're looking for? <a href="contact.php">Contact our support team</a>.</p>
+                    <p class="text-muted text-center mb-5">{$LANG.ch247_faqs_9b10252217}</p>
                 </div>
 
                 <div class="faq-accordion" id="faqAccordion">
@@ -55,10 +55,10 @@
                 <div class="faq-contact-cta text-center mt-5">
                     <div class="card border-0 shadow-sm">
                         <div class="card-body py-4">
-                            <h5 class="card-title">Still have questions?</h5>
-                            <p class="card-text text-muted">Our support team is available 24/7 to assist you with any inquiries.</p>
-                            <a href="contact.php" class="btn btn-primary">Contact Support</a>
-                            <a href="submitticket.php" class="btn btn-outline-primary ml-2">Open a Ticket</a>
+                            <h5 class="card-title">{$LANG.ch247_faqs_6089a8bb7c}</h5>
+                            <p class="card-text text-muted">{$LANG.ch247_faqs_845afb73bd}</p>
+                            <a href="contact.php" class="btn btn-primary">{$LANG.ch247_faqs_f8d47b82e2}</a>
+                            <a href="submitticket.php" class="btn btn-outline-primary ml-2">{$LANG.ch247_faqs_8716749e11}</a>
                         </div>
                     </div>
                 </div>

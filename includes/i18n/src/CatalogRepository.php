@@ -74,6 +74,9 @@ final class CatalogRepository
     public function has(string $locale): bool
     {
         $locale = Locale::normalise($locale);
+        if (!preg_match('/^[a-zA-Z]{2,8}(?:-[a-zA-Z0-9]{2,8})*$/D', $locale)) {
+            return false;
+        }
         if ($locale === '') {
             return false;
         }
@@ -95,6 +98,9 @@ final class CatalogRepository
     public function load(string $locale): array
     {
         $locale = Locale::normalise($locale);
+        if (!preg_match('/^[a-zA-Z]{2,8}(?:-[a-zA-Z0-9]{2,8})*$/D', $locale)) {
+            return array('meta' => array(), 'messages' => array());
+        }
         if ($locale === '') {
             return array('meta' => array(), 'messages' => array());
         }
@@ -117,6 +123,19 @@ final class CatalogRepository
 
         $meta = isset($data['meta']) && is_array($data['meta']) ? $data['meta'] : array();
         $messages = isset($data['messages']) && is_array($data['messages']) ? $data['messages'] : array();
+
+        // Page-specific plain text belongs beside its locale's catalog, not
+        // in a monolithic file or an inline PHP translation switch.
+        // Only locales with metadata in <locale>.php are discovered.
+        $fragments = glob($this->directory . '/' . $locale . '/*.php') ?: array();
+        sort($fragments);
+        foreach ($fragments as $fragment) {
+            $values = require $fragment;
+            if (is_array($values)) {
+                $messages = array_merge($messages, $values);
+            }
+        }
+
 
         $this->loaded[$locale] = array('meta' => $meta, 'messages' => $messages);
 

@@ -1,140 +1,53 @@
-# CloudHost247 — WHMCS staging environment for i18n / currency verification.
-#
-# This gives you a real WHMCS to click through: a real database, real
-# tblcurrencies rows, a real `?language=` / `?currency=` round-trip and the real
-# HostX theme. The sandbox preview harness (staging/i18n-preview/) is quicker but
-# renders templates against fixture data; this is the one that proves the WHMCS
-# integration itself.
-#
-# WHY THIS IS NOT AUTOMATED
-# -------------------------
-# WHMCS is commercial software. Its files cannot be downloaded by a CI runner,
-# committed to this repository, or redistributed in an image. So this compose
-# file expects you to place a licensed WHMCS checkout at ./whmcs/ (gitignored)
-# before starting it. Nothing about the environment is otherwise manual.
-#
-# USAGE
-# -----
-#   1. Unzip your licensed WHMCS download into ./whmcs/ next to this file.
-#      (WHMCS 8.x; PHP 8.1 or 8.2 images are used below.)
-#   2. Copy the CloudHost247 overlay in — this repository IS the overlay:
-#        rsync -a --exclude whmcs --exclude .git /path/to/CloudHost247/ ./whmcs/
-#      Or mount the repo read-only as an overlay (see the volumes note below).
-#   3. Start it:
-#        docker compose -f staging/docker-compose.yml up -d
-#   4. Visit http://localhost:8080/install/ and complete the installer.
-#      Database host is `db`, name `whmcs`, user `whmcs`, password `whmcs`.
-#   5. In the admin area:
-#        Setup -> Currencies: enable NGN, USD, EUR, GBP (and set exchange rates)
-#        Setup -> General Settings -> Localisation: set the default language
-#        Setup -> Addon Modules: activate "CloudHost247 Internationalization"
-#        Utilities -> Automation Settings: enable "Update Currency Rates"
-#   6. Verify the checklist in staging/VERIFICATION.md.
-#
-# NEVER point this at production data and never expose port 8080 publicly:
-# it is a staging instance with weak, well-known credentials by design.
-
+# Licensed WHMCS staging ONLY. Not executed in the sandbox: Docker, commercial
+# core and a licensed staging hostname are operator prerequisites.
+# See staging/README.md. Never mount production data or deploy this stack publicly.
 services:
   db:
     image: mariadb:10.11
-    command: --transaction-isolation=READ-COMMITTED --log-bin=binlog --binlog-format=row
     restart: unless-stopped
     environment:
-      MARIADB_ROOT_PASSWORD: root
-      MARIADB_DATABASE: whmcs
-      MARIADB_USER: whmcs
-      MARIADB_PASSWORD: whmcs
+      MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+      MARIADB_DATABASE: whmcs_staging
+      MARIADB_USER: whmcs_staging
+      MARIADB_PASSWORD: ${STAGING_DB_PASSWORD:?Set a staging-only password in staging/.env}
     volumes:
       - db-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized", "--user=whmcs", "--password=whmcs"]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
       timeout: 5s
       retries: 10
 
   whmcs:
-    image: webdevops/php-nginx:8.2-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
-    environment:
-      WEB_DOCUMENT_ROOT: /var/www/html
-      WEB_PHP_TIMEOUT: 120
-      # WHMCS needs these PHP settings; the base image lets us set them here.
-      PHP_MEMORY_LIMIT: 512M
-      PHP_MAX_UPLOAD_SIZE: 64M
-      PHP_MAX_EXECUTION_TIME: 120
-      PHP_DATE_TIMEZONE: UTC
     ports:
-      # Bind all interfaces so a proxied preview URL can reach it.
-      - "0.0.0.0:8080:80"
+      # Local-only by default. Set STAGING_BIND=0.0.0.0 ONLY behind an
+      # authenticated staging proxy/firewall. WHMCS SystemURL must match it.
+      - "${STAGING_BIND:-127.0.0.1}:${STAGING_PORT:-8080}:80"
     volumes:
-      # The licensed WHMCS checkout, with the CloudHost247 overlay rsynced in.
       - ../whmcs:/var/www/html:rw
-      # Keep sessions and cache out of the image layer.
       - whmcs-cache:/var/www/html/templates_c
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
-  # Refreshes exchange rates daily so the switcher's indicative conversions
-  # never run off a stale table. Reuses WHMCS's own configured rate feed.
-  rate-refresh:
-    image: webdevops/php-cli:8.2-alpine
+  # Optional: reload the addon cache AFTER native WHMCS automation has refreshed
+  # tblcurrencies.rate. This does not fetch new rates or invent an API action.
+  rate-cache:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["cache"]
     depends_on:
-      whmcs:
-        condition: service_started
-    restart: unless-stopped
+      db:
+        condition: service_healthy
     volumes:
       - ../whmcs:/var/www/html:rw
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        set -e
-        while true; do
-          echo "[rate-refresh] $$(date -u +%Y-%m-%dT%H:%M:%SZ) updating rates"
-          php /var/www/html/crons/currencyRateRefresh.php || echo "[rate-refresh] update failed, will retry"
-          sleep 21600
-        done
-
-  # Runs the whole offline suite against the mounted overlay, so a staging
-  # refresh also re-proves the code it just deployed.
-  tests:
-    image: webdevops/php-cli:8.2-alpine
-    depends_on:
-      whmcs:
-        condition: service_started
-    profiles: ["test"]
-    volumes:
-      - ../whmcs:/var/www/html:rw
-    working_dir: /var/www/html
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        set -e
-        ci/run-php.sh i18n
-        python3 ci/check-encoding.py
+    entrypoint: ["php", "/var/www/html/crons/currencyRateRefresh.php"]
 
 volumes:
   db-data:
   whmcs-cache:
-
-# NOTE ON MOUNTING THE REPO INSTEAD OF RSYNCING
-# ---------------------------------------------
-# If you would rather not copy files around, mount the repository as a second
-# read-only volume and symlink the pieces WHMCS needs. WHMCS will not write to
-# them, so read-only is safe:
-#
-#     - ../:/var/www/overlay:ro
-#
-# then, once, inside the container:
-#     ln -s /var/www/overlay/templates/hostx        /var/www/html/templates/hostx
-#     ln -s /var/www/overlay/includes/i18n          /var/www/html/includes/i18n
-#     ln -s /var/www/overlay/includes/hooks/cloudhost247_i18n.php /var/www/html/includes/hooks/cloudhost247_i18n.php
-#     ln -s /var/www/overlay/lang/site              /var/www/html/lang/site
-#     ln -s /var/www/overlay/modules/addons/cloudhost247_i18n /var/www/html/modules/addons/cloudhost247_i18n
-#
-# Rsync is simpler and matches how the overlay is deployed to production, which
-# is why the recipe above uses it.

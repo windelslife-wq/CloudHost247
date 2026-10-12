@@ -1,69 +1,45 @@
-# i18n preview harness
+# Real-template i18n preview
 
-Renders the real switcher templates with the real i18n library and serves them
-for review in a browser.
+Developer/staging tooling only; not a WHMCS runtime or a production dependency.
 
-```bash
-node build.mjs            # render 125 snapshots (uses `php` if present)
-node build.mjs --wasm     # no PHP installed? uses the vendored php-wasm
-node server.mjs           # serve on http://0.0.0.0:4321
+```sh
+npm ci --prefix staging/i18n-preview
+node staging/i18n-preview/build.mjs          # native PHP, otherwise php-wasm
+node staging/i18n-preview/server.mjs         # 0.0.0.0:4321
+npm run test:browser --prefix staging/i18n-preview
 ```
 
-`PORT=8080 node server.mjs` to change the port.
+`PORT=8081` changes the port. `--wasm` forces the PHP-wasm builder. Build downloads
+Smarty **4.5.6** from its official GitHub release, checks its pinned SHA-256 and
+extracts into gitignored `.cache/`. Production already has Smarty through WHMCS;
+none of this dev engine or its compiler cache is deployed. The old custom
+Smarty-subset parser was removed: real compiler semantics now test nested
+conditions/loops, assignments, modifiers and escaping.
 
-## Files
-
-| File | Role |
+| File | Purpose |
 |---|---|
-| `render.php` | Builds the view-model with `includes/i18n` and writes `public/pages/*.json`. |
-| `smarty-lite.php` | Minimal Smarty-subset renderer for the shipped `.tpl` files. |
-| `build.mjs` | Runs `render.php` through native PHP or php-wasm. |
-| `server.mjs` | Dependency-free HTTP server for the snapshots + real theme CSS/JS. |
-| `public/pages/` | Generated. Safe to delete; rebuild with `build.mjs`. |
+| `prepare.mjs` | Hash-verified, dev-only Smarty preparation |
+| `smarty-preview.php` | Tiny adapter around the real Smarty compiler |
+| `render.php` | Real library + real template rendering against explicit fixtures |
+| `build.mjs` | Native-PHP/PHP-wasm build runner |
+| `server.mjs` | Static snapshot server, equivalent native-URI navigation and fixture preference cookie |
+| `browser-test.mjs` | Chromium + axe responsive/keyboard/no-JS verification |
+| `public/pages/` | 325 generated JSON snapshots (gitignored) |
+| `../artifacts/` | Generated browser results (gitignored) |
 
-## Why a Smarty renderer
+The eight body templates are legal, FAQ, refund, backup, cybercrime, trademark,
+help and terms. Other contexts exercise the switcher/pricing library, not a real
+cart/account/invoice backend. NGN/USD/EUR/GBP rates are deterministic fixtures;
+JPY intentionally has no rate. No prices or exchange rates are fetched live.
 
-The alternative was a hand-written HTML mockup of the switcher. A mockup drifts:
-it keeps passing review after the real template has changed, which is exactly the
-failure mode the brief warns about ("a dropdown that only changes its label" is
-not acceptable). So the harness renders the actual
-`templates/hostx/includes/language-currency-switcher.tpl` through a small
-renderer that understands the subset of Smarty those templates use:
+Browser tests use pinned dev dependencies from npm. To use an installed local
+Chrome, set `BROWSER_EXECUTABLE=/path/to/chrome`; otherwise the packaged headless
+Chromium is used. Minimal Linux sandboxes can use its bundled NSS libraries.
+`PREVIEW_URL` changes the review origin. `BROWSER_DEPS` can point at a separate
+node_modules directory to keep QA dependencies outside the checkout.
 
-```
-{* comments *}   {if}/{else}/{/if}   {foreach}   {$var}   {$var.key}
-{$var|escape:'html':'UTF-8'}   {$var|replace:'a':'b'}   {include file="…"}
-```
-
-Conditionals are resolved with depth-aware matching, not a lazy regex: a lazy
-regex pairs the first `{if}` with the first `{/if}`, which silently swallowed
-the rest of the template the moment one `{if}` nested inside another.
-
-> `smarty-lite.php` is a **developer preview tool**. It evaluates `{if}`
-> conditions against locally-generated data. It is not a template engine and
-> must never be loaded in the WHMCS request path — the WHMCS hook uses real
-> Smarty.
-
-## Fixtures
-
-| Currency | Rate vs NGN | Notes |
-|---|---|---|
-| NGN | 1.0 | shop default |
-| USD | 0.00065 | has catalogue prices |
-| EUR | 0.00060 | has catalogue prices |
-| GBP | 0.00051 | no catalogue price — exercises conversion |
-| JPY | *none* | deliberately unrateable — must show **no** price, never a made-up one |
-
-Products: `shared-starter` and `shared-pro` have NGN/USD/EUR catalogue prices;
-`vps-basic` has NGN only, so every other currency shows a converted, indicative
-price while the charged amount stays in NGN.
-
-Pages: home, hosting (exercises localised slugs), cart, invoice (locks itself to
-USD), client area.
-
-## What this cannot prove
-
-It is not WHMCS. No database, no login, no real cart, no live rate feed. It
-cannot prove the hook wires into WHMCS correctly, that `tblcurrencies` is read
-as expected, or that preferences persist in a real session. For that, use
-`staging/docker-compose.yml`.
+Current browser gate: 592 passing checks across all five locales at 320/375/768/
+1280px, including WCAG 2/2.1 AA axe scans of the switcher. Real-Smarty render
+checks separately cover all desktop layouts in public/account/cart contexts and
+protect the approved English wording. See `docs/I18N_STATUS.md` for remaining
+site-wide coverage and `staging/README.md` for licensed-WHMCS verification.

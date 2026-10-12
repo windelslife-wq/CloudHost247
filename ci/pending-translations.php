@@ -9,7 +9,8 @@
  *
  * Each block below is appended verbatim to its language file by
  * ci/apply-override-translations.php. This file is the source of truth for the
- * patch and is deleted once the blocks have been merged.
+ * patch for the idempotent developer merger. The CI gate checks the entire
+ * English key set independently of this historical patch list.
  *
  * @package    CloudHost247
  * @copyright  Copyright (c) CloudHost247 Isc

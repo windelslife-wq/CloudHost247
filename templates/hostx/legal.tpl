@@ -1,8 +1,8 @@
 <section class="legal-hero-banner">
     <div class="container">
         <div class="legal-hero-content text-center">
-            <h1>Legal & Policy Center</h1>
-            <p class="legal-hero-subtitle">All our legal documents and policies in one place</p>
+            <h1>{$LANG.ch247_legal_cbcde6879e}</h1>
+            <p class="legal-hero-subtitle">{$LANG.ch247_legal_2157af4343}</p>
         </div>
     </div>
 </section>
@@ -11,8 +11,8 @@
     <div class="container">
 
         <div class="legal-intro">
-            <p>This section brings together all the key legal, privacy, and policy documents that govern how our platform operates and how your information is handled. It is designed to give you full transparency about your rights, responsibilities, and the standards we follow to protect users and maintain a secure, fair, and reliable service.</p>
-            <p>We recommend reviewing these documents carefully to better understand how our platform works and to ensure you are fully informed when using any of our services.</p>
+            <p>{$LANG.ch247_legal_87c55a4a2d}</p>
+            <p>{$LANG.ch247_legal_a69a3b1c9e}</p>
         </div>
 
         <div class="legal-cards-grid">
@@ -24,7 +24,7 @@
                     <div class="legal-card-body">
                         <h3 class="legal-card-title">{$section.title}</h3>
                         <p class="legal-card-desc">{$section.desc}</p>
-                        <span class="legal-card-link">Read More <i class="fas fa-arrow-right"></i></span>
+                        <span class="legal-card-link">{$LANG.ch247_legal_2ed21eaef2}</span>
                     </div>
                 </a>
             {/foreach}
@@ -32,10 +32,10 @@
 
         <div class="legal-contact-cta text-center">
             <div class="legal-cta-box">
-                <h3>Need Help or Have Questions?</h3>
-                <p>Our support team is available to assist you with any legal or policy-related inquiries.</p>
-                <a href="submitticket.php" class="btn btn-primary"><i class="fas fa-life-ring"></i> Open a Support Ticket</a>
-                <a href="contact.php" class="btn btn-outline">Contact Us</a>
+                <h3>{$LANG.ch247_legal_8dfaa00e35}</h3>
+                <p>{$LANG.ch247_legal_720aa2a693}</p>
+                <a href="submitticket.php" class="btn btn-primary">{$LANG.ch247_legal_939fb3e1f7}</a>
+                <a href="contact.php" class="btn btn-outline">{$LANG.ch247_legal_98b67063cf}</a>
             </div>
         </div>
 

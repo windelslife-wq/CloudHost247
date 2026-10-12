@@ -1,12 +1,12 @@
 <?php
 /**
- * Updates currency exchange rates and warms the CloudHost247 i18n cache.
+ * Warms the cache from WHMCS-configured rates. It does not update the feed.
  *
- * This does not fetch rates itself and never invents one. It asks WHMCS to run
- * its own configured currency feed update, then drops the cached rate table so
- * the next page view re-reads it with a fresh timestamp.
+ * This does not fetch rates itself and never invents one. It reads WHMCS’s
+ * its own configured table, then writes a fresh cache retrieval timestamp.
+ * WHMCS’s native daily cron must update the underlying feed independently.
  *
- * Scheduling: run once or twice a day, before the site's busy period.
+ * Scheduling: optional cache warm after WHMCS’s native currency automation.
  *
  *   Run every 6 hours (or however often your feed updates):
  *
@@ -33,50 +33,20 @@ if (!empty($whmcspath)) {
     require __DIR__ . "/../init.php";
 }
 
-$root = dirname(__DIR__);
+$root = !empty($whmcspath) ? rtrim($whmcspath, '/\\') : dirname(__DIR__);
 
 require_once $root . '/includes/i18n/autoload.php';
 
-$i18n = null;
+// Cache warm only: exchange-rate updates belong to WHMCS's own daily cron.
+// The native API has no documented UpdateCurrencyRates action.
 try {
-    $i18n = \CloudHost247\I18n\I18n::boot(array('root' => $root));
+    $cache = new \CloudHost247\I18n\Rate\FileRateCache($root . '/modules/addons/cloudhost247_i18n/cache/rates.json');
+    $cache->clear();
+    $i18n = \CloudHost247\I18n\I18n::boot(array('root' => $root, 'rate_cache' => $cache));
+    $i18n->clearRateCache();
+    $rates = $i18n->rates();
+    logActivity('currencyRateRefresh: cache reloaded from configured WHMCS rates; external feed was not fetched. Source: ' . ($rates ? $rates->getSource() : 'unavailable'));
 } catch (\Throwable $e) {
-    logActivity('currencyRateRefresh: could not boot the i18n library — ' . $e->getMessage());
+    logActivity('currencyRateRefresh: cache reload failed — ' . $e->getMessage());
     exit(1);
 }
-
-try {
-    $result = localAPI('UpdateCurrencyRates', array());
-} catch (\Throwable $e) {
-    logActivity('currencyRateRefresh: UpdateCurrencyRates failed — ' . $e->getMessage());
-    exit(1);
-}
-
-if (!isset($result['result']) || $result['result'] !== 'success') {
-    $message = isset($result['message']) ? $result['message'] : 'unknown error';
-    logActivity('currencyRateRefresh: rate update rejected — ' . $message);
-    exit(1);
-}
-
-// Drop the cached table so the next request re-reads the fresh rates.
-$i18n->clearRateCache();
-
-$rates = $i18n->rates();
-$count = 0;
-if ($rates !== null) {
-    foreach ($i18n->currencies()->all() as $currency) {
-        $default = $i18n->currencies()->default();
-        if ($default === null || $default->getCode() === $currency->getCode()) {
-            continue;
-        }
-        if ($rates->rate($default->getCode(), $currency->getCode()) !== null) {
-            $count++;
-        }
-    }
-}
-
-logActivity(sprintf(
-    'currencyRateRefresh: refreshed %d rate(s) from source "%s".',
-    $count,
-    $rates !== null ? $rates->getSource() : 'unknown'
-));

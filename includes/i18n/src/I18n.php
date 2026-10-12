@@ -81,6 +81,9 @@ final class I18n
     /** @var PriceResolver|null */
     private $priceResolver;
 
+    /** @var PageContent|null */
+    private $pageContent;
+
     /** @var callable|null */
     private $logger;
 
@@ -108,6 +111,10 @@ final class I18n
             ? $config['currency_source']
             : new WhmcsCurrencySource(isset($config['currency_reader']) ? $config['currency_reader'] : null);
         $this->currencies = new CurrencyRegistry($source);
+
+        $this->pageContent = isset($config['page_content']) && $config['page_content'] instanceof PageContent
+            ? $config['page_content']
+            : new PageContent($this->rootDirectory());
 
         $this->store = $this->buildStore($config);
         $this->currencySelector = new CurrencySelector($this->currencies, $this->store);
@@ -273,21 +280,7 @@ final class I18n
         return $this->priceResolver;
     }
 
-    /**
-     * @param array  $routeMap
-     * @param string $currentUri
-     * @param Currency|null $transactionCurrency
-     *
-     * @return array<string,mixed>
-     */
-    /**
-     * Drop the cached rate table so the next rates() call re-reads the source.
-     *
-     * Used by the admin "refresh rates" action and by crons/currencyRateRefresh.php
-     * after WHMCS has updated its own feed.
-     *
-     * @return void
-     */
+    /** Forget the cached rate table after a WHMCS rate refresh. */
     public function clearRateCache(): void
     {
         $this->rateTable = null;
@@ -298,33 +291,15 @@ final class I18n
     }
 
     /**
-     * @param array $routeMap, string $currentUri = '', Currency $transactionCurrency = null): array
+     * Translation layer for the content arrays the root landing pages build.
+     *
+     * @return PageContent
+     */
+    public function pages(): PageContent
     {
-        $uri = $currentUri !== '' ? $currentUri : $this->currentUri();
-        $map = $routeMap ? $routeMap : (isset($this->config['route_map']) && is_array($this->config['route_map'])
-            ? $this->config['route_map']
-            : array());
-
-        $view = new SwitcherViewModel(
-            $this->preferences,
-            $this->translator,
-            $this->currencySelector,
-            $uri,
-            $map,
-            $this->rates()
-        );
-
-        return $view->toArray($transactionCurrency);
+        return $this->pageContent;
     }
 
-    /**
-     * Translate, using the active locale.
-     *
-     * @param string $key
-     * @param array  $params
-     *
-     * @return string
-     */
     /**
      * Build the view-model the switcher templates render.
      *
@@ -344,8 +319,9 @@ final class I18n
             $this->translator(),
             $this->currencySelector(),
             $currentUri !== '' ? $currentUri : $this->currentUri(),
-            $routeMap,
-            $this->rates()
+            $routeMap ?: (isset($this->config['route_map']) ? $this->config['route_map'] : array()),
+            $this->rates(),
+            isset($this->config['language_value']) ? $this->config['language_value'] : null
         );
 
         return $view->toArray($transactionCurrency);
@@ -361,9 +337,15 @@ final class I18n
      */
     public function catalogDirectory(): string
     {
-        $root = isset($this->config['root']) ? rtrim((string) $this->config['root'], '/\\') : dirname(__DIR__, 2);
+        return $this->rootDirectory() . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, self::CATALOG_DIR);
+    }
 
-        return $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, self::CATALOG_DIR);
+    /**
+     * @return string
+     */
+    public function rootDirectory(): string
+    {
+        return isset($this->config['root']) ? rtrim((string) $this->config['root'], '/\\') : dirname(__DIR__, 3);
     }
 
     // ----------------------------------------------------------- internals --

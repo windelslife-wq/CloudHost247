@@ -1,3 +1,4 @@
+{include file="$template/includes/currency-transaction-notice.tpl"}
 <script>
     // Define state tab index value
     var statesTab = 10;

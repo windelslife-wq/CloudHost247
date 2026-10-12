@@ -64,7 +64,7 @@ final class Preferences
 
         $stored = $this->store->get(self::LANGUAGE_KEY);
         $locale = $stored !== null && $stored !== ''
-            ? $this->locales->find((string) $stored)
+            ? $this->findLocale((string) $stored)
             : null;
 
         if ($locale === null || !$locale->isSelectable()) {
@@ -112,6 +112,9 @@ final class Preferences
      */
     public function setLanguage($code): SelectionResult
     {
+        if ($code !== null && !is_scalar($code)) {
+            return $this->remember('language', SelectionResult::failure($this->getLanguage(), SelectionResult::ERROR_UNKNOWN, null));
+        }
         if ($code === null || trim((string) $code) === '') {
             $result = SelectionResult::failure($this->getLanguage(), SelectionResult::ERROR_EMPTY, $code);
             $this->language = $result->getValue();
@@ -214,6 +217,7 @@ final class Preferences
      */
     private function findLocale(string $code): ?Locale
     {
+        $code = \CloudHost247\I18n\Whmcs\WhmcsLocale::toCode($code);
         $locale = $this->locales->find($code);
         if ($locale !== null) {
             return $locale;

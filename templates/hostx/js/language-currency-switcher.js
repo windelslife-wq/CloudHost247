@@ -90,6 +90,7 @@
         trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
         if (open) {
             panel.hidden = false;
+            alignPanel(panel);
             trigger.classList.add(OPEN_CLASS);
             if (moveFocus !== false) {
                 var options = optionsOf(panel);
@@ -100,6 +101,21 @@
         } else {
             panel.hidden = true;
             trigger.classList.remove(OPEN_CLASS);
+        }
+    }
+
+    /** Clamp position as well as width; a right-anchored panel can extend left of the viewport. */
+    function alignPanel(panel) {
+        panel.style.transform = '';
+        var rect = panel.getBoundingClientRect();
+        var width = document.documentElement.clientWidth || window.innerWidth;
+        var gutter = 12;
+        var offset = rect.left < gutter ? gutter - rect.left : 0;
+        if (rect.right + offset > width - gutter) {
+            offset -= rect.right + offset - (width - gutter);
+        }
+        if (offset) {
+            panel.style.transform = 'translateX(' + offset + 'px)';
         }
     }
 
@@ -178,6 +194,18 @@
 
             trigger.addEventListener('keydown', function (event) {
                 var key = event.key;
+
+                // Do not rely on the native button's Enter click: moving focus
+                // to a link during that default activation can let the same
+                // keypress activate the link and unexpectedly navigate away.
+                if (key === 'Enter' || key === ' ' || key === 'Spacebar') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    var opening = trigger.getAttribute('aria-expanded') !== 'true';
+                    closeOthers(opening ? trigger : null);
+                    setOpen(trigger, opening, opening);
+                    return;
+                }
 
                 if (key === 'ArrowDown') {
                     event.preventDefault();
@@ -272,15 +300,13 @@
         if (target.closest(SELECTORS.option)) {
             return;
         }
-        var triggers = document.querySelectorAll(SELECTORS.trigger);
-        for (var i = 0; i < triggers.length; i++) {
-            var trigger = triggers[i];
-            if (target.closest(SELECTORS.root) === trigger.closest(SELECTORS.root)
-                && trigger.getAttribute('aria-expanded') === 'true'
-                && !target.closest(SELECTORS.panel)) {
-                setOpen(trigger, false, false);
-            }
+        // Trigger clicks have already been handled by their own listener.
+        // Closing a panel merely because the target is in the SAME root made
+        // every mouse click open and immediately close it during bubbling.
+        if (target.closest(SELECTORS.root)) {
+            return;
         }
+        closeOthers(null);
     }
 
     /**
@@ -297,6 +323,11 @@
         }
 
         document.addEventListener('click', onDocumentClick);
+        window.addEventListener('resize', function () {
+            document.querySelectorAll(SELECTORS.panel).forEach(function (panel) {
+                if (!panel.hidden) alignPanel(panel);
+            });
+        });
         document.addEventListener('keydown', function (event) {
             if (event.key === 'Escape') {
                 var open = document.querySelectorAll(SELECTORS.trigger + '[aria-expanded="true"]');

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{$ch247LocaleTag|default:'en'|escape:'html'}" dir="{$ch247Direction|default:'ltr'|escape:'html'}">
 <head>
     <meta charset="{$charset}" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -12,10 +12,17 @@
 	<script>var whmcsBaseUrl = "{$WEB_ROOT}";</script>
     <script src="{assetPath file='scripts.min.js'}?v={$versionHash}"></script>
 
+    {$headoutput}
 </head>
 <body>
 
     <div class="container-fluid invoice-container">
+        {if $ch247Switcher}
+            <div class="ch247-invoice-preferences hidden-print">
+                {include file="$template/includes/language-currency-switcher.tpl"}
+            </div>
+        {/if}
+        {include file="$template/includes/currency-transaction-notice.tpl"}
 
         {if $invalidInvoiceIdRequested}
 
@@ -269,5 +276,6 @@
         </div>
     </div>
 
+{$footeroutput}
 </body>
 </html>

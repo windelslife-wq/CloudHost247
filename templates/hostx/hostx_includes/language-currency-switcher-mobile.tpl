@@ -27,7 +27,7 @@
                 class="ch247-switcher__trigger"
                 id="ch247-language-trigger-mobile"
                 data-ch247-switcher-trigger
-                aria-expanded="false"
+                aria-expanded="true"
                 aria-controls="ch247-language-menu-mobile"
                 aria-haspopup="true"
                 aria-label="{$ch247Switcher.labels.switcher_language_button|escape:'html':'UTF-8'}">
@@ -62,7 +62,7 @@
                             <span class="ch247-switcher__flag flag flag-{$option.flag|escape:'html':'UTF-8'}" aria-hidden="true"></span>
                             <span class="ch247-switcher__option-text">
                                 <span class="ch247-switcher__option-native">{$option.native_name|escape:'html':'UTF-8'}</span>
-                                <span class="ch247-switcher__option-english">{$option.name|escape:'html':'UTF-8'}</span>
+                                <span class="ch247-switcher__option-english" lang="en">{$option.name|escape:'html':'UTF-8'}</span>
                             </span>
                             {if $option.selected}
                                 <span class="ch247-switcher__tick" aria-hidden="true">
@@ -81,7 +81,7 @@
                 class="ch247-switcher__trigger"
                 id="ch247-currency-trigger-mobile"
                 data-ch247-switcher-trigger
-                aria-expanded="false"
+                aria-expanded="true"
                 aria-controls="ch247-currency-menu-mobile"
                 aria-haspopup="true"
                 aria-label="{$ch247Switcher.labels.switcher_currency_button|escape:'html':'UTF-8'}">
@@ -109,7 +109,7 @@
                             <span class="ch247-switcher__symbol" aria-hidden="true">{$option.symbol|escape:'html':'UTF-8'}</span>
                             <span class="ch247-switcher__option-text">
                                 <span class="ch247-switcher__option-native">{$option.code|escape:'html':'UTF-8'}</span>
-                                <span class="ch247-switcher__option-english">{$option.name|escape:'html':'UTF-8'}</span>
+                                <span class="ch247-switcher__option-english" lang="en">{$option.name|escape:'html':'UTF-8'}</span>
                             </span>
                             {if $option.is_default}
                                 <span class="ch247-switcher__badge">{$ch247Switcher.labels.currency_default_badge|escape:'html':'UTF-8'}</span>

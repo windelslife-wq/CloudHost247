@@ -18,6 +18,7 @@ use Chs\Services\TransferService;
 use WHMCS\ClientArea;
 
 require_once __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/ch247_content.php';
 require_once __DIR__ . '/modules/addons/cloudhost247services/autoload.php';
 
 $ca = Landing::start('chs-domain-transfer', 'Transfer a Domain', 'domain-transfer.php');

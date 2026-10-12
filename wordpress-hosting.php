@@ -3,15 +3,18 @@ use WHMCS\ClientArea;
 use WHMCS\Database\Capsule;
 define('CLIENTAREA', true);
 require __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/ch247_content.php';
 $ca = new ClientArea();
-$ca->setPageTitle('Wordpress Hosting');
+$ca->setPageTitle(ch247_page_title('wordpress-hosting', 'Wordpress Hosting'));
 $ca->addToBreadCrumb('index.php', Lang::trans('globalsystemname'));
-$ca->addToBreadCrumb('wordpresshosting.php', 'Wordpress Hosting');
+$ca->addToBreadCrumb('wordpresshosting.php', ch247_page_title('wordpress-hosting', 'Wordpress Hosting'));
 $ca->initPage();
 $pageName = basename($_SERVER['PHP_SELF']);
 $pageData = Capsule::table("mod_hostx_pages")->where('pageTitle',$pageName)->first();
 $getLocalLang = Capsule::table('tblconfiguration')->where('setting','Language')->first();
-$gid = $pageData->productGroup;
+$gid = $pageData ? $pageData->productGroup : null;
+$productsData = [];
+$arrayCycles = [];
 require_once __DIR__ . '/includes/hostx_page_functions.php';
 if(!empty($gid)){
 	global $_LANG;
@@ -28,20 +31,10 @@ if(!empty($gid)){
     foreach($results['products']['product'] as $pData){
     	$chkHidden = Capsule::table('tblproducts')->where('id', $pData['pid'])->where('hidden', 'on')->count();    
     	if($chkHidden!='0'){
-			$dataPrices = $pData['pricing'][$currenciCode];
-			$pData['pricing'] = $pData['pricing'][$currenciCode];
-			if($pData['paytype'] == 'onetime'){
-				$pData['pricing']['monthly'] = wgs_pricing_format_data($pData['pricing']['monthly'],$currency->id);
-			}elseif($pData['paytype'] == 'free'){
-				$pData['pricing']['free'] = wgs_pricing_format_data(0,$currency->id);
-			}elseif($pData['paytype'] == 'recurring'){
-				$pData['pricing']['monthly'] = wgs_pricing_format_data($pData['pricing']['monthly'],$currency->id);
-				$pData['pricing']['quarterly'] = wgs_pricing_format_data($pData['pricing']['quarterly'],$currency->id);
-				$pData['pricing']['semiannually'] = wgs_pricing_format_data($pData['pricing']['semiannually'],$currency->id);
-				$pData['pricing']['annually'] = wgs_pricing_format_data($pData['pricing']['annually'],$currency->id);
-				$pData['pricing']['biennially'] = wgs_pricing_format_data($pData['pricing']['biennially'],$currency->id);
-				$pData['pricing']['triennially'] = wgs_pricing_format_data($pData['pricing']['triennially'],$currency->id);
-			}
+            $priceView = wgs_prepare_product_prices($pData);
+            $dataPrices = $priceView['raw'];
+            $pData['pricing'] = $priceView['formatted'];
+            $pData['ch247ChargeCurrencies'] = $priceView['charge_ids'];
             $pDesc = Capsule::table('mod_hostx_page_products')->select('pHeadSortDesc','pDescription','pFootCaption','pFootSortDesc')->where('productId', $pData['pid'])->where('pageId', $pageData->id)->first();
 			if($checkForTranslationGroup->value == 1){
 				if(isset($_SESSION['Language'])){

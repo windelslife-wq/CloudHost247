@@ -1,169 +1,110 @@
-# Staging & verification
+# Staging verification — no production deployment
 
-Two complementary ways to verify the internationalization, currency and encoding
-work before anything reaches production.
+This repository is a **WHMCS overlay**, not a redistributable WHMCS application.
+It deliberately lacks the commercial core (`init.php`, installed core languages,
+licensed configuration and database). See `docs/I18N_STATUS.md`: the rollout is
+still incomplete site-wide. Neither this harness nor the recipe is production.
 
-| | Sandbox preview harness | WHMCS staging (docker-compose) |
-|---|---|---|
-| Path | `staging/i18n-preview/` | `staging/docker-compose.yml` |
-| Needs | Node only (or PHP) | A licensed WHMCS checkout |
-| Boots | ~2 seconds | ~2 minutes |
-| Renders | the real templates, fixture data | real WHMCS, real DB, real `tblcurrencies` |
-| Proves | markup, CSS, a11y, formatting, price logic | the WHMCS integration end to end |
+## 1. Live sandbox / local preview
 
-Neither one is production. Do not deploy from either without following the
-manual release steps at the bottom of this file.
-
----
-
-## 1. Sandbox preview harness
-
-Renders the **real** `templates/hostx/includes/language-currency-switcher.tpl`
-with the **real** `includes/i18n` library, for every combination of
-5 languages × 5 currencies × 5 page types = 125 snapshots, and serves them so
-they can be clicked through in a browser.
-
-```bash
-node staging/i18n-preview/build.mjs          # render snapshots (uses `php` if present)
-node staging/i18n-preview/build.mjs --wasm   # …or no PHP at all: uses the vendored php-wasm
-node staging/i18n-preview/server.mjs         # serve on http://0.0.0.0:4321
+```sh
+npm ci --prefix staging/i18n-preview               # dev-only dependencies
+node staging/i18n-preview/build.mjs                # native PHP, otherwise php-wasm
+node staging/i18n-preview/server.mjs               # 0.0.0.0:4321
+npm run test:browser --prefix staging/i18n-preview
 ```
 
-`PORT=8080 node staging/i18n-preview/server.mjs` to change the port.
+Sandbox preview URL: **https://4321-it4r0er3fttme19zqbmki.e2b.app**
+(the Live Preview on port 4321). Useful review paths:
 
-### What it shows
+- `/p/fr-eur-refund-policy`
+- `/p/de-gbp-backup-policy`
+- `/p/es-usd-faqs`
+- `/p/pt-BR-ngn-help-center`
+- `/p/fr-eur-terms-of-service`
 
-- **Desktop header** — the switcher sitting in the header's right-hand group.
-- **Mobile / off-canvas** — the same component full width, 44 px tap targets.
-- **Prices** — for the selected locale and currency, showing for each product:
-  - the displayed amount,
-  - whether it is **exact** (a catalogue price exists in that currency) or
-    **indicative** (converted),
-  - the amount and currency actually **charged**,
-  - the rate and its source.
-- **Locale-aware formatting** — number, decimal, percent, medium and full date.
+325 snapshots cover 5 languages × 5 fixture currencies × 13 page contexts.
+Eight contexts render the **actual translated body templates**, alongside real
+switcher markup/CSS/JS. Smarty 4.5.6 is downloaded from its official GitHub
+release with a pinned SHA-256; the dev dependency/cache is never deployed.
+Language/currency links navigate equivalent fixture pages and retain independent
+preferences in a harness-only cookie. No-JS links also work.
 
-### Deliberate fixtures
+**This is not WHMCS.** It proves rendering, escaping, keyboard/viewport behaviour
+and deterministic pricing rules, not login, taxes, live rates or an actual order.
+NGN/USD/EUR/GBP fixture rates are clearly labeled as test data; JPY deliberately
+has no rate. They must never be copied into live currency configuration.
 
-- **JPY has no rate.** Its rows show nothing at all rather than a made-up
-  number. That is the requirement — "never invent exchange rates" — made
-  visible instead of merely unit-tested.
-- **The invoice page locks itself to USD.** Switching the browsing currency must
-  not change what the invoice says is owed.
-- Currencies come from a `StaticCurrencySource`, preferences from an
-  `ArrayPreferenceStore`. Same code path as WHMCS, different data source — that
-  is the point of the library's interface-based design.
+## 2. Licensed WHMCS Docker recipe
 
-### What it does not show
+**Not executed here.** Docker and licensed WHMCS/HostX files are not provided by
+the sandbox. Use a separate licensed staging checkout and test-only database.
 
-It is not WHMCS. There is no database, no login, no cart, and no rates fetched
-from a live feed. It cannot prove that the hook wires into WHMCS correctly.
-That is what the compose recipe is for.
+Prerequisites:
 
----
+1. Place a licensed, PHP-8.2-compatible WHMCS 8.x installation at repository-root
+   `whmcs/` (gitignored). Use the vendor's installation instructions and a staging
+   hostname permitted by your WHMCS/HostX licenses.
+2. Install the baseline CloudHost247 overlay and its required runtime addon
+   dependencies. A fresh commercial WHMCS ZIP alone does not include HostX or
+   `cloudhost247services`, which the existing pages depend on.
+3. Supply the correct Linux x86-64 PHP 8.2 ionCube loader at
+   `staging/ioncube/ioncube_loader_lin_8.2.so` (gitignored). Obtain it from the
+   vendor; do not commit or send licensed files/credentials in chat.
+4. Create a local, gitignored `staging/.env` with `STAGING_DB_PASSWORD`, an
+   independently chosen **staging-only** database password. Defaults bind the
+   web port to local loopback. If using a protected remote preview proxy, set
+   `STAGING_BIND=0.0.0.0` and restrict public access through that proxy/firewall.
 
-## 2. WHMCS staging (docker-compose)
+Copy the i18n changes after the baseline overlay is installed:
 
-See `staging/docker-compose.yml` for the full annotated recipe. Summary:
+```sh
+node staging/copy-overlay.mjs ./whmcs --staging --dry-run
+node staging/copy-overlay.mjs ./whmcs --staging
 
-```bash
-# 1. Unzip a licensed WHMCS 8.x checkout into ./whmcs/
-# 2. Rsync this repository over it (it is a WHMCS overlay)
-rsync -a --exclude whmcs --exclude .git ./ ./whmcs/
-
-# 3. Start
-docker compose -f staging/docker-compose.yml up -d
-
-# 4. Install at http://localhost:8080/install/
-#    DB host `db`, database `whmcs`, user `whmcs`, password `whmcs`
-
-# 5. Configure (admin area)
-#    Setup -> Currencies                      enable NGN, USD, EUR, GBP
-#    Setup -> General Settings -> Localisation set the default language
-#    Setup -> Addon Modules                   activate "CloudHost247 Internationalization"
-#    Utilities -> Automation Settings         enable "Update Currency Rates"
-
-# 6. Re-run the offline suites against the deployed overlay
-docker compose -f staging/docker-compose.yml run --rm tests
+docker compose --env-file staging/.env -f staging/docker-compose.yml up -d --build
 ```
 
-WHMCS is commercial software and cannot be downloaded by CI or redistributed in
-an image, which is why step 1 is manual. Everything after it is scripted.
+The copier uses an explicit runtime allowlist and **never deletes core files**.
+It does not copy test harnesses, dev packages, compiled caches or credentials.
+Back up your staging checkout first; existing override files are replaced by the
+reviewed repository versions.
 
-**Do not expose port 8080 publicly.** The credentials in the compose file are
-well known by design.
+Complete the installer at `http://localhost:8080/install/` if needed. Database
+host: `db`; name/user: `whmcs_staging`; password: the value you set locally.
+Set WHMCS **SystemURL to the actual browser-facing staging URL**, not localhost
+when reviewing through a remote proxy. Do not point staging at production data.
 
----
+Ensure writable runtime directories in this staging checkout, for example:
 
-## Verification checklist
-
-Run through this on staging before approving a production deploy. It is also in
-`staging/VERIFICATION.md` as a printable list.
-
-**Language**
-
-- [ ] Header switcher shows the current language and lists all five.
-- [ ] Switching keeps you on the same page, including query strings.
-- [ ] Localised slugs work in both directions (`/web-hosting.php` ↔ `/hebergement-web.php`).
-- [ ] The choice survives navigation and a fresh session.
-- [ ] A logged-in client's account preference is respected.
-- [ ] `?language=xx-invalid` falls back to the default and does not error.
-- [ ] Nav, mega menu, footer, forms and validation are all translated.
-
-**Currency**
-
-- [ ] Header switcher shows the current currency code and symbol.
-- [ ] Every WHMCS-enabled currency appears; disabling one in WHMCS removes it.
-- [ ] Prices change on product pages, listings, cart and checkout.
-- [ ] A converted price is labelled indicative and states what you are charged.
-- [ ] A currency with no rate shows no price rather than a wrong one.
-- [ ] An invoice keeps its own currency regardless of the browsing currency.
-- [ ] The choice is independent of the language choice.
-- [ ] `?currency=999` falls back to the default and does not error.
-
-**Accessibility & responsive**
-
-- [ ] Keyboard: `Enter`/`Space` opens, `↑`/`↓` move, `Home`/`End` jump, `Esc` closes and returns focus.
-- [ ] Focus ring is clearly visible on both the trigger and the options.
-- [ ] Screen reader announces the control and the current selection.
-- [ ] No horizontal overflow at 320 px, 375 px, 768 px and 1280 px.
-- [ ] The mega menu still opens and is not clipped or shifted.
-- [ ] Works with JavaScript disabled (panels stay open, links navigate).
-
-**Encoding**
-
-- [ ] `python3 ci/check-encoding.py` reports `TOTAL=0`.
-
----
-
-## Deploying to production
-
-Not automated, and intentionally so. The compose recipe and the harness are for
-**verification only**.
-
-```bash
-# Dry run first — always.
-rsync -a --dry-run -v \
-  --exclude .git \
-  --exclude whmcs \
-  --exclude node_modules \
-  ./ user@production:/path/to/whmcs/
-
-# Then for real, once the dry run looks right.
-rsync -a --delete -v \
-  --exclude .git \
-  --exclude whmcs \
-  --exclude node_modules \
-  ./ user@production:/path/to/whmcs/
+```sh
+docker compose --env-file staging/.env -f staging/docker-compose.yml exec --user root whmcs \
+  sh -c 'install -d -o www-data -g www-data -m 0770 /var/www/html/templates_c /var/www/html/modules/addons/cloudhost247_i18n/cache'
 ```
 
-After the rsync:
+Then configure the real app:
 
-1. Activate **CloudHost247 Internationalization** in *Setup → Addon Modules*.
-2. Check *Setup → Currencies* — the switcher reads whatever is enabled there.
-3. Enable the *Update Currency Rates* automation task, or schedule
-   `php crons/currencyRateRefresh.php` twice daily.
-4. Visit a page in each language and confirm the completeness report in the
-   addon shows 100%.
-5. `templates_c` does not need clearing for the new templates, but clear it if
-   a header change appears not to have taken effect.
+- Set default language to English; verify the five core WHMCS languages exist.
+- Activate **CloudHost247 Internationalization**. This creates only the additive
+  browsing-preference table; it does not change billing currencies.
+- Configure the currencies the shop actually supports in WHMCS. Use its native
+  currency-rate automation/trusted configured feed; do not invent rates.
+- Schedule/run WHMCS's **native daily cron** according to its own installation
+  instructions. The optional `rate-cache` service only reloads configured rates
+  after that automation; it does not fetch the feed.
+- Import/review curated translations for installed product descriptions, HostX
+  blocks/menus, knowledge-base articles and email templates. None of those live
+  database contents can be certified by this source-only harness.
+
+Run `staging/VERIFICATION.md` end to end, including login, guest/account cart,
+taxes/discounts/billing cycles, historic invoices, complete menu/footer layouts,
+and linguistic/legal review. Do not tick a real-WHMCS item based on a fixture
+unit test alone.
+
+## Production
+
+**Not authorized or performed.** Finish the remaining content coverage, get real
+staging sign-off, then obtain explicit production approval. Never use
+`rsync --delete` from this overlay into WHMCS: absent licensed core files would
+be deleted. Any later release procedure must back up core/database/configuration
+and copy only reviewed runtime overlay files without deleting the core.

@@ -31,7 +31,7 @@ final class SessionPreferenceStore implements PreferenceStoreInterface
     {
         // Fall back to an array when no session is running (CLI, cron, tests)
         // so the store degrades instead of warning.
-        $this->fallback = PHP_SAPI === 'cli' ? array() : null;
+        $this->fallback = array();
     }
 
     /**
@@ -46,8 +46,17 @@ final class SessionPreferenceStore implements PreferenceStoreInterface
             return array_key_exists($key, $this->fallback) ? $this->fallback[$key] : $default;
         }
         $bucket = $this->bucket();
-
-        return array_key_exists($key, $bucket) ? $bucket[$key] : $default;
+        if (array_key_exists($key, $bucket)) {
+            return $bucket[$key];
+        }
+        if ($key === 'language' && empty($_SESSION['uid']) && !empty($_SESSION['Language'])) {
+            return \CloudHost247\I18n\Whmcs\WhmcsLocale::toCode((string) $_SESSION['Language']);
+        }
+        // WHMCS uses this id to price a guest's real cart.
+        if ($key === 'currency' && empty($_SESSION['uid']) && isset($_SESSION['currency'])) {
+            return $_SESSION['currency'];
+        }
+        return $default;
     }
 
     /**
@@ -68,13 +77,19 @@ final class SessionPreferenceStore implements PreferenceStoreInterface
             return;
         }
 
-        if (!isset($_SESSION[self::NAMESPACE]) || !is_array($_SESSION[self::NAMESPACE])) {
-            $_SESSION[self::NAMESPACE] = array();
+        if (!isset($_SESSION[self::NAMESPACE]) || !is_array($_SESSION[self::NAMESPACE])
+            || (int) ($_SESSION[self::NAMESPACE]['client_id'] ?? 0) !== (int) ($_SESSION['uid'] ?? 0)) {
+            $_SESSION[self::NAMESPACE] = array('client_id' => (int) ($_SESSION['uid'] ?? 0));
         }
         if ($value === null) {
             unset($_SESSION[self::NAMESPACE][$key]);
         } else {
             $_SESSION[self::NAMESPACE][$key] = $value;
+            if ($key === 'language') {
+                $_SESSION['Language'] = \CloudHost247\I18n\Whmcs\WhmcsLocale::toWhmcsName((string) $value);
+            } elseif ($key === 'currency' && empty($_SESSION['uid'])) {
+                $_SESSION['currency'] = (int) $value;
+            }
         }
     }
 
@@ -88,7 +103,7 @@ final class SessionPreferenceStore implements PreferenceStoreInterface
      */
     private function sessionActive(): bool
     {
-        return $this->fallback === null && isset($_SESSION) && is_array($_SESSION);
+        return isset($_SESSION) && is_array($_SESSION);
     }
 
     /**
@@ -96,8 +111,13 @@ final class SessionPreferenceStore implements PreferenceStoreInterface
      */
     private function bucket(): array
     {
-        return isset($_SESSION[self::NAMESPACE]) && is_array($_SESSION[self::NAMESPACE])
-            ? $_SESSION[self::NAMESPACE]
-            : array();
+        $bucket = isset($_SESSION[self::NAMESPACE]) && is_array($_SESSION[self::NAMESPACE])
+            ? $_SESSION[self::NAMESPACE] : array();
+        // A guest preference or another client's account must not override the
+        // saved preference after sign-in / WHMCS account switching.
+        if ((int) ($bucket['client_id'] ?? 0) !== (int) ($_SESSION['uid'] ?? 0)) {
+            return array();
+        }
+        return $bucket;
     }
 }

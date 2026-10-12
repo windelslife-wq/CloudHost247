@@ -6,13 +6,14 @@ use WHMCS\Database\Capsule;
 define('CLIENTAREA', true);
 
 require __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/ch247_content.php';
 
 $ca = new ClientArea();
 
-$ca->setPageTitle('Domain Registration Addendum');
+$ca->setPageTitle(ch247_page_title('domainregistrationaddendum', 'Domain Registration Addendum'));
 
 $ca->addToBreadCrumb('index.php', Lang::trans('globalsystemname'));
-$ca->addToBreadCrumb('domainregistrationaddendum.php', 'Domain Registration Addendum');
+$ca->addToBreadCrumb('domainregistrationaddendum.php', ch247_page_title('domainregistrationaddendum', 'Domain Registration Addendum'));
 
 $ca->setTemplate('domainregistrationaddendum');
 

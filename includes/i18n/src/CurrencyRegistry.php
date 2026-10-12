@@ -96,7 +96,7 @@ final class CurrencyRegistry
      */
     public function find($value)
     {
-        if ($value === null || $value === '') {
+        if ($value === null || !is_scalar($value) || $value === '') {
             return null;
         }
         if (is_int($value) || (is_string($value) && ctype_digit(trim($value)))) {

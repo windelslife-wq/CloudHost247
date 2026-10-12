@@ -24,9 +24,12 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__, 2);
 require_once $root . '/includes/i18n/autoload.php';
-require_once __DIR__ . '/smarty-lite.php';
+require_once __DIR__ . '/smarty-preview.php';
+require_once $root . '/ci/lib/PageReferenceReader.php';
 
 use CloudHost247\I18n\Currency;
+use CloudHost247\Ci\PageReferenceReader;
+use CloudHost247\I18n\Whmcs\WhmcsLocale;
 use CloudHost247\I18n\EquivalentUrl;
 use CloudHost247\I18n\I18n;
 use CloudHost247\I18n\Preference\ArrayPreferenceStore;
@@ -62,13 +65,20 @@ function ch247_preview_currencies(): array
  */
 function ch247_preview_pages(): array
 {
-    return array(
+    $pages = array(
         'home'          => array('uri' => '/index.php', 'title' => 'Home'),
         'hosting'       => array('uri' => '/web-hosting.php', 'title' => 'Web hosting'),
         'cart'          => array('uri' => '/cart.php?a=view', 'title' => 'Cart'),
         'invoice'       => array('uri' => '/viewinvoice.php?id=1042', 'title' => 'Invoice 1042'),
         'clientarea'    => array('uri' => '/clientarea.php', 'title' => 'Client area'),
     );
+    $root = dirname(__DIR__, 2);
+    foreach (require $root . '/lang/pages/manifest.php' as $page => $reference) {
+        $pages[$page] = array('uri' => '/' . $reference['source'], 'title' => $page);
+    }
+    $pages['help-center'] = array('uri' => '/help-center.php', 'title' => 'Help center', 'template' => 'helpcenter');
+    $pages['terms-of-service'] = array('uri' => '/terms-of-service.php', 'title' => 'Terms & Conditions', 'template' => 'termsofservice');
+    return $pages;
 }
 
 /**
@@ -76,12 +86,7 @@ function ch247_preview_pages(): array
  */
 function ch247_preview_route_map(): array
 {
-    return array(
-        '/web-hosting.php'   => array('fr' => '/hebergement-web.php', 'es' => '/alojamiento-web.php', 'de' => '/webhosting.php', 'pt-BR' => '/hospedagem-web.php'),
-        '/vps-hosting.php'   => array('fr' => '/hebergement-vps.php', 'es' => '/alojamiento-vps.php', 'de' => '/vps-hosting.php', 'pt-BR' => '/hospedagem-vps.php'),
-        '/domain-search.php' => array('fr' => '/recherche-domaine.php', 'es' => '/buscar-dominio.php', 'de' => '/domainsuche.php', 'pt-BR' => '/busca-dominio.php'),
-        '/help-center.php'   => array('fr' => '/centre-aide.php', 'es' => '/centro-ayuda.php', 'de' => '/hilfecenter.php', 'pt-BR' => '/central-ajuda.php'),
-    );
+    return array(); // Real routes are preserved; no untranslated-slug 404s.
 }
 
 /**
@@ -116,7 +121,8 @@ foreach (ch247_preview_currencies() as $row) {
         $row['suffix'],
         $row['name'],
         (int) $row['format'],
-        (float) $row['rate']
+        (float) $row['rate'],
+        (bool) $row['default']
     );
 }
 
@@ -128,6 +134,7 @@ foreach (ch247_preview_currencies() as $row) {
 }
 
 $themeDir = $root . '/templates/hostx';
+$manifest = require $root . '/lang/pages/manifest.php';
 $index = array();
 
 foreach (array('en', 'fr', 'es', 'de', 'pt-BR') as $locale) {
@@ -142,9 +149,11 @@ foreach (array('en', 'fr', 'es', 'de', 'pt-BR') as $locale) {
             'default_locale'  => 'en',
             'currency_source' => new StaticCurrencySource($currencies),
             'store'           => $store,
+            'language_value'  => array(WhmcsLocale::class, 'toWhmcsName'),
             'rate_source'     => new StaticRateSource('NGN', $rates, 'staging fixture (deterministic)', '2026-10-12'),
         ));
 
+        $i18n->applyRequest(array());
         foreach (ch247_preview_pages() as $pageKey => $page) {
             $uri = $page['uri'];
 
@@ -191,11 +200,29 @@ foreach (array('en', 'fr', 'es', 'de', 'pt-BR') as $locale) {
                 'ch247Switcher'   => $switcher,
                 'ch247LocaleTag'  => $i18n->preferences()->getLocale()->getIntlTag(),
                 'ch247Direction'  => $i18n->preferences()->getLocale()->getDirection(),
-                'template'        => '',
+                'template'        => 'hostx',
+                'LANG'            => $i18n->translator()->getCatalogMessages(),
                 'WEB_ROOT'        => '/assets/theme',
             );
 
-            $renderer = new SmartyLite($themeDir, $view);
+            $messages = $i18n->translator()->getCatalogMessages();
+            $view['LANG']['globalsystemname'] = $messages['nav_home'];
+            $view['companyName'] = 'CloudHost247 Isc';
+            $view['companyUrl'] = 'https://www.cloudhost247.com';
+            $view['supportEmail'] = 'support@cloudhost247.com';
+            $view['jurisdiction'] = $messages['ch247_jurisdiction_nigeria'];
+            $view['effectiveDate'] = $formatter->date('2025-08-14', 'long');
+            $view['pageTitle'] = isset($messages['page_' . str_replace('-', '_', $pageKey) . '_title'])
+                ? $messages['page_' . str_replace('-', '_', $pageKey) . '_title'] : $page['title'];
+            $bodyTemplate = isset($page['template']) ? $page['template'] : null;
+            if (isset($manifest[$pageKey])) {
+                $ref = $manifest[$pageKey];
+                $english = PageReferenceReader::read($root . '/' . $ref['source'], $ref);
+                $assignment = isset($ref['assignment']) ? $ref['assignment'] : ($pageKey === 'legal' ? 'legalSections' : 'faqItems');
+                $view[$assignment] = $i18n->pages()->content($pageKey, $english, $locale);
+                $bodyTemplate = $ref['template'];
+            }
+            $renderer = new SmartyPreview($themeDir, $view);
             $desktopHtml = $renderer->render('includes/language-currency-switcher.tpl');
             $mobileHtml = $renderer->render('hostx_includes/language-currency-switcher-mobile.tpl');
 
@@ -206,7 +233,10 @@ foreach (array('en', 'fr', 'es', 'de', 'pt-BR') as $locale) {
                 'locale_name' => $i18n->preferences()->getLocale()->getNativeName(),
                 'currency'    => $currency->getCode(),
                 'page'        => $pageKey,
-                'page_title'  => $page['title'],
+                'page_title'  => $view['pageTitle'],
+                'body'        => $bodyTemplate !== null ? $renderer->render($bodyTemplate . '.tpl') : '',
+                'currency_id' => $currency->getId(),
+                'language_value' => WhmcsLocale::toWhmcsName($locale),
                 'uri'         => $uri,
                 'canonical'   => EquivalentUrl::canonical($uri),
                 'dir'         => $i18n->preferences()->getLocale()->getDirection(),
@@ -231,12 +261,15 @@ foreach (array('en', 'fr', 'es', 'de', 'pt-BR') as $locale) {
                 'locale_name' => $snapshot['locale_name'],
                 'currency'    => $currency->getCode(),
                 'page'        => $pageKey,
-                'page_title'  => $page['title'],
+                'page_title'  => $view['pageTitle'],
+                'uri'         => $uri,
+                'currency_id' => $currency->getId(),
+                'language_value' => WhmcsLocale::toWhmcsName($locale),
                 'dir'         => $snapshot['dir'],
             );
 
-            I18n::forget();
         }
+        I18n::forget();
     }
 }
 

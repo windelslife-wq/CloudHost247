@@ -54,10 +54,15 @@ if (!function_exists('ch247_i18n_autoload')) {
             $root = dirname(__DIR__, 2);
 
             $defaultLocale = 'en';
+            $rateTtl = 21600;
             try {
                 $setting = \WHMCS\Database\Capsule::table('tblconfiguration')
                     ->where('setting', 'Language')
                     ->first();
+                $ttl = \WHMCS\Database\Capsule::table('tbladdonmodules')->where('module', 'cloudhost247_i18n')->where('setting', 'rate_ttl')->first();
+                if ($ttl && ctype_digit((string) $ttl->value)) {
+                    $rateTtl = max(300, min(86400, (int) $ttl->value));
+                }
                 if ($setting && !empty($setting->value)) {
                     // WHMCS stores "english"; our catalogs are keyed "en".
                     $defaultLocale = WhmcsLocale::toCode($setting->value);
@@ -75,7 +80,8 @@ if (!function_exists('ch247_i18n_autoload')) {
                     }
                 },
                 'rate_cache'      => new FileRateCache($root . '/modules/addons/cloudhost247_i18n/cache/rates.json'),
-                'rate_ttl'        => 21600,
+                'rate_ttl'        => $rateTtl,
+                'language_value'  => array(WhmcsLocale::class, 'toWhmcsName'),
             ));
 
             // Apply ?language= / ?currency= and persist the outcome.
@@ -119,12 +125,10 @@ if (!function_exists('ch247_i18n_route_map')) {
      */
     function ch247_i18n_route_map()
     {
-        return array(
-            '/web-hosting.php'     => array('fr' => '/hebergement-web.php', 'es' => '/alojamiento-web.php', 'de' => '/webhosting.php', 'pt-BR' => '/hospedagem-web.php'),
-            '/vps-hosting.php'     => array('fr' => '/hebergement-vps.php', 'es' => '/alojamiento-vps.php', 'de' => '/vps-hosting.php', 'pt-BR' => '/hospedagem-vps.php'),
-            '/domain-search.php'   => array('fr' => '/recherche-domaine.php', 'es' => '/buscar-dominio.php', 'de' => '/domainsuche.php', 'pt-BR' => '/busca-dominio.php'),
-            '/help-center.php'     => array('fr' => '/centre-aide.php', 'es' => '/centro-ayuda.php', 'de' => '/hilfecenter.php', 'pt-BR' => '/central-ajuda.php'),
-        );
+        // No translated-slug routes are installed in this overlay. Keep
+        // the real path and use WHMCS's native language query parameter.
+        // Deployers may add verified routes here after installing rewrites.
+        return array();
     }
 }
 
@@ -171,17 +175,29 @@ add_hook('ClientAreaPage', 1, function (array $vars) {
     $cleanUri = EquivalentUrl::canonical($uri);
 
     $switcher = $i18n->switcher(ch247_i18n_route_map(), $cleanUri, $transactionCurrency);
+    $transactionNotice = null;
+    // Billing documents/core cart stay in their own currency. Do not claim
+    // the unchanged invoice has been converted merely because browsing differs.
+    $file = isset($vars['filename']) ? $vars['filename'] : pathinfo(parse_url($uri, PHP_URL_PATH), PATHINFO_FILENAME);
+    $lockedPage = in_array($file, array('viewinvoice', 'viewquote', 'clientarea', 'cart', 'upgrade', 'masspay'), true);
+    if ($lockedPage && $transactionCurrency !== null && $transactionCurrency->getId() !== $currency->getId()) {
+        $transactionNotice = $i18n->translator()->trans('currency_locked_help', array('charged' => $transactionCurrency->getCode()));
+        if ($switcher['notice'] !== null) {
+            $switcher['notice']['message'] = $transactionNotice;
+            $switcher['notice']['locked'] = true;
+        }
+    }
 
     // 3. Locale-aware snippets templates cannot compute on their own.
     $formatter = $i18n->formatter();
     $ratesUpdated = null;
     if ($rates !== null && $rates->getAsOf()) {
         $ratesUpdated = $formatter->date($rates->getAsOf(), 'medium');
-    } elseif ($rates !== null) {
-        $ratesUpdated = $formatter->date($rates->getRetrievedAt(), 'medium');
     }
 
     return array(
+        'LANG'             => array_merge(isset($vars['LANG']) && is_array($vars['LANG']) ? $vars['LANG'] : $_LANG, $messages),
+        'ch247TransactionNotice' => $transactionNotice,
         'ch247Switcher'     => $switcher,
         'ch247Locale'       => $locale->toArray(),
         'ch247Currency'     => $currency->toArray(),
@@ -189,6 +205,7 @@ add_hook('ClientAreaPage', 1, function (array $vars) {
         'ch247Direction'    => $locale->getDirection(),
         'ch247Alternates'   => ch247_i18n_alternates($switcher),
         'ch247RatesUpdated' => $ratesUpdated,
+        'ch247RatesRetrieved' => $rates !== null ? $formatter->dateTime($rates->getRetrievedAt()) : null,
         'ch247RateSource'   => $rates !== null ? $rates->getSource() : null,
     );
 });

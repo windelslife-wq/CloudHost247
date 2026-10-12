@@ -14,6 +14,7 @@ use Chs\Services\ClubService;
 use WHMCS\ClientArea;
 
 require_once __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/ch247_content.php';
 require_once __DIR__ . '/modules/addons/cloudhost247services/autoload.php';
 
 $ca = Landing::start('chs-discount-club', 'Discount Domain Club', 'discount-domain-club.php');

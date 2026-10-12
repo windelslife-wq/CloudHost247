@@ -58,80 +58,29 @@ final class PriceResolver
     {
         $normalised = $this->normaliseMatrix($priceByCurrency);
 
-        // 1. The honest case: a real price in the requested currency.
+        // An explicit transaction currency is authoritative: never silently
+        // substitute the shop default when it has no price in that currency.
         $direct = $this->pick($normalised, $target->getCode());
-        if ($direct !== null) {
-            $transaction = $transaction !== null ? $transaction : $target;
-
-            return ResolvedPrice::exact($direct, $transaction->getCode());
-        }
-
-        // 2. No catalogue price in the requested currency. Whatever we show
-        //    will be a conversion, so the amount actually charged lives in the
-        //    currency that does have a price: an explicit one if the caller
-        //    passed it (an invoice's own currency), otherwise the target, then
-        //    the shop default.
         $transaction = $transaction !== null ? $transaction : $this->chargeableCurrency($normalised, $target);
-
-        $transactionAmount = $this->pick($normalised, $transaction->getCode());
-        if ($transactionAmount === null) {
-            $default = $this->currencies->default();
-            if ($default->getCode() !== '') {
-                $transactionAmount = $this->pick($normalised, $default->getCode());
-                if ($transactionAmount !== null) {
-                    $transaction = $default;
-                }
-            }
-        }
-
-        if ($transactionAmount === null) {
-            $this->log(sprintf(
-                'No catalogue price for any known currency (wanted %s); refusing to invent one.',
-                $target->getCode()
-            ));
-
+        $charged = $this->pick($normalised, $transaction->getCode());
+        if ($charged === null) {
             return ResolvedPrice::unavailable($transaction->getCode());
         }
-
-        $from = $transactionAmount->getCurrency();
-
-        if ($from === $target->getCode()) {
-            return ResolvedPrice::exact($transactionAmount, $transaction->getCode());
+        if ($direct !== null) {
+            return ResolvedPrice::exact($direct, $transaction->getCode(), $charged);
         }
-
-        if ($this->rates === null) {
-            $this->log(sprintf('No rate table available to convert %s -> %s.', $from, $target->getCode()));
-
-            return ResolvedPrice::unavailable($transaction->getCode());
+        $from = $charged->getCurrency();
+        $rate = $this->rates !== null ? $this->rates->rate($from, $target->getCode()) : null;
+        if ($rate === null) {
+            return ResolvedPrice::unavailable($from, $charged);
         }
-        if (!$this->rates->has($from) || !$this->rates->has($target->getCode())) {
-            $this->log(sprintf(
-                'Missing rate for %s and/or %s in table from %s; not converting.',
-                $from,
-                $target->getCode(),
-                $this->rates->getSource()
-            ));
-
-            return ResolvedPrice::unavailable($transaction->getCode());
+        $minor = $this->rates->convertMinor($charged->getMinor(), $from, $target->getCode());
+        if ($minor === null) {
+            return ResolvedPrice::unavailable($from, $charged);
         }
-
-        $convertedMinor = $this->rates->convertMinor($transactionAmount->getMinor(), $from, $target->getCode());
-        if ($convertedMinor === null) {
-            return ResolvedPrice::unavailable($transaction->getCode());
-        }
-
-        $converted = Money::fromMinor($convertedMinor, $target->getCode(), $transactionAmount->getScale());
-        $rate = $this->rates->rate($target->getCode());
-
-        return ResolvedPrice::indicative(
-            $converted,
-            $transaction->getCode(),
-            $transactionAmount,
-            $rate !== null ? $rate : 0.0,
-            $from,
-            $this->rates->getAsOf(),
-            $this->rates->getSource()
-        );
+        $converted = Money::fromMinor($minor, $target->getCode(), $charged->getScale());
+        return ResolvedPrice::indicative($converted, $from, $charged, $rate, $from,
+            $this->rates->getAsOf(), $this->rates->getSource());
     }
 
     /**
@@ -206,7 +155,7 @@ final class PriceResolver
                 continue;
             }
             $value = is_numeric($amount) ? (float) $amount : null;
-            if ($value === null) {
+            if ($value === null || !is_finite($value) || $value < 0) {
                 continue;
             }
             $out[strtoupper(trim($code))] = Money::fromMajor($amount, strtoupper(trim($code)), 2);

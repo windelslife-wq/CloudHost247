@@ -162,6 +162,24 @@
     box-shadow: var(--ch247-switcher-shadow);
 }
 
+/* The HTML hidden attribute has its own UA display:none rule. Override it
+   explicitly for the no-JS fallback; merely omitting an enhanced selector
+   does not make links visible. Keep these lists in flow, never overlapping. */
+html:not(.ch247-js) .ch247-switcher { flex-wrap: wrap; }
+html:not(.ch247-js) .ch247-switcher__group {
+    flex-direction: column;
+    flex: 1 1 12rem;
+    min-width: 0;
+}
+html:not(.ch247-js) .ch247-switcher__panel[hidden] {
+    display: block;
+    position: static;
+    width: 100%;
+    max-width: 100%;
+    transform: none;
+    margin-top: 6px;
+}
+
 /* Only the JS-enhanced version hides the panel; without JS it stays open. */
 .ch247-js .ch247-switcher__panel[hidden] {
     display: none;
@@ -388,3 +406,17 @@
     white-space: nowrap;
     border: 0;
 }
+
+/* Charged-currency notice belongs next to real cart/document totals. */
+.ch247-currency-notice {
+    padding: .75rem 1rem;
+    margin-block: 1rem;
+    border: 1px solid #d6e2ed;
+    border-inline-start: 4px solid #235ba8;
+    border-radius: .4rem;
+    background: #f1f6fb;
+    color: #163858;
+    overflow-wrap: anywhere;
+}
+.ch247-invoice-preferences { display: flex; justify-content: flex-end; margin-block: 1rem; }
+.ch247-price-note { display: block; font-size: .75em; line-height: 1.45; margin-top: .35em; }

@@ -12,8 +12,8 @@
  *  - no third-party API key to manage or leak;
  *  - no rate this module could be accused of inventing.
  *
- * The cron installed alongside this module simply asks WHMCS to refresh its
- * feed; this class reads the result.
+ * Native WHMCS automation refreshes the feed. The optional addon cron only
+ * warms a cache of this configured table; it does not invent an API action.
  *
  * @package    CloudHost247\I18n
  * @copyright  Copyright (c) CloudHost247 Isc

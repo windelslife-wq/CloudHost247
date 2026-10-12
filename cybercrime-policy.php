@@ -9,16 +9,16 @@
  */
 
 define('CLIENTAREA', true);
-require $_SERVER['DOCUMENT_ROOT'] . '/init.php';
-require 'configadminioncontroller.php';
+require_once __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/ch247_content.php';
 
 use WHMCS\ClientArea;
 use WHMCS\Authentication\CurrentUser;
 
 $ca = new ClientArea();
-$ca->setPageTitle('Cybercrime Detection Policy');
+$ca->setPageTitle(ch247_page_title('cybercrime-policy', 'Cybercrime Detection Policy'));
 $ca->addToBreadCrumb('index.php', Lang::trans('globalsystemname'));
-$ca->addToBreadCrumb('cybercrime-policy.php', 'Cybercrime Detection Policy');
+$ca->addToBreadCrumb('cybercrime-policy.php', ch247_page_title('cybercrime-policy', 'Cybercrime Detection Policy'));
 $ca->initPage();
 
 /**
@@ -180,6 +180,6 @@ $cybercrimeSections = [
     ]
 ];
 
-$ca->assign('cybercrimeData', $cybercrimeSections);
+$ca->assign('cybercrimeData', ch247_content('cybercrime-policy', $cybercrimeSections));
 $ca->setTemplate('cybercrimepolicy');
 $ca->output();

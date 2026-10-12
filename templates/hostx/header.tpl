@@ -1,5 +1,5 @@
 <!DOCTYPE html>
- <html lang="en">
+ <html lang="{$ch247LocaleTag|default:'en'|escape:'html'}" dir="{$ch247Direction|default:'ltr'|escape:'html'}">
     <head>
 		{include file="$template/hostx_includes/seo-meta-tags.tpl"}
 		{include file="$template/includes/head.tpl"}

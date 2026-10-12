@@ -110,10 +110,21 @@ jobs:
       - name: Install jsdom (tools_center UI wiring)
         run: npm install --prefix /tmp/tc-jsdom --no-save jsdom@24
 
+      - name: Install pinned preview/browser test dependencies
+        run: npm ci --prefix staging/i18n-preview
+
       - name: JS suites + bundle syntax gate
         run: ci/run-js.sh
         env:
           NODE_PATH: /tmp/tc-jsdom/node_modules
+
+      - name: Build real Smarty snapshots and verify the browser UI
+        run: |
+          node staging/i18n-preview/build.mjs
+          node staging/i18n-preview/server.mjs &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          node staging/i18n-preview/browser-test.mjs
 
   php-lint:
     name: PHP syntax sweep
@@ -144,6 +155,9 @@ jobs:
       # Fails the build if U+F0B7, mojibake, replacement characters or fused
       # bullets appear in any text file. Documented exclusions are asserted,
       # not merely tolerated: a stale exclusion fails this step.
+      - name: Encoding guard regression tests
+        run: python3 ci/test-encoding.py
+
       - name: repo-wide encoding scan
         run: python3 ci/check-encoding.py
 

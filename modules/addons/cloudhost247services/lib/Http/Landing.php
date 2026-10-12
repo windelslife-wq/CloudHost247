@@ -37,6 +37,9 @@ class Landing
      */
     public static function start($templateFile, $title, $scriptName)
     {
+        if (function_exists('ch247_page_title')) {
+            $title = \ch247_page_title($scriptName, $title);
+        }
         $titleKeys = [
             'chs-ai-builder' => 'ai_website_builder',
             'chs-discount-club' => 'discount_domain_club',
@@ -44,7 +47,7 @@ class Landing
             'chs-valuation' => 'domain_valuation',
             'chs-unified-inbox' => 'unified_inbox',
         ];
-        if (isset($titleKeys[$templateFile])) {
+        if (!function_exists('ch247_page_title') && isset($titleKeys[$templateFile])) {
             $title = I18n::text($titleKeys[$templateFile], $title);
         }
         $ca = new \WHMCS\ClientArea();
