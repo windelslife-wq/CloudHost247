@@ -125,4 +125,78 @@ foreach (array('en', 'fr', 'es', 'de', 'pt-BR') as $locale) {
     T::notContains('placeholder cannot inject markup', $unsafe, $html);
     T::contains('placeholder is HTML-escaped', htmlspecialchars($unsafe, ENT_QUOTES, 'UTF-8'), $html);
 }
+/* ------------------------------------------- automatic detection snapshots -- */
+
+/**
+ * The detection scenarios rendered by staging/i18n-preview/render.php.
+ *
+ * These are real Smarty renders of the shipped switcher, produced by the same
+ * Detector and the same preference chain as production — only the geolocation
+ * table is a fixture. They are what makes "the browser tests pass" meaningful:
+ * the markup below is the markup a browser would receive.
+ *
+ * Skip (rather than fail) when the snapshots have not been built: this suite
+ * also runs in environments that never run `node staging/i18n-preview/build.mjs`.
+ */
+$detectionFile = CH247_REPO_ROOT . '/staging/i18n-preview/public/pages/detection.json';
+if (is_file($detectionFile)) {
+    section('automatic detection: rendered snapshots');
+
+    $scenarios = json_decode(file_get_contents($detectionFile), true);
+    T::ok('the detection scenarios were rendered', is_array($scenarios) && count($scenarios) >= 8);
+
+    $expected = array(
+        'new-english'    => array('language' => 'en', 'currency' => 'NGN', 'source_currency' => 'default',     'country' => null, 'detected' => true),
+        'new-french'     => array('language' => 'fr', 'currency' => 'NGN', 'source_currency' => 'default',     'country' => null, 'detected' => true),
+        'united-kingdom' => array('language' => 'en', 'currency' => 'GBP', 'source_currency' => 'geolocation', 'country' => 'GB', 'detected' => true),
+        'united-states'  => array('language' => 'en', 'currency' => 'USD', 'source_currency' => 'geolocation', 'country' => 'US', 'detected' => true),
+        'euro-area'      => array('language' => 'de', 'currency' => 'EUR', 'source_currency' => 'geolocation', 'country' => 'DE', 'detected' => true),
+        'unmapped'       => array('language' => 'en', 'currency' => 'NGN', 'source_currency' => 'default',     'country' => 'IN', 'detected' => true),
+        'unknown'        => array('language' => 'en', 'currency' => 'NGN', 'source_currency' => 'default',     'country' => null, 'detected' => true),
+        'returning'      => array('language' => 'de', 'currency' => 'GBP', 'source_currency' => 'stored',      'country' => 'US', 'detected' => false),
+        'unsupported'    => array('language' => 'en', 'currency' => 'NGN', 'source_currency' => 'default',     'country' => null, 'detected' => false),
+    );
+
+    foreach ($expected as $scenario => $expectation) {
+        $path = CH247_REPO_ROOT . '/staging/i18n-preview/public/pages/detection-' . $scenario . '.json';
+        T::ok('[' . $scenario . '] snapshot exists', is_file($path));
+        if (!is_file($path)) {
+            continue;
+        }
+
+        $snapshot = json_decode(file_get_contents($path), true);
+        T::is('[' . $scenario . '] language', $expectation['language'], $snapshot['language']);
+        T::is('[' . $scenario . '] currency', $expectation['currency'], $snapshot['currency']);
+        T::is('[' . $scenario . '] currency source', $expectation['source_currency'], $snapshot['currency_source']);
+        T::is('[' . $scenario . '] country', $expectation['country'], $snapshot['country']);
+        T::is('[' . $scenario . '] detected flag', $expectation['detected'], $snapshot['detected']);
+
+        $html = $snapshot['desktop'] . $snapshot['mobile'];
+
+        // The switcher always offers a way out: every supported language and
+        // every enabled currency is a real link, in every scenario.
+        T::is('[' . $scenario . '] one selected language + currency per instance', 4, substr_count($html, 'aria-current="true"'));
+        T::contains('[' . $scenario . '] the current page is preserved', 'web-hosting.php', $html);
+
+        // The detection source is exposed for support and for the browser tests.
+        T::contains('[' . $scenario . '] the language source is in the markup', 'data-ch247-detection-language="' . $snapshot['language_source'] . '"', $html);
+        T::contains('[' . $scenario . '] the currency source is in the markup', 'data-ch247-detection-currency="' . $snapshot['currency_source'] . '"', $html);
+
+        // Only an automatic choice is announced as one.
+        if ($snapshot['detected']) {
+            T::contains('[' . $scenario . '] an automatic choice is explained', 'data-ch247-detection-notice', $html);
+            T::ok('[' . $scenario . '] in the visitor\'s own language', $snapshot['message'] !== null && $snapshot['message'] !== '');
+        } else {
+            T::notContains('[' . $scenario . '] a saved choice is not called automatic', 'data-ch247-detection-notice', $html);
+        }
+
+        T::notContains('[' . $scenario . '] no unresolved Smarty variables', '{$', $html);
+    }
+
+    // A detected currency must be changeable in one click, on the same page.
+    $snapshot = json_decode(file_get_contents(CH247_REPO_ROOT . '/staging/i18n-preview/public/pages/detection-euro-area.json'), true);
+    T::contains('the detected currency can be switched on the same page', 'web-hosting.php?currency=', $snapshot['desktop']);
+    T::contains('and the language too', 'web-hosting.php?language=', $snapshot['desktop']);
+}
+
 T::summary();

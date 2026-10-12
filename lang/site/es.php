@@ -41,6 +41,9 @@ return array(
         'switcher_close'             => 'Cerrar el menú',
         'switcher_no_options'        => 'No hay otras opciones disponibles',
         'switcher_help'              => 'Tus preferencias de idioma y moneda son independientes y se guardan para tu próxima visita.',
+        'detection_auto_language'    => 'Hemos configurado el idioma en {name} automáticamente, según las preferencias de su navegador.',
+        'detection_auto_currency'    => 'Hemos configurado la moneda en {code} automáticamente, según su ubicación.',
+        'detection_change_hint'      => 'Puede cambiar cualquiera de las dos opciones aquí en cualquier momento; su elección se recordará.',
 
         // ------------------------------------------------------- currency ----
         'currency_indicative_help'    => 'Conversión orientativa. El cargo se realizará en {charged}.',

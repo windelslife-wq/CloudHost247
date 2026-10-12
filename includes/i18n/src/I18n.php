@@ -31,8 +31,20 @@ namespace CloudHost247\I18n;
 use CloudHost247\I18n\Contracts\CurrencySourceInterface;
 use CloudHost247\I18n\Contracts\PreferenceStoreInterface;
 use CloudHost247\I18n\Contracts\RateSourceInterface;
+use CloudHost247\I18n\Detection\ArrayGeoCache;
+use CloudHost247\I18n\Detection\CachedGeoLocator;
+use CloudHost247\I18n\Detection\ChainedGeoLocator;
+use CloudHost247\I18n\Detection\ClientIp;
+use CloudHost247\I18n\Detection\CountryCurrencyMap;
+use CloudHost247\I18n\Detection\Detector;
+use CloudHost247\I18n\Detection\FileGeoCache;
+use CloudHost247\I18n\Detection\GeoLocatorInterface;
+use CloudHost247\I18n\Detection\HeaderGeoLocator;
+use CloudHost247\I18n\Detection\HttpGeoLocator;
+use CloudHost247\I18n\Detection\RequestContext;
 use CloudHost247\I18n\Preference\ArrayPreferenceStore;
 use CloudHost247\I18n\Preference\ChainedPreferenceStore;
+use CloudHost247\I18n\Preference\CookiePreferenceStore;
 use CloudHost247\I18n\Preference\SessionPreferenceStore;
 use CloudHost247\I18n\Rate\ArrayRateCache;
 use CloudHost247\I18n\Rate\CachedRateSource;
@@ -71,6 +83,12 @@ final class I18n
 
     /** @var PreferenceStoreInterface */
     private $store;
+
+    /** @var Detector|null */
+    private $detector;
+
+    /** @var RequestContext */
+    private $request;
 
     /** @var RateSourceInterface|null */
     private $rateSource;
@@ -116,9 +134,18 @@ final class I18n
             ? $config['page_content']
             : new PageContent($this->rootDirectory());
 
+        $options = isset($config['detection']) && is_array($config['detection']) ? $config['detection'] : array();
+        $this->request = isset($config['request']) && $config['request'] instanceof RequestContext
+            ? $config['request']
+            : RequestContext::fromGlobals($this->trustedProxies($options, $config));
         $this->store = $this->buildStore($config);
         $this->currencySelector = new CurrencySelector($this->currencies, $this->store);
-        $this->preferences = new Preferences($this->locales, $this->currencySelector, $this->store);
+        $this->preferences = new Preferences(
+            $this->locales,
+            $this->currencySelector,
+            $this->store,
+            $this->buildDetector($config, $this->request)
+        );
 
         if (isset($config['rate_source'])) {
             $this->rateSource = $config['rate_source'] instanceof RateSourceInterface
@@ -184,8 +211,14 @@ final class I18n
      */
     public function applyRequest(array $request): array
     {
+        // Explicit parameters first: they are the customer overriding
+        // everything, and detection must not be able to undo them.
         $applied = $this->preferences->applyRequest($request);
+
+        // Resolving both preferences now runs detection at most once per
+        // request, in one place, before anything has been rendered.
         $this->translator->setLocale($this->preferences->getLanguage());
+        $this->preferences->getCurrency();
 
         return $applied;
     }
@@ -240,6 +273,49 @@ final class I18n
     public function store(): PreferenceStoreInterface
     {
         return $this->store;
+    }
+
+    /**
+     * The automatic-detection engine, or null when detection is disabled.
+     *
+     * @return Detector|null
+     */
+    public function detector()
+    {
+        return $this->detector;
+    }
+
+    /**
+     * The captured request detection reads from.
+     *
+     * @return RequestContext
+     */
+    public function request(): RequestContext
+    {
+        return $this->request;
+    }
+
+    /**
+     * Why this visitor is seeing this language and this currency.
+     *
+     * @return array<string,mixed>
+     */
+    public function detection(): array
+    {
+        return $this->preferences->explain();
+    }
+
+    /**
+     * Send any cookies the preference stores queued.
+     *
+     * Must be called before output is produced — the hook does it at the end
+     * of the ClientAreaPage handler.
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    public function flushCookies(): array
+    {
+        return $this->preferences->flushCookies();
     }
 
     /**
@@ -351,6 +427,33 @@ final class I18n
     // ----------------------------------------------------------- internals --
 
     /**
+     * Networks whose forwarded headers may be believed.
+     *
+     * An empty list means "trust nothing but REMOTE_ADDR", which is the safe
+     * default and the reason a deployer has to opt in explicitly.
+     *
+     * @param array $options detection options
+     * @param array $config  boot config
+     *
+     * @return array
+     */
+    private function trustedProxies(array $options, array $config): array
+    {
+        foreach (array($options, $config) as $source) {
+            if (isset($source['trusted_proxies'])) {
+                $proxies = $source['trusted_proxies'];
+                if (is_string($proxies)) {
+                    $proxies = preg_split('/[\s,]+/', trim($proxies)) ?: array();
+                }
+
+                return is_array($proxies) ? array_values(array_filter(array_map('strval', $proxies))) : array();
+            }
+        }
+
+        return array();
+    }
+
+    /**
      * @param array $config
      *
      * @return PreferenceStoreInterface
@@ -365,7 +468,142 @@ final class I18n
         $account = new WhmcsClientPreferenceStore(
             isset($config['client_id_resolver']) ? $config['client_id_resolver'] : null
         );
+        $cookie = $this->buildCookieStore($config);
 
-        return new ChainedPreferenceStore(array($session, $account));
+        // Reads: session (what I just clicked) -> account (what I saved on my
+        // profile) -> cookie (what I chose on a previous visit).
+        //
+        // The account outranks the cookie on purpose: a returning customer who
+        // is signed in is bound by their account preference, not by whatever
+        // an anonymous browser picked up earlier.
+        $stores = array($session, $account);
+        if ($cookie !== null) {
+            $stores[] = $cookie;
+        }
+
+        return new ChainedPreferenceStore($stores);
+    }
+
+    /**
+     * @param array $config
+     *
+     * @return CookiePreferenceStore|null
+     */
+    private function buildCookieStore(array $config)
+    {
+        $options = isset($config['cookie']) && is_array($config['cookie']) ? $config['cookie'] : array();
+        if (isset($options['enabled']) && !$options['enabled']) {
+            return null;
+        }
+        if (isset($config['cookie_store']) && $config['cookie_store'] instanceof CookiePreferenceStore) {
+            return $config['cookie_store'];
+        }
+
+        return new CookiePreferenceStore(
+            $this->request->cookies(),
+            $options,
+            array(
+                // Every value read back from a cookie is re-validated here,
+                // against the same allowlists the switcher itself uses.
+                'language' => function ($value) {
+                    $locale = $this->locales->find((string) $value);
+
+                    return $locale !== null && $locale->isSelectable() ? $locale->getCode() : null;
+                },
+                'currency' => function ($value) {
+                    $currency = $this->currencies->find($value);
+
+                    return $currency !== null ? (string) $currency->getId() : null;
+                },
+            ),
+            isset($options['sender']) && is_callable($options['sender']) ? $options['sender'] : null
+        );
+    }
+
+    /**
+     * Build the detection engine, or return null when detection is off.
+     *
+     * @param array          $config
+     * @param RequestContext $request
+     *
+     * @return Detector|null
+     */
+    private function buildDetector(array $config, RequestContext $request)
+    {
+        $options = isset($config['detection']) && is_array($config['detection']) ? $config['detection'] : array();
+
+        if (isset($config['detector']) && $config['detector'] instanceof Detector) {
+            return $this->detector = $config['detector'];
+        }
+        if (isset($options['enabled']) && !$options['enabled']) {
+            return $this->detector = null;
+        }
+
+        $geo = $this->buildGeoLocator($options, $request);
+        $map = isset($options['country_currency_map']) && $options['country_currency_map'] instanceof CountryCurrencyMap
+            ? $options['country_currency_map']
+            : new CountryCurrencyMap(
+                null,
+                isset($options['country_currency_overrides']) && is_array($options['country_currency_overrides'])
+                    ? $options['country_currency_overrides']
+                    : array()
+            );
+
+        return $this->detector = new Detector($this->locales, $this->currencies, $request, $geo, $map, $options, $this->logger);
+    }
+
+    /**
+     * Geolocation is opt-in: with nothing configured, nothing is looked up and
+     * the shop default currency is used.
+     *
+     * @param array          $options
+     * @param RequestContext $request
+     *
+     * @return GeoLocatorInterface
+     */
+    private function buildGeoLocator(array $options, RequestContext $request)
+    {
+        if (isset($options['geo']) && $options['geo'] instanceof GeoLocatorInterface) {
+            return $options['geo'];
+        }
+
+        $locators = array();
+
+        // 1. The country a trusted CDN/edge already put on the request. Free,
+        //    instant, no third party sees the address.
+        $header = isset($options['country_header']) ? (string) $options['country_header'] : HeaderGeoLocator::DEFAULT_HEADER;
+        $locators[] = new HeaderGeoLocator($request, $header);
+
+        // 2. A server-side lookup, only when an administrator configured one.
+        $http = new HttpGeoLocator(
+            array(
+                'endpoint'      => isset($options['geo_endpoint']) ? (string) $options['geo_endpoint'] : '',
+                'field'         => isset($options['geo_field']) ? (string) $options['geo_field'] : 'country_code',
+                'timeout'       => isset($options['geo_timeout']) ? (int) $options['geo_timeout'] : 2,
+                'allowed_hosts' => isset($options['geo_allowed_hosts']) && is_array($options['geo_allowed_hosts'])
+                    ? $options['geo_allowed_hosts']
+                    : array(),
+                'allow_http'    => !empty($options['geo_allow_http']),
+            ),
+            null,
+            $this->logger
+        );
+        if ($http->isConfigured()) {
+            $locators[] = $http;
+        }
+
+        $chain = new ChainedGeoLocator($locators, $this->logger);
+
+        $cache = isset($options['geo_cache']) && $options['geo_cache'] instanceof GeoCacheInterface
+            ? $options['geo_cache']
+            : (isset($options['geo_cache_path']) && (string) $options['geo_cache_path'] !== ''
+                ? new FileGeoCache((string) $options['geo_cache_path'])
+                : new ArrayGeoCache());
+
+        return new CachedGeoLocator(
+            $chain,
+            $cache,
+            isset($options['geo_ttl']) ? (int) $options['geo_ttl'] : 86400
+        );
     }
 }

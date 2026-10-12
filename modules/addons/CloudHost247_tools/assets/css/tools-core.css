@@ -451,6 +451,58 @@
 .ch247-mega__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
 .ch247-mega__list a { display: block; padding: 5px 0; font-size: .875rem; text-decoration: none; color: inherit; }
 .ch247-mega__list a:hover { color: var(--ch247-primary); text-decoration: underline; }
+
+/* -------------------------------------------------------------- */
+/*  Language / currency switcher (shared i18n library)            */
+/* -------------------------------------------------------------- */
+
+.ch247-locale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ch247-border);
+}
+
+.ch247-locale__list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+}
+
+.ch247-locale__list a {
+  display: flex;
+  align-items: center;
+  /* 44px minimum: the same touch-target floor the theme switcher is
+     verified against at 320-1280px. */
+  min-height: 44px;
+  padding: 8px 11px;
+  border: 1px solid var(--ch247-border);
+  border-radius: var(--ch247-radius-sm);
+  background: var(--ch247-bg);
+  color: var(--ch247-muted);
+  font-size: .8125rem;
+  line-height: 1.3;
+  text-decoration: none;
+}
+
+.ch247-locale__list a:hover,
+.ch247-locale__list a:focus-visible {
+  border-color: var(--ch247-primary);
+  color: var(--ch247-text);
+}
+
+.ch247-locale__list a[aria-current="true"] {
+  border-color: var(--ch247-primary);
+  background: var(--ch247-surface);
+  color: var(--ch247-text);
+  font-weight: 600;
+}
 .ch247-mega__footer {
   margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--ch247-border);
   display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center;

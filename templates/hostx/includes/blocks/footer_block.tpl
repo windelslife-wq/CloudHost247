@@ -79,22 +79,22 @@
                     </ul>
                     <h4>{if $LANG.footerdomainservices}{$LANG.footerdomainservices}{else}Domain Services{/if}</h4>
                     <ul class="footer_links">
-                        <li><a href="{$WEB_ROOT}/domain-search.php">Domain Search</a></li>
-                        <li><a href="{$WEB_ROOT}/bulk-domain-search.php">Bulk Domain Search</a></li>
-                        <li><a href="{$WEB_ROOT}/domain-transfer.php">Transfer a Domain</a></li>
-                        <li><a href="{$WEB_ROOT}/tld-directory.php">Domain Extensions</a></li>
-                        <li><a href="{$WEB_ROOT}/domain-valuation.php">Domain Valuation</a></li>
-                        <li><a href="{$WEB_ROOT}/domain-auctions.php">Domain Auctions</a></li>
-                        <li><a href="{$WEB_ROOT}/discount-domain-club.php">Discount Domain Club</a></li>
-                        <li><a href="{$WEB_ROOT}/whois-lookup.php">WHOIS Lookup</a></li>
+                        <li><a href="{$WEB_ROOT}/domain-search.php">{$LANG.footer_domain_search}</a></li>
+                        <li><a href="{$WEB_ROOT}/bulk-domain-search.php">{$LANG.footer_bulk_domain_search}</a></li>
+                        <li><a href="{$WEB_ROOT}/domain-transfer.php">{$LANG.footer_transfer_a_domain}</a></li>
+                        <li><a href="{$WEB_ROOT}/tld-directory.php">{$LANG.footer_domain_extensions}</a></li>
+                        <li><a href="{$WEB_ROOT}/domain-valuation.php">{$LANG.footer_domain_valuation}</a></li>
+                        <li><a href="{$WEB_ROOT}/domain-auctions.php">{$LANG.footer_domain_auctions}</a></li>
+                        <li><a href="{$WEB_ROOT}/discount-domain-club.php">{$LANG.footer_discount_domain_club}</a></li>
+                        <li><a href="{$WEB_ROOT}/whois-lookup.php">{$LANG.footer_whois_lookup}</a></li>
                     </ul>
                     <h4>{if $LANG.footergrowthservices}{$LANG.footergrowthservices}{else}Grow Online{/if}</h4>
                     <ul class="footer_links">
-                        <li><a href="{$WEB_ROOT}/website-builder.php">Build Your Website</a></li>
-                        <li><a href="{$WEB_ROOT}/ai-website-builder.php">AI Website Builder</a></li>
-                        <li><a href="{$WEB_ROOT}/logo-maker.php">Logo Maker</a></li>
-                        <li><a href="{$WEB_ROOT}/digital-marketing.php">Digital Marketing</a></li>
-                        <li><a href="{$WEB_ROOT}/hire-an-expert.php">Hire an Expert</a></li>
+                        <li><a href="{$WEB_ROOT}/website-builder.php">{$LANG.footer_build_your_website}</a></li>
+                        <li><a href="{$WEB_ROOT}/ai-website-builder.php">{$LANG.footer_ai_website_builder}</a></li>
+                        <li><a href="{$WEB_ROOT}/logo-maker.php">{$LANG.footer_logo_maker}</a></li>
+                        <li><a href="{$WEB_ROOT}/digital-marketing.php">{$LANG.footer_digital_marketing}</a></li>
+                        <li><a href="{$WEB_ROOT}/hire-an-expert.php">{$LANG.footer_hire_an_expert}</a></li>
                     </ul> 
                 </div>
             </div>

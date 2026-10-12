@@ -20,8 +20,9 @@ declare(strict_types=1);
 namespace CloudHost247\I18n\Whmcs;
 
 use CloudHost247\I18n\Contracts\PreferenceStoreInterface;
+use CloudHost247\I18n\Preference\NamedPreferenceStoreInterface;
 
-final class WhmcsClientPreferenceStore implements PreferenceStoreInterface
+final class WhmcsClientPreferenceStore implements PreferenceStoreInterface, NamedPreferenceStoreInterface
 {
     /** @var callable|null fn(): int|null — current client id. */
     private $clientIdResolver;
@@ -90,6 +91,11 @@ final class WhmcsClientPreferenceStore implements PreferenceStoreInterface
     public function isWritable(): bool
     {
         return $this->clientId() !== null;
+    }
+
+    public function storeName(): string
+    {
+        return 'account';
     }
 
     /**

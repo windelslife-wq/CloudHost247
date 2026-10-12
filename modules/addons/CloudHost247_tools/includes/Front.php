@@ -46,6 +46,9 @@ class CloudHost247ToolsFront
     {
         $path = substr(trim((string) $path), 0, 512);
         $route = CloudHost247ToolsRouter::resolve($path, $query);
+        // ?language= / ?currency= are honoured on a tool page too, so the
+        // shell needs the query the visitor actually sent.
+        $route['request_query'] = $query;
 
         switch ($route['type']) {
             case 'api':
@@ -304,11 +307,15 @@ class CloudHost247ToolsFront
             $scripts .= '<script src="' . call_user_func($e, $js) . '" defer></script>' . "\n";
         }
 
+        $requestQuery = isset($route['request_query']) && is_array($route['request_query'])
+            ? $route['request_query']
+            : array();
+
         $html = '<!DOCTYPE html>' . "\n"
-            . '<html lang="en">' . "\n"
+            . '<html ' . self::localeAttributes($requestQuery) . '>' . "\n"
             . '<head>' . "\n" . $head . "\n" . '</head>' . "\n"
             . '<body>' . "\n"
-            . self::siteHeader($route)
+            . self::siteHeader($route, $requestQuery)
             . '<main id="ch247-main">' . "\n" . $bodyHtml . "\n" . '</main>' . "\n"
             . self::siteFooter()
             . $scripts
@@ -327,7 +334,7 @@ class CloudHost247ToolsFront
         return ['status' => $status, 'headers' => $headers, 'body' => $html];
     }
 
-    protected static function siteHeader(array $route)
+    protected static function siteHeader(array $route, array $query = array())
     {
         $e = [__CLASS__, 'e'];
         $cats = CloudHost247ToolsCatalog::categories();
@@ -353,8 +360,186 @@ class CloudHost247ToolsFront
             . '<div class="ch247-mega" data-ch247-megamenu id="ch247-mega" hidden>' . "\n"
             . '<ul class="ch247-mega__list">' . "\n" . $menu . '</ul>' . "\n"
             . '</div>' . "\n"
+            . self::localeSwitcher($query)
             . '</div>' . "\n"
             . '</header>' . "\n";
+    }
+
+    /**
+     * The customer's language / currency, resolved by the shared i18n library.
+     *
+     * The Tools portal ships its own English copy (translating it is tracked
+     * separately), but the *selected* language must still be honoured here:
+     * the document declares it, and the visitor can change it without going
+     * back to the main site.
+     *
+     * Everything is optional: when the overlay is deployed without
+     * includes/i18n, or when WHMCS is absent, this returns null and the shell
+     * stays exactly as it was.
+     *
+     * @return \CloudHost247\I18n\I18n|null
+     */
+    protected static function i18n(array $query = array())
+    {
+        static $instance = null;
+        static $booted = false;
+
+        if (!$booted) {
+            $booted = true;
+            $root = self::repoRoot();
+
+            try {
+                if ($root === null || !is_file($root . '/includes/i18n/autoload.php')) {
+                    return null;
+                }
+                require_once $root . '/includes/i18n/autoload.php';
+                $instance = \CloudHost247\I18n\I18n::boot(array(
+                    'root'      => $root,
+                    // Detection is a storefront concern; a tool page must stay
+                    // deterministic and must not trigger an IP lookup.
+                    'detection' => array('enabled' => false),
+                ));
+            } catch (\Throwable $e) {
+                $instance = null;
+            }
+        }
+
+        if ($instance === null) {
+            return null;
+        }
+
+        // Applied per call, not per boot: whichever page asks first must not
+        // freeze the choice for the rest of the request. applyRequest() is
+        // idempotent and only acts on ?language= / ?currency=.
+        try {
+            if ($query === array() && isset($_GET) && is_array($_GET)) {
+                $query = $_GET;
+            }
+            $instance->applyRequest($query);
+            // The theme's hook normally does this. A tool page renders its own
+            // document, so an explicit ?language= / ?currency= chosen here
+            // would otherwise never reach the visitor's cookie.
+            $instance->flushCookies();
+        } catch (\Throwable $e) {
+            // Never let a preference problem break a tool page.
+        }
+
+        return $instance;
+    }
+
+    /**
+     * Absolute path to the WHMCS root — the directory that holds
+     * `includes/i18n/`.
+     *
+     * In a normal install `modules/addons/CloudHost247_tools/includes/Front.php`
+     * sits four levels below it. The search (rather than a hard-coded depth)
+     * keeps this working when the addon is vendored somewhere else, which is
+     * exactly what the offline test harness does.
+     *
+     * @return string|null Null when the i18n overlay is not deployed alongside
+     *                     this addon.
+     */
+    protected static function repoRoot()
+    {
+        $dir = __DIR__;
+        for ($depth = 0; $depth < 8; $depth++) {
+            if (is_file($dir . '/includes/i18n/autoload.php')) {
+                return $dir;
+            }
+            $parent = dirname($dir);
+            if ($parent === $dir) {
+                break;
+            }
+            $dir = $parent;
+        }
+
+        // php-wasm mounts the checkout at /repo (see tests/run.mjs).
+        if (is_file('/repo/includes/i18n/autoload.php')) {
+            return '/repo';
+        }
+
+        return null;
+    }
+
+    /**
+     * `lang` / `dir` for the document, matching the customer's language.
+     *
+     * @return string
+     */
+    protected static function localeAttributes(array $query = array())
+    {
+        $i18n = self::i18n($query);
+        if ($i18n === null) {
+            return 'lang="en"';
+        }
+
+        try {
+            $locale = $i18n->preferences()->getLocale();
+
+            return 'lang="' . self::e($locale->getIntlTag()) . '"'
+                . ($locale->getDirection() === 'rtl' ? ' dir="rtl"' : '');
+        } catch (\Throwable $e) {
+            return 'lang="en"';
+        }
+    }
+
+    /**
+     * A compact language / currency switcher for the Tools header.
+     *
+     * Same URLs the theme switcher builds, so a choice made here is the same
+     * choice everywhere else: `?language=` / `?currency=` on the current page,
+     * validated against the server-side allowlists by the library.
+     *
+     * @return string '' when the library is unavailable.
+     */
+    protected static function localeSwitcher(array $query = array())
+    {
+        $i18n = self::i18n($query);
+        if ($i18n === null) {
+            return '';
+        }
+
+        try {
+            $uri = isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUEST_URI'] : '/tools';
+            $uri = \CloudHost247\I18n\EquivalentUrl::canonical($uri);
+            $view = $i18n->switcher(array(), $uri);
+            $e = array(__CLASS__, 'e');
+
+            $language = '';
+            foreach ($view['language']['options'] as $option) {
+                $language .= '<li><a href="' . call_user_func($e, $option['url']) . '"'
+                    . ' lang="' . call_user_func($e, $option['lang']) . '"'
+                    . ' hreflang="' . call_user_func($e, $option['hreflang']) . '"'
+                    . (!empty($option['selected']) ? ' aria-current="true"' : '') . '>'
+                    . call_user_func($e, $option['native_name']) . '</a></li>' . "\n";
+            }
+
+            $currency = '';
+            foreach ($view['currency']['options'] as $option) {
+                $currency .= '<li><a href="' . call_user_func($e, $option['url']) . '"'
+                    . (!empty($option['selected']) ? ' aria-current="true"' : '') . '>'
+                    . call_user_func($e, $option['code']) . '</a></li>' . "\n";
+            }
+
+            // Nothing to choose from (no WHMCS currency table yet, or a single
+            // language): render nothing rather than an empty control.
+            if ($language === '' && $currency === '') {
+                return '';
+            }
+
+            $html = '<nav class="ch247-locale" aria-label="Language and currency">' . "\n";
+            if ($language !== '') {
+                $html .= '<ul class="ch247-locale__list">' . "\n" . $language . '</ul>' . "\n";
+            }
+            if ($currency !== '') {
+                $html .= '<ul class="ch247-locale__list ch247-locale__list--currency">' . "\n"
+                    . $currency . '</ul>' . "\n";
+            }
+
+            return $html . '</nav>' . "\n";
+        } catch (\Throwable $e) {
+            return '';
+        }
     }
 
     protected static function siteFooter()

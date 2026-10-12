@@ -18,7 +18,7 @@
                   <img src="{$WEB_ROOT}/templates/{$template}/images/logo-white.png" alt="logo-footer" class="logo-dark img-responsive">
                </div>
                <div class="col-md-9 col-sm-12 ">
-                  <h2>We love helping you build your brand.</h2>
+                  <h2>{$LANG.footer_latest_tagline}</h2>
                </div>
             </div>
          </div>
@@ -26,55 +26,55 @@
          <div class="for-desktop">
             <div class="col-md-3 col-sm-6 col-xs-6 ">
                <div class="footer_col">
-                  <h4>Domains</h4>
+                  <h4>{$LANG.nav_domains}</h4>
                   <ul class="footer_links">
-                     <li><a href="{$WEB_ROOT}/domain-search.php">Register New Domain</a></li>
-                     <li><a href="{$WEB_ROOT}/domain-transfer.php">Transfer Domain</a></li>
-                     <li><a href="{$WEB_ROOT}/tld-directory.php">Domain Extensions</a></li>
-                     <li><a href="{$WEB_ROOT}/domain-broker.php">Domain Broker Service</a></li>
-                     <li><a href="{$WEB_ROOT}/ssl-certificate.php">SSL Security</a></li>
+                     <li><a href="{$WEB_ROOT}/domain-search.php">{$LANG.footer_register_new_domain}</a></li>
+                     <li><a href="{$WEB_ROOT}/domain-transfer.php">{$LANG.footer_transfer_domain}</a></li>
+                     <li><a href="{$WEB_ROOT}/tld-directory.php">{$LANG.footer_domain_extensions}</a></li>
+                     <li><a href="{$WEB_ROOT}/domain-broker.php">{$LANG.footer_domain_broker_service}</a></li>
+                     <li><a href="{$WEB_ROOT}/ssl-certificate.php">{$LANG.footer_ssl_security}</a></li>
                   </ul>
-                  <h4>Hosting</h4>
+                  <h4>{$LANG.nav_hosting}</h4>
                   <ul class="footer_links">
-                     <li><a href="{$WEB_ROOT}/wordpress-hosting.php">Wordpress Hosting</a></li>
-                     <li><a href="{$WEB_ROOT}/windows-hosting.php">Window Hosting</a></li>
-                     <li><a href="{$WEB_ROOT}/plesk-hosting.php">Plesk Hosting</a></li>
-                     <li><a href="{$WEB_ROOT}/cpanel-hosting.php">cPanel Hosting</a></li>
-                  </ul>
-               </div>
-            </div>
-            <div class="col-md-3 col-sm-6 col-xs-6 ">
-               <div class="footer_col">
-                  <h4>Websites</h4>
-                  <ul class="footer_links">
-                     <li><a href="{$WEB_ROOT}/website-builder.php">Website Builder</a></li>
-                     <li><a href="{$WEB_ROOT}/website-design.php">Website Design</a></li>
-                     <li><a href="{$WEB_ROOT}/future-element.php">Future Element</a></li>
-                     <li><a href="{$WEB_ROOT}/web-hosting.php">Web Hosting</a></li>
-                  </ul>
-                  <h4>Servers</h4>
-                  <ul class="footer_links">
-                     <li><a href="{$WEB_ROOT}/vps-hosting.php">VPS Hosting</a></li>
-                     <li><a href="{$WEB_ROOT}/vps-publiccloud.php">Public Cloud</a></li>
-                     <li><a href="{$WEB_ROOT}/vps-privatecloud.php">Private Cloud</a></li>
-                     <li><a href="{$WEB_ROOT}/enterprise-servers.php">Enterprise Server</a></li>
+                     <li><a href="{$WEB_ROOT}/wordpress-hosting.php">{$LANG.footer_wordpress_hosting}</a></li>
+                     <li><a href="{$WEB_ROOT}/windows-hosting.php">{$LANG.footer_windows_hosting}</a></li>
+                     <li><a href="{$WEB_ROOT}/plesk-hosting.php">{$LANG.footer_plesk_hosting}</a></li>
+                     <li><a href="{$WEB_ROOT}/cpanel-hosting.php">{$LANG.footer_cpanel_hosting}</a></li>
                   </ul>
                </div>
             </div>
             <div class="col-md-3 col-sm-6 col-xs-6 ">
                <div class="footer_col">
-                  <h4>Domain Services</h4>
+                  <h4>{$LANG.footer_websites}</h4>
                   <ul class="footer_links">
-                     <li><a href="{$WEB_ROOT}/domain-valuation.php">Domain Valuation</a></li>
-                     <li><a href="{$WEB_ROOT}/domain-auctions.php">Domain Auctions</a></li>
-                     <li><a href="{$WEB_ROOT}/discount-domain-club.php">Discount Domain Club</a></li>
-                     <li><a href="{$WEB_ROOT}/whois-lookup.php">WHOIS Lookup</a></li>
+                     <li><a href="{$WEB_ROOT}/website-builder.php">{$LANG.footer_website_builder}</a></li>
+                     <li><a href="{$WEB_ROOT}/website-design.php">{$LANG.footer_website_design}</a></li>
+                     <li><a href="{$WEB_ROOT}/future-element.php">{$LANG.footer_future_element}</a></li>
+                     <li><a href="{$WEB_ROOT}/web-hosting.php">{$LANG.footer_web_hosting}</a></li>
                   </ul>
-                  <h4>Security &amp; Trust</h4>
+                  <h4>{$LANG.nav_servers}</h4>
                   <ul class="footer_links">
-                     <li><a href="{$WEB_ROOT}/ssl-certificate.php">SSL Certificates</a></li>
-                     <li><a href="{$WEB_ROOT}/backup-policy.php">Website Backup</a></li>
-                     <li><a href="{$WEB_ROOT}/data-protection-standards.php">Website Security</a></li>
+                     <li><a href="{$WEB_ROOT}/vps-hosting.php">{$LANG.footer_vps_hosting}</a></li>
+                     <li><a href="{$WEB_ROOT}/vps-publiccloud.php">{$LANG.footer_public_cloud}</a></li>
+                     <li><a href="{$WEB_ROOT}/vps-privatecloud.php">{$LANG.footer_private_cloud}</a></li>
+                     <li><a href="{$WEB_ROOT}/enterprise-servers.php">{$LANG.footer_enterprise_server}</a></li>
+                  </ul>
+               </div>
+            </div>
+            <div class="col-md-3 col-sm-6 col-xs-6 ">
+               <div class="footer_col">
+                  <h4>{$LANG.footer_domain_services}</h4>
+                  <ul class="footer_links">
+                     <li><a href="{$WEB_ROOT}/domain-valuation.php">{$LANG.footer_domain_valuation}</a></li>
+                     <li><a href="{$WEB_ROOT}/domain-auctions.php">{$LANG.footer_domain_auctions}</a></li>
+                     <li><a href="{$WEB_ROOT}/discount-domain-club.php">{$LANG.footer_discount_domain_club}</a></li>
+                     <li><a href="{$WEB_ROOT}/whois-lookup.php">{$LANG.footer_whois_lookup}</a></li>
+                  </ul>
+                  <h4>{$LANG.footer_security_trust}</h4>
+                  <ul class="footer_links">
+                     <li><a href="{$WEB_ROOT}/ssl-certificate.php">{$LANG.footer_ssl_certificates}</a></li>
+                     <li><a href="{$WEB_ROOT}/backup-policy.php">{$LANG.footer_website_backup}</a></li>
+                     <li><a href="{$WEB_ROOT}/data-protection-standards.php">{$LANG.footer_website_security}</a></li>
                   </ul>
                </div>
             </div>
@@ -82,16 +82,16 @@
                <div class="footer_col">
                   <h4>CloudHost247</h4>
                   <ul class="footer_links">
-                     <li><a href="{$WEB_ROOT}/aboutus.php">Why CloudHost247</a></li>
-                     <li><a href="{$WEB_ROOT}/faqs.php">Frequent Questions</a></li>
-                     <li><a href="{$WEB_ROOT}/affiliates.php">Affiliates Program</a></li>
-                     <li><a href="{$WEB_ROOT}/terms-of-service.php">Terms of services</a></li>
+                     <li><a href="{$WEB_ROOT}/aboutus.php">{$LANG.footer_why_cloudhost247}</a></li>
+                     <li><a href="{$WEB_ROOT}/faqs.php">{$LANG.footer_frequent_questions}</a></li>
+                     <li><a href="{$WEB_ROOT}/affiliates.php">{$LANG.footer_affiliates_program}</a></li>
+                     <li><a href="{$WEB_ROOT}/terms-of-service.php">{$LANG.footer_terms_of_services}</a></li>
                   </ul>
-                  <h4>Support</h4>
+                  <h4>{$LANG.nav_support}</h4>
                   <ul class="footer_links">
-                     <li><a href="{$WEB_ROOT}/submitticket.php">Open Ticket</a></li>
-                     <li><a href="{$WEB_ROOT}/knowledgebase.php">Knowledgebase</a></li>
-                     <li><a href="{$WEB_ROOT}/announcements.php">News</a></li>
+                     <li><a href="{$WEB_ROOT}/submitticket.php">{$LANG.footer_open_ticket}</a></li>
+                     <li><a href="{$WEB_ROOT}/knowledgebase.php">{$LANG.footer_knowledgebase}</a></li>
+                     <li><a href="{$WEB_ROOT}/announcements.php">{$LANG.footer_news}</a></li>
                   </ul>
                   <div class="clearfix"></div>
                   <ul class="socil_icon">

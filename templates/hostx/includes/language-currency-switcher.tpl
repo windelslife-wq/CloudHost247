@@ -25,7 +25,11 @@
  *}
 
 {if $ch247Switcher}
-<div class="ch247-switcher" data-ch247-switcher>
+<div class="ch247-switcher"
+     data-ch247-switcher
+     data-ch247-detection-language="{$ch247Switcher.detection.language.source|default:'default'|escape:'html':'UTF-8'}"
+     data-ch247-detection-currency="{$ch247Switcher.detection.currency.source|default:'default'|escape:'html':'UTF-8'}"
+     data-ch247-detected="{if $ch247Switcher.detection.detected}true{else}false{/if}">
 
     {* ------------------------------------------------------------ language *}
     <div class="ch247-switcher__group ch247-switcher__group--language" data-ch247-switcher-group="language">
@@ -80,7 +84,11 @@
                     </li>
                 {/foreach}
             </ul>
-            <p class="ch247-switcher__hint">{$ch247Switcher.labels.switcher_help|escape:'html':'UTF-8'}</p>
+            <p class="ch247-switcher__hint">{$ch247Switcher.labels.switcher_help|escape:'html':'UTF-8'}
+                {if $ch247Switcher.detection.language_message}
+                    <span class="ch247-switcher__detected" data-ch247-detection-notice="language" role="status">{$ch247Switcher.detection.language_message|escape:'html':'UTF-8'} {$ch247Switcher.detection.hint|escape:'html':'UTF-8'}</span>
+                {/if}
+            </p>
         </div>
     </div>
 
@@ -136,6 +144,9 @@
             </ul>
             <p class="ch247-switcher__hint">
                 {$ch247Switcher.labels.switcher_help|escape:'html':'UTF-8'}
+                {if $ch247Switcher.detection.currency_message}
+                    <span class="ch247-switcher__detected" data-ch247-detection-notice="currency" role="status">{$ch247Switcher.detection.currency_message|escape:'html':'UTF-8'} {$ch247Switcher.detection.hint|escape:'html':'UTF-8'}</span>
+                {/if}
                 {if $ch247Switcher.notice}
                     <span class="ch247-switcher__notice">{$ch247Switcher.notice.message|escape:'html':'UTF-8'}</span>
                 {/if}

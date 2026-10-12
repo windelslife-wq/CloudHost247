@@ -53,6 +53,9 @@ return array(
         'switcher_close'             => 'Close menu',
         'switcher_no_options'        => 'No other options are available',
         'switcher_help'              => 'Your language and currency choices are independent, and they are saved for your next visit.',
+        'detection_auto_language'    => 'We set the language to {name} automatically, from your browser preferences.',
+        'detection_auto_currency'    => 'We set the currency to {code} automatically, from your location.',
+        'detection_change_hint'      => 'You can change either one here at any time; your choice is remembered.',
 
         // ------------------------------------------------------- currency ----
         'currency_indicative_help'    => 'Converted for reference only. You will be charged in {charged}.',

@@ -33,8 +33,14 @@ final class CurrencySelector
     /** @var PreferenceStoreInterface */
     private $store;
 
-    /** @var Currency|null */
+    /** @var Currency|null The currency in force: explicit, detected or default. */
     private $resolved;
+
+    /** @var Currency|null Set only by an explicit select(); cleared by override(). */
+    private $explicit;
+
+    /** @var callable|null fn(): ?Currency — supplies a detected currency. */
+    private $detectedResolver;
 
     public function __construct(CurrencyRegistry $currencies, PreferenceStoreInterface $store)
     {
@@ -45,6 +51,69 @@ final class CurrencySelector
     public function getPreferenceKey(): string
     {
         return self::PREFERENCE_KEY;
+    }
+
+    /**
+     * Install the callback that supplies an automatically detected currency.
+     *
+     * It is consulted only when nothing has been explicitly chosen, so
+     * detection can never outrank a customer's own selection. Passing null
+     * removes it (detection disabled).
+     *
+     * @param callable|null $resolver
+     *
+     * @return void
+     */
+    public function setDetectedResolver(callable $resolver = null): void
+    {
+        $this->detectedResolver = $resolver;
+    }
+
+    /**
+     * The currency currently in force, if one has been established.
+     *
+     * Unlike current() this never resolves anything, so a caller can ask
+     * "has anything been decided yet?" without triggering detection.
+     *
+     * @return Currency|null
+     */
+    public function resolved()
+    {
+        return $this->resolved;
+    }
+
+    /**
+     * The currency the customer explicitly chose this request, if any.
+     *
+     * @return Currency|null
+     */
+    public function resolvedExplicit()
+    {
+        return $this->explicit;
+    }
+
+    /**
+     * Look a value up without touching any state.
+     *
+     * @param int|string|null $value Currency id or ISO code.
+     *
+     * @return Currency|null
+     */
+    public function find($value)
+    {
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            return null;
+        }
+
+        return $this->currencies->find($value);
+    }
+
+    /**
+     * @return Currency
+     */
+    public function defaultCurrency(): Currency
+    {
+        return $this->currencies->default();
     }
 
     /**
@@ -60,6 +129,13 @@ final class CurrencySelector
 
         $stored = $this->store->get(self::PREFERENCE_KEY);
         $currency = $this->currencies->find($stored);
+
+        // Nothing explicitly stored: ask detection, which is only ever wired
+        // up when the caller wants it. It cannot win against a stored value
+        // because we only get here when there is none.
+        if ($currency === null && $this->detectedResolver !== null) {
+            $currency = call_user_func($this->detectedResolver);
+        }
 
         if ($currency === null) {
             $currency = $this->currencies->default();
@@ -109,11 +185,17 @@ final class CurrencySelector
             /** @var Currency $currency */
             $currency = $result->getValue();
             $this->resolved = $currency;
+            $this->explicit = $currency;
             $this->store->set(self::PREFERENCE_KEY, $currency->getId());
-        } else {
-            // Re-assert the safe currency so a stale/removed preference does
-            // not keep failing on every subsequent request.
-            $this->resolved = $result->getValue();
+
+            return $result;
+        }
+
+        // The requested currency is not one this shop sells in. Keep whatever
+        // was already in force and, when the store really held a preference,
+        // re-assert it so a stale row does not fail on every later request.
+        $this->resolved = $result->getValue();
+        if ($this->store->get(self::PREFERENCE_KEY) !== null) {
             $this->store->set(self::PREFERENCE_KEY, $this->resolved->getId());
         }
 
@@ -121,8 +203,11 @@ final class CurrencySelector
     }
 
     /**
-     * Apply a currency choice without persisting it — used when rendering the
-     * switcher's own "current" state or when previewing.
+     * Apply a currency for this request without persisting it.
+     *
+     * Used for a detected currency and for previewing. It deliberately clears
+     * the explicit marker: a detected value is a suggestion, and must remain
+     * replaceable by a real choice.
      *
      * @param Currency $currency
      *
@@ -131,6 +216,7 @@ final class CurrencySelector
     public function override(Currency $currency): void
     {
         $this->resolved = $currency;
+        $this->explicit = null;
     }
 
     /**

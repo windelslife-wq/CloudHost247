@@ -55,13 +55,19 @@ if (!function_exists('ch247_i18n_autoload')) {
 
             $defaultLocale = 'en';
             $rateTtl = 21600;
+            $settings = array();
             try {
                 $setting = \WHMCS\Database\Capsule::table('tblconfiguration')
                     ->where('setting', 'Language')
                     ->first();
-                $ttl = \WHMCS\Database\Capsule::table('tbladdonmodules')->where('module', 'cloudhost247_i18n')->where('setting', 'rate_ttl')->first();
-                if ($ttl && ctype_digit((string) $ttl->value)) {
-                    $rateTtl = max(300, min(86400, (int) $ttl->value));
+                $moduleSettings = \WHMCS\Database\Capsule::table('tbladdonmodules')
+                    ->where('module', 'cloudhost247_i18n')
+                    ->get();
+                foreach ($moduleSettings as $row) {
+                    $settings[$row->setting] = (string) $row->value;
+                }
+                if (isset($settings['rate_ttl']) && ctype_digit($settings['rate_ttl'])) {
+                    $rateTtl = max(300, min(86400, (int) $settings['rate_ttl']));
                 }
                 if ($setting && !empty($setting->value)) {
                     // WHMCS stores "english"; our catalogs are keyed "en".
@@ -82,10 +88,19 @@ if (!function_exists('ch247_i18n_autoload')) {
                 'rate_cache'      => new FileRateCache($root . '/modules/addons/cloudhost247_i18n/cache/rates.json'),
                 'rate_ttl'        => $rateTtl,
                 'language_value'  => array(WhmcsLocale::class, 'toWhmcsName'),
+                'detection'       => ch247_i18n_detection_config($settings + array('root' => $root)),
+                'cookie'          => ch247_i18n_cookie_config($settings),
             ));
 
-            // Apply ?language= / ?currency= and persist the outcome.
+            // Apply ?language= / ?currency= first, then let detection fill in
+            // whatever the customer has not already chosen. Detection never
+            // overwrites an explicit choice, and it never redirects: the
+            // choice is applied to this response, so there is no loop to get
+            // stuck in.
             $instance->applyRequest($_GET);
+
+            // Cookies can only be written before the first byte of output.
+            $instance->flushCookies();
         } catch (\Throwable $e) {
             if (function_exists('logActivity')) {
                 logActivity('CloudHost247 i18n boot failed: ' . $e->getMessage());
@@ -129,6 +144,112 @@ if (!function_exists('ch247_i18n_route_map')) {
         // the real path and use WHMCS's native language query parameter.
         // Deployers may add verified routes here after installing rewrites.
         return array();
+    }
+}
+
+if (!function_exists('ch247_i18n_detection_config')) {
+    /**
+     * Automatic-detection configuration, from the addon's settings.
+     *
+     * Every default is the safe one:
+     *
+     *  - detection is on (it is the point of the feature) but it only ever
+     *    fills a gap that a real preference left open;
+     *  - no geolocation provider is configured, so no request leaves the
+     *    server until an administrator sets one up;
+     *  - no proxy is trusted, so `X-Forwarded-For` and `CF-IPCountry` are
+     *    ignored until the edge's real address ranges are listed.
+     *
+     * @param array $settings Values from tbladdonmodules.
+     *
+     * @return array
+     */
+    function ch247_i18n_detection_config(array $settings)
+    {
+        $root = isset($settings['root']) ? (string) $settings['root'] : dirname(__DIR__, 2);
+        $splitList = function ($value) {
+            $value = trim((string) $value);
+
+            return $value === '' ? array() : preg_split('/[\s,]+/', $value) ?: array();
+        };
+
+        $endpoint = isset($settings['geo_endpoint']) ? trim((string) $settings['geo_endpoint']) : '';
+
+        return array(
+            'enabled'                    => !isset($settings['detect_enabled'])
+                || $settings['detect_enabled'] === 'on'
+                || $settings['detect_enabled'] === '1',
+            'trusted_proxies'            => $splitList(isset($settings['trusted_proxies']) ? $settings['trusted_proxies'] : ''),
+            'country_header'             => isset($settings['country_header']) && trim((string) $settings['country_header']) !== ''
+                ? trim((string) $settings['country_header'])
+                : 'CF-IPCountry',
+            'geo_endpoint'               => $endpoint,
+            'geo_field'                  => isset($settings['geo_field']) && trim((string) $settings['geo_field']) !== ''
+                ? trim((string) $settings['geo_field'])
+                : 'country_code',
+            'geo_allowed_hosts'          => $splitList(isset($settings['geo_allowed_hosts']) ? $settings['geo_allowed_hosts'] : ''),
+            'geo_timeout'                => isset($settings['geo_timeout']) && (int) $settings['geo_timeout'] > 0
+                ? min(10, (int) $settings['geo_timeout'])
+                : 2,
+            'geo_ttl'                    => isset($settings['geo_ttl']) && (int) $settings['geo_ttl'] >= 60
+                ? min(2592000, (int) $settings['geo_ttl'])
+                : 86400,
+            'geo_cache_path'             => $root . '/modules/addons/cloudhost247_i18n/cache/geo.json',
+            // A language tag states a language, not a billing country, so the
+            // region hint stays off unless a deployer turns it on.
+            'use_region_hint'            => isset($settings['use_region_hint'])
+                && ($settings['use_region_hint'] === 'on' || $settings['use_region_hint'] === '1'),
+            'country_currency_overrides' => ch247_i18n_country_overrides(isset($settings['country_currency_overrides']) ? $settings['country_currency_overrides'] : ''),
+        );
+    }
+}
+
+if (!function_exists('ch247_i18n_country_overrides')) {
+    /**
+     * Parse the optional "NG=NGN, DE=EUR" override box from the settings.
+     *
+     * @param string $raw
+     *
+     * @return array<string,string[]>
+     */
+    function ch247_i18n_country_overrides($raw)
+    {
+        $out = array();
+        foreach (explode(',', (string) $raw) as $pair) {
+            $pair = trim($pair);
+            if ($pair === '' || strpos($pair, '=') === false) {
+                continue;
+            }
+            list($country, $currency) = explode('=', $pair, 2);
+            $country = strtoupper(trim($country));
+            $currency = strtoupper(trim($currency));
+            if (preg_match('/^[A-Z]{2}$/', $country) === 1 && preg_match('/^[A-Z]{3}$/', $currency) === 1) {
+                $out[$country] = array($currency);
+            }
+        }
+
+        return $out;
+    }
+}
+
+if (!function_exists('ch247_i18n_cookie_config')) {
+    /**
+     * Cookie options for the store that remembers an explicit choice.
+     *
+     * @param array $settings
+     *
+     * @return array
+     */
+    function ch247_i18n_cookie_config(array $settings)
+    {
+        return array(
+            'enabled' => !isset($settings['cookie_enabled']) || $settings['cookie_enabled'] !== 'off',
+            'ttl'     => isset($settings['cookie_days']) && (int) $settings['cookie_days'] > 0
+                ? min(730, (int) $settings['cookie_days']) * 86400
+                : 15552000,
+            'path'    => '/',
+            'secure'  => null, // Follow the request: Secure over HTTPS only.
+        );
     }
 }
 
@@ -207,6 +328,10 @@ add_hook('ClientAreaPage', 1, function (array $vars) {
         'ch247RatesUpdated' => $ratesUpdated,
         'ch247RatesRetrieved' => $rates !== null ? $formatter->dateTime($rates->getRetrievedAt()) : null,
         'ch247RateSource'   => $rates !== null ? $rates->getSource() : null,
+        // Why this visitor sees this language and currency: 'account',
+        // 'stored', 'browser', 'geolocation' or 'default'. Templates use it to
+        // explain an automatic choice; tests use it to assert one.
+        'ch247Detection'    => $i18n->detection(),
     );
 });
 
@@ -222,9 +347,13 @@ add_hook('ClientAreaHeadOutput', 1, function () {
 });
 
 add_hook('ClientAreaFooterOutput', 1, function () {
-    if (ch247_i18n_autoload() === null) {
+    $i18n = ch247_i18n_autoload();
+    if ($i18n === null) {
         return '';
     }
+    // Idempotent: anything already sent was removed from the queue. This
+    // second call catches a preference written during the page render.
+    $i18n->flushCookies();
     $root = ch247_i18n_web_root();
 
     return '<script src="' . htmlspecialchars($root . '/templates/hostx/js/language-currency-switcher.js', ENT_QUOTES, 'UTF-8') . '" defer></script>';

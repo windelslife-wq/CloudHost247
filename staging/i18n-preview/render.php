@@ -32,6 +32,8 @@ use CloudHost247\Ci\PageReferenceReader;
 use CloudHost247\I18n\Whmcs\WhmcsLocale;
 use CloudHost247\I18n\EquivalentUrl;
 use CloudHost247\I18n\I18n;
+use CloudHost247\I18n\Detection\ArrayGeoLocator;
+use CloudHost247\I18n\Detection\RequestContext;
 use CloudHost247\I18n\Preference\ArrayPreferenceStore;
 use CloudHost247\I18n\Rate\StaticRateSource;
 use CloudHost247\I18n\StaticCurrencySource;
@@ -87,6 +89,96 @@ function ch247_preview_pages(): array
 function ch247_preview_route_map(): array
 {
     return array(); // Real routes are preserved; no untranslated-slug 404s.
+}
+
+/**
+ * The automatic-detection scenarios the preview renders.
+ *
+ * These are the same cases the PHP suite asserts on, rendered here through the
+ * real Smarty templates so the switcher markup, the "we set this
+ * automatically" hint and every URL can be inspected in a browser rather than
+ * only in a unit test.
+ *
+ * @return array
+ */
+function ch247_preview_detection_scenarios(): array
+{
+    return array(
+        'new-english'   => array(
+            'label'  => 'First visit, English browser, no location',
+            'expect' => 'English + NGN (default)',
+            'ip'     => '203.0.113.250',
+            'accept_language' => 'en-US,en;q=0.9',
+        ),
+        'new-french'    => array(
+            'label'  => 'First visit, French browser',
+            'expect' => 'French + NGN (default)',
+            'ip'     => '203.0.113.250',
+            'accept_language' => 'fr-FR,fr;q=0.9,en;q=0.5',
+        ),
+        'united-kingdom' => array(
+            'label'  => 'First visit from the United Kingdom',
+            'expect' => 'English + GBP',
+            'ip'     => '198.51.100.4',
+            'accept_language' => 'en-GB,en;q=0.9',
+        ),
+        'united-states' => array(
+            'label'  => 'First visit from the United States',
+            'expect' => 'English + USD',
+            'ip'     => '192.0.2.44',
+            'accept_language' => 'en-US,en;q=0.9',
+        ),
+        'euro-area'     => array(
+            'label'  => 'First visit from Germany (euro area)',
+            'expect' => 'German + EUR',
+            'ip'     => '198.51.100.9',
+            'accept_language' => 'de-DE,de;q=0.9',
+        ),
+        'unmapped'      => array(
+            'label'  => 'First visit from a country whose currency is not enabled',
+            'expect' => 'English + NGN (default)',
+            'ip'     => '198.51.100.13', // India -> INR, which this shop does not sell in
+            'accept_language' => 'en-IN,en;q=0.9',
+        ),
+        'unknown'       => array(
+            'label'  => 'First visit from an unknown network',
+            'expect' => 'English + NGN (default)',
+            'ip'     => '203.0.113.250',
+            'accept_language' => 'en',
+        ),
+        'returning'     => array(
+            'label'  => 'Returning visitor with a saved choice, now in the US',
+            'expect' => 'German + GBP (saved, detection ignored)',
+            'ip'     => '192.0.2.44',
+            'accept_language' => 'fr-FR,fr;q=0.9',
+            'cookie' => array('ch247_language' => 'de', 'ch247_currency' => '4'),
+        ),
+        'unsupported'   => array(
+            'label'  => 'Browser asks only for languages the site does not ship',
+            'expect' => 'English + NGN (default)',
+            'ip'     => '203.0.113.250',
+            'accept_language' => 'ja-JP,ja;q=0.9,ko;q=0.5',
+        ),
+    );
+}
+
+/**
+ * Fixture geolocation for the preview: the same countries the PHP suite uses.
+ *
+ * @return ArrayGeoLocator
+ */
+function ch247_preview_geo(): ArrayGeoLocator
+{
+    return new ArrayGeoLocator(array(
+        '203.0.113.7'   => 'NG',
+        '198.51.100.4'  => 'GB',
+        '192.0.2.44'    => 'US',
+        '198.51.100.9'  => 'DE',
+        '198.51.100.11' => 'FR',
+        '198.51.100.12' => 'JP',
+        '198.51.100.13' => 'IN',
+        '198.51.100.16' => 'BR',
+    ), 'staging fixture (deterministic)');
 }
 
 /**
@@ -275,4 +367,125 @@ foreach (array('en', 'fr', 'es', 'de', 'pt-BR') as $locale) {
 
 file_put_contents($pagesDir . '/index.json', json_encode($index, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
-echo sprintf("Rendered %d snapshots into %s\n", count($index), $pagesDir);
+/* ------------------------------------------------- automatic detection ---- */
+
+/**
+ * Render one detection scenario through the real switcher templates.
+ *
+ * Everything here is the production code path: the real RequestContext, the
+ * real Detector, the real preference chain and the real Smarty templates. The
+ * only fixture is the geolocation table, because there is no WHMCS database
+ * and no live IP feed in a staging checkout.
+ */
+$detectionIndex = array();
+
+foreach (ch247_preview_detection_scenarios() as $key => $scenario) {
+    $request = new RequestContext(
+        array(
+            'REQUEST_METHOD'      => 'GET',
+            'REQUEST_URI'         => '/web-hosting.php',
+            'REMOTE_ADDR'         => $scenario['ip'],
+            'HTTP_HOST'           => 'preview.cloudhost247.test',
+            'HTTP_ACCEPT_LANGUAGE' => $scenario['accept_language'],
+        ),
+        isset($scenario['cookie']) ? $scenario['cookie'] : array()
+    );
+
+    $i18n = I18n::boot(array(
+        'root'            => $root,
+        'default_locale'  => 'en',
+        'currency_source' => new StaticCurrencySource($currencies),
+        'request'         => $request,
+        'rate_source'     => new StaticRateSource('NGN', $rates, 'staging fixture (deterministic)', '2026-10-12'),
+        'language_value'  => array(WhmcsLocale::class, 'toWhmcsName'),
+        'cookie'          => array('ttl' => 15552000, 'path' => '/', 'secure' => false),
+        'detection'       => array('geo' => ch247_preview_geo()),
+    ));
+
+    // No ?language= / ?currency=: this is a plain first page view.
+    $i18n->applyRequest(array());
+
+    $locale = $i18n->preferences()->getLocale();
+    $currency = $i18n->preferences()->getCurrency();
+    $uri = '/web-hosting.php';
+    $switcher = $i18n->switcher(ch247_preview_route_map(), $uri);
+
+    $view = array(
+        'ch247Switcher'  => $switcher,
+        'ch247LocaleTag' => $locale->getIntlTag(),
+        'ch247Direction' => $locale->getDirection(),
+        'template'       => 'hostx',
+        'LANG'           => $i18n->translator()->getCatalogMessages(),
+        'WEB_ROOT'       => '/assets/theme',
+    );
+
+    $renderer = new SmartyPreview($themeDir, $view);
+
+    $snapshot = array(
+        'name'            => 'detection-' . $key,
+        'scenario'        => $key,
+        'label'           => $scenario['label'],
+        'expect'          => $scenario['expect'],
+        'accept_language' => $scenario['accept_language'],
+        'ip'              => $scenario['ip'],
+        'country'         => $switcher['detection']['country'],
+        'language'        => $locale->getCode(),
+        'language_name'   => $locale->getNativeName(),
+        'language_source' => $switcher['detection']['language']['source'],
+        'currency'        => $currency->getCode(),
+        'currency_id'     => $currency->getId(),
+        'currency_source' => $switcher['detection']['currency']['source'],
+        'detected'        => $switcher['detection']['detected'],
+        'message'         => $switcher['detection']['message'],
+        'uri'             => $uri,
+        'canonical'       => $uri,
+        'page'            => 'detection',
+        'page_title'      => 'Automatic detection',
+        'locale'          => $locale->getCode(),
+        'locale_name'     => $locale->getNativeName(),
+        'prices'          => array(),
+        'body'            => '',
+        'sample'          => array(
+            'date_medium' => $i18n->formatter()->date(strtotime('2026-10-12 15:07:09 UTC'), 'medium'),
+            'date_full'   => $i18n->formatter()->date(strtotime('2026-10-12 15:07:09 UTC'), 'full'),
+            'number'      => $i18n->formatter()->number(1234567),
+            'decimal'     => $i18n->formatter()->decimal(1234.567),
+            'percent'     => $i18n->formatter()->percent(0.155),
+        ),
+        'dir'             => $locale->getDirection(),
+        'lang'            => $locale->getIntlTag(),
+        'desktop'         => $renderer->render('includes/language-currency-switcher.tpl'),
+        'mobile'          => $renderer->render('hostx_includes/language-currency-switcher-mobile.tpl'),
+    );
+
+    file_put_contents(
+        $pagesDir . '/detection-' . $key . '.json',
+        json_encode($snapshot, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+    );
+
+    $detectionIndex[] = array(
+        'name'     => 'detection-' . $key,
+        'scenario' => $key,
+        'label'    => $scenario['label'],
+        'expect'   => $scenario['expect'],
+        'language' => $snapshot['language'],
+        'currency' => $snapshot['currency'],
+        'country'  => $snapshot['country'],
+        'accept_language' => $snapshot['accept_language'],
+        'ip'       => $snapshot['ip'],
+        'source_language' => $snapshot['language_source'],
+        'source_currency' => $snapshot['currency_source'],
+        'detected' => $snapshot['detected'],
+    );
+
+    I18n::forget();
+}
+
+file_put_contents($pagesDir . '/detection.json', json_encode($detectionIndex, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+echo sprintf(
+    "Rendered %d snapshots and %d detection scenarios into %s\n",
+    count($index),
+    count($detectionIndex),
+    $pagesDir
+);

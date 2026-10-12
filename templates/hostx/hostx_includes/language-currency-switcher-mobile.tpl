@@ -20,7 +20,11 @@
  *}
 
 {if $ch247Switcher}
-<div class="ch247-switcher ch247-switcher--mobile" data-ch247-switcher>
+<div class="ch247-switcher ch247-switcher--mobile"
+     data-ch247-switcher
+     data-ch247-detection-language="{$ch247Switcher.detection.language.source|default:'default'|escape:'html':'UTF-8'}"
+     data-ch247-detection-currency="{$ch247Switcher.detection.currency.source|default:'default'|escape:'html':'UTF-8'}"
+     data-ch247-detected="{if $ch247Switcher.detection.detected}true{else}false{/if}">
 
     <div class="ch247-switcher__group ch247-switcher__group--language" data-ch247-switcher-group="language">
         <button type="button"
@@ -123,6 +127,12 @@
                     </li>
                 {/foreach}
             </ul>
+            {if $ch247Switcher.detection.currency_message}
+                <p class="ch247-switcher__hint"><span class="ch247-switcher__detected" data-ch247-detection-notice="currency" role="status">{$ch247Switcher.detection.currency_message|escape:'html':'UTF-8'} {$ch247Switcher.detection.hint|escape:'html':'UTF-8'}</span></p>
+            {/if}
+            {if $ch247Switcher.detection.language_message}
+                <p class="ch247-switcher__hint"><span class="ch247-switcher__detected" data-ch247-detection-notice="language" role="status">{$ch247Switcher.detection.language_message|escape:'html':'UTF-8'} {$ch247Switcher.detection.hint|escape:'html':'UTF-8'}</span></p>
+            {/if}
             {if $ch247Switcher.notice}
                 <p class="ch247-switcher__hint"><span class="ch247-switcher__notice">{$ch247Switcher.notice.message|escape:'html':'UTF-8'}</span></p>
             {/if}

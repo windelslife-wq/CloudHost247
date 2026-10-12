@@ -19,7 +19,7 @@ namespace CloudHost247\I18n\Preference;
 
 use CloudHost247\I18n\Contracts\PreferenceStoreInterface;
 
-final class SessionPreferenceStore implements PreferenceStoreInterface
+final class SessionPreferenceStore implements PreferenceStoreInterface, NamedPreferenceStoreInterface
 {
     /** @var string Namespace so we never collide with WHMCS session keys. */
     const NAMESPACE = 'ch247_i18n';
@@ -96,6 +96,11 @@ final class SessionPreferenceStore implements PreferenceStoreInterface
     public function isWritable(): bool
     {
         return $this->sessionActive();
+    }
+
+    public function storeName(): string
+    {
+        return 'session';
     }
 
     /**
