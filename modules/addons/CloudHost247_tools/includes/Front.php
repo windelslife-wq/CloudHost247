@@ -360,7 +360,10 @@ class CloudHost247ToolsFront
             . '<div class="ch247-mega" data-ch247-megamenu id="ch247-mega" hidden>' . "\n"
             . '<ul class="ch247-mega__list">' . "\n" . $menu . '</ul>' . "\n"
             . '</div>' . "\n"
-            . self::localeSwitcher($query)
+            . self::localeSwitcher(
+                $query,
+                isset($route['route']) && is_string($route['route']) ? $route['route'] : '/tools'
+            )
             . '</div>' . "\n"
             . '</header>' . "\n";
     }
@@ -492,7 +495,7 @@ class CloudHost247ToolsFront
      *
      * @return string '' when the library is unavailable.
      */
-    protected static function localeSwitcher(array $query = array())
+    protected static function localeSwitcher(array $query = array(), $uri = '')
     {
         $i18n = self::i18n($query);
         if ($i18n === null) {
@@ -500,7 +503,9 @@ class CloudHost247ToolsFront
         }
 
         try {
-            $uri = isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUEST_URI'] : '/tools';
+            if ($uri === '' || !is_string($uri)) {
+                $uri = isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUEST_URI'] : '/tools';
+            }
             $uri = \CloudHost247\I18n\EquivalentUrl::canonical($uri);
             $view = $i18n->switcher(array(), $uri);
             $e = array(__CLASS__, 'e');

@@ -138,6 +138,7 @@ function indexHtml() {
 ${table}
     </tbody>
   </table>
+${detectionTable(pagesDir)}
 </main>`
     );
 }

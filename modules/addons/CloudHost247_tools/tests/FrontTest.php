@@ -278,5 +278,40 @@ $entryDenied = ob_get_clean();
 $d = json_decode($entryDenied, true);
 ok('front.php enforces csrf on the api', is_array($d) && $d['success'] === false && $d['error']['code'] === 'csrf');
 
+// ---------- language / currency on the tools portal ----------
+// This portal renders its own document, so it has to declare the customer's
+// language itself and carry the real switcher; otherwise a visitor is stranded
+// in English until they find their way back to the storefront.
+$r = $F::dispatch('GET', '/tools/dns-lookup');
+ok('document declares the customer language', (bool) preg_match('/<html lang="[a-z]{2}(-[A-Za-z0-9]{2,8})*"/', $r['body']));
+ok('header carries the locale switcher', has($r['body'], 'class="ch247-locale"'));
+ok('switcher offers every supported language', has($r['body'], '?language=en')
+    && has($r['body'], '?language=de') && has($r['body'], '?language=es')
+    && has($r['body'], '?language=fr') && has($r['body'], '?language=pt-BR'));
+ok('switcher links stay on the same tool page', has($r['body'], '/tools/dns-lookup?language='));
+ok('switcher marks the current language', (bool) preg_match('/href="[^"]*language=[a-z-]+"[^>]*aria-current="true"/', $r['body']));
+ok('switcher options carry hreflang', has($r['body'], 'hreflang="fr-FR"'));
+ok('switcher options are labelled in their own language', has($r['body'], 'lang="fr-FR"'));
+
+// ?language= is honoured here too, through the same validated allowlist.
+$rFr = $F::dispatch('GET', '/tools/dns-lookup', ['language' => 'fr']);
+ok('a french request switches the document language', has($rFr['body'], '<html lang="fr-FR"'));
+ok('a french request moves the current marker', (bool) preg_match('/href="[^"]*language=fr"[^>]*aria-current="true"/', $rFr['body']));
+
+// An unsupported value is ignored, and never echoed back into the page.
+$rBad = $F::dispatch('GET', '/tools/dns-lookup', ['language' => 'klingon"><script>alert(1)</script>']);
+ok('an unsupported language leaves a supported one in place', (bool) preg_match(
+    '/<html lang="(en-US|de-DE|es-ES|fr-FR|pt-BR)"/',
+    $rBad['body']
+));
+ok('an unsupported language value is never echoed', !has($rBad['body'], 'alert(1)')
+    && !has($rBad['body'], 'klingon'));
+
+// Degradation: the attribute must be a usable lang tag even with no library.
+$attrs = new ReflectionMethod($F, 'localeAttributes');
+$attrs->setAccessible(true);
+ok('localeAttributes always yields a usable lang attribute',
+    (bool) preg_match('/^lang="[a-z]{2}(-[A-Za-z0-9]{2,8})*"/', $attrs->invoke(null)));
+
 echo "\nPASS=$pass FAIL=$fail\n";
 exit($fail > 0 ? 1 : 0);
