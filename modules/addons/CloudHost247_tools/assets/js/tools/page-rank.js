@@ -1,5 +1,5 @@
 /**
- * CloudHost247 Tools - Website Authority Checker
+ * CloudHost247 Tools - Retired PageRank status notice
  *
  * Route-split module: this file is loaded only on /tools/page-rank.
  * Execution: server.
@@ -13,7 +13,7 @@
         new CH.ToolPage({
             slug: "page-rank",
             exec: "server",
-            fields: [{"name": "url", "label": "URL", "type": "url", "placeholder": "https://example.com/page", "width": "full", "required": true, "spellcheck": false}],
+            fields: [{"name": "domain", "label": "Domain name", "type": "text", "placeholder": "example.com", "width": "full", "required": true, "spellcheck": false}],
             render: function (d) {
                 var wrap = CH.el('div');
                 if (!d || typeof d !== 'object') {

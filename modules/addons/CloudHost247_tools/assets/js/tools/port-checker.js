@@ -13,7 +13,7 @@
         new CH.ToolPage({
             slug: "port-checker",
             exec: "server",
-            fields: [{"name": "host", "label": "Hostname or IP address", "placeholder": "example.com or 8.8.8.8", "width": "full", "required": true, "spellcheck": false}, {"name": "port", "label": "Port", "type": "number", "placeholder": "443", "min": 1, "max": 65535, "required": true}],
+            fields: [{"name": "host", "label": "Hostname or IP address", "placeholder": "example.com or 8.8.8.8", "width": "full", "required": true, "spellcheck": false}, {"name": "port", "label": "TCP port", "type": "number", "placeholder": "443", "min": 1, "max": 65535, "required": true, "hint": "Only diagnostic ports from CloudHost247’s built-in allowlist are accepted. Private and loopback hosts are blocked."}],
             render: function (d) {
                 var wrap = CH.el('div');
                 if (!d || typeof d !== 'object') {

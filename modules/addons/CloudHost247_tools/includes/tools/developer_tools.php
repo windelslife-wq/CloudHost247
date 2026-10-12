@@ -11,88 +11,101 @@ require_once __DIR__ . '/../functions.php';
 
 function CloudHost247_tool_http_headers($post)
 {
-    $url = CloudHost247_tools_sanitize($post['url'] ?? '', 'url');
-    if (!CloudHost247_tools_validate_url($url)) {
-        return ['error' => 'Invalid URL'];
+    $url = trim((string) ($post['url'] ?? ''));
+    if ($url === '') {
+        return ['error' => 'Please enter a URL.'];
     }
 
-    $result = CloudHost247_tools_curl($url, null, [], 15);
-    if (!empty($result['error'])) {
-        return ['error' => 'Could not fetch URL: ' . $result['error']];
+    try {
+        $result = CloudHost247ToolsSecurity::fetch($url, [
+            'method' => 'HEAD',
+            'timeout' => 15,
+            'max_bytes' => 65536,
+        ]);
+        // Some sites reject HEAD. Fall back to a size-capped GET, still using
+        // the same redirect-by-redirect SSRF and TLS validation.
+        if (in_array($result['status'], [405, 501], true)) {
+            $result = CloudHost247ToolsSecurity::fetch($url, [
+                'method' => 'GET',
+                'timeout' => 15,
+                'max_bytes' => 65536,
+            ]);
+        }
+    } catch (CloudHost247ToolsSecurityException $e) {
+        return ['error' => $e->getMessage()];
     }
 
     $headers = [];
-    if (function_exists('curl_getinfo')) {
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HEADER, true);
-        curl_setopt($ch, CURLOPT_NOBODY, true);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-        $headerStr = curl_exec($ch);
-        curl_close($ch);
-
-        $lines = explode("\n", $headerStr);
-        foreach ($lines as $line) {
-            $line = trim($line);
-            if (empty($line)) continue;
-            if (strpos($line, 'HTTP/') === 0) {
-                $headers[] = ['status' => $line];
-            } elseif (strpos($line, ':') !== false) {
-                list($key, $val) = explode(':', $line, 2);
-                $headers[] = ['name' => trim($key), 'value' => trim($val)];
-            }
+    if (!empty($result['headers']['_status_line'])) {
+        $headers[] = ['status' => $result['headers']['_status_line']];
+    }
+    foreach ($result['headers'] as $name => $values) {
+        if ($name === '_status_line') {
+            continue;
+        }
+        foreach ((array) $values as $value) {
+            $headers[] = [
+                'name' => ucwords(strtolower($name), '-'),
+                'value' => $value,
+            ];
         }
     }
 
     return [
         'url' => $url,
-        'http_code' => $result['code'],
+        'final_url' => $result['url'],
+        'http_code' => $result['status'],
         'headers' => $headers,
+        'redirects' => $result['redirects'],
+        'response_time_ms' => $result['time'],
     ];
 }
 
 function CloudHost247_tool_server_os_detector($post)
 {
-    $url = CloudHost247_tools_sanitize($post['url'] ?? '', 'url');
-    if (!CloudHost247_tools_validate_url($url)) {
-        return ['error' => 'Invalid URL'];
+    $url = trim((string) ($post['url'] ?? ''));
+    if ($url === '') {
+        return ['error' => 'Please enter a URL.'];
     }
 
-    $result = CloudHost247_tools_curl($url, null, [], 15);
-    $os = 'Unknown';
+    $response = CloudHost247_tool_http_headers(['url' => $url]);
+    if (isset($response['error'])) {
+        return ['error' => $response['error']];
+    }
+
     $server = 'Unknown';
-
-    if ($result['code'] > 0) {
-        preg_match('/Server:\s*([^\r\n]+)/i', $result['body'], $serverMatch);
-        if ($serverMatch) {
-            $server = trim($serverMatch[1]);
-            if (stripos($server, 'win') !== false) $os = 'Windows';
-            elseif (stripos($server, 'apache') !== false) $os = 'Linux/Unix';
-            elseif (stripos($server, 'nginx') !== false) $os = 'Linux/Unix';
-            elseif (stripos($server, 'iis') !== false) $os = 'Windows';
+    $poweredBy = '';
+    foreach ($response['headers'] as $header) {
+        if (!isset($header['name'])) {
+            continue;
         }
-
-        // Try more headers
-        $headers = CloudHost247_tool_http_headers(['url' => $url]);
-        if (isset($headers['headers'])) {
-            foreach ($headers['headers'] as $h) {
-                if (isset($h['name'])) {
-                    if (strtolower($h['name']) === 'x-powered-by') {
-                        if (stripos($h['value'], 'win') !== false) $os = 'Windows';
-                    }
-                }
-            }
+        $name = strtolower($header['name']);
+        if ($name === 'server') {
+            $server = trim((string) $header['value']);
+        } elseif ($name === 'x-powered-by') {
+            $poweredBy = trim((string) $header['value']);
         }
     }
 
-    return ['url' => $url, 'server' => $server, 'os_guess' => $os];
+    // HTTP software banners do not reliably identify the underlying operating
+    // system. Report a weak clue only when a banner explicitly names Windows;
+    // Apache/nginx alone are not evidence that a host runs Linux.
+    $evidence = trim($server . ' ' . $poweredBy);
+    $os = preg_match('/\\bwindows\\b|\\bmicrosoft-iis\\b/i', $evidence) ? 'Windows (banner hint)' : 'Unknown';
+
+    return [
+        'url' => $url,
+        'server' => $server,
+        'x_powered_by' => $poweredBy ?: null,
+        'os_guess' => $os,
+        'confidence' => $os === 'Unknown' ? 'none' : 'low',
+        'note' => 'Server headers are optional and can be hidden or misleading; this is not a reliable OS fingerprint.',
+    ];
 }
 
 function CloudHost247_tool_md5_base64($post)
 {
-    $input = $_POST['input'] ?? '';
+    $input = $post['input'] ?? '';
     $mode = CloudHost247_tools_sanitize($post['mode'] ?? 'md5', 'string');
 
     if (empty($input)) {
@@ -121,7 +134,7 @@ function CloudHost247_tool_md5_base64($post)
 
 function CloudHost247_tool_multi_url_opener($post)
 {
-    $urls = $_POST['urls'] ?? '';
+    $urls = $post['urls'] ?? '';
     $lines = array_filter(array_map('trim', explode("\n", $urls)));
     $validUrls = [];
 
@@ -137,28 +150,84 @@ function CloudHost247_tool_multi_url_opener($post)
 
 function CloudHost247_tool_smtp_test($post)
 {
-    $host = CloudHost247_tools_sanitize($post['host'] ?? '', 'domain');
-    $port = (int) ($post['port'] ?? 25);
-    $timeout = 10;
-
-    if (empty($host)) {
+    $rawHost = $post['host'] ?? '';
+    $host = (is_string($rawHost) || is_numeric($rawHost)) ? trim((string) $rawHost) : '';
+    if ($host === '') {
         return ['error' => 'Please enter SMTP server address'];
     }
 
-    $socket = @fsockopen($host, $port, $errno, $errstr, $timeout);
-    if (!$socket) {
-        return ['host' => $host, 'port' => $port, 'reachable' => false, 'error' => $errstr];
+    try {
+        $port = CloudHost247ToolsSecurity::validatePort($post['port'] ?? 25);
+        if (!in_array($port, [25, 465, 587], true)) {
+            return ['error' => 'SMTP test supports ports 25, 465 and 587 only.'];
+        }
+        $target = CloudHost247ToolsSecurity::publicConnectTarget($host, $port);
+    } catch (CloudHost247ToolsSecurityException $e) {
+        return ['error' => $e->getMessage()];
     }
 
+    if (!function_exists('stream_socket_client')) {
+        return ['error' => 'TCP sockets are not available on this server.'];
+    }
+
+    $transport = $port === 465 ? 'ssl' : 'tcp';
+    $context = null;
+    if ($port === 465) {
+        $sslOptions = [
+            // This test only checks reachability and reads a greeting. It does
+            // not authenticate or send mail, so the peer chain is not used as
+            // an identity assertion here.
+            'verify_peer' => false,
+            'verify_peer_name' => false,
+        ];
+        if (!CloudHost247ToolsSecurity::isIp($target['host'])) {
+            $sslOptions['peer_name'] = $target['host'];
+            $sslOptions['SNI_enabled'] = true;
+        }
+        $context = stream_context_create(['ssl' => $sslOptions]);
+    }
+
+    $socket = false;
+    $connectedIp = null;
+    foreach (array_slice($target['ips'], 0, 3) as $ip) {
+        $connectedIp = $ip;
+        $socketHost = CloudHost247ToolsSecurity::isIpv6($ip) ? '[' . $ip . ']' : $ip;
+        $socket = @stream_socket_client(
+            $transport . '://' . $socketHost . ':' . $port,
+            $errno,
+            $errstr,
+            5,
+            STREAM_CLIENT_CONNECT,
+            $context
+        );
+        if (is_resource($socket)) {
+            break;
+        }
+    }
+
+    if (!is_resource($socket)) {
+        return [
+            'host' => $target['host'],
+            'resolved_ip' => $connectedIp,
+            'port' => $port,
+            'reachable' => false,
+            'reason' => 'The server did not accept an SMTP connection from CloudHost247.',
+        ];
+    }
+
+    stream_set_timeout($socket, 4);
     $banner = fgets($socket, 512);
-    fputs($socket, "QUIT\r\n");
+    @fwrite($socket, "QUIT\r\n");
     fclose($socket);
 
     return [
-        'host' => $host,
+        'host' => $target['host'],
+        'resolved_ip' => $connectedIp,
         'port' => $port,
         'reachable' => true,
-        'banner' => trim($banner),
+        'banner' => $banner === false ? '' : trim($banner),
+        'protocol' => $port === 465 ? 'Implicit TLS' : 'Plain TCP (STARTTLS not negotiated)',
+        'note' => 'This tool checks TCP/TLS reachability and reads the server greeting. It does not test STARTTLS, authentication or message delivery.',
     ];
 }
 
@@ -300,7 +369,7 @@ function CloudHost247_tool_raid_calculator($post)
 
 function CloudHost247_tool_binary_text($post)
 {
-    $input = $_POST['input'] ?? '';
+    $input = $post['input'] ?? '';
     $mode = CloudHost247_tools_sanitize($post['mode'] ?? 'text_to_binary', 'string');
 
     if (empty($input)) {
@@ -337,7 +406,7 @@ function CloudHost247_tool_binary_text($post)
 
 function CloudHost247_tool_json_formatter($post)
 {
-    $input = $_POST['json'] ?? '';
+    $input = $post['json'] ?? '';
     $mode = CloudHost247_tools_sanitize($post['mode'] ?? 'format', 'string');
 
     if (empty($input)) {
@@ -523,6 +592,19 @@ function CloudHost247_tool_email_verifier($post)
     $localOk = strlen($local) <= 64 && $local !== '';
     $add('Local part length', $localOk ? 'pass' : 'fail',
         'Local part is ' . strlen($local) . ' characters (limit 64).');
+
+    if (!CloudHost247_tools_validate_domain($domain)) {
+        $add('Public DNS domain', 'warn', 'The domain is not a public DNS name; no resolver query was made.');
+        return [
+            'email' => $email,
+            'domain' => $domain,
+            'verdict' => 'Unconfirmed',
+            'score' => 0,
+            'checks' => $checks,
+            'normalised_email' => $email,
+            'note' => 'The address syntax is valid, but this service does not query local or special-use DNS namespaces.',
+        ];
+    }
 
     // 3. Domain resolves
     $a    = @dns_get_record($domain, DNS_A) ?: [];

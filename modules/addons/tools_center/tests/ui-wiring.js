@@ -33,12 +33,15 @@ module.exports = function buildUiTests(ctx) {
             url: 'https://client.example/index.php?m=tools_center&cat=productivity&tool=loremIpsum'
         });
         const w = dom.window;
+        w.toolsCenterConfig = { apiUrl: 'index.php?m=tools_center', csrfToken: 'csrf-test-token-1234567890' };
         w.__xhrCalls = 0;
+        w.__xhrRequests = [];
         w.XMLHttpRequest = function () {
             w.__xhrCalls++;
-            this.open = function () {};
-            this.setRequestHeader = function () {};
-            this.send = function () {};
+            const request = { headers: {} };
+            this.open = function (method, url) { request.method = method; request.url = url; };
+            this.setRequestHeader = function (name, value) { request.headers[name] = value; };
+            this.send = function (body) { request.body = body; w.__xhrRequests.push(request); };
         };
         w.eval(defsSource);
         w.eval(read('js/tools-center.js'));
@@ -58,6 +61,24 @@ module.exports = function buildUiTests(ctx) {
                 const form = w.document.querySelector('#toolForm form');
                 submit(w, form);
                 assert.equal(w.__xhrCalls, 1, 'server-backed tools must still POST to the server');
+            }
+        },
+        {
+            name: 'UI: page and modal requests send the session CSRF header, never the API credential',
+            fn() {
+                const w = makeWindow();
+                w.renderToolForm('productivity', 'loremIpsum');
+                submit(w, w.document.querySelector('#toolForm form'));
+                w.openTool('productivity', 'loremIpsum');
+                submit(w, w.document.querySelector('#modalBody form'));
+
+                assert.equal(w.__xhrRequests.length, 2);
+                w.__xhrRequests.forEach((request) => {
+                    assert.equal(request.method, 'POST');
+                    assert.equal(request.headers['X-CSRF-Token'], 'csrf-test-token-1234567890');
+                    assert.equal(request.headers['X-Requested-With'], 'XMLHttpRequest');
+                    assert.doesNotMatch(request.body, /api_token/i);
+                });
             }
         },
         {

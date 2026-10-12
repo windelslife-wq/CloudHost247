@@ -11,36 +11,76 @@ require_once __DIR__ . '/../functions.php';
 
 function CloudHost247_tool_port_checker($post)
 {
-    $host = CloudHost247_tools_sanitize($post['host'] ?? '', 'domain');
-    $port = (int) ($post['port'] ?? 80);
-    $timeout = 5;
-
-    if (empty($host)) {
+    $rawHost = $post['host'] ?? '';
+    $host = (is_string($rawHost) || is_numeric($rawHost)) ? trim((string) $rawHost) : '';
+    if ($host === '') {
         return ['error' => 'Please enter a host'];
     }
-    if ($port < 1 || $port > 65535) {
-        return ['error' => 'Port must be 1-65535'];
+
+    try {
+        $port = CloudHost247ToolsSecurity::validateProbePort($post['port'] ?? 80);
+        $target = CloudHost247ToolsSecurity::publicConnectTarget($host, $port);
+    } catch (CloudHost247ToolsSecurityException $e) {
+        return ['error' => $e->getMessage()];
     }
 
-    $socket = @fsockopen($host, $port, $errno, $errstr, $timeout);
-    if ($socket) {
-        fclose($socket);
-        return ['host' => $host, 'port' => $port, 'open' => true];
+    if (!function_exists('stream_socket_client')) {
+        return ['error' => 'TCP sockets are not available on this server.'];
     }
 
-    return ['host' => $host, 'port' => $port, 'open' => false, 'error' => $errstr];
+    $socket = false;
+    $attemptedIp = null;
+    foreach (array_slice($target['ips'], 0, 3) as $ip) {
+        $attemptedIp = $ip;
+        $socketHost = CloudHost247ToolsSecurity::isIpv6($ip) ? '[' . $ip . ']' : $ip;
+        $socket = @stream_socket_client(
+            'tcp://' . $socketHost . ':' . $port,
+            $errno,
+            $errstr,
+            3,
+            STREAM_CLIENT_CONNECT
+        );
+        if (is_resource($socket)) {
+            fclose($socket);
+            return [
+                'host' => $target['host'],
+                'resolved_ip' => $ip,
+                'port' => $port,
+                'protocol' => 'TCP',
+                'open' => true,
+                'status' => 'open',
+            ];
+        }
+    }
+
+    return [
+        'host' => $target['host'],
+        'resolved_ip' => $attemptedIp,
+        'port' => $port,
+        'protocol' => 'TCP',
+        'open' => false,
+        'status' => 'closed_or_filtered',
+        'note' => 'The port did not accept a TCP connection from CloudHost247; a firewall, timeout or refused connection may cause this result.',
+    ];
 }
 
 function CloudHost247_tool_mac_lookup($post)
 {
-    $mac = CloudHost247_tools_sanitize($post['mac'] ?? '', 'string');
-    $mac = strtoupper(preg_replace('/[^a-fA-F0-9]/', '', $mac));
-
-    if (strlen($mac) !== 12) {
-        return ['error' => 'Invalid MAC address format'];
+    $raw = $post['mac'] ?? '';
+    if (!is_string($raw) || strlen($raw) > 64) {
+        return ['error' => 'Enter a six-hex-digit OUI prefix or a complete MAC address.'];
     }
-
+    $raw = trim($raw);
+    $isPrefix = preg_match('/^(?:[0-9a-f]{6}|[0-9a-f]{2}(?::[0-9a-f]{2}){2}|[0-9a-f]{2}(?:-[0-9a-f]{2}){2})$/iD', $raw);
+    $isFull = preg_match('/^(?:[0-9a-f]{12}|[0-9a-f]{2}(?::[0-9a-f]{2}){5}|[0-9a-f]{2}(?:-[0-9a-f]{2}){5}|[0-9a-f]{4}(?:\.[0-9a-f]{4}){2})$/iD', $raw);
+    if (!$isPrefix && !$isFull) {
+        return ['error' => 'Use six hex digits for an OUI prefix, or a complete 12-digit MAC in colon, hyphen, dotted, or bare format.'];
+    }
+    $mac = strtoupper(preg_replace('/[:.-]/', '', $raw));
     $oui = substr($mac, 0, 6);
+    $first = hexdec(substr($mac, 0, 2));
+    $locallyAdministered = (bool) ($first & 0x02);
+    $multicast = (bool) ($first & 0x01);
 
     // Built-in small OUI database
     $ouis = [
@@ -393,12 +433,29 @@ function CloudHost247_tool_mac_lookup($post)
         'FCAAF8' => 'Apple',
     ];
 
-    $vendor = $ouis[$oui] ?? 'Unknown / Not in database';
+    $sampleMatch = array_key_exists($oui, $ouis);
+    if ($locallyAdministered) {
+        $vendor = 'Not applicable: locally administered address';
+        $status = 'local_address';
+    } elseif ($multicast) {
+        $vendor = 'Not applicable: multicast address';
+        $status = 'multicast_address';
+    } elseif ($sampleMatch) {
+        $vendor = $ouis[$oui];
+        $status = 'bundled_sample_match';
+    } else {
+        $vendor = 'Unknown / not present in bundled sample';
+        $status = 'not_in_sample';
+    }
 
     return [
         'mac' => implode(':', str_split($mac, 2)),
-        'oui' => $oui,
+        'oui' => implode(':', str_split($oui, 2)),
         'vendor' => $vendor,
+        'status' => $status,
+        'source' => 'Bundled local prefix sample (source/version not recorded)',
+        'sample_entries' => count($ouis),
+        'coverage_note' => 'This bundled list is partial and unversioned. A missing prefix does not prove that no vendor assignment exists. The browser tool currently does not send MAC values to this server handler.',
     ];
 }
 

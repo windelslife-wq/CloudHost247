@@ -14,6 +14,37 @@ class ApiCall extends Helper
 
     public $url = '';
 
+    /** Build an application-only OVH header from an active saved credential. */
+    private function configuredApplicationHeader($ovhAccountId = null, $location = null)
+    {
+        $query = Capsule::table("mod_soyoustart")->where("status", "=", "1");
+        if ($ovhAccountId !== null && $ovhAccountId !== "") {
+            if (!preg_match('/^[1-9][0-9]{0,18}$/D', (string) $ovhAccountId)) {
+                throw new \RuntimeException("An active OVH credential with an application key is required.");
+            }
+            $query->where("id", "=", (string) $ovhAccountId);
+        } elseif ($location !== null && trim((string) $location) !== "") {
+            $query->where("location", "=", strtolower(trim((string) $location)));
+            $query->orderBy("id", "asc");
+        } else {
+            $query->orderBy("id", "asc");
+        }
+
+        $authData = $query->first();
+        $applicationKey = isset($authData->application_key) && is_string($authData->application_key)
+            ? trim($authData->application_key)
+            : "";
+        if ($applicationKey === "" || preg_match('/[\x00-\x1f\x7f]/', $applicationKey)) {
+            throw new \RuntimeException("An active OVH credential with an application key is required.");
+        }
+
+        return [
+            'Accept: application/json',
+            'X-Ovh-Application: ' . $applicationKey,
+            'Content-Type: application/json',
+        ];
+    }
+
     public function __curlCall($method, $data = null, $apiUrl = null, $header = [], $action = '')
     {
         TrustedEndpoint::assertOvhUrl($apiUrl, $header);
@@ -139,7 +170,7 @@ class ApiCall extends Helper
             if ($createHeader) {
                 $header = self::createHeader($ovhAccountId, "GET", $url);
             } else {
-                $header = ['Accept: application/json', 'X-Ovh-Application: t7r8jC5iiznmTNNm', 'Content-Type: application/json'];
+                $header = $this->configuredApplicationHeader($ovhAccountId, $location);
             }
             $response = $this->__curlCall("GET", [], $url, $header, $action);
             return $response;
@@ -160,7 +191,7 @@ class ApiCall extends Helper
                     $header = self::createHeader($ovhAccountId, "POST", $url, $data);
                 }
             } else {
-                $header = ['Accept: application/json', 'X-Ovh-Application: t7r8jC5iiznmTNNm', 'Content-Type: application/json'];
+                $header = $this->configuredApplicationHeader($ovhAccountId, $location);
             }
             $response = $this->__curlCall("POST", $data, $url, $header, $action);
             return $response;
@@ -182,7 +213,7 @@ class ApiCall extends Helper
                     $header = self::createHeader($ovhAccountId, "PUT", $url, $data);
                 }
             } else {
-                $header = ['Accept: application/json', 'X-Ovh-Application: t7r8jC5iiznmTNNm', 'Content-Type: application/json'];
+                $header = $this->configuredApplicationHeader($ovhAccountId, $location);
             }
             $response = $this->__curlCall("PUT", $data, $url, $header, $action);
             return $response;
@@ -204,7 +235,7 @@ class ApiCall extends Helper
                     $header = self::createHeader($ovhAccountId, "DELETE", $url, $data);
                 }
             } else {
-                $header = ['Accept: application/json', 'X-Ovh-Application: t7r8jC5iiznmTNNm', 'Content-Type: application/json'];
+                $header = $this->configuredApplicationHeader($ovhAccountId, $location);
             }
             $response = $this->__curlCall("DELETE", $data, $url, $header, $action);
             return $response;
@@ -234,7 +265,7 @@ class ApiCall extends Helper
         try {
             $this->baseUrl = $this->getBaseUrl($location);
             $url = $this->baseUrl . $url;
-            $header = ['Accept: application/json', 'X-Ovh-Application: t7r8jC5iiznmTNNm', 'Content-Type: application/json'];
+            $header = $this->configuredApplicationHeader($ovhAccountId, $location);
             $response = $this->__curlCall("POST", $data, $url, $header, "assigning config option to cart");
             return $response;
         } catch (\Exception $e) {
@@ -248,7 +279,7 @@ class ApiCall extends Helper
             $test = $data;
             $url = $this->baseUrl . $url;
             // $header = self::createHeader($ovhAccountId, "POST", $url, $data);
-            $header = ['Accept: application/json', 'X-Ovh-Application: t7r8jC5iiznmTNNm', 'Content-Type: application/json'];
+            $header = $this->configuredApplicationHeader($ovhAccountId, $location);
 
             $response = $this->__curlCall("POST", $test, $url, $header, "add item in cart");
             return $response;
@@ -258,12 +289,22 @@ class ApiCall extends Helper
     }
 
 
-    public function getOs($endPoint = null)
+    public function getOs($endPoint = null, $ovhAccountId = null)
     {
+        if ($endPoint !== null
+            && (!is_string($endPoint)
+                || !preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/D', $endPoint))) {
+            throw new \InvalidArgumentException('Invalid OS template identifier.');
+        }
+
         try {
-            $applicationKey = "iE3vL3mgAtLZg00l";
-            $url = "https://ca.api.ovh.com/1.0/dedicated/installationTemplate/{$endPoint}";
-            $header = ['Content-Type:application/json', 'X-Ovh-Application:' . $applicationKey];
+            $url = "https://ca.api.ovh.com/1.0/dedicated/installationTemplate/";
+            if ($endPoint !== null) {
+                $url .= rawurlencode($endPoint);
+            }
+            // This fixed endpoint is the Canadian OVH API, so the no-argument
+            // admin listing uses an active credential configured for Canada.
+            $header = $this->configuredApplicationHeader($ovhAccountId, "canada");
 
             $data = $this->__curlCall("GET", null, $url, $header, "Get OS");
             return $data;
@@ -273,12 +314,12 @@ class ApiCall extends Helper
     }
 
     /*  */
-    public function getOsDetails($templateNames)
+    public function getOsDetails($templateNames, $ovhAccountId = null)
     {
         try {
             $templateDetail = [];
             foreach ($templateNames as $key => $templateName) {
-                $tempDetail = $this->getOs($templateName);
+                $tempDetail = $this->getOs($templateName, $ovhAccountId);
                 if ($tempDetail["httpcode"] != 200) {
                     logActivity($templateDetail["result"]->message . "in $templateName");
                 }
@@ -320,12 +361,12 @@ class ApiCall extends Helper
     }
 
 
-    public function createCart($location, $cartDesc = "description", $subsidiaryLocation = null)
+    public function createCart($location, $cartDesc = "description", $subsidiaryLocation = null, $ovhAccountId = null)
     {
         try {
             $this->baseUrl = $this->getBaseUrl($location);
             $url = $this->baseUrl . "/order/cart";
-            $header = ['Accept: application/json', 'X-Ovh-Application: t7r8jC5iiznmTNNm', 'Content-Type: application/json'];
+            $header = $this->configuredApplicationHeader($ovhAccountId, $location);
             $data = ["description" => $cartDesc, "ovhSubsidiary" => $subsidiaryLocation];
             $cartDetails = $this->__curlCall("POST", $data, $url, $header, "Creating Cart");
             return $cartDetails;

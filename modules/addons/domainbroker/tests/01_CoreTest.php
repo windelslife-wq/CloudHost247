@@ -26,6 +26,7 @@ use DomainBroker\Core\Settings;
 use DomainBroker\Core\Str;
 use DomainBroker\Core\ValidationException;
 use DomainBroker\Core\Validator;
+use DomainBroker\Services\DomainIntelService;
 
 Harness::boot();
 
@@ -63,7 +64,21 @@ T::is('tld', 'co.uk', DomainName::tld('example.co.uk'));
 T::is('sld', 'example', DomainName::sld('example.co.uk'));
 T::is('rejects nonsense', null, DomainName::normalise('not a domain'));
 T::is('rejects bare tld', null, DomainName::normalise('com'));
+T::is('rejects local-use .local suffix', null, DomainName::normalise('mail.local'));
+T::is('rejects local-use .internal suffix', null, DomainName::normalise('metadata.internal'));
+T::is('rejects special-use home.arpa', null, DomainName::normalise('printer.home.arpa'));
 T::ok('idn becomes punycode', strpos((string) DomainName::normalise('bücher.de'), 'xn--') === 0);
+
+$localDnsCalls = 0;
+DomainIntelService::setResolver(function ($domain, $type) use (&$localDnsCalls) {
+    $localDnsCalls++;
+    return [];
+});
+T::throws('domain intelligence rejects internal names before lookup', ValidationException::class, function () {
+    (new DomainIntelService())->lookup('metadata.internal');
+});
+T::is('domain intelligence makes no resolver request for blocked names', 0, $localDnsCalls);
+DomainIntelService::setResolver(null);
 
 /* -------------------------------------------------------------- validator */
 

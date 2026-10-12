@@ -68,7 +68,7 @@ mod_digital()      { run_glob 'modules/addons/digitalproducts/tests/*Test.php'; 
 mod_cloudflare()   { run_php 'modules/addons/cloudhost247cloudflare/tests/01_SecurityCoreTest.php'; run_php 'modules/servers/cloudhost247cloudflare/tests/01_ServerModuleTest.php'; }
 mod_blockonomics() { run_glob 'modules/gateways/blockonomics/tests/*Test.php'; }
 mod_soyoustart_vps() { run_glob 'modules/servers/soyoustart_vps/tests/*Test.php'; }
-mod_soyoustart() { run_glob 'modules/servers/soyoustart/tests/*Test.php'; }
+mod_soyoustart() { run_glob 'modules/addons/soyoustart/tests/*Test.php'; run_glob 'modules/servers/soyoustart/tests/*Test.php'; run_glob 'crons/tests/*Test.php'; }
 mod_smmprovisioning() { run_glob 'modules/servers/smmprovisioning/tests/*Test.php'; }
 mod_rdp() { run_glob 'modules/servers/RDP/tests/*Test.php'; }
 mod_lteproxy() { run_glob 'modules/servers/cloudhost247_lteproxy/tests/*Test.php'; }
@@ -76,8 +76,8 @@ mod_affiliate()    { run_php 'modules/addons/customaffiliate/tests/CommissionTes
 mod_phones()       { run_php 'modules/addons/phoneservices/tests/WebhookVerifierTest.php'; }
 mod_smm()          { run_php 'modules/addons/smmaddon/tests/AdminSecurityTest.php'; }
 mod_hostxemail()   { run_php 'modules/servers/hostx_email/tests/WebhookAuthTest.php'; run_php 'modules/servers/hostx_email/tests/CryptoMigrationTest.php'; }
-mod_hostxtools()   { run_php 'modules/addons/hostx_tools/tests/ClientIpTest.php'; }
-mod_toolscenter()  { run_php 'modules/addons/tools_center/tests/outbound-guard.php'; }
+mod_hostxtools()   { run_php 'modules/addons/hostx_tools/tests/ClientIpTest.php'; run_php 'modules/addons/hostx_tools/tests/DnsNamespaceTest.php'; run_php 'modules/addons/hostx_tools/tests/DnsPtrLookupTest.php'; }
+mod_toolscenter()  { run_php 'modules/addons/tools_center/tests/outbound-guard.php'; run_php 'modules/addons/tools_center/tests/tool-outbound-security.php'; }
 mod_smtphosting()  { run_php 'modules/servers/Smtphosting/tests/run.php'; }
 mod_cartrecovery() { run_php 'modules/addons/cloudhost247_cart_recovery/tests/run.php'; }
 

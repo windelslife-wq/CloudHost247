@@ -305,41 +305,43 @@ class ProductivityTools {
      * Username Checker
      */
     public function usernameChecker($params) {
-        $username = $params['username'] ?? '';
-        
-        if (empty($username)) {
+        if (!is_array($params) || !isset($params['username']) || !is_string($params['username'])) {
             throw new Exception('Username is required');
         }
-        
-        $username = preg_replace('/[^a-zA-Z0-9_.\-]/', '', $username);
-        
-        if (strlen($username) < 3) {
-            throw new Exception('Username must be at least 3 characters');
+        $username = $params['username'];
+        if (trim($username) === '') {
+            throw new Exception('Username is required');
         }
-        
-        // Check validity
-        $valid = preg_match('/^[a-zA-Z0-9][a-zA-Z0-9_.\-]{2,30}$/', $username);
-        
-        // Popular platforms check (simulated - actual checks would require API keys)
-        $platforms = [
-            'twitter' => ['url' => 'https://twitter.com/' . $username, 'check' => 'URL availability'],
-            'instagram' => ['url' => 'https://instagram.com/' . $username, 'check' => 'URL availability'],
-            'github' => ['url' => 'https://github.com/' . $username, 'check' => 'URL availability'],
-            'facebook' => ['url' => 'https://facebook.com/' . $username, 'check' => 'URL availability'],
-            'youtube' => ['url' => 'https://youtube.com/@' . $username, 'check' => 'URL availability'],
-            'tiktok' => ['url' => 'https://tiktok.com/@' . $username, 'check' => 'URL availability'],
-            'reddit' => ['url' => 'https://reddit.com/user/' . $username, 'check' => 'URL availability'],
-            'linkedin' => ['url' => 'https://linkedin.com/in/' . $username, 'check' => 'URL availability'],
-        ];
-        
+        if (strlen($username) > 128) {
+            throw new Exception('Username input is too long');
+        }
+
+        // This utility validates a common character format and builds profile
+        // links only. It does not query platforms or claim username availability.
+        $valid = preg_match('/^[a-zA-Z0-9][a-zA-Z0-9_.\-]{2,30}$/D', $username) === 1;
+        $platforms = [];
+        if ($valid) {
+            $platforms = [
+                'x' => ['url' => 'https://x.com/' . rawurlencode($username), 'check' => 'Profile link only; availability not checked'],
+                'instagram' => ['url' => 'https://instagram.com/' . rawurlencode($username), 'check' => 'Profile link only; availability not checked'],
+                'github' => ['url' => 'https://github.com/' . rawurlencode($username), 'check' => 'Profile link only; availability not checked'],
+                'facebook' => ['url' => 'https://facebook.com/' . rawurlencode($username), 'check' => 'Profile link only; availability not checked'],
+                'youtube' => ['url' => 'https://youtube.com/@' . rawurlencode($username), 'check' => 'Profile link only; availability not checked'],
+                'tiktok' => ['url' => 'https://tiktok.com/@' . rawurlencode($username), 'check' => 'Profile link only; availability not checked'],
+                'reddit' => ['url' => 'https://reddit.com/user/' . rawurlencode($username), 'check' => 'Profile link only; availability not checked'],
+                'linkedin' => ['url' => 'https://linkedin.com/in/' . rawurlencode($username), 'check' => 'Profile link only; availability not checked'],
+            ];
+        }
+
         return [
             'username' => $username,
-            'valid_format' => (bool)$valid,
+            'valid_format' => (bool) $valid,
+            'availability_checked' => false,
             'length' => strlen($username),
             'platform_urls' => $platforms,
-            'recommendation' => $valid 
-                ? 'Visit these URLs to check if the username is available'
-                : 'Username contains invalid characters',
+            'recommendation' => $valid
+                ? 'Open a profile link to check the platform directly; this tool has not checked availability.'
+                : 'Use 3–31 characters, start with a letter or number, and use only letters, numbers, dots, underscores, or hyphens.',
             'suggestions' => $valid ? [
                 $username . '_official',
                 $username . '1',
@@ -520,34 +522,14 @@ class ProductivityTools {
     }
     
     /**
-     * Domain Search (simplified - redirects to search module)
+     * Legacy productivity route for domain search.
+     * Delegate to the single registry-aware implementation to keep the two
+     * existing routes behaviorally consistent without removing the old route.
      */
     public function domainSearch($params) {
-        $domain = $params['domain'] ?? '';
-        
-        if (empty($domain)) {
-            throw new Exception('Domain is required');
-        }
-        
-        $tlds = ['.com', '.net', '.org', '.io', '.co'];
-        $results = [];
-        
-        foreach ($tlds as $tld) {
-            $checkDomain = $domain . $tld;
-            $records = @dns_get_record($checkDomain, DNS_A);
-            $available = empty($records);
-            
-            $results[] = [
-                'domain' => $checkDomain,
-                'available' => $available,
-                'status' => $available ? 'AVAILABLE' : 'TAKEN',
-            ];
-        }
-        
-        return [
-            'query' => $domain,
-            'results' => $results,
-        ];
+        require_once __DIR__ . '/search.php';
+        $search = new SearchTools($this->config);
+        return $search->domainSearch($params);
     }
     
     /**
@@ -664,6 +646,9 @@ class ProductivityTools {
         }
         
         $domain = $this->sanitizeDomain($domain);
+        if ($domain === '' || !function_exists('tc_is_public_dns_name') || !tc_is_public_dns_name($domain)) {
+            throw new Exception('A public fully qualified domain is required');
+        }
         
         if ($action === 'check') {
             // Check for BIMI record

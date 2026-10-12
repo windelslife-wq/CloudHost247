@@ -18,31 +18,48 @@ class SecurityTools {
         $host = $params['host'] ?? '';
         $port = (int)($params['port'] ?? 443);
         
-        if (empty($host)) {
+        if (!is_string($host) || trim($host) === '') {
             throw new Exception('Host is required');
         }
         
         $host = $this->sanitizeHost($host);
+        if (!$this->isValidHostOrIP($host)) {
+            throw new Exception('Invalid host or IP address');
+        }
+        if ($port < 1 || $port > 65535) {
+            return [
+                'host' => $host,
+                'port' => $port,
+                'ssl_available' => false,
+                'error' => 'Invalid port',
+            ];
+        }
         
-        // Check SSL/TLS connection
-        $context = stream_context_create([
-            'ssl' => [
-                'capture_peer_cert' => true,
-                'verify_peer' => false,
-                'verify_peer_name' => false,
-                'SNI_enabled' => true,
-                'disable_compression' => true,
-            ]
-        ]);
-        
-        $socket = @stream_socket_client(
-            "ssl://{$host}:{$port}",
-            $errno,
-            $errstr,
-            30,
-            STREAM_CLIENT_CONNECT,
-            $context
-        );
+        // Certificate inspection intentionally permits expired or self-signed
+        // certificates. This is metadata retrieval, not trust/hostname validation.
+        $sslOptions = [
+            'capture_peer_cert' => true,
+            'verify_peer' => false,
+            'verify_peer_name' => false,
+            'SNI_enabled' => !filter_var($host, FILTER_VALIDATE_IP),
+            'disable_compression' => true,
+        ];
+        if (!filter_var($host, FILTER_VALIDATE_IP)) {
+            $sslOptions['peer_name'] = $host;
+        }
+
+        $errno = 0;
+        $errstr = '';
+        try {
+            $socket = $this->openPublicTlsSocket($host, $port, 30, $sslOptions, $errno, $errstr);
+        } catch (Throwable $e) {
+            return [
+                'host' => $host,
+                'port' => $port,
+                'ssl_available' => false,
+                'error' => 'Target is not a permitted public host or TLS connection failed',
+            ];
+        }
         
         if (!$socket) {
             return [
@@ -98,22 +115,6 @@ class SecurityTools {
             }
         }
         
-        // SSL/TLS protocol version
-        $protocol = $contextParams['options']['ssl']['peer_certificate'] ? 'TLS' : 'Unknown';
-        
-        // Cipher info
-        $cipher = [];
-        if (function_exists('openssl_get_cipher_methods')) {
-            $cipher = [
-                'available_methods' => count(openssl_get_cipher_methods()),
-            ];
-        }
-        
-        // SSL Labs grade estimation
-        $grade = 'A+';
-        if ($daysUntilExpiry < 7) $grade = 'F';
-        elseif ($daysUntilExpiry < 30) $grade = 'C';
-        
         $subjectAltNames = [];
         if (isset($certInfo['extensions']['subjectAltName'])) {
             $san = $certInfo['extensions']['subjectAltName'];
@@ -144,14 +145,17 @@ class SecurityTools {
                 'key_bits' => $certInfo['subjectPublicKeyInfo']['bits'] ?? null,
             ],
             'chain' => $chain,
-            'grade' => $grade,
+            'assessment' => 'certificate_metadata_only',
+            'grade' => 'Not assessed',
+            'grade_note' => 'This tool does not run an SSL Labs scan or assess negotiated protocol/cipher security.',
+            'trust_validation' => 'not performed',
             'warnings' => array_filter([
                 $daysUntilExpiry < 0 ? 'Certificate has EXPIRED!' : null,
                 $daysUntilExpiry < 30 ? 'Certificate expires in less than 30 days' : null,
                 $daysUntilExpiry < 7 ? 'Certificate expires in less than 7 days - URGENT!' : null,
                 (isset($certInfo['subjectPublicKeyInfo']['bits']) && $certInfo['subjectPublicKeyInfo']['bits'] < 2048) ? 'Weak key size (under 2048 bits)' : null,
+                'Trust chain and hostname validation were not performed; metadata alone is not a complete security assessment.',
             ]),
-            'security_score' => $daysUntilExpiry < 0 ? 0 : max(0, min(100, $daysUntilExpiry)),
         ];
     }
     
@@ -436,5 +440,15 @@ class SecurityTools {
         $host = preg_replace('/^(https?:\/\/)?(www\.)?/i', '', $host);
         $host = preg_replace('/\/.*$/', '', $host);
         return preg_replace('/[^a-z0-9.\-]/', '', $host);
+    }
+
+    private function isValidHostOrIP($host) {
+        if (filter_var($host, FILTER_VALIDATE_IP)) return true;
+        return filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false;
+    }
+
+    /** All production TLS sockets go through the shared pinned public resolver. */
+    protected function openPublicTlsSocket($host, $port, $timeout, array $sslOptions, &$errno, &$errstr) {
+        return tc_open_public_tls_socket($host, $port, $timeout, $sslOptions, $errno, $errstr);
     }
 }

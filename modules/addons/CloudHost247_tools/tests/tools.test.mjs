@@ -26,12 +26,27 @@ const ok = (label, cond, detail) => {
 };
 
 function mkEl(tag) {
+  const listeners = Object.create(null);
   const e = {
     tagName: (tag || 'div').toUpperCase(), children: [], style: {}, dataset: {}, attrs: {},
     classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
     appendChild(c) { this.children.push(c); return c; },
     setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k] ?? null; },
-    removeAttribute(k) { delete this.attrs[k]; }, addEventListener() {}, removeEventListener() {},
+    removeAttribute(k) { delete this.attrs[k]; },
+    addEventListener(type, fn) { listeners[type] = fn; }, removeEventListener(type) { delete listeners[type]; },
+    click() { if (listeners.click) { listeners.click({ target: this }); } },
+    getContext() {
+      if (!this._context) {
+        const element = this;
+        this.drawRects = [];
+        this._context = {
+          fillStyle: '', font: '',
+          fillRect(...rect) { element.drawRects.push(rect); }, fillText() {},
+        };
+      }
+      return this._context;
+    },
+    toBlob(callback, type) { callback(new Blob([`mock-png:${this.width}x${this.height}`], { type: type || 'image/png' })); },
     querySelector() { return null; }, querySelectorAll() { return []; },
     insertBefore(c) { this.children.push(c); return c; }, remove() {}, focus() {},
     contains() { return false; }, closest() { return null; }, removeChild() {},
@@ -46,8 +61,10 @@ function mkEl(tag) {
 }
 
 function makeWindow() {
+  const elements = [];
   const document = {
-    createElement: mkEl, createTextNode: (t) => ({ nodeType: 3, textContent: String(t) }),
+    createElement: (tag) => { const e = mkEl(tag); elements.push(e); return e; },
+    createTextNode: (t) => ({ nodeType: 3, textContent: String(t) }),
     createDocumentFragment: () => mkEl('frag'), getElementById: () => null,
     querySelector: () => null, querySelectorAll: () => [], addEventListener() {},
     readyState: 'complete', head: mkEl('head'), body: mkEl('body'), documentElement: mkEl('html'),
@@ -71,6 +88,7 @@ function makeWindow() {
   Object.defineProperty(window.Node, Symbol.hasInstance, {
     value: (v) => !!v && typeof v === 'object' && (typeof v.tagName === 'string' || v.nodeType === 3),
   });
+  window.__elements = elements;
   window.window = window;
   new Function('window', 'document', fs.readFileSync(path.join(root, 'assets/js/tools-core.js'), 'utf8'))(window, document);
   return window;
@@ -147,6 +165,7 @@ const files = fs.readdirSync(path.join(root, 'assets/js/tools')).filter((f) => f
 ok(`all 91 modules present (found ${files.length})`, files.length === 91);
 
 let clientRun = 0, serverRendered = 0;
+let qrDownloadTest = null;
 const failures = [];
 
 for (const file of files) {
@@ -177,6 +196,88 @@ for (const file of files) {
   ok(`${slug}: declares fields array`, Array.isArray(cfg.fields));
   ok(`${slug}: every field has name+label`, (cfg.fields || []).every((f) => f.name && f.label));
   ok(`${slug}: has a render function`, typeof cfg.render === 'function');
+
+  if (slug === 'qr-generator' && typeof cfg.run === 'function') {
+    const urlQr = cfg.run({ qr_type: 'url', content: 'example.com/path' });
+    ok('qr-generator: normalizes safe links to HTTPS', urlQr.payload === 'https://example.com/path');
+    const unsafeUrl = cfg.run({ qr_type: 'url', content: 'javascript:alert(1)' });
+    ok('qr-generator: rejects non-HTTP URL schemes', !!unsafeUrl.error);
+    const credentialUrl = cfg.run({ qr_type: 'url', content: 'https://user:pass@example.com/' });
+    ok('qr-generator: rejects URLs with embedded credentials', !!credentialUrl.error);
+    const utf8Qr = cfg.run({ qr_type: 'text', content: 'é'.repeat(600) });
+    ok('qr-generator: reports UTF-8 byte length for multibyte text', utf8Qr.bytes === 1200);
+    const overlongUtf8Qr = cfg.run({ qr_type: 'text', content: '😀'.repeat(501) });
+    ok('qr-generator: rejects payloads exceeding the UTF-8 byte limit', !!overlongUtf8Qr.error);
+    const wifiQr = cfg.run({ qr_type: 'wifi', content: 'WIFI:T:WPA;S:Guest;P:sample-password;;' });
+    ok('qr-generator: accepts a standard Wi-Fi payload', wifiQr.payload.indexOf('WIFI:T:WPA;') === 0);
+    const escapedWifiContent = String.raw`WIFI:T:WPA;S:Guest\;Network;P:sample\;password;;`;
+    const escapedWifi = cfg.run({ qr_type: 'wifi', content: escapedWifiContent });
+    ok('qr-generator: accepts escaped Wi-Fi special characters', !escapedWifi.error);
+    const openWifi = cfg.run({ qr_type: 'wifi', content: 'WIFI:T:nopass;S:Guest;;' });
+    ok('qr-generator: accepts an open Wi-Fi payload', !openWifi.error);
+    const securedWifiWithoutPassword = cfg.run({ qr_type: 'wifi', content: 'WIFI:T:WPA;S:Guest;;' });
+    ok('qr-generator: requires a password for secured Wi-Fi payloads', !!securedWifiWithoutPassword.error);
+    const malformedWifi = cfg.run({ qr_type: 'wifi', content: 'Guest password' });
+    ok('qr-generator: rejects an unformatted Wi-Fi payload', !!malformedWifi.error);
+    const vcardQr = cfg.run({ qr_type: 'vcard', content: 'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Example User\r\nEND:VCARD' });
+    ok('qr-generator: accepts a formatted vCard payload', vcardQr.payload.indexOf('BEGIN:VCARD') === 0);
+    const malformedVcard = cfg.run({ qr_type: 'vcard', content: 'Example User' });
+    ok('qr-generator: rejects an unformatted vCard payload', !!malformedVcard.error);
+    qrDownloadTest = async () => {
+      const downloads = [];
+      const originalCreateObjectURL = URL.createObjectURL;
+      URL.createObjectURL = function (blob) {
+        downloads.push(blob);
+        return originalCreateObjectURL.call(URL, blob);
+      };
+      try {
+        CH.loadScript = () => Promise.resolve();
+        window.CH247QR = {
+          encode: () => Array.from({ length: 29 }, (_, y) => Array.from({ length: 29 }, (_, x) => (x + y) % 2 === 0)),
+        };
+        const result = cfg.run({ qr_type: 'text', content: 'Download test' });
+        const rendered = cfg.render(result, {});
+        await Promise.resolve();
+        const walk = (node, out = []) => {
+          if (!node || typeof node !== 'object') { return out; }
+          out.push(node);
+          (node.children || []).forEach((child) => walk(child, out));
+          return out;
+        };
+        const nodes = walk(rendered);
+        const pngButton = nodes.find((node) => node.tagName === 'BUTTON' && node.textContent === 'Download PNG');
+        const svgButton = nodes.find((node) => node.tagName === 'BUTTON' && node.textContent === 'Download SVG');
+        ok('qr-generator: renders PNG and SVG download controls', !!pngButton && !!svgButton);
+        const status = nodes.find((node) => node.tagName === 'P' && node.getAttribute('role') === 'status');
+        if (pngButton) { pngButton.click(); }
+        const canvases = window.__elements.filter((node) => node.tagName === 'CANVAS');
+        const pngCanvas = canvases[canvases.length - 1];
+        ok('qr-generator: PNG export renders a high-resolution canvas', canvases.length >= 2 && pngCanvas.width > 320);
+        ok('qr-generator: PNG canvas includes a four-module quiet zone', pngCanvas.drawRects && pngCanvas.drawRects[1] && pngCanvas.drawRects[1][0] === 40 && pngCanvas.drawRects[1][1] === 40);
+        ok('qr-generator: PNG download starts and reports status', downloads[0] && downloads[0].type === 'image/png' && /download started/i.test(status && status.textContent || ''));
+        if (svgButton) { svgButton.click(); }
+        ok('qr-generator: SVG download is vector data and reports status', downloads[1] && downloads[1].type.indexOf('image/svg+xml') === 0 && /qr-code\.svg download started/i.test(status && status.textContent || ''));
+        if (downloads[1]) {
+          const svg = await downloads[1].text();
+          ok('qr-generator: SVG contains viewBox, quiet zone and QR path', /<svg[^>]+viewBox=/.test(svg) && /<rect/.test(svg) && /<path/.test(svg));
+        }
+      } catch (e) {
+        ok('qr-generator: PNG and SVG export controls execute', false, e && e.stack || e.message || String(e));
+      } finally {
+        URL.createObjectURL = originalCreateObjectURL;
+      }
+    };
+  }
+
+  if (slug === 'mac-lookup' && typeof cfg.run === 'function') {
+    const knownShape = cfg.run({ mac: '00:1A:2B:3C:4D:5E' });
+    ok('mac-lookup: does not claim a vendor without an OUI source', knownShape.vendor_lookup === 'Unavailable');
+    ok('mac-lookup: explains local-only processing and missing coverage', /not sent to CloudHost247/.test(knownShape.note) && /No vendor result/.test(knownShape.coverage));
+    const prefix = cfg.run({ mac: '00:1A:2B' });
+    ok('mac-lookup: accepts a six-digit OUI prefix', prefix.oui === '00:1A:2B');
+    const alteredInput = cfg.run({ mac: '00:1A:2B:3C:4D:5E<script>' });
+    ok('mac-lookup: rejects punctuation instead of stripping it', !!alteredInput.error);
+  }
 
   // Sensitive tools must opt out of history and sharing.
   if (['password-generator', 'password-strength', 'password-encryption', 'credit-card-checker', 'wifi-qr-scanner'].includes(slug)) {
@@ -229,6 +330,8 @@ for (const file of files) {
     }
   }
 }
+
+if (qrDownloadTest) { await qrDownloadTest(); }
 
 console.log(`\nclient run() executed: ${clientRun}   server render() exercised: ${serverRendered}`);
 if (failures.length) { console.log('\nrun() failures:\n' + failures.map((f) => '  - ' + f).join('\n')); }

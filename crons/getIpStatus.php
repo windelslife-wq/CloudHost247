@@ -1,4 +1,6 @@
-    <?php
+<?php
+require_once __DIR__ . '/lib/CronRuntime.php';
+\CloudHost247\SoYouStart\Cron\CronGuard::requireCli();
 
 
     $whmcspath = "";
@@ -36,10 +38,19 @@
 
         if (isset($allips[0])) {
             foreach ($allips as $key => $ip) {
-                $service = getAllServerPackages($ip->service_id);
-                $service = $service[0];
-                $accountId = $service->accountInfo->id;
-                $location = $service->accountInfo->location;
+                $serviceMatches = getAllServerPackages($ip->service_id);
+                if (!isset($serviceMatches[0])) {
+                    logActivity("GetIpStatus cron skipped order with no active hosting service (order row " . (int) $ip->id . ").");
+                    continue;
+                }
+                $service = $serviceMatches[0];
+                $accountInfo = $service->accountInfo ?? null;
+                if (!is_object($accountInfo) || empty($accountInfo->id) || empty($accountInfo->location)) {
+                    logActivity("GetIpStatus cron skipped service with missing OVH account configuration (service ID " . (int) $ip->service_id . ").");
+                    continue;
+                }
+                $accountId = $accountInfo->id;
+                $location = $accountInfo->location;
                 $ovhCustomHostname = $service->ovh_custom_hostname;
                 $ovh_server_name = $service->ovh_server_name;
                 $ovhOrderId = $ip->iporderid;
@@ -121,7 +132,7 @@
                 }
             }
         }
-    } catch (\Exception $e) {
+    } catch (\Throwable $e) {
         logActivity('Cron Error: getting server datails after create command(' . $e->getMessage() . ')');
     }
 
@@ -165,7 +176,7 @@
                 return $query->first();
             }
             return $query->get();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             throw new \Exception('Error retrieving data: ' . $e->getMessage());
         }
     }

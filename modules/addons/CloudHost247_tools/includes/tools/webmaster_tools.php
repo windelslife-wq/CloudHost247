@@ -92,15 +92,9 @@ function CloudHost247_tool_pagerank($post)
         return ['error' => 'Invalid domain'];
     }
 
-    // Google discontinued Toolbar PageRank - return mock/estimated
-    $score = mt_rand(1, 10);
-    $note = 'Google officially discontinued Toolbar PageRank in 2016. This is a simulated estimate for demonstration purposes.';
-
     return [
         'domain' => $domain,
-        'score' => $score,
-        'note' => $note,
-        'simulated' => true,
+        'note' => 'Google Toolbar PageRank is a retired metric. No current official score is publicly available; CloudHost247 does not invent or estimate one.',
     ];
 }
 
@@ -164,8 +158,8 @@ function CloudHost247_tool_serp_preview($post)
 function CloudHost247_tool_robots_generator($post)
 {
     $userAgent = CloudHost247_tools_sanitize($post['user_agent'] ?? '*', 'string');
-    $allow = array_filter(array_map('trim', explode("\n", $_POST['allow'] ?? '')));
-    $disallow = array_filter(array_map('trim', explode("\n", $_POST['disallow'] ?? '')));
+    $allow = array_filter(array_map('trim', explode("\n", $post['allow'] ?? '')));
+    $disallow = array_filter(array_map('trim', explode("\n", $post['disallow'] ?? '')));
     $sitemap = CloudHost247_tools_sanitize($post['sitemap'] ?? '', 'url');
     $crawlDelay = (int) ($post['crawl_delay'] ?? 0);
 

@@ -60,22 +60,20 @@
    /temp/                - Temp directory (auto-created)
    ```
 
-3. Set proper permissions:
+3. Create the private data directories with permissions limited to the PHP service account:
    ```bash
-   chmod 755 cache logs temp
+   install -d -m 700 cache logs temp
    ```
+   Keep these directories outside the public web root where possible. If they must be inside it, deny HTTP access as shown below.
 
-4. Configure `config.php`:
-   ```php
-   'api_token' => 'your-very-secure-random-token-here',
-   'api_secret' => 'your-very-secure-secret-here',
-   ```
-
-5. Set environment variables (recommended for production):
+4. Configure credentials through the service environment (recommended):
    ```bash
-   export TOOLS_API_TOKEN="your-secure-token"
-   export TOOLS_API_SECRET="your-secure-secret"
+   export TOOLS_API_TOKEN="$(openssl rand -hex 32)"
+   export TOOLS_API_SECRET="$(openssl rand -hex 32)"
    ```
+   The API intentionally has no built-in fallback key and rejects the shipped example values. Configure the same `TOOLS_API_TOKEN` in the WHMCS addon settings. `TOOLS_API_SECRET` is only needed if using signed HMAC tokens.
+
+5. Configure `allowed_origins` in `config.php` only if browser clients must call the API directly. Use exact origins (scheme and host, optional port, no path or trailing slash). The WHMCS addon calls the API server-to-server and does not need CORS.
 
 ### Option B: Same Server (Outside Web Root)
 
@@ -98,44 +96,47 @@ require_once '/home/user/whmcs-tools-api/api.php';
 
 **Apache (.htaccess):**
 ```apache
-# Protect config files
-<FilesMatch "^(config|auth|cache|rate-limit)\.php$">
-    Order deny,allow
-    Deny from all
-</FilesMatch>
-
-# Enable CORS for your WHMCS domain
-Header set Access-Control-Allow-Origin "https://your-whmcs-domain.com"
-
-# Disable directory listing
 Options -Indexes
+
+# Protect private runtime data if these directories are inside the web root.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(cache|logs|temp)(/|$) - [F,L,NC]
+</IfModule>
+
+# Expose only the API entry point; block direct PHP access to modules/config.
+<IfModule mod_authz_core.c>
+    <FilesMatch "^(?!api\.php$).+\.php$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+    <FilesMatch "^(?!api\.php$).+\.php$">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+</IfModule>
 ```
+
+CORS is controlled by the API's exact `allowed_origins` configuration. Do not add a wildcard `Access-Control-Allow-Origin` header at the web-server layer.
 
 **Nginx:**
 ```nginx
 server {
     listen 443 ssl;
     server_name tools-api.yourdomain.com;
-    
+
     root /var/www/tools-api;
-    index api.php;
-    
-    # Protect sensitive files
-    location ~ /(config|auth|cache|rate-limit)\.php$ {
-        deny all;
-        return 403;
-    }
-    
-    location ~ \.php$ {
-        fastcgi_pass unix:/var/run/php/php74-fpm.sock;
-        fastcgi_index api.php;
+
+    # Only the authenticated API entry point is a public PHP route.
+    location = /api.php {
         include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root/api.php;
+        fastcgi_pass unix:/var/run/php/php-fpm.sock;
     }
-    
-    # Cache directory protection
-    location /cache/ { deny all; }
-    location /logs/ { deny all; }
-    location /temp/ { deny all; }
+    location ~ \.php$ { return 404; }
+
+    location ~ ^/(cache|logs|temp)(/|$) { deny all; }
 }
 ```
 
@@ -244,7 +245,7 @@ Some tools benefit from external API keys:
 
 1. Verify API endpoint URL is correct and accessible
 2. Check API token matches between WHMCS and external API config
-3. Test API directly: `curl -X POST https://tools-api.yourdomain.com/api.php -d '{"category":"ip","action":"whatIsMyIP","api_token":"YOUR_TOKEN"}'`
+3. Test the POST-only API directly: `curl -X POST https://tools-api.yourdomain.com/api.php -H 'Content-Type: application/json' -H 'X-API-Token: YOUR_TOKEN' -d '{"category":"ip","action":"whatIsMyIP"}'`
 4. Check firewall rules allow connections
 
 ### Tools Not Loading

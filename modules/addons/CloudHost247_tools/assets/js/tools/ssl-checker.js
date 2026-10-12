@@ -13,7 +13,7 @@
         new CH.ToolPage({
             slug: "ssl-checker",
             exec: "server",
-            fields: [{"name": "host", "label": "Hostname or IP address", "placeholder": "example.com or 8.8.8.8", "width": "full", "required": true, "spellcheck": false}, {"name": "port", "label": "Port", "type": "number", "placeholder": "443", "min": 1, "max": 65535, "required": true}],
+            fields: [{"name": "host", "label": "Hostname or IP address", "placeholder": "example.com or 8.8.8.8", "width": "full", "required": true, "spellcheck": false}, {"name": "port", "label": "TLS port", "type": "select", "value": "443", "hint": "The certificate chain is not verified. Choose a standard HTTPS or implicit-TLS port.", "options": [{"value": "443", "label": "443 — HTTPS"}, {"value": "465", "label": "465 — SMTP TLS"}, {"value": "636", "label": "636 — LDAPS"}, {"value": "853", "label": "853 — DNS over TLS"}, {"value": "993", "label": "993 — IMAPS"}, {"value": "995", "label": "995 — POP3S"}, {"value": "2083", "label": "2083 — cPanel"}, {"value": "2087", "label": "2087 — WHM"}, {"value": "2096", "label": "2096 — cPanel Webmail"}, {"value": "8443", "label": "8443 — Alternate HTTPS"}]}],
             render: function (d) {
                 var wrap = CH.el('div');
                 if (!d || typeof d !== 'object') {

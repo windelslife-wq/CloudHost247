@@ -124,7 +124,7 @@ $domainName = isset($domainParts[1]) ? $domainParts[1] : '';
             return $paymentresponse;
         }
         /* creating cart */
-        $cartDetails = $apiCall->createCart($location, $planCode, $subsidiaryLocation);
+        $cartDetails = $apiCall->createCart($location, $planCode, $subsidiaryLocation, $ovhAccountData[0]);
         if ($cartDetails["httpcode"] != 200) {
             return $cartDetails['result']->message . "Please check your (" . (isset($ovhAccountData[2]) ? $ovhAccountData[2] : '') . ")" . " account is active";
         }
@@ -192,7 +192,7 @@ $domainName = isset($domainParts[1]) ? $domainParts[1] : '';
                     $vpsLabelValue = false;
                 }
                 $postData = array('label' => $requiredConfigurationData->label, 'value' => $vpsLabelValue);
-                $response = $apiCall->addConfigOptInCart('/order/cart/' . $cartId . '/item/' . $itemid . '/configuration', '', $postData, $location);
+                $response = $apiCall->addConfigOptInCart('/order/cart/' . $cartId . '/item/' . $itemid . '/configuration', $ovhAccountData[0], $postData, $location);
                 if ($response["httpcode"] != 200) {
                     return $response['result']->message;
                 }
@@ -843,7 +843,7 @@ function soyoustart_vps_ClientArea(array $params)
                     exit;
                 } elseif ($whmcs->get_req_var("iPaction") == "addAdditionalIp") {
                     /* creating cart */
-                    $cartDetails = $apiCall->createCart($location, $planCode . "add Additional IPs", $subsidiaryLocation);
+                    $cartDetails = $apiCall->createCart($location, $planCode . "add Additional IPs", $subsidiaryLocation, $accountId);
                     if ($cartDetails["httpcode"] != 200) {
                         echo json_encode($cartDetails);
                         exit;
@@ -994,7 +994,7 @@ function soyoustart_vps_ClientArea(array $params)
             } elseif ($whmcs->get_req_var("snapshot")) {
                 if ($whmcs->get_req_var("snapshotAction") == "orderSnapshot") {
                     /* creating cart */
-                    $cartDetails = $apiCall->createCart($location, $planCode . "creating cart", $subsidiaryLocation);
+                    $cartDetails = $apiCall->createCart($location, $planCode . "creating cart", $subsidiaryLocation, $accountId);
                     if ($cartDetails["httpcode"] != 200) {
                         echo json_encode($cartDetails);
                         exit;
@@ -1123,7 +1123,7 @@ function soyoustart_vps_ClientArea(array $params)
                 }
             } elseif ($whmcs->get_req_var("backup")) {
                 if ($whmcs->get_req_var("backupAction") == "orderBackup") {
-                    $cartDetails = $apiCall->createCart($location, $planCode . "creating cart", $subsidiaryLocation);
+                    $cartDetails = $apiCall->createCart($location, $planCode . "creating cart", $subsidiaryLocation, $accountId);
                     if ($cartDetails["httpcode"] != 200) {
                         echo json_encode($cartDetails);
                         exit;

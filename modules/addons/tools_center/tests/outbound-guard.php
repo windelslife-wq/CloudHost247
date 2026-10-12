@@ -29,12 +29,25 @@ foreach ([
     chk("blocked $ip", tc_is_public_ip($ip) === false);
 }
 
+echo "== tc_is_public_dns_name ==\n";
+foreach (['example.com', 'www.example.co.uk', 'example.com.'] as $host) {
+    chk("public DNS name $host", tc_is_public_dns_name($host) === true);
+}
+foreach ([
+    'localhost', 'metadata', 'metadata.goog', 'instance-data.ec2.internal', 'ip6-localhost',
+    'printer.local', 'metadata.internal', 'router.lan', 'host.corp', 'test.example', 'name.test',
+    'name.invalid', 'service.onion', 'name.alt', 'host.home.arpa', '8.8.8.8', 'bad..example.com',
+    '-bad.example.com', 'bad-.example.com', 'example.com..', 'a', '',
+] as $host) {
+    chk("non-public DNS name $host", tc_is_public_dns_name($host) === false);
+}
+
 echo "== tc_validate_outbound_url ==\n";
 foreach ([
     'file:///etc/passwd', 'gopher://8.8.8.8/', 'ftp://8.8.8.8/', 'http://user:pw@8.8.8.8/',
     'http://8.8.8.8:8080/', 'http://127.0.0.1/', 'http://169.254.169.254/latest/meta-data/',
     'http://localhost/', 'http://[::1]/', 'http://10.0.0.5/admin', 'http://intranet/',
-    'http://bad host/', 'not a url', 'https://192.168.0.1:443/',
+    'http://bad host/', 'http://metadata.internal/', 'http://service.local/', 'not a url', 'https://192.168.0.1:443/',
 ] as $u) {
     chk("rejects $u", throws_msg(function () use ($u) { tc_validate_outbound_url($u); }) !== null);
 }
@@ -58,6 +71,8 @@ chk('fetch refuses file scheme', throws_msg(function () { tc_fetch_url('file:///
 echo "== tc_open_public_socket ==\n";
 chk('socket refuses loopback', throws_msg(function () { tc_open_public_socket('127.0.0.1', 25, 3); }) !== null);
 chk('socket refuses bad port', throws_msg(function () { tc_open_public_socket('8.8.8.8', 0, 3); }) !== null);
+chk('TLS socket refuses loopback before connect', throws_msg(function () { tc_open_public_tls_socket('127.0.0.1', 443, 3, []); }) !== null);
+chk('TLS socket refuses bad port before connect', throws_msg(function () { tc_open_public_tls_socket('8.8.8.8', 0, 3, []); }) !== null);
 
 echo "== tc_resolve_redirect ==\n";
 chk('absolute kept', tc_resolve_redirect('https://8.8.8.8/a', 'https://1.1.1.1/b') === 'https://1.1.1.1/b');

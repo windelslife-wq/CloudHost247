@@ -10,6 +10,8 @@ if (!defined('WHMCS')) {
 
 use WHMCS\Database\Capsule;
 
+require_once __DIR__ . '/csrf.php';
+
 /**
  * Add Tools Center to client area navigation
  */
@@ -89,9 +91,18 @@ add_hook('ClientAreaHeadOutput', 1, function ($vars) {
     }
     
     $css = '<link rel="stylesheet" href="modules/addons/tools_center/css/tools-center.css" />';
+    $csrfToken = function_exists('tools_center_issue_csrf_token') ? tools_center_issue_csrf_token() : null;
+    $clientConfig = [
+        'apiUrl' => 'index.php?m=tools_center',
+        'csrfToken' => is_string($csrfToken) ? $csrfToken : '',
+    ];
+    $configJson = json_encode($clientConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+    $configScript = is_string($configJson)
+        ? '<script>window.toolsCenterConfig = ' . $configJson . ';</script>'
+        : '';
     $js = '<script src="modules/addons/tools_center/js/tools-center.js"></script>';
     
-    return $css . "\n" . $js;
+    return $css . "\n" . $configScript . "\n" . $js;
 });
 
 /**
@@ -106,12 +117,19 @@ function tools_center_check_access($clientId, $settings = null) {
         $settings = getToolsCenterSettings();
     }
     
-    // Check client groups
+    // Check client groups. A missing WHMCS client row or invalid group setting
+    // must not grant access when an allowlist is configured.
     $allowedGroups = $settings['allowed_client_groups'] ?? '';
     if (!empty($allowedGroups)) {
-        $allowed = array_map('trim', explode(',', $allowedGroups));
+        $allowed = array_values(array_filter(array_map('trim', explode(',', (string) $allowedGroups)), function ($id) {
+            return $id !== '' && ctype_digit($id);
+        }));
         $client = Capsule::table('tblclients')->where('id', $clientId)->first();
-        if ($client && !in_array($client->groupid, $allowed)) {
+        if (!$client || !$allowed) {
+            return false;
+        }
+        $allowed = array_map('strval', array_map('intval', $allowed));
+        if (!in_array((string) (int) $client->groupid, $allowed, true)) {
             return false;
         }
     }
@@ -172,7 +190,8 @@ function tools_center_log_usage($clientId, $category, $action, $status, $respons
             'client_id' => $clientId,
             'tool_category' => $category,
             'tool_action' => $action,
-            'input_hash' => md5(serialize($_REQUEST)),
+            // Retain the legacy column without fingerprinting sensitive user input.
+            'input_hash' => hash('sha256', 'tools-center:' . $category . ':' . $action),
             'status' => $status,
             'response_time_ms' => $responseTime,
             'created_at' => date('Y-m-d H:i:s'),
@@ -223,25 +242,48 @@ function tools_center_api_request($category, $action, $params = [], $settings = 
         ];
     }
     
-    $url = rtrim($endpoint, '?&');
-    
+    $url = trim($endpoint);
+    $urlParts = parse_url($url);
+    if (!is_array($urlParts) || strtolower($urlParts['scheme'] ?? '') !== 'https'
+        || empty($urlParts['host']) || isset($urlParts['user']) || isset($urlParts['pass'])) {
+        return [
+            'success' => false,
+            'error' => 'API endpoint must be a valid HTTPS URL.',
+        ];
+    }
+
+    if (!is_array($params)) {
+        return [
+            'success' => false,
+            'error' => 'Invalid tool parameters.',
+        ];
+    }
+    // These fields are controlled by the module, not by browser form values.
+    unset($params['api_token'], $params['category'], $params['action'], $params['token'], $params['csrf_token']);
     $postData = array_merge($params, [
         'category' => $category,
         'action' => $action,
-        'api_token' => $token,
     ]);
+    $encodedBody = json_encode($postData, JSON_INVALID_UTF8_SUBSTITUTE);
+    if (!is_string($encodedBody)) {
+        return [
+            'success' => false,
+            'error' => 'Invalid tool parameters.',
+        ];
+    }
     
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => json_encode($postData),
+        CURLOPT_POSTFIELDS => $encodedBody,
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
             'X-API-Token: ' . $token,
         ],
         CURLOPT_TIMEOUT => 60,
         CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
         // Redirects are not followed: the API token is sent in a header and must not be forwarded.
         // HTTPS only (the README requires HTTPS for all API traffic).
         CURLOPT_FOLLOWLOCATION => false,

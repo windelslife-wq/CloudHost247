@@ -5,14 +5,16 @@
 
 $config = [
     // API Authentication
-    'api_token' => getenv('TOOLS_API_TOKEN') ?: 'your-secure-api-token-here',
-    'api_secret' => getenv('TOOLS_API_SECRET') ?: 'your-secure-api-secret-here',
+    'api_token' => getenv('TOOLS_API_TOKEN') ?: '',
+    'api_secret' => getenv('TOOLS_API_SECRET') ?: '',
+    // HMAC tokens are intentionally short-lived and single-use.
+    'hmac_ttl_seconds' => 300,
+    'hmac_clock_skew_seconds' => 30,
+    'max_request_bytes' => 65536,
     
-    // Allowed WHMCS domains (CORS)
-    'allowed_origins' => [
-        'https://your-whmcs-domain.com',
-        'https://www.your-whmcs-domain.com',
-    ],
+    // Exact browser origins permitted to call this API directly. Empty by default;
+    // the WHMCS addon uses server-to-server requests and does not need CORS.
+    'allowed_origins' => [],
     
     // Rate Limiting
     'rate_limit' => [
@@ -52,6 +54,9 @@ $config = [
 $dirs = [$config['cache_path'], $config['log_path'], $config['temp_path']];
 foreach ($dirs as $dir) {
     if (!is_dir($dir)) {
-        mkdir($dir, 0755, true);
+        mkdir($dir, 0700, true);
     }
+    // Cache, rate-limit and diagnostic files can contain operational data.
+    // Keep the default runtime directories private to the service account.
+    @chmod($dir, 0700);
 }

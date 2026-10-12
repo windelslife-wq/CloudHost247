@@ -31,7 +31,7 @@ namespace {
     check('VS-23: undefined createIPsHtml call gone', strpos($entry, 'createIPsHtml') === false);
     check('VS-1: metadata typo gone', strpos($entry, 'soyostart_vps_MetaData') === false);
     check('VS-24: spaced currency keys gone', strpos($tpl, '" rate"') === false && strpos($tpl, '" prefix"') === false);
-    check('lib modal raw array-prop read gone', strpos($libsrc, "' . $iptInfo->ipAddress . '") === false);
+    check('lib modal raw array-prop read gone', strpos($libsrc, "' . \$iptInfo->ipAddress . '") === false);
     check('lib modal ships static empty data-ipAddress', strpos($libsrc, 'data-ipAddress=""') !== false);
 
     echo "== added guards present ==\n";

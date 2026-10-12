@@ -11,54 +11,139 @@ require_once __DIR__ . '/../functions.php';
 
 function CloudHost247_tool_ssl_checker($post)
 {
-    $domain = CloudHost247_tools_sanitize($post['domain'] ?? '', 'domain');
-    if (!CloudHost247_tools_validate_domain($domain)) {
-        return ['error' => 'Invalid domain name'];
+    $rawHost = $post['host'] ?? ($post['domain'] ?? '');
+    $host = (is_string($rawHost) || is_numeric($rawHost)) ? trim((string) $rawHost) : '';
+    if ($host === '') {
+        return ['error' => 'Please enter a public hostname.'];
     }
 
-    $context = stream_context_create([
-        'ssl' => [
-            'capture_peer_cert' => true,
-            'verify_peer' => false,
-            'verify_peer_name' => false,
-        ],
-    ]);
+    $rawPort = $post['port'] ?? 443;
+    if ($rawPort === '' || $rawPort === null) {
+        $rawPort = 443;
+    }
+    try {
+        $port = CloudHost247ToolsSecurity::validatePort($rawPort);
+        $tlsPorts = [443, 465, 636, 853, 993, 995, 2083, 2087, 2096, 8443];
+        if (!in_array($port, $tlsPorts, true)) {
+            return ['error' => 'TLS checks are limited to standard HTTPS and implicit-TLS ports.'];
+        }
+        $target = CloudHost247ToolsSecurity::publicConnectTarget($host, $port);
+    } catch (CloudHost247ToolsSecurityException $e) {
+        return ['error' => $e->getMessage()];
+    }
 
-    $socket = @stream_socket_client("ssl://{$domain}:443", $errno, $errstr, 10, STREAM_CLIENT_CONNECT, $context);
-    if (!$socket) {
-        return ['domain' => $domain, 'ssl_enabled' => false, 'error' => $errstr];
+    if (!function_exists('stream_socket_client') || !function_exists('openssl_x509_parse')) {
+        return ['error' => 'TLS socket and OpenSSL support are required on this server.'];
+    }
+
+    $sslOptions = [
+        'capture_peer_cert' => true,
+        'capture_peer_cert_chain' => true,
+        // Verification is intentionally deferred so expired/self-signed
+        // certificates can still be inspected. Hostname matching is checked
+        // below; this tool does not claim to validate the public trust chain.
+        'verify_peer' => false,
+        'verify_peer_name' => false,
+    ];
+    if (!CloudHost247ToolsSecurity::isIp($target['host'])) {
+        $sslOptions['peer_name'] = $target['host'];
+        $sslOptions['SNI_enabled'] = true;
+    }
+    $context = stream_context_create(['ssl' => $sslOptions]);
+
+    $socket = false;
+    $connectedIp = null;
+    foreach (array_slice($target['ips'], 0, 3) as $ip) {
+        $connectedIp = $ip;
+        $socketHost = CloudHost247ToolsSecurity::isIpv6($ip) ? '[' . $ip . ']' : $ip;
+        $socket = @stream_socket_client(
+            'ssl://' . $socketHost . ':' . $port,
+            $errno,
+            $errstr,
+            8,
+            STREAM_CLIENT_CONNECT,
+            $context
+        );
+        if (is_resource($socket)) {
+            break;
+        }
+    }
+
+    if (!is_resource($socket)) {
+        return [
+            'host' => $target['host'],
+            'resolved_ip' => $connectedIp,
+            'port' => $port,
+            'ssl_enabled' => false,
+            'error' => 'A TLS handshake could not be completed on this public host and port.',
+        ];
     }
 
     $params = stream_context_get_params($socket);
-    $cert = openssl_x509_parse($params['options']['ssl']['peer_certificate']);
+    $meta = stream_get_meta_data($socket);
     fclose($socket);
-
+    $certificate = $params['options']['ssl']['peer_certificate'] ?? null;
+    $cert = $certificate ? @openssl_x509_parse($certificate) : false;
     if (!$cert) {
-        return ['domain' => $domain, 'ssl_enabled' => false, 'error' => 'Could not parse certificate'];
+        return [
+            'host' => $target['host'],
+            'resolved_ip' => $connectedIp,
+            'port' => $port,
+            'ssl_enabled' => false,
+            'error' => 'The remote peer did not provide a parseable TLS certificate.',
+        ];
     }
 
-    $validFrom = $cert['validFrom_time_t'] ?? 0;
-    $validTo = $cert['validTo_time_t'] ?? 0;
-    $now = time();
-    $daysLeft = floor(($validTo - $now) / 86400);
+    $validFrom = (int) ($cert['validFrom_time_t'] ?? 0);
+    $validTo = (int) ($cert['validTo_time_t'] ?? 0);
+    $daysLeft = $validTo > 0 ? (int) floor(($validTo - time()) / 86400) : null;
+    $hostnameMatch = null;
+    if (CloudHost247ToolsSecurity::isIp($target['host']) && function_exists('openssl_x509_checkip')) {
+        $hostnameMatch = @openssl_x509_checkip($certificate, $target['host']);
+    } elseif (!CloudHost247ToolsSecurity::isIp($target['host']) && function_exists('openssl_x509_checkhost')) {
+        $hostnameMatch = @openssl_x509_checkhost($certificate, $target['host']);
+    }
 
+    $sans = [];
+    $sanText = $cert['extensions']['subjectAltName'] ?? '';
+    if (is_string($sanText) && $sanText !== '') {
+        foreach (preg_split('/,\s*/', $sanText) as $san) {
+            if (strpos($san, ':') !== false) {
+                [$type, $value] = explode(':', $san, 2);
+                if (in_array(strtolower($type), ['dns', 'ip address'], true)) {
+                    $sans[] = ['type' => strtolower($type), 'value' => trim($value)];
+                }
+            }
+        }
+    }
+
+    $crypto = $meta['crypto'] ?? [];
     return [
-        'domain' => $domain,
+        'host' => $target['host'],
+        'domain' => $target['host'], // legacy renderer compatibility
+        'resolved_ip' => $connectedIp,
+        'port' => $port,
         'ssl_enabled' => true,
         'issuer' => $cert['issuer']['O'] ?? 'Unknown',
         'subject' => $cert['subject']['CN'] ?? 'Unknown',
-        'valid_from' => date('Y-m-d', $validFrom),
-        'valid_to' => date('Y-m-d', $validTo),
+        'subject_alt_names' => $sans,
+        'hostname_match' => $hostnameMatch === null ? null : (bool) $hostnameMatch,
+        'valid_from' => $validFrom > 0 ? date('Y-m-d', $validFrom) : null,
+        'valid_to' => $validTo > 0 ? date('Y-m-d', $validTo) : null,
         'days_remaining' => $daysLeft,
-        'expired' => $daysLeft < 0,
-        'expiring_soon' => $daysLeft >= 0 && $daysLeft <= 30,
+        'expired' => $daysLeft === null ? null : $daysLeft < 0,
+        'expiring_soon' => $daysLeft === null ? null : ($daysLeft >= 0 && $daysLeft <= 30),
         'serial_number' => $cert['serialNumber'] ?? 'N/A',
+        'tls_protocol' => $crypto['protocol'] ?? null,
+        'cipher' => $crypto['cipher_name'] ?? null,
+        'trust_chain_checked' => false,
+        'note' => 'This reports the certificate presented by the server and checks hostname matching when supported. It does not validate CA trust or the full certificate chain.',
     ];
 }
 
 function CloudHost247_tool_password_encryptor($post)
 {
-    $password = $_POST['password'] ?? '';
+    $password = $post['password'] ?? '';
     $algorithm = CloudHost247_tools_sanitize($post['algorithm'] ?? 'md5', 'string');
 
     if (empty($password)) {
@@ -131,7 +216,7 @@ function CloudHost247_tool_password_generator($post)
 
 function CloudHost247_tool_password_strength($post)
 {
-    $password = $_POST['password'] ?? '';
+    $password = $post['password'] ?? '';
     if (empty($password)) {
         return ['error' => 'Please enter a password'];
     }

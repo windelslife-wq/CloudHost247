@@ -19,6 +19,8 @@ A comprehensive WHMCS addon module providing professional networking tools for d
 - **DNS Lookup** - Query all DNS record types (A, AAAA, MX, NS, TXT, CNAME, SOA, PTR, SRV, CAA)
 - **Domain Availability** - Check domain availability across 19 popular TLDs
 
+The DNS input guard rejects local/special-use namespaces before resolver calls. PTR lookups accept a public IP literal (converted to its reverse-DNS owner) or a complete public reverse owner; private, reserved, malformed, and partial reverse namespaces are rejected. Offline regressions use a mocked resolver and do not perform live DNS requests. This source hardening does not reactivate or replace the required WHMCS deactivation of this retired addon.
+
 ## APIs Used
 
 | Service | Type | Purpose |

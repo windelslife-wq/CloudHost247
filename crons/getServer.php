@@ -1,4 +1,6 @@
-    <?php
+<?php
+require_once __DIR__ . '/lib/CronRuntime.php';
+\CloudHost247\SoYouStart\Cron\CronGuard::requireCli();
     $whmcspath = "";
     if (file_exists(dirname(__FILE__) . "/config.php"))
         require_once dirname(__FILE__) . "/config.php";
@@ -39,8 +41,13 @@
         }
 
         foreach ($allServices as $service) {
-            $accountId = $service->accountInfo->id;
-            $location = $service->accountInfo->location;
+            $accountInfo = $service->accountInfo ?? null;
+            if (!is_object($accountInfo) || empty($accountInfo->id) || empty($accountInfo->location)) {
+                logActivity("GetServer cron skipped service with missing OVH account configuration (service ID " . (int) $service->id . ").");
+                continue;
+            }
+            $accountId = $accountInfo->id;
+            $location = $accountInfo->location;
             $ovhCustomHostname = $service->ovh_custom_hostname;
             $ovh_server_name = $service->ovh_server_name;
             $ovhOrderId = $service->ovh_order_id;
@@ -105,7 +112,7 @@
                     $params['configoptions'][strtolower($configoption['option'])] = $configoption['value'];
                 }
                 $billingCycle = $serviceDetails['products']['product'][0]["billingcycle"];
-                $noOfIps = explode(' ', $params['configoptions']['additional ips'])[0];
+                $noOfIps = explode(' ', trim((string) ($params['configoptions']['additional ips'] ?? '')))[0];
                 $chkexistIp = Capsule::table('mod_soyoustart_ips_orders')->where(['service_id' => $service->id, "invoiceid" => 0])->count();
                 $ovhPaymentMethod = $helper->get_data("mod_soyoustart_pricesetting", ["server" => "OVH", "servertype" => "VPS"], "first");
                 $paymentmethod = $ovhPaymentMethod->paymentmethod;
@@ -115,21 +122,21 @@
                 $configoption2 = explode('@', $productDetails->configoption2);
                 $planGroup = $configoption2["0"];
                 $planCode = $configoption2["1"];
-                if (is_numeric($noOfIps) && !$chkexistIp) {
+                $quantity = \CloudHost247\SoYouStart\Cron\AdditionalIpQuantity::parse($noOfIps);
+                if ($quantity !== false && !$chkexistIp) {
                     $billingData = formateBillingCycle($billingCycle);
                     /* creating cart */
-                    $cartDetails = $apiCall->createCart($location, $planCode . "add Additional IPs", $ovhSubsidiary);
+                    $cartDetails = $apiCall->createCart($location, $planCode . "add Additional IPs", $ovhSubsidiary, $accountId);
                     if ($cartDetails["httpcode"] != 200) {
                         logActivity('Cron Error: creating additional ip for(' . $service->id . ') error message(' . $cartDetails["result"]->message . ') ');
                         continue;
                     }
                     $cartId = $cartDetails["result"]->cartId;
-                    $quantity = (int) $noOfIps;
                     $postData = array(
                         'duration' => $billingData["durationVal"],
                         'planCode' => 'ip-failover-arin',
                         'pricingMode' => $billingData["pricingModeVal"],
-                        'quantity' => (int) $noOfIps
+                        'quantity' => $quantity
                     );
                     /* assigning ip into cart */
                     $assignIpData = $apiCall->post("/order/cart/{$cartId}/ip", $accountId, $location, $postData, "Assigning ip into cart", true);
@@ -163,7 +170,7 @@
             }
             // }
         }
-    } catch (\Exception $e) {
+    } catch (\Throwable $e) {
         logActivity('Cron Error: getting server datails after create command(' . $e->getMessage() . ')');
     }
     logActivity('Get Serve cron completed!');

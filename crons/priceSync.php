@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/lib/CronRuntime.php';
+\CloudHost247\SoYouStart\Cron\CronGuard::requireCli();
 
 $whmcspath = "";
 
@@ -71,13 +73,13 @@ try {
         ->get()->toArray();
 
     $totalProductCount = !empty($ovhAllProducts) ? count($ovhAllProducts) : 0;
-    $cronHit = $helper->get_data("mod_acl_settings", ["key" => "cronHit"], "first");
-    $cronHit = ($cronHit == null ? 0 : (int)$cronHit->value);
-    if ($totalProductCount == (int)$cronHit) {
-        $helper->insert_update("mod_acl_settings", ['key' => 'cronHit'], ['key' => 'cronHit', 'value' => 0]);
-        $cronHit = 0;
+    $storedCronHit = $helper->get_data("mod_acl_settings", ["key" => "cronHit"], "first");
+    $storedCronHit = ($storedCronHit == null ? 0 : (int) $storedCronHit->value);
+    $cronHit = \CloudHost247\SoYouStart\Cron\PriceSyncBatch::normalizeOffset($storedCronHit, $totalProductCount);
+    if ($cronHit !== $storedCronHit) {
+        $helper->insert_update("mod_acl_settings", ['key' => 'cronHit'], ['key' => 'cronHit', 'value' => $cronHit]);
     }
-    $count = 0;
+    $nextCronHit = \CloudHost247\SoYouStart\Cron\PriceSyncBatch::nextOffset($cronHit, $totalProductCount, 10);
 
     $allAvailableProducts = $helper->getAvailableProduts();
 
@@ -95,10 +97,9 @@ try {
 
     foreach ($ovhAllProducts as $key => $product) {
 
-        if ($key < $cronHit || $key > $cronHit + 9 || $product->pricesync) {
+        if ($key < $cronHit || $key >= $nextCronHit || $product->pricesync) {
             continue;
         }
-        $count++;
         $url = $product->configoption4;
         $configoption2 = explode("@", $product->configoption2);
         $planCode = $configoption2[1];
@@ -189,8 +190,8 @@ try {
         }
     }
 
-    $helper->insert_update("mod_acl_settings", ['id' => 'cronHit'], ['key' => 'cronHit', 'value' => (int)$count + (int)$cronHit]);
-} catch (\Exception $e) {
+    $helper->insert_update("mod_acl_settings", ['key' => 'cronHit'], ['key' => 'cronHit', 'value' => $nextCronHit]);
+} catch (\Throwable $e) {
     logActivity('Cron Error: Price SYNC(' . $e->getMessage() . ')');
 }
 

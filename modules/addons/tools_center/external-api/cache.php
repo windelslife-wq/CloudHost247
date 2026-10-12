@@ -71,9 +71,15 @@ class CacheManager {
             return null;
         }
         
-        $data = unserialize(file_get_contents($file));
-        if (!isset($data['expires']) || $data['expires'] < time()) {
-            unlink($file);
+        $contents = @file_get_contents($file);
+        if (!is_string($contents)) {
+            return null;
+        }
+        // Cache files are local implementation data, never an object factory.
+        $data = @unserialize($contents, ['allowed_classes' => false]);
+        if (!is_array($data) || !isset($data['expires']) || !is_numeric($data['expires'])
+            || !array_key_exists('value', $data) || (int) $data['expires'] < time()) {
+            @unlink($file);
             return null;
         }
         
@@ -96,12 +102,18 @@ class CacheManager {
         
         // File-based cache
         $file = $this->config['cache_path'] . $key . '.cache';
+        $ttl = max(0, min(86400, (int) $ttl));
         $data = [
             'expires' => time() + $ttl,
             'value' => $value
         ];
         
-        return file_put_contents($file, serialize($data), LOCK_EX) !== false;
+        $written = @file_put_contents($file, serialize($data), LOCK_EX);
+        if ($written === false) {
+            return false;
+        }
+        @chmod($file, 0600);
+        return true;
     }
     
     /**

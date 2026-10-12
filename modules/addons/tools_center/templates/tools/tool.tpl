@@ -402,7 +402,7 @@ var toolDefinitions = {
         ]
     },
     pageRankChecker: {
-        title: 'PageRank Checker',
+        title: 'PageRank Data (Unavailable)',
         fields: [
             {name: 'url', label: 'Website URL', type: 'text', placeholder: 'example.com', required: true}
         ]
@@ -522,7 +522,7 @@ var toolDefinitions = {
         ]
     },
     usernameChecker: {
-        title: 'Username Checker',
+        title: 'Username Format & Profile Links',
         fields: [
             {name: 'username', label: 'Username', type: 'text', placeholder: 'myusername', required: true}
         ]

@@ -54,6 +54,16 @@ foreach (['localhost','metadata.google.internal','foo.local','box.internal','thi
     try { CloudHost247ToolsSecurity::assertPublicHost($h); echo "  FAIL allowed: $h\n"; $fail++; }
     catch (CloudHost247ToolsSecurityException $e) { $pass++; }
 }
+echo "== public DNS namespace validation ==\n";
+chk('local suffix flagged', true, CloudHost247ToolsSecurity::isBlockedDnsName('router.local'));
+chk('internal suffix flagged with root dot', true, CloudHost247ToolsSecurity::isBlockedDnsName('metadata.internal.'));
+chk('home.arpa flagged', true, CloudHost247ToolsSecurity::isBlockedDnsName('printer.home.arpa'));
+chk('protocol owner label on a public domain allowed', false, CloudHost247ToolsSecurity::isBlockedDnsName('default._bimi.example.com'));
+try {
+    CloudHost247ToolsSecurity::validateDomain('metadata.internal');
+    echo "  FAIL validateDomain allowed a local-use suffix\n"; $fail++;
+} catch (CloudHost247ToolsSecurityException $e) { $pass++; }
+
 echo "== assertPublicHost rejects literal private IPs ==\n";
 foreach (['127.0.0.1','169.254.169.254','192.168.1.1','10.1.2.3','::1'] as $h) {
     try { CloudHost247ToolsSecurity::assertPublicHost($h); echo "  FAIL allowed: $h\n"; $fail++; }
@@ -79,6 +89,38 @@ foreach ([1,7,19,31337,65535,0,70000] as $p) {
     try { CloudHost247ToolsSecurity::validateProbePort($p); echo "  FAIL allowed port $p\n"; $fail++; }
     catch (CloudHost247ToolsSecurityException $e) { $pass++; }
 }
+
+echo "== strict port parsing ==\n";
+foreach (['25x', '1e2', '80.0', '', true, false, 25.5, [], null] as $p) {
+    try { CloudHost247ToolsSecurity::validatePort($p); echo "  FAIL accepted malformed port\n"; $fail++; }
+    catch (CloudHost247ToolsSecurityException $e) { $pass++; }
+}
+try {
+    $target = CloudHost247ToolsSecurity::publicConnectTarget('8.8.8.8', '443');
+    chk('socket target is pinned to public IP', '8.8.8.8', $target['ip']);
+    chk('socket host preserves public IPv4 literal', '8.8.8.8', $target['socket_host']);
+} catch (Exception $e) { echo "  FAIL public socket target: " . $e->getMessage() . "\n"; $fail++; }
+try {
+    CloudHost247ToolsSecurity::publicConnectTarget('127.0.0.1', 443);
+    echo "  FAIL allowed private socket target\n"; $fail++;
+} catch (CloudHost247ToolsSecurityException $e) { $pass++; }
+
+$dualStack = ['93.184.216.34', '2606:4700:4700::1111'];
+chk('dual-stack selection pins IPv4 when requested', '93.184.216.34', CloudHost247ToolsSecurity::selectPublicAddress($dualStack, 4));
+chk('dual-stack selection pins IPv6 when requested', '2606:4700:4700::1111', CloudHost247ToolsSecurity::selectPublicAddress($dualStack, 6));
+chk('default selection preserves first vetted address', '93.184.216.34', CloudHost247ToolsSecurity::selectPublicAddress($dualStack));
+try {
+    CloudHost247ToolsSecurity::selectPublicAddress(['93.184.216.34'], 6);
+    echo "  FAIL IPv6 family fell back to IPv4\n"; $fail++;
+} catch (CloudHost247ToolsSecurityException $e) { $pass++; }
+try {
+    CloudHost247ToolsSecurity::selectPublicAddress($dualStack, 5);
+    echo "  FAIL invalid IP family accepted\n"; $fail++;
+} catch (CloudHost247ToolsSecurityException $e) { $pass++; }
+try {
+    CloudHost247ToolsSecurity::selectPublicAddress(['93.184.216.34', '2001:db8::1'], 4);
+    echo "  FAIL mixed set with a reserved address accepted\n"; $fail++;
+} catch (CloudHost247ToolsSecurityException $e) { $pass++; }
 
 echo "== escaping ==\n";
 chk('xss', '&lt;script&gt;alert(&#039;x&#039;)&lt;/script&gt;', CloudHost247ToolsSecurity::e("<script>alert('x')</script>"));

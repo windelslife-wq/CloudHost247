@@ -13,31 +13,40 @@
         new CH.ToolPage({
             slug: "mac-lookup",
             exec: "client",
-            fields: [{"name": "mac", "label": "MAC address", "placeholder": "00:1A:2B:3C:4D:5E", "required": true, "spellcheck": false}],
+            fields: [{"name": "mac", "label": "MAC address or OUI prefix", "placeholder": "00:1A:2B:3C:4D:5E", "hint": "A six-hex-digit prefix or full 12-digit MAC. Vendor lookup is not available without an approved OUI source.", "required": true, "spellcheck": false}],
             run: function (v) {
-              var raw = (v.mac || '').trim();
-              var hex = raw.replace(/[^0-9a-fA-F]/g, '').toLowerCase();
-              if (hex.length < 6) { return { error: 'Enter at least the first 3 bytes of a MAC address, e.g. 00:1A:2B.' }; }
-              if (hex.length > 12) { return { error: 'A MAC address has at most 12 hex digits.' }; }
+              var rawValue = v.mac || '';
+              if (typeof rawValue !== 'string' || rawValue.length > 64) {
+                return { error: 'Enter a MAC address or a six-hex-digit OUI prefix.' };
+              }
+              var raw = rawValue.trim();
+              var isPrefix = /^(?:[0-9a-f]{6}|[0-9a-f]{2}(?::[0-9a-f]{2}){2}|[0-9a-f]{2}(?:-[0-9a-f]{2}){2})$/i.test(raw);
+              var isFull = /^(?:[0-9a-f]{12}|[0-9a-f]{2}(?::[0-9a-f]{2}){5}|[0-9a-f]{2}(?:-[0-9a-f]{2}){5}|[0-9a-f]{4}(?:\.[0-9a-f]{4}){2})$/i.test(raw);
+              if (!isPrefix && !isFull) {
+                return { error: 'Use six hex digits for an OUI prefix, or a complete 12-digit MAC in colon, hyphen, dotted, or bare format.' };
+              }
+              var hex = raw.replace(/[:.-]/g, '').toLowerCase();
               var oui = hex.slice(0, 6);
               var first = parseInt(hex.slice(0, 2), 16);
               var bytes = hex.match(/.{1,2}/g);
+              var local = (first & 0x02) !== 0;
               return {
                 input: raw,
                 normalised: bytes.join(':').toUpperCase(),
                 oui: oui.match(/.{2}/g).join(':').toUpperCase(),
+                vendor_lookup: 'Unavailable',
+                lookup_source: 'No OUI registry dataset is configured in this browser tool.',
+                coverage: 'Vendor is not inferred. No vendor result or OUI coverage is claimed.',
                 formats: {
                   colon: bytes.join(':').toUpperCase(),
                   hyphen: bytes.join('-').toUpperCase(),
                   dot: (hex.match(/.{1,4}/g) || []).join('.').toUpperCase(),
                   bare: hex.toUpperCase()
                 },
-                administration: (first & 0x02) ? 'Locally administered (not a registered vendor OUI)' : 'Universally administered (registered OUI)',
+                administration: local ? 'Locally administered (not a registered vendor OUI)' : 'Universally administered (vendor registry data unavailable)',
                 cast: (first & 0x01) ? 'Multicast' : 'Unicast',
                 is_broadcast: hex === 'ffffffffffff',
-                note: (first & 0x02)
-                  ? 'The locally-administered bit is set, so this address was assigned by software (a VM, container, or MAC randomisation on a phone). It has no vendor to look up.'
-                  : 'Vendor attribution requires the IEEE OUI registry. CloudHost247 resolves the vendor server-side only when the OUI database is installed, and will say so rather than guess.'
+                note: 'This tool checks MAC/OUI syntax and address bits only. Vendor lookup is unavailable because no OUI dataset or approved provider is configured. The address stays in your browser and is not sent to CloudHost247.'
               };
             },
             render: function (d) {
