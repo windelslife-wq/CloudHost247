@@ -7,9 +7,17 @@
     'use strict';
 
     // API endpoint - will be set from template
-    var apiUrl = window.toolsCenterConfig && window.toolsCenterConfig.apiUrl 
-        ? window.toolsCenterConfig.apiUrl 
+    var apiUrl = window.toolsCenterConfig && window.toolsCenterConfig.apiUrl
+        ? window.toolsCenterConfig.apiUrl
         : 'index.php?m=tools_center';
+
+    function addAjaxHeaders(xhr) {
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+        var csrfToken = window.toolsCenterConfig && window.toolsCenterConfig.csrfToken;
+        if (typeof csrfToken === 'string' && csrfToken.length > 0) {
+            xhr.setRequestHeader('X-CSRF-Token', csrfToken);
+        }
+    }
 
     /**
      * Open tool modal
@@ -161,7 +169,7 @@
         var xhr = new XMLHttpRequest();
         xhr.open('POST', apiUrl, true);
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+        addAjaxHeaders(xhr);
 
         xhr.onreadystatechange = function() {
             if (xhr.readyState !== 4) return;
@@ -474,7 +482,7 @@
         var xhr = new XMLHttpRequest();
         xhr.open('POST', apiUrl, true);
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+        addAjaxHeaders(xhr);
 
         xhr.onreadystatechange = function() {
             if (xhr.readyState !== 4) return;

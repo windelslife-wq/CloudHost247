@@ -134,8 +134,8 @@
             { name: 'urls', label: 'URLs (one per line)', type: 'textarea', placeholder: 'https://example.com\nhttps://google.com', rows: 8, required: true }
         ],
         'smtp_test': [
-            { name: 'host', label: 'SMTP Server', type: 'text', placeholder: 'smtp.gmail.com', required: true },
-            { name: 'port', label: 'Port', type: 'number', value: '25', min: 1, max: 65535 }
+            { name: 'host', label: 'SMTP Server', type: 'text', placeholder: 'smtp.example.com', required: true },
+            { name: 'port', label: 'Port (25, 465, or 587)', type: 'select', options: ['25', '465', '587'], value: '25' }
         ],
         'htaccess_generator': [
             { name: 'redirect_type', label: 'Redirect Type', type: 'select', options: ['301','302','307'], value: '301' },
@@ -219,8 +219,8 @@
 
         // Network Tools
         'port_checker': [
-            { name: 'host', label: 'Host', type: 'text', placeholder: 'example.com', required: true },
-            { name: 'port', label: 'Port', type: 'number', value: '80', min: 1, max: 65535 }
+            { name: 'host', label: 'Public host', type: 'text', placeholder: 'example.com', required: true },
+            { name: 'port', label: 'Port (diagnostic allowlist only)', type: 'number', value: '80', min: 1, max: 65535 }
         ],
         'mac_lookup': [
             { name: 'mac', label: 'MAC Address', type: 'text', placeholder: '00:1B:11:00:00:00', required: true }
@@ -403,7 +403,7 @@
         'dns_propagation': function(data) {
             var html = '<table class="CloudHost247-dns-table"><thead><tr><th>DNS Server</th><th>IP</th><th>Resolved</th><th>Records</th></tr></thead><tbody>';
             (data.results || []).forEach(function(r) {
-                html += '<tr><td>' + escapeHtml(r.server_name) + '</td><td>' + escapeHtml(r.server_ip) + '</td><td>' + (r.resolved ? '<span class="CloudHost247-status-pass">Yes</span>' : '<span class="CloudHost247-status-fail">No</span>') + '</td><td>' + (r.records || []).join(', ') + '</td></tr>';
+                html += '<tr><td>' + escapeHtml(r.server_name) + '</td><td>' + escapeHtml(r.server_ip) + '</td><td>' + (r.resolved ? '<span class="CloudHost247-status-pass">Yes</span>' : '<span class="CloudHost247-status-fail">No</span>') + '</td><td>' + escapeHtml((r.records || []).join(', ')) + '</td></tr>';
             });
             html += '</tbody></table>';
             return html;
@@ -449,7 +449,7 @@
             if (data.keys && data.keys.length) {
                 html += '<table class="CloudHost247-dns-table mt-3"><thead><tr><th>Flags</th><th>Protocol</th><th>Algorithm</th></tr></thead><tbody>';
                 data.keys.forEach(function(k) {
-                    html += '<tr><td>' + k.flags + '</td><td>' + k.protocol + '</td><td>' + k.algorithm + '</td></tr>';
+                    html += '<tr><td>' + escapeHtml(k.flags) + '</td><td>' + escapeHtml(k.protocol) + '</td><td>' + escapeHtml(k.algorithm) + '</td></tr>';
                 });
                 html += '</tbody></table>';
             }
@@ -461,7 +461,7 @@
             if (data.records && data.records.length) {
                 html += '<table class="CloudHost247-dns-table mt-3"><thead><tr><th>Key Tag</th><th>Algorithm</th><th>Digest Type</th><th>Digest</th></tr></thead><tbody>';
                 data.records.forEach(function(r) {
-                    html += '<tr><td>' + r.key_tag + '</td><td>' + r.algorithm + '</td><td>' + r.digest_type + '</td><td><code>' + escapeHtml(r.digest) + '</code></td></tr>';
+                    html += '<tr><td>' + escapeHtml(r.key_tag) + '</td><td>' + escapeHtml(r.algorithm) + '</td><td>' + escapeHtml(r.digest_type) + '</td><td><code>' + escapeHtml(r.digest) + '</code></td></tr>';
                 });
                 html += '</tbody></table>';
             }
@@ -484,14 +484,20 @@
         'ping_ipv4': function(data) {
             if (data.error) return '<div class="alert alert-danger">' + escapeHtml(data.error) + '</div>';
             var html = '<div class="result-row"><span class="result-label">Host:</span><span class="result-value">' + escapeHtml(data.host) + ' (' + escapeHtml(data.ip) + ')</span></div>';
+            if (data.measurement) html += '<p class="text-muted small">' + escapeHtml(data.measurement) + '</p>';
             html += '<div class="result-row"><span class="result-label">Packets:</span><span class="result-value">' + data.packets_sent + ' sent, ' + data.packets_received + ' received</span></div>';
             html += '<div class="result-row"><span class="result-label">Packet Loss:</span><span class="result-value">' + data.packet_loss + '%</span></div>';
-            html += '<div class="result-row"><span class="result-label">Min / Max / Avg:</span><span class="result-value">' + data.min_time + 'ms / ' + data.max_time + 'ms / ' + data.avg_time + 'ms</span></div>';
+            function formatPingTime(value) {
+                return value === null || value === undefined ? 'n/a' : escapeHtml(value) + 'ms';
+            }
+            html += '<div class="result-row"><span class="result-label">Min / Max / Avg:</span><span class="result-value">' + formatPingTime(data.min_time) + ' / ' + formatPingTime(data.max_time) + ' / ' + formatPingTime(data.avg_time) + '</span></div>';
+            if (data.reply_details_note) html += '<p class="text-muted small">' + escapeHtml(data.reply_details_note) + '</p>';
             if (data.results && data.results.length) {
                 html += '<table class="CloudHost247-dns-table mt-3"><thead><tr><th>#</th><th>Status</th><th>Time</th></tr></thead><tbody>';
                 data.results.forEach(function(r) {
                     var statusClass = r.status === 'success' ? 'CloudHost247-status-pass' : 'CloudHost247-status-timeout';
-                    html += '<tr><td>' + r.seq + '</td><td class="' + statusClass + '">' + r.status + '</td><td>' + (r.time ? r.time + 'ms' : '-') + '</td></tr>';
+                    var time = r.time_display || (r.time === null || r.time === undefined ? '-' : escapeHtml(r.time) + 'ms');
+                    html += '<tr><td>' + escapeHtml(r.seq) + '</td><td class="' + statusClass + '">' + escapeHtml(r.status) + '</td><td>' + escapeHtml(time) + '</td></tr>';
                 });
                 html += '</tbody></table>';
             }
@@ -509,10 +515,15 @@
         'traceroute': function(data) {
             if (data.error) return '<div class="alert alert-danger">' + escapeHtml(data.error) + '</div>';
             var html = '<div class="result-row"><span class="result-label">Host:</span><span class="result-value">' + escapeHtml(data.host) + ' (' + escapeHtml(data.ip) + ')</span></div>';
+            if (data.measurement) html += '<p class="text-muted small">' + escapeHtml(data.measurement) + '</p>';
             if (data.hops && data.hops.length) {
-                html += '<table class="CloudHost247-dns-table mt-3"><thead><tr><th>Hop</th><th>IP</th><th>Hostname</th><th>Time</th></tr></thead><tbody>';
+                html += '<table class="CloudHost247-dns-table mt-3"><thead><tr><th>Hop</th><th>Status</th><th>IP</th><th>Hostname</th><th>Time</th></tr></thead><tbody>';
                 data.hops.forEach(function(h) {
-                    html += '<tr><td>' + h.hop + '</td><td>' + (h.ip || '-') + '</td><td>' + (h.hostname || '-') + '</td><td>' + (h.time_ms ? h.time_ms + 'ms' : '<span class="CloudHost247-status-timeout">Timeout</span>') + '</td></tr>';
+                    var hopStatus = h.status || 'unknown';
+                    var statusClass = hopStatus === 'success' ? 'CloudHost247-status-pass' : (hopStatus === 'redacted' ? 'CloudHost247-status-warning' : 'CloudHost247-status-timeout');
+                    var hopIp = hopStatus === 'redacted' ? 'Private/reserved hop redacted' : (h.ip || '-');
+                    var hopTime = h.time_display || (h.time_ms !== null && h.time_ms !== undefined ? escapeHtml(h.time_ms) + 'ms' : (hopStatus === 'redacted' ? '—' : 'Timeout'));
+                    html += '<tr><td>' + escapeHtml(h.hop) + '</td><td class="' + statusClass + '">' + escapeHtml(hopStatus) + '</td><td>' + escapeHtml(hopIp) + '</td><td>' + escapeHtml(h.hostname || '-') + '</td><td>' + escapeHtml(hopTime) + '</td></tr>';
                 });
                 html += '</tbody></table>';
             }
@@ -525,7 +536,7 @@
             html += '<div class="result-row"><span class="result-label">Region:</span><span class="result-value">' + escapeHtml(data.region) + '</span></div>';
             html += '<div class="result-row"><span class="result-label">City:</span><span class="result-value">' + escapeHtml(data.city) + '</span></div>';
             html += '<div class="result-row"><span class="result-label">ZIP:</span><span class="result-value">' + escapeHtml(data.zip) + '</span></div>';
-            html += '<div class="result-row"><span class="result-label">Coordinates:</span><span class="result-value">' + data.latitude + ', ' + data.longitude + '</span></div>';
+            html += '<div class="result-row"><span class="result-label">Coordinates:</span><span class="result-value">' + escapeHtml(data.latitude) + ', ' + escapeHtml(data.longitude) + '</span></div>';
             html += '<div class="result-row"><span class="result-label">Timezone:</span><span class="result-value">' + escapeHtml(data.timezone) + '</span></div>';
             html += '<div class="result-row"><span class="result-label">ISP:</span><span class="result-value">' + escapeHtml(data.isp) + '</span></div>';
             html += '<div class="result-row"><span class="result-label">ASN:</span><span class="result-value">' + escapeHtml(data.asn) + '</span></div>';
@@ -649,7 +660,9 @@
         'http_headers': function(data) {
             if (data.error) return '<div class="alert alert-danger">' + escapeHtml(data.error) + '</div>';
             var html = '<div class="result-row"><span class="result-label">URL:</span><span class="result-value">' + escapeHtml(data.url) + '</span></div>';
+            if (data.final_url && data.final_url !== data.url) html += '<div class="result-row"><span class="result-label">Final URL:</span><span class="result-value">' + escapeHtml(data.final_url) + '</span></div>';
             html += '<div class="result-row"><span class="result-label">HTTP Code:</span><span class="result-value">' + data.http_code + '</span></div>';
+            if (data.redirects && data.redirects.length) html += '<p class="text-muted small">' + data.redirects.length + ' redirect(s) followed.</p>';
             if (data.headers && data.headers.length) {
                 html += '<table class="CloudHost247-dns-table mt-3"><thead><tr><th>Header</th><th>Value</th></tr></thead><tbody>';
                 data.headers.forEach(function(h) {
@@ -668,6 +681,8 @@
             var html = '<div class="result-row"><span class="result-label">URL:</span><span class="result-value">' + escapeHtml(data.url) + '</span></div>';
             html += '<div class="result-row"><span class="result-label">Server:</span><span class="result-value">' + escapeHtml(data.server) + '</span></div>';
             html += '<div class="result-row"><span class="result-label">OS Guess:</span><span class="result-value">' + escapeHtml(data.os_guess) + '</span></div>';
+            if (data.confidence) html += '<div class="result-row"><span class="result-label">Confidence:</span><span class="result-value">' + escapeHtml(data.confidence) + '</span></div>';
+            if (data.note) html += '<p class="text-muted small">' + escapeHtml(data.note) + '</p>';
             return html;
         },
         'md5_base64': function(data) {
@@ -681,11 +696,10 @@
             if (data.urls && data.urls.length) {
                 html += '<ul class="mt-3">';
                 data.urls.forEach(function(u) {
-                    html += '<li><a href="' + escapeHtml(u) + '" target="_blank">' + escapeHtml(u) + ' <i class="fas fa-external-link-alt"></i></a></li>';
+                    var safeUrl = safeHttpUrl(u);
+                    if (safeUrl) html += '<li><a href="' + escapeHtml(safeUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(safeUrl) + ' <i class="fas fa-external-link-alt" aria-hidden="true"></i></a></li>';
                 });
                 html += '</ul>';
-                // Auto-open first few
-                data.urls.slice(0, 5).forEach(function(u) { window.open(u, '_blank'); });
             }
             return html;
         },
@@ -695,6 +709,8 @@
             html += '<div class="result-row"><span class="result-label">Port:</span><span class="result-value">' + data.port + '</span></div>';
             html += '<div class="result-row"><span class="result-label">Reachable:</span><span class="result-value">' + (data.reachable ? '<span class="CloudHost247-status-pass">Yes</span>' : '<span class="CloudHost247-status-fail">No</span>') + '</span></div>';
             if (data.banner) html += '<div class="result-row"><span class="result-label">Banner:</span><span class="result-value"><code>' + escapeHtml(data.banner) + '</code></span></div>';
+            if (data.protocol) html += '<div class="result-row"><span class="result-label">Protocol:</span><span class="result-value">' + escapeHtml(data.protocol) + '</span></div>';
+            if (data.note || data.reason) html += '<p class="text-muted small">' + escapeHtml(data.note || data.reason) + '</p>';
             return html;
         },
         'htaccess_generator': function(data) {
@@ -720,7 +736,9 @@
         },
         'open_graph': function(data) {
             var html = '<h5>Generated Tags</h5><pre><code>' + escapeHtml(data.tags) + '</code></pre>';
-            html += '<h5 class="mt-3">Preview</h5><div class="serp-preview">' + (data.preview_html || '') + '</div>';
+            html += '<h5 class="mt-3">Preview</h5><div class="serp-preview">';
+            html += '<div class="serp-title">' + escapeHtml(data.preview_title) + '</div>';
+            html += '<div class="serp-desc">' + escapeHtml(data.preview_desc) + '</div></div>';
             return html;
         },
         'raid_calculator': function(data) {
@@ -781,8 +799,7 @@
         'pagerank': function(data) {
             if (data.error) return '<div class="alert alert-danger">' + escapeHtml(data.error) + '</div>';
             var html = '<div class="result-row"><span class="result-label">Domain:</span><span class="result-value">' + escapeHtml(data.domain) + '</span></div>';
-            html += '<div class="result-row"><span class="result-label">Score:</span><span class="result-value"><strong>' + data.score + '/10</strong></span></div>';
-            html += '<div class="alert alert-warning mt-3">' + escapeHtml(data.note) + '</div>';
+            html += '<div class="alert alert-info mt-3">' + escapeHtml(data.note || 'This retired metric has no current official score; no estimate is provided.') + '</div>';
             return html;
         },
         'punycode': function(data) {
@@ -807,7 +824,9 @@
             if (data.error) return '<div class="alert alert-danger">' + escapeHtml(data.error) + '</div>';
             var html = '<div class="result-row"><span class="result-label">Host:</span><span class="result-value">' + escapeHtml(data.host) + '</span></div>';
             html += '<div class="result-row"><span class="result-label">Port:</span><span class="result-value">' + data.port + '</span></div>';
-            html += '<div class="result-row"><span class="result-label">Status:</span><span class="result-value">' + (data.open ? '<span class="CloudHost247-status-pass">Open</span>' : '<span class="CloudHost247-status-fail">Closed</span>') + '</span></div>';
+            html += '<div class="result-row"><span class="result-label">Status:</span><span class="result-value">' + (data.open ? '<span class="CloudHost247-status-pass">Open</span>' : '<span class="CloudHost247-status-fail">Closed or filtered</span>') + '</span></div>';
+            if (data.resolved_ip) html += '<div class="result-row"><span class="result-label">Resolved IP:</span><span class="result-value">' + escapeHtml(data.resolved_ip) + '</span></div>';
+            if (data.note) html += '<p class="text-muted small">' + escapeHtml(data.note) + '</p>';
             return html;
         },
         'mac_lookup': function(data) {
@@ -833,7 +852,8 @@
             html += '<div class="result-row"><span class="result-label">Name:</span><span class="result-value">' + escapeHtml(data.name) + '</span></div>';
             html += '<div class="result-row"><span class="result-label">Description:</span><span class="result-value">' + escapeHtml(data.description) + '</span></div>';
             html += '<div class="result-row"><span class="result-label">Country:</span><span class="result-value">' + escapeHtml(data.country) + '</span></div>';
-            if (data.website && data.website !== 'N/A') html += '<div class="result-row"><span class="result-label">Website:</span><span class="result-value"><a href="' + escapeHtml(data.website) + '" target="_blank">' + escapeHtml(data.website) + '</a></span></div>';
+            var websiteUrl = safeHttpUrl(data.website || '');
+            if (websiteUrl && data.website !== 'N/A') html += '<div class="result-row"><span class="result-label">Website:</span><span class="result-value"><a href="' + escapeHtml(websiteUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(websiteUrl) + '</a></span></div>';
             return html;
         },
 
@@ -849,6 +869,13 @@
                 html += '<div class="result-row"><span class="result-label">Valid To:</span><span class="result-value">' + escapeHtml(data.valid_to) + '</span></div>';
                 html += '<div class="result-row"><span class="result-label">Days Remaining:</span><span class="result-value">' + (data.expired ? '<span class="CloudHost247-status-fail">Expired</span>' : (data.expiring_soon ? '<span class="CloudHost247-status-warning">' + data.days_remaining + ' (Expiring Soon!)</span>' : '<span class="CloudHost247-status-pass">' + data.days_remaining + '</span>')) + '</span></div>';
                 html += '<div class="result-row"><span class="result-label">Serial:</span><span class="result-value"><code>' + escapeHtml(data.serial_number) + '</code></span></div>';
+                if (data.hostname_match !== null && data.hostname_match !== undefined) {
+                    html += '<div class="result-row"><span class="result-label">Hostname Match:</span><span class="result-value">' + (data.hostname_match ? '<span class="CloudHost247-status-pass">Yes</span>' : '<span class="CloudHost247-status-fail">No</span>') + '</span></div>';
+                }
+                if (data.tls_protocol) html += '<div class="result-row"><span class="result-label">TLS Protocol:</span><span class="result-value">' + escapeHtml(data.tls_protocol) + '</span></div>';
+                if (data.cipher) html += '<div class="result-row"><span class="result-label">Cipher:</span><span class="result-value">' + escapeHtml(data.cipher) + '</span></div>';
+                html += '<div class="result-row"><span class="result-label">Trust Chain:</span><span class="result-value">Not verified</span></div>';
+                if (data.note) html += '<p class="text-muted small">' + escapeHtml(data.note) + '</p>';
             }
             return html;
         },
@@ -884,9 +911,11 @@
         // Productivity Tools
         'qr_generator': function(data) {
             if (data.error) return '<div class="alert alert-danger">' + escapeHtml(data.error) + '</div>';
+            var qrUrl = safeHttpUrl(data.qr_url || '');
+            if (!qrUrl) return '<div class="alert alert-warning">The QR image URL is unavailable or unsafe.</div>';
             var html = '<div class="result-row"><span class="result-label">Text:</span><span class="result-value">' + escapeHtml(data.text) + '</span></div>';
-            html += '<div class="CloudHost247-qr-result mt-3"><img src="' + escapeHtml(data.qr_url) + '" alt="QR Code"></div>';
-            html += '<a href="' + escapeHtml(data.qr_url) + '" target="_blank" class="btn btn-outline-primary mt-2" download><i class="fas fa-download"></i> Download QR</a>';
+            html += '<div class="CloudHost247-qr-result mt-3"><img src="' + escapeHtml(qrUrl) + '" alt="QR Code"></div>';
+            html += '<a href="' + escapeHtml(qrUrl) + '" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary mt-2" download><i class="fas fa-download" aria-hidden="true"></i> Download QR</a>';
             return html;
         },
         'qr_scanner': function(data) {
@@ -934,11 +963,13 @@
         },
         'reverse_image_search': function(data) {
             if (data.error) return '<div class="alert alert-danger">' + escapeHtml(data.error) + '</div>';
-            var html = '<div class="result-row"><span class="result-label">Image:</span><span class="result-value">' + escapeHtml(data.image_url) + '</span></div>';
+            var html = '<div class="result-row"><span class="result-label">Public image URL:</span><span class="result-value">' + escapeHtml(data.image_url) + '</span></div>';
+            html += '<p class="text-muted small">Search providers receive this URL when you open a link. CloudHost247 does not upload the image or claim to have searched it.</p>';
             if (data.engines && data.engines.length) {
-                html += '<h5 class="mt-3">Search Engines</h5><ul>';
+                html += '<h5 class="mt-3">Open a provider</h5><ul>';
                 data.engines.forEach(function(e) {
-                    html += '<li><a href="' + escapeHtml(e.url) + '" target="_blank">' + escapeHtml(e.name) + ' <i class="fas fa-external-link-alt"></i></a></li>';
+                    var providerUrl = safeHttpUrl(e.url || '');
+                    if (providerUrl) html += '<li><a href="' + escapeHtml(providerUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(e.name) + ' <i class="fas fa-external-link-alt" aria-hidden="true"></i></a></li>';
                 });
                 html += '</ul>';
             }
@@ -947,11 +978,12 @@
         'username_checker': function(data) {
             if (data.error) return '<div class="alert alert-danger">' + escapeHtml(data.error) + '</div>';
             var html = '<div class="result-row"><span class="result-label">Username:</span><span class="result-value">' + escapeHtml(data.username) + '</span></div>';
-            html += '<div class="alert alert-info">' + escapeHtml(data.note) + '</div>';
+            if (data.note) html += '<div class="alert alert-info">' + escapeHtml(data.note) + '</div>';
             if (data.platforms && data.platforms.length) {
-                html += '<table class="CloudHost247-dns-table mt-3"><thead><tr><th>Platform</th><th>Availability</th></tr></thead><tbody>';
+                html += '<table class="CloudHost247-dns-table mt-3"><thead><tr><th>Platform</th><th>Status</th><th>Manual check</th></tr></thead><tbody>';
                 data.platforms.forEach(function(p) {
-                    html += '<tr><td>' + escapeHtml(p.name) + '</td><td>' + (p.available ? '<span class="CloudHost247-status-pass">Available</span>' : '<span class="CloudHost247-status-fail">Taken</span>') + '</td></tr>';
+                    var profileUrl = safeHttpUrl(p.url || '');
+                    html += '<tr><td>' + escapeHtml(p.name) + '</td><td>' + escapeHtml(p.status || 'Manual check required') + '</td><td>' + (profileUrl ? '<a href="' + escapeHtml(profileUrl) + '" target="_blank" rel="noopener noreferrer">Open profile</a>' : 'Unavailable') + '</td></tr>';
                 });
                 html += '</tbody></table>';
             }
@@ -982,9 +1014,13 @@
         },
         'domain_availability': function(data) {
             if (data.error) return '<div class="alert alert-danger">' + escapeHtml(data.error) + '</div>';
+            var statusLabel = data.status === 'no_match_reported' ? 'No WHOIS match reported' : (data.status === 'record_found' ? 'Matching WHOIS record found' : 'Unconfirmed');
+            var statusClass = data.status === 'no_match_reported' ? 'CloudHost247-status-warning' : (data.status === 'record_found' ? 'CloudHost247-status-pass' : 'CloudHost247-status-warning');
             var html = '<div class="result-row"><span class="result-label">Domain:</span><span class="result-value">' + escapeHtml(data.domain) + '</span></div>';
             html += '<div class="result-row"><span class="result-label">TLD:</span><span class="result-value">.' + escapeHtml(data.tld) + '</span></div>';
-            html += '<div class="result-row"><span class="result-label">Available:</span><span class="result-value">' + (data.available ? '<span class="CloudHost247-status-pass">Yes</span>' : '<span class="CloudHost247-status-fail">No (Taken)</span>') + '</span></div>';
+            html += '<div class="result-row"><span class="result-label">WHOIS status:</span><span class="result-value ' + statusClass + '">' + statusLabel + '</span></div>';
+            if (data.whois_server) html += '<div class="result-row"><span class="result-label">WHOIS server:</span><span class="result-value">' + escapeHtml(data.whois_server) + '</span></div>';
+            if (data.note) html += '<p class="text-muted small">' + escapeHtml(data.note) + '</p>';
             return html;
         },
         'rot13': function(data) {
@@ -1035,10 +1071,21 @@
 
     // Helper functions
     function escapeHtml(text) {
-        if (!text) return '';
+        if (text === null || text === undefined) return '';
         var div = document.createElement('div');
-        div.textContent = text;
+        div.textContent = String(text);
         return div.innerHTML;
+    }
+
+    function safeHttpUrl(value) {
+        if (typeof value !== 'string' || value.trim() === '') return '';
+        try {
+            var url = new URL(value);
+            if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username || url.password) return '';
+            return url.href;
+        } catch (e) {
+            return '';
+        }
     }
 
     function renderField(field) {

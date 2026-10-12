@@ -1,12 +1,14 @@
-# Tools Center — requirements traceability (audit 2026-10-11)
+# Tools Center — requirements traceability (historical native-app audit 2026-10-11)
 
-Status of each tool in the DNSChecker-inspired specification, checked against the native application `subwindels-hash/CloudHost247` (`main`, commit `8327b58`, `cloudhost247-node/`).
+> **Current-session scope note (2026-10-12):** This document records a prior audit snapshot of `subwindels-hash/CloudHost247` at `main` commit `8327b58`; the native repository is not mounted in the current checkout, so none of the native route, tool, dependency, or test-status claims below has been reverified today. The connected checkout is `windelslife-wq/CloudHost247`, branch `arena/ca8f1fe8-cloudhost247`, a WHMCS/PHP storefront. This file is historical evidence only, not authorization to implement the requested native calculators/generators/employee ID/MRZ tools in the PHP storefront. See the current WHMCS audit addendum in `docs/TOOLS_WHMCS_AUDIT_2026-10-12.md`.
+
+Status of each tool in the DNSChecker-inspired specification, as recorded in that historical snapshot: `subwindels-hash/CloudHost247` (`main`, commit `8327b58`, `cloudhost247-node/`).
 
 This is an **audit only**. No tool was implemented or changed by this document.
 
 ## 1. Repository audit
 
-- **Connected repo `windelslife-wq/CloudHost247` (this session, branch `arena/d014b2ab-cloudhost247`):** a WHMCS/PHP storefront. It has no Node.js/React application and no tool catalogue of the spec's kind. It is **not** the target for the spec.
+- **Connected repo `windelslife-wq/CloudHost247` (as of the prior audit):** a WHMCS/PHP storefront. It has no Node.js/React application and no tool catalogue of the native spec's kind. It is **not** the implementation target for that native-app spec.
 - **Native repo `subwindels-hash/CloudHost247` (`main`):** the intended native application.
   - `cloudhost247-node/`: Fastify API (TypeScript, Postgres, Vitest) with a React frontend. Tools live in `src/tools/` (core SSRF/DNS/rate-limit/provider layers, plus `dns/`, `ip/`, `network/`, `developer/`, `webmaster/`, `security/`, `productivity/`, `domain/`, `diagnostics/`). The catalogue is `src/tools/catalog.ts` and is documented in `docs/tools/TOOLS_CATALOG.md`.
   - `platform/`: a separate Node/Postgres service with a React SPA (`platform/spa`). It is not a tools host.
@@ -127,7 +129,7 @@ These exist in the native app but are not listed in the reference: `uuid-generat
 
 ## 5. Gaps that need a decision before implementation
 
-1. **Wrong repository for this session.** The spec says to implement in `subwindels-hash/CloudHost247`, but this session is fixed to `windelslife-wq/CloudHost247` on branch `arena/d014b2ab-cloudhost247`, and I may not push to other branches. Implementing in the native repo needs a different session target, or the owner to open a branch there.
+1. **Native implementation target is not mounted in this session.** The repository and branch are fixed to `windelslife-wq/CloudHost247` on `arena/ca8f1fe8-cloudhost247`; this WHMCS checkout must not be treated as the native Node/React implementation. Native work remains blocked until the designated `subwindels-hash/CloudHost247` target is mounted in an approved session; no native code or build evidence is claimed here.
 2. **Missing outright (M, 7):** Local IPv6 generator, IPv6 compatibility checker, RAID calculator, Email verifier, Google PageRank, Social username checker, Minecraft colour codes. Google PageRank has no reliable public data source. The spec requires an honest unavailable notice for it.
 3. **Provider-gated (P, 12):** these need owner-chosen, paid or licensed data sources (RDAP is free, but geolocation, BIN, OCR, reverse image search, reverse IP, DKIM verification, OUI, availability). Each needs a provider decision and credentials.
 4. **Partial (PT, 9):** email/domain blacklist; standalone link analyzer; card-number format/checksum validator; BIMI generator; QR contact-card support; Wi-Fi QR scanning; invisible-character inspector; password vs text encoding separation; domain-DNS validation.

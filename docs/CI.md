@@ -8,7 +8,7 @@ repo now runs on every push and pull request via
 
 | Job | Runtime | Covers |
 |---|---|---|
-| PHP suites (8.3) | PHP 8.3 + extensions (`pdo_sqlite`, `mbstring`, `curl`, `openssl`, `intl`, `bcmath`, `simplexml`, `zip`) | All 23 PHP suites natively, one step per module, plus the 9 load/parse gates and the root-landing existence check (`ci/run-php.sh`) |
+| PHP suites (8.3) | PHP 8.3 + extensions (`pdo_sqlite`, `mbstring`, `curl`, `openssl`, `intl`, `bcmath`, `simplexml`, `zip`) | All 23 module groups natively (the `soyoustart` group includes addon API tests and dedicated-server tests), plus the 9 load/parse gates and root-landing existence check (`ci/run-php.sh`) |
 | PHP suites (7.4) | PHP 7.4 | Only the modules with documented 7.4 support: `CloudHost247_tools`, `digitalproducts`, `Smtphosting` (`ci/run-php.sh legacy74`) |
 | JS suites (Node 22) | Node 22 + PHP 8.3 (catalog dump only) + jsdom 24 | `core` / `qr` / `tools` suites, `tools_center` incl. UI wiring, the `hostx` announcement-bar suite, `node --check` on the shipped bundles (`ci/run-js.sh`) |
 | PHP syntax sweep | PHP 8.3 | `php -l` over every shipped PHP file except the two ionCube-encoded modules (`hostx`, `xtreme_currency_rates` — owner decision D-8) and `vendor/` trees (`ci/php-lint.sh`) |
@@ -70,10 +70,11 @@ runtimes and fail loudly:
   retention section — the cutoff-edge fixture is exactly 30 days old, so a
   second boundary crossed mid-test pushed it over the edge (observed 34/3
   once in pre-push validation).
+- **2026-10-12 SoYouStart addon follow-up:** `modules/addons/soyoustart/tests/ApiCallSecurityTest.php` now runs inside the existing `mod_soyoustart` CI group alongside the dedicated-server suite; the test uses fake Capsule/cURL and makes no provider call.
+- **2026-10-12 SoYouStart cron follow-up:** `crons/tests/CronRegressionTest.php` runs in that same group. It parses the four cron entry points without executing them, tests pure cursor/email helpers, and uses a stubbed Gmail cURL transport; it makes no WHMCS, IMAP, Google, OVH, checkout, or payment call.
 
 ## Not covered (unchanged)
 
 - Live WHMCS, browser, provider-API, and cPanel staging runs (gap E-2).
-- `soyoustart`, `RDP`, `cloudhost247_lteproxy`, `smmprovisioning`,
-  `soyoustart_vps`, `blockonomics` gateway: no suites exist yet (group C).
+- Live WHMCS, browser, checkout and external provider behavior remains owner-validation work; offline suites do not prove a production integration.
 - `hostx`, `xtreme_currency_rates`: ionCube-encoded, unauditable (D-8).

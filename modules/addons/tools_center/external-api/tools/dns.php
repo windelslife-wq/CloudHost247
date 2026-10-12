@@ -178,6 +178,9 @@ class DnsTools {
         if (!$this->isValidIP($ip)) {
             throw new Exception('Invalid IP address');
         }
+        if (!tc_is_public_ip($ip)) {
+            throw new Exception('Only public IP addresses can be reverse looked up');
+        }
         
         $hostname = gethostbyaddr($ip);
         
@@ -253,7 +256,7 @@ class DnsTools {
             throw new Exception('Domain is required');
         }
         
-        $records = dns_get_record($domain, DNS_CNAME);
+        $records = $this->lookupDNSRecords($domain, DNS_CNAME);
         $results = [];
         
         if ($records) {
@@ -271,7 +274,12 @@ class DnsTools {
         $current = $domain;
         $depth = 0;
         while ($depth < 10) {
-            $cname = @dns_get_record($current, DNS_CNAME);
+            // A public name may CNAME to a local/split-DNS suffix. Report the
+            // target, but never ask the server resolver to look it up.
+            if (!tc_is_public_dns_name($current)) {
+                break;
+            }
+            $cname = $this->lookupDNSRecords($current, DNS_CNAME);
             if (!empty($cname) && isset($cname[0]['target'])) {
                 $chain[] = ['from' => $current, 'to' => $cname[0]['target']];
                 $current = $cname[0]['target'];
@@ -300,16 +308,16 @@ class DnsTools {
             throw new Exception('Domain is required');
         }
         
-        $records = @dns_get_record($domain, DNS_NS);
+        $records = $this->lookupDNSRecords($domain, DNS_NS);
         $nameservers = [];
         
         if ($records) {
             foreach ($records as $record) {
                 $ns = $record['target'];
-                $nsIP = gethostbyname($ns);
+                $nsIP = $this->lookupIPv4Address($ns);
                 $nameservers[] = [
                     'name' => $ns,
-                    'ip' => $nsIP !== $ns ? $nsIP : null,
+                    'ip' => $nsIP,
                     'ipv6' => $this->getIPv6($ns),
                     'ttl' => $record['ttl'] ?? null
                 ];
@@ -336,7 +344,7 @@ class DnsTools {
             throw new Exception('Domain is required');
         }
         
-        $records = @dns_get_record($domain, DNS_MX);
+        $records = $this->lookupDNSRecords($domain, DNS_MX);
         $mxRecords = [];
         
         if ($records) {
@@ -347,11 +355,11 @@ class DnsTools {
             
             foreach ($records as $record) {
                 $host = $record['target'];
-                $ip = gethostbyname($host);
+                $ip = $this->lookupIPv4Address($host);
                 $mxRecords[] = [
                     'host' => $host,
                     'priority' => $record['pri'],
-                    'ip' => $ip !== $host ? $ip : null,
+                    'ip' => $ip,
                     'ipv6' => $this->getIPv6($host),
                     'ttl' => $record['ttl'] ?? null
                 ];
@@ -370,11 +378,20 @@ class DnsTools {
      * DNS Propagation Checker
      */
     public function dnsPropagation($params) {
-        $domain = $this->sanitizeDomain($params['domain'] ?? '');
-        $type = strtoupper($params['type'] ?? 'A');
+        $domainInput = $params['domain'] ?? '';
+        $typeInput = $params['type'] ?? 'A';
+        if (!is_string($domainInput) || !is_string($typeInput)) {
+            throw new Exception('Domain and record type must be strings');
+        }
+        $domain = $this->sanitizeDomain($domainInput);
+        $type = strtoupper(trim($typeInput));
         
-        if (empty($domain)) {
-            throw new Exception('Domain is required');
+        if (empty($domain) || !$this->isValidPropagationDomain($domain)) {
+            throw new Exception('A valid fully qualified domain is required');
+        }
+        $validTypes = ['A', 'AAAA', 'MX', 'NS', 'TXT'];
+        if (!in_array($type, $validTypes, true)) {
+            throw new Exception('Invalid DNS propagation record type');
         }
         
         $publicResolvers = [
@@ -662,7 +679,7 @@ class DnsTools {
             throw new Exception('Domain is required');
         }
         
-        $records = @dns_get_record($domain, DNS_DNSKEY);
+        $records = $this->lookupDNSRecords($domain, DNS_DNSKEY);
         $dnskeys = [];
         
         if ($records) {
@@ -700,7 +717,7 @@ class DnsTools {
         $dnskey = $this->dnskeyLookup(['domain' => $domain]);
         
         // Try to get DS records
-        $records = @dns_get_record($domain, DNS_DS);
+        $records = $this->lookupDNSRecords($domain, DNS_DS);
         $dsRecords = [];
         
         if ($records) {
@@ -796,8 +813,36 @@ class DnsTools {
     
     // ==================== HELPER METHODS ====================
     
+    /** Resolve records only for a validated public DNS name. */
+    private function lookupDNSRecords($host, $type) {
+        if (!tc_is_public_dns_name($host)) {
+            return [];
+        }
+        $records = $this->performDNSLookup($host, $type);
+        return is_array($records) ? $records : [];
+    }
+
+    /** Native DNS primitive behind a protected offline-test seam. */
+    protected function performDNSLookup($host, $type) {
+        return @dns_get_record($host, $type);
+    }
+
+    /** Resolve IPv4 only for a validated public DNS name; never leak local names. */
+    private function lookupIPv4Address($host) {
+        if (!tc_is_public_dns_name($host)) {
+            return null;
+        }
+        $ip = $this->performGetHostByName($host);
+        return is_string($ip) && $ip !== $host ? $ip : null;
+    }
+
+    /** Native resolver primitive behind a protected offline-test seam. */
+    protected function performGetHostByName($host) {
+        return gethostbyname($host);
+    }
+
     private function getTXTRecords($domain) {
-        $records = @dns_get_record($domain, DNS_TXT);
+        $records = $this->lookupDNSRecords($domain, DNS_TXT);
         $txtRecords = [];
         
         if ($records) {
@@ -815,7 +860,7 @@ class DnsTools {
     }
     
     private function getRecords($domain, $type, ...$fields) {
-        $records = @dns_get_record($domain, $type);
+        $records = $this->lookupDNSRecords($domain, $type);
         $results = [];
         
         if ($records) {
@@ -836,41 +881,45 @@ class DnsTools {
     }
     
     private function checkDNSSEC($domain) {
-        $dnskey = @dns_get_record($domain, DNS_DNSKEY);
+        $dnskey = $this->lookupDNSRecords($domain, DNS_DNSKEY);
         return !empty($dnskey);
     }
     
     private function checkNameservers($domain) {
-        $ns = @dns_get_record($domain, DNS_NS);
+        $ns = $this->lookupDNSRecords($domain, DNS_NS);
         return !empty($ns) && count($ns) >= 2;
     }
     
     private function checkSOA($domain) {
-        $soa = @dns_get_record($domain, DNS_SOA);
+        $soa = $this->lookupDNSRecords($domain, DNS_SOA);
         return !empty($soa);
     }
     
     private function checkMX($domain) {
-        $mx = @dns_get_record($domain, DNS_MX);
+        $mx = $this->lookupDNSRecords($domain, DNS_MX);
         return !empty($mx);
     }
     
     private function getIPv6($host) {
-        $records = @dns_get_record($host, DNS_AAAA);
+        if (!tc_is_public_dns_name($host)) {
+            return null;
+        }
+        $records = $this->lookupDNSRecords($host, DNS_AAAA);
         if (!empty($records) && isset($records[0]['ipv6'])) {
             return $records[0]['ipv6'];
         }
         return null;
     }
     
-    private function queryDNSViaResolver($domain, $type, $resolverIP) {
-        // Use dig command if available
+    protected function queryDNSViaResolver($domain, $type, $resolverIP) {
+        // Resolver IPs and record types are selected by the caller from fixed
+        // allowlists; user inputs are not used as dig options or resolver hosts.
         if (function_exists('exec')) {
             $type = escapeshellarg($type);
             $domain = escapeshellarg($domain);
             $resolver = escapeshellarg('@' . $resolverIP);
             
-            $command = "dig +short {$type} {$domain} {$resolver} 2>/dev/null";
+            $command = "dig +short +time=2 +tries=1 {$type} {$domain} {$resolver} 2>/dev/null";
             $output = [];
             $returnCode = 0;
             exec($command, $output, $returnCode);
@@ -889,11 +938,34 @@ class DnsTools {
         ];
     }
     
+    private function isValidPropagationDomain($domain) {
+        if (!is_string($domain) || strlen($domain) > 253 || substr_count($domain, '.') < 1) {
+            return false;
+        }
+        $label = '[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?';
+        return preg_match('/^' . $label . '(?:\\.' . $label . ')+\\z/i', $domain) === 1
+            && function_exists('tc_is_public_dns_name')
+            && tc_is_public_dns_name($domain);
+    }
+
     private function sanitizeDomain($domain) {
+        if (!is_string($domain)) {
+            return '';
+        }
         $domain = strtolower(trim($domain));
         $domain = preg_replace('/^(https?:\/\/)?(www\.)?/i', '', $domain);
         $domain = preg_replace('/[^a-z0-9.\-]/', '', $domain);
-        return substr($domain, 0, 253);
+        if (substr($domain, -1) === '.') {
+            $domain = substr($domain, 0, -1);
+            if (substr($domain, -1) === '.') {
+                return '';
+            }
+        }
+        if (strlen($domain) > 253 || !function_exists('tc_is_public_dns_name')
+            || !tc_is_public_dns_name($domain)) {
+            return '';
+        }
+        return $domain;
     }
     
     private function sanitizeIP($ip) {

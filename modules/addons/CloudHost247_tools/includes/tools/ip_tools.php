@@ -11,8 +11,9 @@ require_once __DIR__ . '/../functions.php';
 
 function CloudHost247_tool_ping_ipv4($post)
 {
-    $host = CloudHost247_tools_sanitize($post['host'] ?? '', 'domain');
-    if (empty($host)) {
+    $rawHost = $post['host'] ?? '';
+    $host = (is_string($rawHost) || is_numeric($rawHost)) ? trim((string) $rawHost) : '';
+    if ($host === '') {
         return ['error' => 'Please enter a host or IP address'];
     }
     return CloudHost247_tools_ping($host, false, 4, 3);
@@ -20,8 +21,9 @@ function CloudHost247_tool_ping_ipv4($post)
 
 function CloudHost247_tool_ping_ipv6($post)
 {
-    $host = CloudHost247_tools_sanitize($post['host'] ?? '', 'domain');
-    if (empty($host)) {
+    $rawHost = $post['host'] ?? '';
+    $host = (is_string($rawHost) || is_numeric($rawHost)) ? trim((string) $rawHost) : '';
+    if ($host === '') {
         return ['error' => 'Please enter a host or IP address'];
     }
     return CloudHost247_tools_ping($host, true, 4, 3);
@@ -30,7 +32,9 @@ function CloudHost247_tool_ping_ipv6($post)
 function CloudHost247_tool_what_is_my_ip($post)
 {
     $ip = CloudHost247_tools_get_client_ip();
-    $hostname = gethostbyaddr($ip) ?: null;
+    $hostname = CloudHost247ToolsSecurity::blockedIpReason($ip) === false
+        ? (@gethostbyaddr($ip) ?: null)
+        : null;
 
     return [
         'ip' => $ip,
@@ -41,11 +45,12 @@ function CloudHost247_tool_what_is_my_ip($post)
 
 function CloudHost247_tool_traceroute($post)
 {
-    $host = CloudHost247_tools_sanitize($post['host'] ?? '', 'domain');
-    if (empty($host)) {
+    $rawHost = $post['host'] ?? '';
+    $host = (is_string($rawHost) || is_numeric($rawHost)) ? trim((string) $rawHost) : '';
+    if ($host === '') {
         return ['error' => 'Please enter a host or IP address'];
     }
-    return CloudHost247_tools_traceroute($host, 30, 5);
+    return CloudHost247_tools_traceroute($host, 20, 1);
 }
 
 function CloudHost247_tool_ip_location($post)
@@ -97,7 +102,7 @@ function CloudHost247_tool_ip_location($post)
 
 function CloudHost247_tool_email_header_analyzer($post)
 {
-    $header = $_POST['header'] ?? '';
+    $header = $post['header'] ?? '';
     if (empty($header)) {
         return ['error' => 'Please paste an email header'];
     }
@@ -165,8 +170,13 @@ function CloudHost247_tool_email_header_analyzer($post)
 function CloudHost247_tool_ip_blacklist($post)
 {
     $ip = CloudHost247_tools_sanitize($post['ip'] ?? '', 'ip');
-    if (!CloudHost247_tools_validate_ip($ip)) {
-        return ['error' => 'Invalid IP address'];
+    // This checker only builds IPv4-style reverse DNSBL names. Reject IPv6,
+    // private and reserved input explicitly instead of reporting a false clean
+    // result from malformed or meaningless reverse queries.
+    $isPublicIpv4 = CloudHost247_tools_validate_ipv4($ip)
+        && CloudHost247ToolsSecurity::blockedIpReason($ip) === false;
+    if (!$isPublicIpv4) {
+        return ['error' => 'Enter a public IPv4 address; IPv6, private and reserved ranges are not supported.'];
     }
 
     $rbls = [
@@ -722,135 +732,182 @@ function CloudHost247_tool_ipv6_to_ipv4($post)
 }
 
 /**
- * IPv6 Compatibility Checker - does this domain actually work over IPv6?
+ * IPv6 Compatibility Checker.
  *
- * Checks real AAAA records, nameserver IPv6 reachability and whether the
- * site answers over IPv6. No results are invented: anything that cannot be
- * measured is reported as unknown.
+ * DNS checks report published AAAA records. The HTTPS check pins the outbound
+ * request to a vetted IPv6 address and verifies the address cURL actually used.
+ * DNS AAAA records alone are never presented as proof of network reachability.
+ * Optional callbacks are an internal seam for deterministic offline tests.
  */
-function CloudHost247_tool_ipv6_compatibility($post)
+function CloudHost247_tool_ipv6_compatibility($post, $dnsLookup = null, $httpFetcher = null)
 {
-    $domain = trim((string) ($post['domain'] ?? $post['host'] ?? ''));
-    if ($domain === '') {
+    $domainInput = is_array($post) ? ($post['domain'] ?? $post['host'] ?? '') : '';
+    if (!is_string($domainInput) || trim($domainInput) === '') {
         return ['error' => 'Please enter a domain name.'];
     }
 
     try {
-        $domain = CloudHost247ToolsSecurity::validateDomain($domain);
+        $domain = CloudHost247ToolsSecurity::validateDomain($domainInput);
     } catch (CloudHost247ToolsSecurityException $e) {
         return ['error' => $e->getMessage()];
     }
 
+    if (($dnsLookup !== null && !is_callable($dnsLookup))
+        || ($httpFetcher !== null && !is_callable($httpFetcher))) {
+        return ['error' => 'IPv6 check dependencies are invalid.'];
+    }
+    $dnsLookup = $dnsLookup ?? function ($host, $type) {
+        $records = @dns_get_record($host, $type);
+        return is_array($records) ? $records : [];
+    };
+    $httpFetcher = $httpFetcher ?? function ($url, $options) {
+        return CloudHost247ToolsSecurity::fetch($url, $options);
+    };
+    $query = function ($host, $type) use ($dnsLookup) {
+        if (!is_string($host) || CloudHost247ToolsSecurity::isBlockedDnsName($host)) {
+            return [];
+        }
+        $records = call_user_func($dnsLookup, $host, $type);
+        return is_array($records) ? $records : [];
+    };
+
     $checks = [];
 
     // 1. AAAA records on the apex.
-    $aaaa = @dns_get_record($domain, DNS_AAAA) ?: [];
-    $aaaaIps = array_values(array_filter(array_column($aaaa, 'ipv6')));
+    $aaaa = $query($domain, DNS_AAAA);
+    $aaaaIps = array_values(array_filter(array_column($aaaa, 'ipv6'), 'is_string'));
     $checks[] = [
-        'name'   => 'AAAA record (apex)',
+        'name'   => 'AAAA records (apex)',
         'status' => $aaaaIps ? 'pass' : 'fail',
         'detail' => $aaaaIps
             ? 'Found ' . count($aaaaIps) . ' AAAA record(s): ' . implode(', ', $aaaaIps)
-            : 'No AAAA record. IPv6-only clients cannot reach this domain directly.',
+            : 'No AAAA record was returned for the apex domain.',
         'values' => $aaaaIps,
     ];
 
-    // 2. AAAA on www.
-    $wwwAaaa = @dns_get_record('www.' . $domain, DNS_AAAA) ?: [];
-    $wwwIps  = array_values(array_filter(array_column($wwwAaaa, 'ipv6')));
-    $www     = @dns_get_record('www.' . $domain, DNS_A + DNS_CNAME) ?: [];
+    // 2. AAAA on www. A/CNAME existence is reported separately from IPv6 support.
+    $wwwAaaa = $query('www.' . $domain, DNS_AAAA);
+    $wwwIps = array_values(array_filter(array_column($wwwAaaa, 'ipv6'), 'is_string'));
+    $wwwRecords = $query('www.' . $domain, DNS_A | DNS_CNAME);
     $checks[] = [
-        'name'   => 'AAAA record (www)',
-        'status' => $wwwIps ? 'pass' : ($www ? 'fail' : 'na'),
+        'name'   => 'AAAA records (www)',
+        'status' => $wwwIps ? 'pass' : ($wwwRecords ? 'fail' : 'na'),
         'detail' => $wwwIps
-            ? 'www resolves over IPv6: ' . implode(', ', $wwwIps)
-            : ($www ? 'www exists but has no AAAA record.' : 'No www hostname is published.'),
+            ? 'www publishes IPv6 address record(s): ' . implode(', ', $wwwIps)
+            : ($wwwRecords ? 'www exists but no AAAA record was returned.' : 'No www hostname was returned.'),
         'values' => $wwwIps,
     ];
 
-    // 3. Nameservers reachable over IPv6.
-    $ns = @dns_get_record($domain, DNS_NS) ?: [];
+    // 3. Nameserver AAAA records, not active UDP/TCP reachability.
+    $ns = $query($domain, DNS_NS);
     $nsV6 = [];
     foreach ($ns as $record) {
-        if (empty($record['target'])) {
+        if (empty($record['target']) || !is_string($record['target'])) {
             continue;
         }
-        $recs = @dns_get_record($record['target'], DNS_AAAA) ?: [];
-        if ($recs) {
-            $nsV6[$record['target']] = array_values(array_filter(array_column($recs, 'ipv6')));
+        $records = $query($record['target'], DNS_AAAA);
+        $ips = array_values(array_filter(array_column($records, 'ipv6'), 'is_string'));
+        if ($ips) {
+            $nsV6[$record['target']] = $ips;
         }
     }
     $checks[] = [
-        'name'   => 'IPv6-reachable nameservers',
+        'name'   => 'Nameserver IPv6 addresses',
         'status' => $nsV6 ? (count($nsV6) === count($ns) ? 'pass' : 'warn') : 'fail',
         'detail' => $nsV6
-            ? count($nsV6) . ' of ' . count($ns) . ' nameservers have AAAA records.'
-            : 'No nameserver has an AAAA record, so IPv6-only resolvers cannot look this domain up without a translator.',
+            ? count($nsV6) . ' of ' . count($ns) . ' nameservers publish AAAA records; connectivity was not probed.'
+            : 'No nameserver AAAA records were returned; connectivity was not probed.',
         'values' => $nsV6,
     ];
 
-    // 4. Mail servers over IPv6.
-    $mx = @dns_get_record($domain, DNS_MX) ?: [];
+    // 4. MX host AAAA records, not SMTP reachability.
+    $mx = $query($domain, DNS_MX);
     $mxV6 = [];
     foreach ($mx as $record) {
-        if (empty($record['target'])) {
+        if (empty($record['target']) || !is_string($record['target'])) {
             continue;
         }
-        $recs = @dns_get_record($record['target'], DNS_AAAA) ?: [];
-        if ($recs) {
-            $mxV6[$record['target']] = array_values(array_filter(array_column($recs, 'ipv6')));
+        $records = $query($record['target'], DNS_AAAA);
+        $ips = array_values(array_filter(array_column($records, 'ipv6'), 'is_string'));
+        if ($ips) {
+            $mxV6[$record['target']] = $ips;
         }
     }
     $checks[] = [
-        'name'   => 'IPv6-reachable mail servers',
-        'status' => $mx ? ($mxV6 ? 'pass' : 'warn') : 'na',
-        'detail' => $mx
-            ? ($mxV6 ? count($mxV6) . ' of ' . count($mx) . ' MX hosts have AAAA records.'
-                     : 'No MX host has an AAAA record.')
-            : 'No MX records published for this domain.',
+        'name'   => 'Mail host IPv6 addresses',
+        'status' => !$mx ? 'na' : ($mxV6 && count($mxV6) === count($mx) ? 'pass' : ($mxV6 ? 'warn' : 'fail')),
+        'detail' => !$mx
+            ? 'No MX records were returned; mail-host IPv6 was not assessed.'
+            : ($mxV6
+                ? count($mxV6) . ' of ' . count($mx) . ' MX hosts publish AAAA records; SMTP connectivity was not probed.'
+                : 'No MX host AAAA records were returned; SMTP connectivity was not probed.'),
         'values' => $mxV6,
     ];
 
-    // 5. Does the site actually answer over IPv6?
-    $httpStatus = 'unknown';
-    $httpDetail = 'CloudHost247 could not test an IPv6 HTTP connection from this server.';
+    // 5. Force the HTTPS check to use IPv6 and verify the connected address.
+    $httpStatus = 'na';
+    $httpDetail = 'Skipped because the apex has no AAAA address.';
+    $connectedIp = null;
     if ($aaaaIps) {
         try {
-            $res = CloudHost247ToolsSecurity::fetch('https://' . $domain . '/', ['method' => 'HEAD', 'timeout' => 10]);
-            $httpStatus = $res['status'] > 0 ? 'pass' : 'fail';
-            $httpDetail = 'HTTPS responded with status ' . $res['status'] . '.';
-        } catch (\Exception $e) {
+            $response = call_user_func($httpFetcher, 'https://' . $domain . '/', [
+                'method' => 'HEAD',
+                'timeout' => 10,
+                'ip_version' => 6,
+            ]);
+            $responseStatus = is_array($response) ? (int) ($response['status'] ?? 0) : 0;
+            $connectedIp = is_array($response) && isset($response['connected_ip'])
+                && is_string($response['connected_ip'])
+                ? $response['connected_ip']
+                : null;
+            if ($responseStatus > 0 && $connectedIp !== null && CloudHost247ToolsSecurity::isIpv6($connectedIp)) {
+                $httpStatus = 'pass';
+                $httpDetail = 'HTTPS responded with status ' . $responseStatus . ' over IPv6 (' . $connectedIp . ').';
+            } else {
+                $httpStatus = 'fail';
+                $httpDetail = 'CloudHost247 did not confirm an HTTPS response over an IPv6 address.';
+            }
+        } catch (Throwable $e) {
+            // The site or this server may not have a working IPv6 route. Keep
+            // that as an unverified measurement, not a fabricated pass/fail.
             $httpStatus = 'warn';
-            $httpDetail = 'AAAA records exist but the HTTPS request did not complete: ' . $e->getMessage();
+            $httpDetail = 'The IPv6 HTTPS probe could not be completed from this server.';
         }
-    } else {
-        $httpStatus = 'na';
-        $httpDetail = 'Skipped - there is no AAAA record to connect to.';
     }
-    $checks[] = ['name' => 'HTTPS over IPv6', 'status' => $httpStatus, 'detail' => $httpDetail, 'values' => []];
+    $checks[] = [
+        'name' => 'HTTPS connection over IPv6',
+        'status' => $httpStatus,
+        'detail' => $httpDetail,
+        'values' => $connectedIp ? [$connectedIp] : [],
+    ];
 
-    $passes = count(array_filter($checks, function ($c) {
-        return $c['status'] === 'pass';
+    $passes = count(array_filter($checks, function ($check) {
+        return $check['status'] === 'pass';
     }));
-    $applicable = count(array_filter($checks, function ($c) {
-        return $c['status'] !== 'na';
+    $applicable = count(array_filter($checks, function ($check) {
+        return $check['status'] !== 'na';
     }));
     $score = $applicable ? (int) round(($passes / $applicable) * 100) : 0;
 
-    if ($aaaaIps && $score >= 80) {
-        $verdict = 'IPv6 ready';
-    } elseif ($aaaaIps) {
-        $verdict = 'Partially IPv6 ready';
+    if (!$aaaaIps) {
+        $verdict = 'No IPv6 address published';
+    } elseif ($httpStatus === 'pass' && $score >= 80) {
+        $verdict = 'IPv6 web connection confirmed';
+    } elseif ($httpStatus === 'pass') {
+        $verdict = 'IPv6 web connection confirmed; DNS coverage is partial';
+    } elseif ($httpStatus === 'fail') {
+        $verdict = 'IPv6 HTTPS connection not confirmed';
     } else {
-        $verdict = 'Not reachable over IPv6';
+        $verdict = 'IPv6 addresses published; web connection unverified';
     }
 
     return [
-        'domain'   => $domain,
-        'verdict'  => $verdict,
-        'score'    => $score,
-        'checks'   => $checks,
-        'aaaa'     => $aaaaIps,
-        'note'     => 'Checks are performed from the CloudHost247 server. A domain can still be unreachable for a particular IPv6 client because of routing or firewall policy between you and the host.',
+        'domain' => $domain,
+        'verdict' => $verdict,
+        'score' => $score,
+        'checks' => $checks,
+        'aaaa' => $aaaaIps,
+        'http_connected_ip' => $connectedIp,
+        'note' => 'The score combines DNS record observations with a forced IPv6 HTTPS probe. Nameserver and mail-host checks only inspect published AAAA records; they do not test DNS or SMTP connectivity. Results are from the CloudHost247 server and do not guarantee reachability from every client network.',
     ];
 }

@@ -170,7 +170,7 @@ function soyoustart_CreateAccount(array $params)
         }
 
         /* creating cart */
-        $cartDetails = $apiCall->createCart($location, $planCode, $subsidiaryLocation);
+        $cartDetails = $apiCall->createCart($location, $planCode, $subsidiaryLocation, $ovhAccountData[0]);
 
         if ($cartDetails["httpcode"] != 200) {
             return $cartDetails['result']->message . "Please check your (" . ($ovhAccountData[2] ?? '') . ")" . " account is active";
@@ -259,7 +259,7 @@ function soyoustart_CreateAccount(array $params)
                             $postData = array('label' => $requiredConfigurationData->label, 'value' => $dedicatedlabelvalue);
                         }
                         if (!empty($postData)) {
-                            $response = $apiCall->addConfigOptInCart('/order/cart/' . $cartId . '/item/' . $itemid . '/configuration', '', $postData, $location);
+                            $response = $apiCall->addConfigOptInCart('/order/cart/' . $cartId . '/item/' . $itemid . '/configuration', $ovhAccountData[0], $postData, $location);
                             if ($response["httpcode"] != 200) {
                                 return $response['result']->message;
                             }
@@ -916,7 +916,7 @@ function soyoustart_ClientArea(array $params)
                         exit;
                     }
                     /* creating cart */
-                    $cartDetails = $apiCall->createCart($location, $planCode . "add Additional IPs", $subsidiaryLocation);
+                    $cartDetails = $apiCall->createCart($location, $planCode . "add Additional IPs", $subsidiaryLocation, $accountId);
                     if ($cartDetails["httpcode"] != 200) {
                         echo json_encode($cartDetails);
                         exit;

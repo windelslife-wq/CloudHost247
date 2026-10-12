@@ -188,6 +188,9 @@ class NetworkTools {
         if (!$ip) {
             throw new Exception('Invalid IP address');
         }
+        if (!tc_is_public_ip($ip)) {
+            throw new Exception('Only public IP addresses can be used for ASN lookup');
+        }
         
         // Try to get ASN from IP using Team Cymru or similar
         $asnInfo = $this->getASNForIP($ip);
@@ -471,22 +474,33 @@ class NetworkTools {
         $servers = ['whois.radb.net', 'whois.ripe.net'];
         
         foreach ($servers as $server) {
-            $socket = @fsockopen($server, 43, $errno, $errstr, 10);
-            if ($socket) {
-                fputs($socket, "AS{$asn}\r\n");
-                $result = '';
-                while (!feof($socket)) {
-                    $result .= fgets($socket, 128);
-                }
-                fclose($socket);
-                
-                if (!empty($result) && strpos($result, 'Not found') === false) {
-                    return $result;
-                }
+            $result = $this->queryWhoisResponse("AS{$asn}", $server);
+            if (!empty($result) && strpos($result, 'Not found') === false) {
+                return $result;
             }
         }
         
         return 'No WHOIS data available for AS' . $asn;
+    }
+
+    /** WHOIS transport seam; every production connection uses the public guard. */
+    protected function queryWhoisResponse($query, $server) {
+        $errno = 0;
+        $errstr = '';
+        $socket = tc_open_public_socket($server, 43, 10, $errno, $errstr);
+        if (!$socket) return '';
+
+        stream_set_timeout($socket, 10);
+        fputs($socket, $query . "\r\n");
+        $result = '';
+        while (!feof($socket) && strlen($result) < 65536) {
+            $line = fgets($socket, 1024);
+            if ($line === false) break;
+            $result .= $line;
+        }
+        fclose($socket);
+
+        return $result;
     }
     
     private function parseASNWhois($data) {

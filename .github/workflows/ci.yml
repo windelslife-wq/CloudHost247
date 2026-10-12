@@ -59,7 +59,7 @@ jobs:
         run: ci/run-php.sh hostxemail
       - name: hostxtools (hostx_tools)
         run: ci/run-php.sh hostxtools
-      - name: toolscenter (tools_center outbound guard)
+      - name: toolscenter (guarded outbound + IP/WHOIS regressions)
         run: ci/run-php.sh toolscenter
       - name: smtp (Smtphosting)
         run: ci/run-php.sh smtphosting

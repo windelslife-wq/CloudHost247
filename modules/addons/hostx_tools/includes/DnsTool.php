@@ -59,8 +59,9 @@ class DnsTool
      */
     public function lookup($domain, $type = 'ALL')
     {
-        // Sanitize input
-        $domain = SecurityManager::sanitizeDomain($domain);
+        // Resolve the requested record type before validating its domain/IP input.
+        $type = SecurityManager::sanitizeDnsType($type);
+        $domain = SecurityManager::sanitizeDomain($domain, $type === 'PTR');
         
         if ($domain === false) {
             return [
@@ -69,8 +70,6 @@ class DnsTool
                 'source'  => 'validation',
             ];
         }
-        
-        $type = SecurityManager::sanitizeDnsType($type);
         
         // Check cache
         $cacheKey = 'dns_' . md5($domain . '_' . $type);

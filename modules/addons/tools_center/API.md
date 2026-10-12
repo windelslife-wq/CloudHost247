@@ -8,30 +8,29 @@ https://tools-api.yourdomain.com/api.php
 
 ## Authentication
 
-All requests require authentication via one of these methods:
+All tool requests must use **POST** and authenticate with one of these methods:
 
-### Method 1: X-API-Token Header (Recommended)
+### Method 1: X-API-Token Header (recommended)
 ```
-X-API-Token: your-api-token-here
+X-API-Token: your-configured-api-token
 ```
 
 ### Method 2: Authorization Bearer Header
 ```
-Authorization: Bearer your-api-token-here
+Authorization: Bearer your-configured-api-token
 ```
 
-### Method 3: POST/GET Parameter
-```
-POST /api.php
+### Legacy compatibility: POST body token
+A token in a JSON or form-encoded **POST body** is still accepted for older clients. Prefer a header; never put a token in a URL, query string, or cookie. Query-string and cookie authentication are rejected.
+
+```http
+POST /api.php HTTP/1.1
 Content-Type: application/json
 
-{
-  "api_token": "your-api-token-here",
-  "category": "dns",
-  "action": "mxLookup",
-  "domain": "example.com"
-}
+{"api_token":"your-configured-api-token","category":"dns","action":"mxLookup","domain":"example.com"}
 ```
+
+The API ships with no default credentials. Set `TOOLS_API_TOKEN` before exposing it. Optional signed HMAC tokens require `TOOLS_API_SECRET`; tokens produced by `APIAuth::generateToken()` expire after five minutes and are single-use. Generate a fresh one for each request.
 
 ## Request Format
 
@@ -57,19 +56,18 @@ X-API-Token: your-token
   "data": {
     "domain": "example.com",
     "mx_records": [...]
-  },
-  "cached": false,
-  "response_time_ms": 245
+  }
 }
 ```
+
+Cache hits may also include `"cached": true`. The WHMCS client-area proxy adds a `response_time_ms` field when it returns results to the browser.
 
 ### Error Response
 ```json
 {
   "success": false,
   "error": "Domain is required",
-  "code": "MISSING_DOMAIN",
-  "response_time_ms": 12
+  "code": "MISSING_DOMAIN"
 }
 ```
 
@@ -81,11 +79,11 @@ X-API-Token: your-token
 | Per Hour | 500 | 1 hour |
 | Per Day | 5,000 | 24 hours |
 
-Rate limit headers (when approaching limits):
-```
-X-RateLimit-Remaining: 45
-X-RateLimit-Reset: 1699999999
-```
+The API returns HTTP `429` when the configured per-minute, per-hour, or per-day limit is exceeded. It does not currently emit standard rate-limit or `Retry-After` headers. Requests authenticated with a signed HMAC token are bucketed by its client ID; the shared API token is bucketed by the API server's remote client IP.
+
+## CORS
+
+Browser origins are allowed only when they exactly match an entry in `external-api/config.php` under `allowed_origins`. Unlisted origins are rejected, and CORS is not an authentication mechanism. The WHMCS integration is server-to-server and does not require a CORS origin.
 
 ## Categories & Tools
 
@@ -93,7 +91,7 @@ X-RateLimit-Reset: 1699999999
 
 | Action | Parameters | Description |
 |--------|-----------|-------------|
-| `domainSearch` | `domain` (string, required) | Check domain availability |
+| `domainSearch` | `domain` (string, required) | Preliminary registry WHOIS lookup; only explicit, complete registry outcomes are classified, and inconclusive cases remain `UNKNOWN` |
 
 ### DNS Tools (`category: dns`)
 
@@ -106,7 +104,7 @@ X-RateLimit-Reset: 1699999999
 | `cnameLookup` | `domain` (string) | CNAME chain trace |
 | `nsLookup` | `domain` (string) | Nameserver lookup |
 | `mxLookup` | `domain` (string) | Mail server lookup |
-| `dnsPropagation` | `domain`, `type` (A/AAAA/MX/NS/TXT) | Global propagation check |
+| `dnsPropagation` | `domain`, `type` (A/AAAA/MX/NS/TXT) | Compare answers from a fixed public-resolver list |
 | `dmarcValidation` | `domain` (string) | DMARC record validation |
 | `dnsHealth` | `domain` (string) | Overall DNS health score |
 | `dmarcGenerator` | `domain`, `policy` (none/quarantine/reject), `rua`, `pct` | Generate DMARC record |
@@ -118,10 +116,10 @@ X-RateLimit-Reset: 1699999999
 
 | Action | Parameters | Description |
 |--------|-----------|-------------|
-| `ping` | `host`, `count` (1-10), `timeout` | ICMP ping test |
-| `whatIsMyIP` | (none) | Get client IP info |
-| `traceroute` | `host`, `max_hops` (1-50) | Network path trace |
-| `ipLocation` | `ip` (optional, defaults to client IP) | GeoIP lookup |
+| `ping` | `host`, `count` (1-10), `timeout` (1-30 seconds) | ICMP ping to a public target; result includes the pinned `resolved_ip` |
+| `whatIsMyIP` | (none) | Get client IP info; geolocation is skipped for non-public client IPs |
+| `traceroute` | `host`, `max_hops` (1-50), `timeout` (1-30 seconds) | Network path trace to a public target; result includes the pinned `resolved_ip` |
+| `ipLocation` | `ip` (optional, defaults to client IP) | GeoIP lookup for public IPs only |
 | `emailHeaderAnalyzer` | `headers` (string) | Parse email headers |
 | `ipBlacklist` | `ip` (string) | Check IP reputation |
 | `ipToDecimal` | `ip` (string) | IP to decimal conversion |
@@ -139,6 +137,8 @@ X-RateLimit-Reset: 1699999999
 | `ipv6ToIPv4` | `ip` (string) | Extract IPv4 from IPv6 |
 | `ispChecker` | `ip` (optional) | ISP identification |
 | `websiteToIP` | `url` (string) | Domain to IP resolution |
+
+Ping and traceroute hostname inputs are resolved by the central outbound guard. They fail if any resolved address is non-public, and the command receives a validated numeric IP rather than resolving the hostname a second time. The result includes both the submitted `host` and the pinned `resolved_ip`. Counts, timeouts, and hop counts are clamped to the ranges above. IP WHOIS and ASN WHOIS use the guarded public socket helper on port 43; ASN-by-IP, PTR/reverse-DNS, and DNSBL operations reject non-public IPs before disclosing them to a resolver or registry. GeoIP continues to use the existing `ip-api.com` HTTP endpoint, now through the guarded fetch helper with redirects disabled; provider availability and returned data are not independently verified, and non-public addresses are not sent to the provider. GeoIP fields the provider does not return remain null. The ISP checker uses the provider's hosting/proxy flags; VPN status is unknown because this provider does not supply a VPN classification. Caller-supplied DNS names must be fully qualified and outside reserved/local-use namespaces (including `.local`, `.internal`, `.test`, `.example`, `.invalid`, `.onion`, `.alt`, `.home.arpa`, and common private suffixes). CNAME, NS, and MX targets that point to such names are reported but are not recursively resolved. DNS propagation accepts only A/AAAA/MX/NS/TXT and uses fixed public resolver IPs with a bounded `dig` timeout. These checks do not prove a domain is registered or authoritative. The shared HTTP guard still has the separately tracked TLS-verification/plain-HTTP limitation (T-8).
 
 ### Developer Tools (`category: developer`)
 
@@ -172,7 +172,7 @@ X-RateLimit-Reset: 1699999999
 |--------|-----------|-------------|
 | `websiteLinkAnalyzer` | `url` (string) | Link analysis |
 | `userAgentChecker` | `ua` (string, optional) | Parse browser info |
-| `pageRankChecker` | `url` (string) | Domain metrics (legacy) |
+| `pageRankChecker` | `url` (string) | Legacy route; returns `not_configured` with null scores and makes no provider or PageRank claim |
 | `punycodeConverter` | `domain`, `direction` (auto/to_punycode/to_unicode) | IDN conversion |
 | `serpSimulator` | `title`, `description`, `url` | SERP preview |
 | `robotsGenerator` | `disallow`, `allow`, `sitemap`, `crawl_delay` | robots.txt generator |
@@ -190,10 +190,12 @@ X-RateLimit-Reset: 1699999999
 
 | Action | Parameters | Description |
 |--------|-----------|-------------|
-| `sslChecker` | `host`, `port` (default 443) | SSL certificate check |
+| `sslChecker` | `host`, `port` (default 443, 1-65535) | Inspect certificate metadata on a public host |
 | `passwordEncrypt` | `password`, `algorithm` (bcrypt/argon2/sha256) | Password hashing |
 | `passwordGenerator` | `length`, `count`, `uppercase`, `lowercase`, `numbers`, `symbols` | Generate passwords |
 | `passwordStrength` | `password` (string) | Strength analysis |
+
+`sslChecker` rejects non-public targets and connects to a pinned numeric address while preserving the hostname for TLS SNI. It deliberately retrieves metadata even when the certificate is expired or self-signed, so it does not validate the trust chain or hostname. It reports no SSL Labs grade or overall security score (`grade` is `Not assessed`); treat the result as certificate metadata, not a complete TLS audit.
 
 ### Productivity Tools (`category: productivity`)
 
@@ -204,11 +206,11 @@ X-RateLimit-Reset: 1699999999
 | `binChecker` | `bin` (string, 6+ digits) | Bank ID lookup |
 | `creditCardValidator` | `number` (string) | Luhn validation |
 | `reverseImageSearch` | `url` (image URL) | Image search links |
-| `usernameChecker` | `username` (string) | Username availability |
+| `usernameChecker` | `username` (string) | Validates a common format and builds profile links; does not check availability |
 | `notepad` | `action` (create/read/update), `content`, `note_id` | Online notepad |
 | `smallText` | `text`, `style` (all/superscript/subscript/smallcaps) | Small text gen |
 | `wordCounter` | `text` (string) | Word/char analysis |
-| `domainSearch` | `domain` (string) | Domain availability |
+| `domainSearch` | `domain` (string) | Legacy API alias for `search.domainSearch`; delegates to the same registry-aware implementation |
 | `rot13` | `text` (string) | ROT13 encoder |
 | `morseCode` | `text`, `direction` (auto/to_morse/to_text) | Morse translator |
 | `bimiChecker` | `domain`, `action` (check/generate) | BIMI record tool |

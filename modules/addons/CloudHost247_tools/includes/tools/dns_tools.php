@@ -95,8 +95,11 @@ function CloudHost247_tool_reverse_ip_lookup($post)
     if (!CloudHost247_tools_validate_ip($ip)) {
         return ['error' => 'Invalid IP address'];
     }
+    if (CloudHost247ToolsSecurity::blockedIpReason($ip) !== false) {
+        return ['error' => 'Reverse DNS lookup is limited to public IP addresses.'];
+    }
 
-    $hostname = gethostbyaddr($ip);
+    $hostname = @gethostbyaddr($ip);
     if (!$hostname || $hostname === $ip) {
         return ['ip' => $ip, 'hostname' => null, 'found' => false];
     }
@@ -376,19 +379,55 @@ function CloudHost247_tool_dns_health($post)
 
 function CloudHost247_tool_dmarc_generator($post)
 {
-    $domain = CloudHost247_tools_sanitize($post['domain'] ?? '', 'domain');
-    $policy = CloudHost247_tools_sanitize($post['policy'] ?? 'none', 'string');
-    $pct = (int) ($post['pct'] ?? 100);
-    $rua = CloudHost247_tools_sanitize($post['rua'] ?? '', 'email');
-    $ruf = CloudHost247_tools_sanitize($post['ruf'] ?? '', 'email');
-    $aspf = CloudHost247_tools_sanitize($post['aspf'] ?? 'r', 'string');
-    $adkim = CloudHost247_tools_sanitize($post['adkim'] ?? 'r', 'string');
+    $rawDomain = $post['domain'] ?? '';
+    $rawPolicy = $post['policy'] ?? 'none';
+    $rawPct = $post['pct'] ?? 100;
+    $rawRua = $post['rua'] ?? '';
+    $rawRuf = $post['ruf'] ?? '';
+    $rawAspf = $post['aspf'] ?? 'r';
+    $rawAdkim = $post['adkim'] ?? 'r';
+
+    foreach (['domain' => $rawDomain, 'policy' => $rawPolicy, 'pct' => $rawPct,
+        'rua' => $rawRua, 'ruf' => $rawRuf, 'aspf' => $rawAspf, 'adkim' => $rawAdkim] as $field => $value) {
+        if (!is_string($value) && !is_int($value)) {
+            return ['error' => 'Invalid ' . $field . ' value'];
+        }
+    }
+
+    $domain = CloudHost247_tools_sanitize((string) $rawDomain, 'domain');
+    if (!CloudHost247_tools_validate_domain($domain)) {
+        return ['error' => 'Invalid domain name'];
+    }
+
+    $policy = strtolower((string) $rawPolicy);
+    if (!in_array($policy, ['none', 'quarantine', 'reject'], true)) {
+        return ['error' => 'Policy must be none, quarantine or reject'];
+    }
+
+    $pctText = (string) $rawPct;
+    if (!preg_match('/^(?:100|[0-9]{1,2})$/D', $pctText)) {
+        return ['error' => 'Percentage must be a whole number from 0 to 100'];
+    }
+    $pct = (int) $pctText;
+
+    $rua = (string) $rawRua;
+    $ruf = (string) $rawRuf;
+    if (($rua !== '' && !CloudHost247_tools_validate_email($rua))
+        || ($ruf !== '' && !CloudHost247_tools_validate_email($ruf))) {
+        return ['error' => 'Aggregate and forensic report addresses must be valid email addresses'];
+    }
+
+    $aspf = strtolower((string) $rawAspf);
+    $adkim = strtolower((string) $rawAdkim);
+    if (!in_array($aspf, ['r', 's'], true) || !in_array($adkim, ['r', 's'], true)) {
+        return ['error' => 'SPF and DKIM alignment must be relaxed (r) or strict (s)'];
+    }
 
     $record = 'v=DMARC1; p=' . $policy . '; pct=' . $pct;
-    if ($rua && CloudHost247_tools_validate_email($rua)) {
+    if ($rua !== '') {
         $record .= '; rua=mailto:' . $rua;
     }
-    if ($ruf && CloudHost247_tools_validate_email($ruf)) {
+    if ($ruf !== '') {
         $record .= '; ruf=mailto:' . $ruf;
     }
     $record .= '; aspf=' . $aspf . '; adkim=' . $adkim;
@@ -445,10 +484,14 @@ function CloudHost247_tool_ds_record_lookup($post)
 function CloudHost247_tool_dkim_checker($post)
 {
     $domain = CloudHost247_tools_sanitize($post['domain'] ?? '', 'domain');
-    $selector = CloudHost247_tools_sanitize($post['selector'] ?? 'default', 'string');
+    $rawSelector = $post['selector'] ?? 'default';
     if (!CloudHost247_tools_validate_domain($domain)) {
         return ['error' => 'Invalid domain name'];
     }
+    if (!is_string($rawSelector) || !preg_match('/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/iD', $rawSelector)) {
+        return ['error' => 'Selector must be a single DNS label containing letters, numbers or internal hyphens'];
+    }
+    $selector = strtolower($rawSelector);
 
     $dkimDomain = $selector . '._domainkey.' . $domain;
     $records = CloudHost247_tools_dns_query($dkimDomain, 'TXT');
@@ -493,9 +536,22 @@ function CloudHost247_tool_dkim_checker($post)
  * RDAP is preferred because it returns structured, parseable JSON over
  * HTTPS. Port 43 WHOIS is used only when the registry has no RDAP service.
  */
-function CloudHost247_tool_domain_whois($post)
+function CloudHost247_tool_domain_whois($post, $testTransports = null)
 {
-    $domain = trim((string) ($post['domain'] ?? ''));
+    // The request runner supplies only $post. Optional transport callbacks are
+    // an internal seam for deterministic tests and are never read from input.
+    $usingTestTransports = $testTransports !== null;
+    if ($usingTestTransports && (!is_array($testTransports)
+        || !isset($testTransports['rdap'], $testTransports['whois'])
+        || !is_callable($testTransports['rdap']) || !is_callable($testTransports['whois']))) {
+        return ['error' => 'Invalid internal WHOIS test transport.'];
+    }
+
+    $rawDomain = $post['domain'] ?? '';
+    if (!is_string($rawDomain) && !is_numeric($rawDomain)) {
+        return ['error' => 'Please enter a valid domain name.'];
+    }
+    $domain = trim((string) $rawDomain);
     if ($domain === '') {
         return ['error' => 'Please enter a domain name.'];
     }
@@ -507,11 +563,13 @@ function CloudHost247_tool_domain_whois($post)
     }
 
     $cacheKey = 'whois:' . $domain;
-    $cached   = function_exists('CloudHost247_tools_cache_get') ? CloudHost247_tools_cache_get($cacheKey) : null;
-    if (is_array($cached)) {
-        $cached['cached'] = true;
+    if (!$usingTestTransports) {
+        $cached = function_exists('CloudHost247_tools_cache_get') ? CloudHost247_tools_cache_get($cacheKey) : null;
+        if (is_array($cached)) {
+            $cached['cached'] = true;
 
-        return $cached;
+            return $cached;
+        }
     }
 
     $result = [
@@ -530,17 +588,23 @@ function CloudHost247_tool_domain_whois($post)
 
     // --- RDAP (preferred) ---
     try {
-        $res = CloudHost247ToolsSecurity::fetch('https://rdap.org/domain/' . rawurlencode($domain), [
+        $rdapUrl = 'https://rdap.org/domain/' . rawurlencode($domain);
+        $rdapOptions = [
             'timeout' => 12,
             'headers' => ['Accept: application/rdap+json'],
-        ]);
+        ];
+        $res = $usingTestTransports
+            ? call_user_func($testTransports['rdap'], $rdapUrl, $rdapOptions)
+            : CloudHost247ToolsSecurity::fetch($rdapUrl, $rdapOptions);
 
         if ($res['status'] === 404) {
-            $result['source']     = 'RDAP';
-            $result['registered'] = false;
-            $result['message']    = 'No registration record found. This domain appears to be available.';
-            $result['raw']        = '';
-            if (function_exists('CloudHost247_tools_cache_set')) {
+            $result['source']               = 'RDAP';
+            $result['registered']           = false;
+            $result['availability_status']  = 'no_match_reported';
+            $result['availability_note']    = 'RDAP returned no matching registration record. This does not guarantee the domain can be registered; confirm with an accredited registrar.';
+            $result['message']              = $result['availability_note'];
+            $result['raw']                  = '';
+            if (!$usingTestTransports && function_exists('CloudHost247_tools_cache_set')) {
                 CloudHost247_tools_cache_set($cacheKey, $result, 30);
             }
 
@@ -549,10 +613,17 @@ function CloudHost247_tool_domain_whois($post)
 
         if ($res['status'] >= 200 && $res['status'] < 300) {
             $data = json_decode($res['body'], true);
-            if (is_array($data)) {
-                $result['source']     = 'RDAP';
-                $result['registered'] = true;
-                $result['statuses']   = array_values((array) ($data['status'] ?? []));
+            $responseDomain = is_array($data) && isset($data['ldhName']) && is_string($data['ldhName'])
+                ? strtolower(rtrim($data['ldhName'], '.'))
+                : '';
+            if (is_array($data)
+                && strtolower((string) ($data['objectClassName'] ?? '')) === 'domain'
+                && $responseDomain === strtolower(rtrim($domain, '.'))) {
+                $result['source']               = 'RDAP';
+                $result['registered']           = true;
+                $result['availability_status']  = 'record_found';
+                $result['availability_note']    = 'RDAP returned a matching domain registration record. This is not a registrar availability or pricing guarantee.';
+                $result['statuses']             = array_values((array) ($data['status'] ?? []));
                 $result['handle']     = $data['handle'] ?? null;
 
                 foreach ((array) ($data['events'] ?? []) as $event) {
@@ -600,25 +671,37 @@ function CloudHost247_tool_domain_whois($post)
             }
         }
     } catch (\Exception $e) {
-        $result['rdap_error'] = $e->getMessage();
+        // Keep provider/network internals out of the public result; the WHOIS
+        // fallback below will decide whether a useful status can be returned.
+        $result['rdap_error'] = 'RDAP lookup failed; the tool will try the WHOIS fallback.';
     }
 
     // --- WHOIS port 43 fallback ---
     if ($result['source'] === null) {
-        if (function_exists('CloudHost247_tools_whois')) {
-            $raw = CloudHost247_tools_whois($domain);
-            $raw = is_array($raw) ? ($raw['raw'] ?? ($raw['data'] ?? '')) : (string) $raw;
-        } else {
-            $raw = '';
+        $whoisResponse = $usingTestTransports
+            ? call_user_func($testTransports['whois'], $domain)
+            : (function_exists('CloudHost247_tools_whois')
+                ? CloudHost247_tools_whois($domain)
+                : ['error' => 'WHOIS helper is unavailable.']);
+        if (!is_array($whoisResponse)) {
+            $whoisResponse = ['result' => (string) $whoisResponse];
         }
+        $raw = (string) ($whoisResponse['result'] ?? '');
 
-        if (trim((string) $raw) === '') {
+        if (trim($raw) === '') {
             return ['error' => 'No WHOIS or RDAP data could be retrieved for ' . $domain
                 . '. The registry may be rate limiting this server, or the TLD may not publish public registration data.'];
         }
 
-        $result['source'] = 'WHOIS (port 43)';
-        $result['raw']    = $raw;
+        $result['source']      = 'WHOIS (port 43)';
+        $result['whois_server'] = $whoisResponse['server'] ?? null;
+        $result['raw']         = $raw;
+        $classification = CloudHost247_tools_classify_domain_whois($whoisResponse, $domain);
+        $result['availability_status'] = $classification['status'];
+        $result['availability_note'] = $classification['note'];
+        $result['registered'] = $classification['status'] === 'record_found'
+            ? true
+            : ($classification['status'] === 'no_match_reported' ? false : null);
 
         $patterns = [
             'registrar'  => '/^\s*Registrar:\s*(.+)$/mi',
@@ -644,7 +727,6 @@ function CloudHost247_tool_domain_whois($post)
         if (preg_match_all('/^\s*Domain Status:\s*(.+)$/mi', $raw, $m)) {
             $result['statuses'] = array_map('trim', $m[1]);
         }
-        $result['registered'] = !preg_match('/(No match|NOT FOUND|No Data Found|Status:\s*free)/i', $raw);
     }
 
     // Days until expiry, when we have a parseable date.
@@ -660,7 +742,7 @@ function CloudHost247_tool_domain_whois($post)
 
     $result['note'] = 'Registrant contact details are redacted by most registries under GDPR and ICANN policy; CloudHost247 shows exactly what the registry publishes and does not fill gaps with guesses.';
 
-    if (function_exists('CloudHost247_tools_cache_set')) {
+    if (!$usingTestTransports && function_exists('CloudHost247_tools_cache_set')) {
         CloudHost247_tools_cache_set($cacheKey, $result, 60);
     }
 

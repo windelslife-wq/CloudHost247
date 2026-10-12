@@ -259,11 +259,11 @@ class CloudHost247ToolsAdmin
             $html .= '<tr>
                 <td>' . $log->id . '</td>
                 <td>' . htmlspecialchars($name) . '</td>
-                <td>' . htmlspecialchars(substr($log->input, 0, 80)) . '</td>
-                <td>' . htmlspecialchars($log->ip_address) . '</td>
-                <td>' . ($log->user_id ?: 'Guest') . '</td>
-                <td><span class="label ' . $statusClass . '">' . $log->status . '</span></td>
-                <td>' . $log->created_at . '</td>
+                <td>' . htmlspecialchars(substr((string) $log->input, 0, 80), ENT_QUOTES, 'UTF-8') . '</td>
+                <td>' . htmlspecialchars((string) $log->ip_address, ENT_QUOTES, 'UTF-8') . '</td>
+                <td>' . ((int) $log->user_id ?: 'Guest') . '</td>
+                <td><span class="label ' . $statusClass . '">' . htmlspecialchars((string) $log->status, ENT_QUOTES, 'UTF-8') . '</span></td>
+                <td>' . htmlspecialchars((string) $log->created_at, ENT_QUOTES, 'UTF-8') . '</td>
             </tr>';
         }
         $html .= '</tbody></table>';

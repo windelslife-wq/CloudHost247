@@ -251,38 +251,36 @@ class WebmasterTools {
     }
     
     /**
-     * Google PageRank Checker (fallback)
+     * Legacy PageRank route. No score provider is configured, so never invent
+     * PageRank or substitute third-party authority metrics.
      */
     public function pageRankChecker($params) {
         $url = $params['url'] ?? '';
-        
-        if (empty($url)) {
+        if (!is_string($url) || trim($url) === '') {
             throw new Exception('URL is required');
         }
-        
+        $url = trim($url);
         if (!preg_match('/^https?:\/\//i', $url)) {
             $url = 'https://' . $url;
         }
-        
-        $host = parse_url($url, PHP_URL_HOST);
-        
-        // Note: Google PageRank API was shut down in 2016
-        // This returns estimated metrics based on available data
-        
+        $parts = parse_url($url);
+        if (!is_array($parts) || empty($parts['host']) || isset($parts['user']) || isset($parts['pass'])) {
+            throw new Exception('A valid website URL is required');
+        }
         return [
             'url' => $url,
-            'note' => 'Google PageRank was discontinued in 2016. Alternative metrics provided.',
-            'domain' => $host,
+            'domain' => strtolower($parts['host']),
+            'status' => 'not_configured',
+            'page_rank' => null,
             'alternatives' => [
                 'ahrefs_rank' => null,
                 'moz_domain_authority' => null,
                 'semrush_rank' => null,
             ],
-            'recommendation' => 'Use tools like Ahrefs, Moz, or SEMrush for domain authority metrics.',
-            'legacy_pagerank' => 'N/A (Service discontinued)',
+            'note' => 'No PageRank score or alternative authority metric is available from this tool. No provider result is being claimed.',
         ];
     }
-    
+
     /**
      * Punycode Converter
      */

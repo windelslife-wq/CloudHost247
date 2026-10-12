@@ -11,6 +11,8 @@ if (!defined('WHMCS')) {
 use WHMCS\ClientArea;
 use WHMCS\Database\Capsule;
 
+require_once __DIR__ . '/csrf.php';
+
 $clientId = $_SESSION['uid'] ?? 0;
 
 // Check access
@@ -23,9 +25,13 @@ if (!$clientId || !tools_center_check_access($clientId)) {
 // Get module settings
 $settings = getToolsCenterSettings();
 
-// Get requested category/tool
-$category = $_GET['cat'] ?? 'all';
-$toolAction = $_GET['tool'] ?? '';
+// Keep raw route query values separate until they have been matched against
+// the static category/action registry below. The templates interpolate these
+// selected values in links and inline JavaScript.
+$requestedCategory = $_GET['cat'] ?? 'all';
+$requestedTool = $_GET['tool'] ?? '';
+$category = 'all';
+$toolAction = '';
 
 // Tool categories definition
 $toolCategories = [
@@ -34,7 +40,7 @@ $toolCategories = [
         'icon' => 'fa-search',
         'description' => 'Domain availability and search tools',
         'tools' => [
-            ['action' => 'domainSearch', 'name' => 'Domain Name Search', 'desc' => 'Check domain availability instantly'],
+            ['action' => 'domainSearch', 'name' => 'Domain Name Search', 'desc' => 'Preliminary registry lookup; inconclusive results stay unknown'],
         ]
     ],
     'dns' => [
@@ -123,7 +129,7 @@ $toolCategories = [
         'tools' => [
             ['action' => 'websiteLinkAnalyzer', 'name' => 'Website Link Analyzer', 'desc' => 'Analyze page links'],
             ['action' => 'userAgentChecker', 'name' => 'User Agent Checker', 'desc' => 'Parse browser info'],
-            ['action' => 'pageRankChecker', 'name' => 'PageRank Checker', 'desc' => 'Check domain metrics'],
+            ['action' => 'pageRankChecker', 'name' => 'PageRank Data (Unavailable)', 'desc' => 'No provider configured; returns no PageRank or alternative score.'],
             ['action' => 'punycodeConverter', 'name' => 'Punycode Converter', 'desc' => 'IDN domain conversion'],
             ['action' => 'serpSimulator', 'name' => 'SERP Simulator', 'desc' => 'Preview search results'],
             ['action' => 'robotsGenerator', 'name' => 'Robots.txt Generator', 'desc' => 'Generate robots.txt'],
@@ -161,11 +167,10 @@ $toolCategories = [
             ['action' => 'binChecker', 'name' => 'BIN Checker', 'desc' => 'Bank identification lookup'],
             ['action' => 'creditCardValidator', 'name' => 'CC Validator', 'desc' => 'Validate card numbers'],
             ['action' => 'reverseImageSearch', 'name' => 'Reverse Image', 'desc' => 'Find image sources'],
-            ['action' => 'usernameChecker', 'name' => 'Username Checker', 'desc' => 'Check username availability'],
+            ['action' => 'usernameChecker', 'name' => 'Username Format & Profile Links', 'desc' => 'Validate a common format and build profile links; availability is not checked'],
             ['action' => 'notepad', 'name' => 'Notepad', 'desc' => 'Online scratchpad'],
             ['action' => 'smallText', 'name' => 'Small Text', 'desc' => 'Generate tiny text'],
             ['action' => 'wordCounter', 'name' => 'Word Counter', 'desc' => 'Count words and characters'],
-            ['action' => 'domainSearch', 'name' => 'Domain Search', 'desc' => 'Search domain availability'],
             ['action' => 'rot13', 'name' => 'ROT13', 'desc' => 'ROT13 encoder/decoder'],
             ['action' => 'morseCode', 'name' => 'Morse Code', 'desc' => 'Morse code translator'],
             ['action' => 'bimiChecker', 'name' => 'BIMI', 'desc' => 'Check/generate BIMI records'],
@@ -183,27 +188,87 @@ $toolCategories = [
     ],
 ];
 
-// Handle AJAX API calls
-if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
-    $ajaxCategory = $_POST['category'] ?? '';
-    $ajaxAction = $_POST['action'] ?? '';
-    $ajaxParams = $_POST['params'] ?? [];
-    
-    if (!empty($ajaxCategory) && !empty($ajaxAction)) {
-        header('Content-Type: application/json');
-        
-        $startTime = microtime(true);
-        $result = tools_center_api_request($ajaxCategory, $ajaxAction, $ajaxParams, $settings);
-        $status = isset($result['success']) && $result['success'] ? 'success' : 'error';
-        $responseTime = round((microtime(true) - $startTime) * 1000);
-        
-        // Log usage
-        tools_center_log_usage($clientId, $ajaxCategory, $ajaxAction, $status, $responseTime);
-        
-        echo json_encode($result);
+if (is_string($requestedCategory) && isset($toolCategories[$requestedCategory])) {
+    $category = $requestedCategory;
+}
+if ($category !== 'all' && is_string($requestedTool)) {
+    foreach ($toolCategories[$category]['tools'] as $toolDefinition) {
+        if (isset($toolDefinition['action']) && $toolDefinition['action'] === $requestedTool) {
+            $toolAction = $requestedTool;
+            break;
+        }
+    }
+}
+
+if (!function_exists('tools_center_ajax_response')) {
+    function tools_center_ajax_response($payload, $status = 200) {
+        http_response_code((int) $status);
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store, max-age=0');
+        $json = json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE);
+        echo is_string($json) ? $json : '{"success":false,"error":"Unable to encode response."}';
         exit;
     }
 }
+
+if (!function_exists('tools_center_valid_ajax_params')) {
+    function tools_center_valid_ajax_params($params) {
+        if (!is_array($params) || count($params) > 50) {
+            return false;
+        }
+        foreach ($params as $key => $value) {
+            if (!is_string($key) || !preg_match('/^[A-Za-z0-9_]{1,64}$/D', $key)
+                || (!is_string($value) && !is_numeric($value) && !is_bool($value) && $value !== null)
+                || (is_string($value) && strlen($value) > 65536)) {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+// Handle same-origin AJAX API calls. Session login/access checks above are
+// necessary but do not replace CSRF validation for cookie-authenticated POSTs.
+if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string) $_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+    if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
+        tools_center_ajax_response(['success' => false, 'error' => 'Only POST requests are supported.'], 405);
+    }
+
+    $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? ($_POST['token'] ?? '');
+    if (!tools_center_verify_csrf_token($csrfToken)) {
+        tools_center_ajax_response(['success' => false, 'error' => 'Security token mismatch. Reload the page and try again.'], 403);
+    }
+
+    $ajaxCategory = $_POST['category'] ?? '';
+    $ajaxAction = $_POST['action'] ?? '';
+    $ajaxParams = $_POST['params'] ?? [];
+    if (!is_string($ajaxCategory) || !isset($toolCategories[$ajaxCategory])
+        || !is_string($ajaxAction) || !is_array($ajaxParams)) {
+        tools_center_ajax_response(['success' => false, 'error' => 'Invalid tool request.'], 400);
+    }
+
+    $actionAllowed = false;
+    foreach ($toolCategories[$ajaxCategory]['tools'] as $toolDefinition) {
+        if (isset($toolDefinition['action']) && $toolDefinition['action'] === $ajaxAction) {
+            $actionAllowed = true;
+            break;
+        }
+    }
+    if (!$actionAllowed) {
+        tools_center_ajax_response(['success' => false, 'error' => 'Tool action not found.'], 404);
+    }
+    if (!tools_center_valid_ajax_params($ajaxParams)) {
+        tools_center_ajax_response(['success' => false, 'error' => 'Invalid tool parameters.'], 400);
+    }
+
+    $startTime = microtime(true);
+    $result = tools_center_api_request($ajaxCategory, $ajaxAction, $ajaxParams, $settings);
+    $status = isset($result['success']) && $result['success'] ? 'success' : 'error';
+    $responseTime = round((microtime(true) - $startTime) * 1000);
+    tools_center_log_usage($clientId, $ajaxCategory, $ajaxAction, $status, $responseTime);
+    tools_center_ajax_response($result, 200);
+}
+
 
 // Build client area page
 $ca = new ClientArea();

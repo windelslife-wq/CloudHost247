@@ -16,8 +16,8 @@ class IpTools {
      */
     public function ping($params) {
         $host = $params['host'] ?? '';
-        $count = min((int)($params['count'] ?? 4), 10);
-        $timeout = min((int)($params['timeout'] ?? 5), 30);
+        $count = max(1, min((int)($params['count'] ?? 4), 10));
+        $timeout = max(1, min((int)($params['timeout'] ?? 5), 30));
         
         if (empty($host)) {
             throw new Exception('Host is required');
@@ -30,23 +30,25 @@ class IpTools {
             throw new Exception('Invalid host or IP address');
         }
         
-        // Determine ping command based on OS and IP version
-        $isIPv6 = filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6);
+        // Resolve once, reject any non-public answer, and ping the pinned address
+        // so shell commands cannot re-resolve a hostname after validation.
+        $commandTarget = $this->resolvePublicCommandTarget($host);
+        $isIPv6 = filter_var($commandTarget, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6);
         $os = strtoupper(substr(PHP_OS, 0, 3));
         
         if ($os === 'WIN') {
             $cmd = $isIPv6 
-                ? sprintf('ping -6 -n %d -w %d %s', $count, $timeout * 1000, escapeshellarg($host))
-                : sprintf('ping -n %d -w %d %s', $count, $timeout * 1000, escapeshellarg($host));
+                ? sprintf('ping -6 -n %d -w %d %s', $count, $timeout * 1000, escapeshellarg($commandTarget))
+                : sprintf('ping -n %d -w %d %s', $count, $timeout * 1000, escapeshellarg($commandTarget));
         } else {
             $cmd = $isIPv6
-                ? sprintf('ping6 -c %d -W %d %s 2>/dev/null', $count, $timeout, escapeshellarg($host))
-                : sprintf('ping -c %d -W %d %s 2>/dev/null', $count, $timeout, escapeshellarg($host));
+                ? sprintf('ping6 -c %d -W %d %s 2>/dev/null', $count, $timeout, escapeshellarg($commandTarget))
+                : sprintf('ping -c %d -W %d %s 2>/dev/null', $count, $timeout, escapeshellarg($commandTarget));
         }
         
         $output = [];
         $returnCode = 0;
-        exec($cmd, $output, $returnCode);
+        $this->executeCommand($cmd, $output, $returnCode);
         
         $transmitted = 0;
         $received = 0;
@@ -75,6 +77,7 @@ class IpTools {
         
         return [
             'host' => $host,
+            'resolved_ip' => $commandTarget,
             'ip_version' => $isIPv6 ? 'IPv6' : 'IPv4',
             'transmitted' => $transmitted ?: $count,
             'received' => $received,
@@ -104,13 +107,13 @@ class IpTools {
             'organization' => $geoInfo['organization'] ?? null,
             'location' => [
                 'country' => $geoInfo['country_name'] ?? null,
-                'country_code' => $geoInfo['country_code'] ?? null,
+                'country_code' => $geoInfo['country_code2'] ?? null,
                 'region' => $geoInfo['state_prov'] ?? null,
                 'city' => $geoInfo['city'] ?? null,
                 'latitude' => $geoInfo['latitude'] ?? null,
                 'longitude' => $geoInfo['longitude'] ?? null,
             ],
-            'timezone' => $geoInfo['time_zone']['name'] ?? null,
+            'timezone' => $geoInfo['timezone']['name'] ?? null,
             'is_private' => $this->isPrivateIP($clientIP),
             'is_loopback' => filter_var($clientIP, FILTER_VALIDATE_IP) && 
                             (strpos($clientIP, '127.') === 0 || $clientIP === '::1'),
@@ -123,8 +126,8 @@ class IpTools {
      */
     public function traceroute($params) {
         $host = $params['host'] ?? '';
-        $maxHops = min((int)($params['max_hops'] ?? 30), 50);
-        $timeout = min((int)($params['timeout'] ?? 5), 30);
+        $maxHops = max(1, min((int)($params['max_hops'] ?? 30), 50));
+        $timeout = max(1, min((int)($params['timeout'] ?? 5), 30));
         
         if (empty($host)) {
             throw new Exception('Host is required');
@@ -136,20 +139,24 @@ class IpTools {
             throw new Exception('Invalid host or IP address');
         }
         
+        // Resolve once, reject any non-public answer, and trace the pinned
+        // address so the command cannot re-resolve a hostname after validation.
+        $commandTarget = $this->resolvePublicCommandTarget($host);
+        $isIPv6 = filter_var($commandTarget, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6);
         $os = strtoupper(substr(PHP_OS, 0, 3));
         
         if ($os === 'WIN') {
-            $cmd = sprintf('tracert -h %d -w %d %s 2>&1', $maxHops, $timeout * 1000, escapeshellarg($host));
+            $familyFlag = $isIPv6 ? '-6' : '-4';
+            $cmd = sprintf('tracert %s -h %d -w %d %s 2>&1', $familyFlag, $maxHops, $timeout * 1000, escapeshellarg($commandTarget));
         } else {
-            $isIPv6 = filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6);
             $cmd = $isIPv6
-                ? sprintf('traceroute6 -m %d -w %d %s 2>&1', $maxHops, $timeout, escapeshellarg($host))
-                : sprintf('traceroute -m %d -w %d %s 2>&1', $maxHops, $timeout, escapeshellarg($host));
+                ? sprintf('traceroute6 -m %d -w %d %s 2>&1', $maxHops, $timeout, escapeshellarg($commandTarget))
+                : sprintf('traceroute -m %d -w %d %s 2>&1', $maxHops, $timeout, escapeshellarg($commandTarget));
         }
         
         $output = [];
         $returnCode = 0;
-        exec($cmd, $output, $returnCode);
+        $this->executeCommand($cmd, $output, $returnCode);
         
         $hops = [];
         foreach ($output as $line) {
@@ -181,6 +188,7 @@ class IpTools {
         
         return [
             'host' => $host,
+            'resolved_ip' => $commandTarget,
             'hops_count' => count($hops),
             'completed' => count($hops) > 0 && end($hops)['host'] !== null,
             'hops' => $hops,
@@ -203,11 +211,12 @@ class IpTools {
             throw new Exception('Invalid IP address');
         }
         
-        if ($this->isPrivateIP($ip)) {
+        if (!tc_is_public_ip($ip)) {
             return [
                 'ip' => $ip,
-                'note' => 'Private IP address - location lookup not applicable',
-                'is_private' => true
+                'note' => 'Non-public, private, or special-use IP address - location lookup not applicable',
+                'is_private' => $this->isPrivateIP($ip),
+                'is_public' => false
             ];
         }
         
@@ -235,9 +244,9 @@ class IpTools {
                 'longitude' => $geoInfo['longitude'] ?? null,
             ],
             'timezone' => [
-                'name' => $geoInfo['time_zone']['name'] ?? null,
-                'offset' => $geoInfo['time_zone']['offset'] ?? null,
-                'current_time' => $geoInfo['time_zone']['current_time'] ?? null,
+                'name' => $geoInfo['timezone']['name'] ?? null,
+                'offset' => $geoInfo['timezone']['offset'] ?? null,
+                'current_time' => $geoInfo['timezone']['current_time'] ?? null,
             ],
             'isp' => [
                 'name' => $geoInfo['isp'] ?? null,
@@ -366,6 +375,9 @@ class IpTools {
         if (!$ip) {
             throw new Exception('Invalid IP address');
         }
+        if (!tc_is_public_ip($ip)) {
+            throw new Exception('Only public IP addresses can be checked against DNS blacklists');
+        }
         
         $isIPv6 = filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6);
         
@@ -391,7 +403,7 @@ class IpTools {
             
             foreach ($blacklists as $bl) {
                 $lookup = $reversedIP . '.' . $bl;
-                $record = @dns_get_record($lookup, DNS_A);
+                $record = $this->lookupDNSRecords($lookup, DNS_A);
                 
                 $listed = !empty($record);
                 if ($listed) $listedCount++;
@@ -486,6 +498,9 @@ class IpTools {
         $ip = filter_var(trim($ip), FILTER_VALIDATE_IP);
         if (!$ip) {
             throw new Exception('Invalid IP address');
+        }
+        if (!tc_is_public_ip($ip)) {
+            throw new Exception('Only public IP addresses can be reverse looked up');
         }
         
         $hostname = gethostbyaddr($ip);
@@ -773,21 +788,24 @@ class IpTools {
     public function ipv6Compatibility($params) {
         $host = $params['host'] ?? '';
         
-        if (empty($host)) {
+        if (!is_string($host) || trim($host) === '') {
             throw new Exception('Host is required');
         }
         
         $host = $this->sanitizeHost($host);
+        if (!tc_is_public_dns_name($host)) {
+            throw new Exception('A public fully qualified hostname is required');
+        }
         
-        $ipv4Records = dns_get_record($host, DNS_A) ?: [];
-        $ipv6Records = dns_get_record($host, DNS_AAAA) ?: [];
-        $mxRecords = dns_get_record($host, DNS_MX) ?: [];
+        $ipv4Records = $this->lookupDNSRecords($host, DNS_A) ?: [];
+        $ipv6Records = $this->lookupDNSRecords($host, DNS_AAAA) ?: [];
+        $mxRecords = $this->lookupDNSRecords($host, DNS_MX) ?: [];
         
         // Check MX records for IPv6
         $mxIPv6 = [];
         foreach ($mxRecords as $mx) {
             $mxHost = $mx['target'];
-            $mxHasV6 = !empty(dns_get_record($mxHost, DNS_AAAA));
+            $mxHasV6 = tc_is_public_dns_name($mxHost) && !empty($this->lookupDNSRecords($mxHost, DNS_AAAA));
             $mxIPv6[] = [
                 'host' => $mxHost,
                 'has_ipv6' => $mxHasV6
@@ -795,11 +813,11 @@ class IpTools {
         }
         
         // Check NS records for IPv6
-        $nsRecords = dns_get_record($host, DNS_NS) ?: [];
+        $nsRecords = $this->lookupDNSRecords($host, DNS_NS) ?: [];
         $nsIPv6 = [];
         foreach ($nsRecords as $ns) {
             $nsHost = $ns['target'];
-            $nsHasV6 = !empty(dns_get_record($nsHost, DNS_AAAA));
+            $nsHasV6 = tc_is_public_dns_name($nsHost) && !empty($this->lookupDNSRecords($nsHost, DNS_AAAA));
             $nsIPv6[] = [
                 'host' => $nsHost,
                 'has_ipv6' => $nsHasV6
@@ -1018,12 +1036,10 @@ class IpTools {
                 'country' => $geoInfo['country_name'] ?? null,
                 'city' => $geoInfo['city'] ?? null,
             ],
-            'is_hosting' => stripos($geoInfo['organization'] ?? '', 'hosting') !== false ||
-                           stripos($geoInfo['isp'] ?? '', 'cloud') !== false ||
-                           stripos($geoInfo['isp'] ?? '', 'amazon') !== false ||
-                           stripos($geoInfo['isp'] ?? '', 'google') !== false ||
-                           stripos($geoInfo['isp'] ?? '', 'microsoft') !== false,
-            'is_vpn' => stripos($geoInfo['connection_type'] ?? '', 'VPN') !== false
+            'is_hosting' => $geoInfo['is_hosting'] ?? null,
+            'is_proxy' => $geoInfo['is_proxy'] ?? null,
+            'is_vpn' => null,
+            'classification_note' => 'The lookup provider does not provide a VPN classification.'
         ];
     }
     
@@ -1040,26 +1056,26 @@ class IpTools {
         $host = parse_url($url, PHP_URL_HOST) ?: $url;
         $host = $this->sanitizeHost($host);
         
-        if (!$this->isValidHostOrIP($host)) {
-            throw new Exception('Invalid website URL');
+        if (!tc_is_public_dns_name($host)) {
+            throw new Exception('A public fully qualified website hostname is required');
         }
         
-        $ipv4 = gethostbyname($host);
+        $ipv4 = $this->lookupIPv4Address($host);
         $ipv4List = [];
         $ipv6List = [];
         
-        if ($ipv4 !== $host) {
+        if ($ipv4 !== null) {
             $ipv4List[] = $ipv4;
         }
         
         // Try to get all A records
-        $aRecords = dns_get_record($host, DNS_A);
+        $aRecords = $this->lookupDNSRecords($host, DNS_A);
         if ($aRecords) {
             $ipv4List = array_unique(array_merge($ipv4List, array_column($aRecords, 'ip')));
         }
         
         // Try AAAA records
-        $aaaaRecords = dns_get_record($host, DNS_AAAA);
+        $aaaaRecords = $this->lookupDNSRecords($host, DNS_AAAA);
         if ($aaaaRecords) {
             $ipv6List = array_column($aaaaRecords, 'ipv6');
         }
@@ -1076,6 +1092,34 @@ class IpTools {
     
     // ==================== HELPER METHODS ====================
     
+    /** Perform name lookups only for public DNS names (including fixed DNSBL names). */
+    private function lookupDNSRecords($host, $type) {
+        if (!tc_is_public_dns_name($host)) {
+            return [];
+        }
+        $records = $this->performDNSLookup($host, $type);
+        return is_array($records) ? $records : [];
+    }
+
+    /** Native DNS primitive behind a protected offline-test seam. */
+    protected function performDNSLookup($host, $type) {
+        return @dns_get_record($host, $type);
+    }
+
+    /** Resolve IPv4 only for a validated public DNS name. */
+    private function lookupIPv4Address($host) {
+        if (!tc_is_public_dns_name($host)) {
+            return null;
+        }
+        $ip = $this->performGetHostByName($host);
+        return is_string($ip) && $ip !== $host ? $ip : null;
+    }
+
+    /** Native IPv4 resolver primitive behind a protected offline-test seam. */
+    protected function performGetHostByName($host) {
+        return gethostbyname($host);
+    }
+
     private function sanitizeHost($host) {
         $host = strtolower(trim($host));
         $host = preg_replace('/^(https?:\/\/)?(www\.)?/i', '', $host);
@@ -1093,44 +1137,77 @@ class IpTools {
     private function isPrivateIP($ip) {
         return !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
     }
+
+    /** Resolve a tool target once and return only a validated public literal. */
+    protected function resolvePublicCommandTarget($host) {
+        $addresses = tc_resolve_public_ips($host);
+        foreach ($addresses as $address) {
+            if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                return $address;
+            }
+        }
+        return $addresses[0];
+    }
+
+    /** Command seam for tests; production still executes the fixed command. */
+    protected function executeCommand($command, &$output, &$returnCode) {
+        exec($command, $output, $returnCode);
+    }
     
     private function getGeoInfo($ip) {
-        // Try ip-api.com (free, no key required)
-        try {
-            $ch = curl_init("http://ip-api.com/json/{$ip}?fields=status,message,continent,continentCode,country,countryCode,region,regionName,city,zip,lat,lon,timezone,currency,isp,org,as,asname,reverse,mobile,proxy,hosting,query");
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_USERAGENT, 'WHMCS-Tools-Center/1.0');
-            $response = curl_exec($ch);
-            curl_close($ch);
-            
-            if ($response) {
-                $data = json_decode($response, true);
-                if ($data && $data['status'] === 'success') {
-                    return [
-                        'country_name' => $data['country'],
-                        'country_code2' => $data['countryCode'],
-                        'state_prov' => $data['regionName'],
-                        'city' => $data['city'],
-                        'zipcode' => $data['zip'],
-                        'latitude' => $data['lat'],
-                        'longitude' => $data['lon'],
-                        'isp' => $data['isp'],
-                        'organization' => $data['org'],
-                        'asn' => $data['as'],
-                        'timezone' => ['name' => $data['timezone']],
-                        'currency' => $data['currency'],
-                        'is_proxy' => $data['proxy'],
-                        'is_hosting' => $data['hosting'],
-                    ];
-                }
-            }
-        } catch (Exception $e) {
-            // Fallback
+        // Do not disclose private, reserved, or malformed addresses to a provider.
+        if (!tc_is_public_ip($ip)) {
+            return [];
         }
-        
+
+        // Keep the existing provider and HTTP endpoint (the free endpoint is
+        // HTTP-only), but use the shared pinned outbound client and do not follow
+        // redirects. A provider redirect must never turn this into an SSRF path.
+        $fields = 'status,message,continent,continentCode,country,countryCode,region,regionName,city,zip,lat,lon,timezone,currency,isp,org,as,asname,reverse,mobile,proxy,hosting,query';
+        $url = 'http://ip-api.com/json/' . $ip . '?fields=' . $fields;
+        try {
+            $response = $this->fetchGeoResponse($url, [
+                'timeout' => 5,
+                'max_redirects' => 0,
+                'user_agent' => 'WHMCS-Tools-Center/1.0',
+            ]);
+            if (!is_array($response) || (int)($response['status'] ?? 0) !== 200) {
+                return [];
+            }
+
+            $data = json_decode((string)($response['body'] ?? ''), true);
+            if (!is_array($data) || ($data['status'] ?? '') !== 'success') {
+                return [];
+            }
+
+            return [
+                'continent_name' => $data['continent'] ?? null,
+                'continent_code' => $data['continentCode'] ?? null,
+                'country_name' => $data['country'] ?? null,
+                'country_code2' => $data['countryCode'] ?? null,
+                'state_prov' => $data['regionName'] ?? null,
+                'city' => $data['city'] ?? null,
+                'zipcode' => $data['zip'] ?? null,
+                'latitude' => $data['lat'] ?? null,
+                'longitude' => $data['lon'] ?? null,
+                'isp' => $data['isp'] ?? null,
+                'organization' => $data['org'] ?? null,
+                'asn' => $data['as'] ?? null,
+                'timezone' => ['name' => $data['timezone'] ?? null],
+                'currency' => $data['currency'] ?? null,
+                'is_proxy' => $data['proxy'] ?? null,
+                'is_hosting' => $data['hosting'] ?? null,
+            ];
+        } catch (Throwable $e) {
+            // Geolocation is optional; fail closed with no provider data.
+        }
+
         return [];
+    }
+
+    /** Provider seam for deterministic tests; production always uses the guard. */
+    protected function fetchGeoResponse($url, array $options) {
+        return tc_fetch_url($url, $options);
     }
     
     private function expandIPv6($ip) {
@@ -1218,16 +1295,26 @@ class IpTools {
     }
     
     private function queryWhois($query, $server) {
-        $socket = @fsockopen($server, 43, $errno, $errstr, 10);
+        return $this->queryWhoisResponse($query, $server);
+    }
+
+    /** WHOIS transport seam; every production connection uses the public guard. */
+    protected function queryWhoisResponse($query, $server) {
+        $errno = 0;
+        $errstr = '';
+        $socket = tc_open_public_socket($server, 43, 10, $errno, $errstr);
         if (!$socket) return '';
-        
+
+        stream_set_timeout($socket, 10);
         fputs($socket, $query . "\r\n");
         $result = '';
-        while (!feof($socket)) {
-            $result .= fgets($socket, 128);
+        while (!feof($socket) && strlen($result) < 65536) {
+            $line = fgets($socket, 1024);
+            if ($line === false) break;
+            $result .= $line;
         }
         fclose($socket);
-        
+
         return $result;
     }
     
@@ -1259,12 +1346,12 @@ class IpTools {
     }
     
     private function getWebsiteNS($host) {
-        $records = dns_get_record($host, DNS_NS) ?: [];
+        $records = $this->lookupDNSRecords($host, DNS_NS) ?: [];
         return array_column($records, 'target');
     }
     
     private function getWebsiteMX($host) {
-        $records = dns_get_record($host, DNS_MX) ?: [];
+        $records = $this->lookupDNSRecords($host, DNS_MX) ?: [];
         return array_map(function($r) {
             return ['host' => $r['target'], 'priority' => $r['pri']];
         }, $records);

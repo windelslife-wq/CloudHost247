@@ -13,7 +13,7 @@
         new CH.ToolPage({
             slug: "bin-checker",
             exec: "server",
-            fields: [{"name": "bin", "label": "First 6-8 digits (BIN/IIN)", "placeholder": "453201", "hint": "Only the issuer prefix is needed. Never enter a full card number.", "inputmode": "numeric", "required": true}],
+            fields: [{"name": "bin", "label": "6- or 8-digit BIN/IIN prefix", "placeholder": "453201", "hint": "Digits only. The tool rejects full card numbers and sends only the first six digits to Binlist.", "inputmode": "numeric", "required": true}],
             render: function (d) {
                 var wrap = CH.el('div');
                 if (!d || typeof d !== 'object') {

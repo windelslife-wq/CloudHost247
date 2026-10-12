@@ -30,7 +30,12 @@ class CloudHost247ToolsRunner
     const SENSITIVE_INPUTS = [
         'password', 'passwd', 'pass', 'pwd', 'secret', 'token', 'api_key',
         'apikey', 'card', 'card_number', 'cardnumber', 'cc', 'ccnum', 'cvv',
-        'cvc', 'pin', 'iban', 'ssn', 'private_key', 'privatekey', 'passphrase',
+        'cvc', 'pin', 'iban', 'ssn', 'bin', 'mac', 'private_key', 'privatekey', 'passphrase',
+        // Free-form fields and identifiers may contain PII, secrets or pasted
+        // messages even when their tool-specific key is not known here.
+        'input', 'text', 'content', 'header', 'payload', 'message', 'email',
+        'phone', 'name', 'dob', 'date_of_birth', 'employee_id', 'photo',
+        'image', 'base64', 'url', 'address',
     ];
 
     /**
@@ -278,20 +283,48 @@ class CloudHost247ToolsRunner
 
     protected static function log(array $tool, array $input, $status, $error)
     {
-        if (!class_exists('\Illuminate\Database\Capsule\Manager')) {
+        if (!class_exists('\\Illuminate\\Database\\Capsule\\Manager')) {
             return;
         }
+
         try {
-            \Illuminate\Database\Capsule\Manager::table('mod_CloudHost247_tools_log')->insert([
-                'tool_id'    => $tool['slug'] ?? 'unknown',
-                'ip'         => CloudHost247ToolsSecurity::clientIp(),
-                'input'      => substr((string) json_encode(self::redact($input)), 0, 2000),
-                'status'     => $status,
-                'error'      => substr((string) $error, 0, 500),
-                'created_at' => date('Y-m-d H:i:s'),
+            // Honour the Addon Modules privacy switch. Missing setting uses the
+            // documented module default; a database/config error fails closed.
+            if (function_exists('CloudHost247_tools_get_setting')) {
+                $logSetting = CloudHost247_tools_get_setting('enable_logs', 'on');
+            } else {
+                $manager = '\\Illuminate\\Database\\Capsule\\Manager';
+                $logSetting = $manager::table('tbladdonmodules')
+                    ->where('module', 'CloudHost247_tools')
+                    ->where('setting', 'enable_logs')
+                    ->value('value');
+                if ($logSetting === null) {
+                    $logSetting = 'on';
+                }
+            }
+            if ($logSetting !== 'on') {
+                return;
+            }
+
+            $encodedInput = json_encode(self::redact($input), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+            if ($encodedInput === false) {
+                $encodedInput = '{}';
+            }
+
+            $manager = '\\Illuminate\\Database\\Capsule\\Manager';
+            $manager::table('mod_CloudHost247_tools_logs')->insert([
+                'tool_id'       => substr((string) ($tool['slug'] ?? 'unknown'), 0, 100),
+                'input'         => substr($encodedInput, 0, 500),
+                'ip_address'    => substr((string) CloudHost247ToolsSecurity::clientIp(), 0, 50),
+                'user_id'       => isset($_SESSION['uid']) ? (int) $_SESSION['uid'] : 0,
+                'result'        => null,
+                'status'        => substr((string) $status, 0, 20),
+                'error_message' => substr((string) $error, 0, 500),
+                'created_at'    => date('Y-m-d H:i:s'),
             ]);
-        } catch (\Exception $e) {
-            // Logging must never break a tool.
+        } catch (\Throwable $e) {
+            // Logging must never break a tool; DB schema/settings failures are
+            // handled by operations rather than exposed in a public response.
         }
     }
 

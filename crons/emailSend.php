@@ -1,4 +1,8 @@
 <?php
+require_once __DIR__ . '/lib/CronRuntime.php';
+\CloudHost247\SoYouStart\Cron\CronGuard::requireCli();
+require_once __DIR__ . '/lib/EmailSender.php';
+require_once __DIR__ . '/lib/GoogleMailClient.php';
 $whmcspath = "";
 if (file_exists(dirname(__FILE__) . "/config.php"))
     require_once dirname(__FILE__) . "/config.php";
@@ -86,8 +90,9 @@ try {
         return;
     }
     $configuredImapData = Capsule::table('mod_soyoustart_imap')->whereIN("status", [1, "Active"])->get()->toArray();
-    $aclSettings = Capsule::table('mod_acl_settings')->select("value")->where("key", "imap_aclSettings")->first();
-    $aclSettings = json_decode($aclSettings->value, true);
+    $aclSettingsRow = Capsule::table('mod_acl_settings')->select("value")->where("key", "imap_aclSettings")->first();
+    $aclSettings = json_decode(is_object($aclSettingsRow) ? (string) $aclSettingsRow->value : '', true);
+    $aclSettings = is_array($aclSettings) ? $aclSettings : [];
 
 
 
@@ -119,8 +124,7 @@ try {
             $hostname = $value->soyouimaphost;
             $port = $value->soyouimapport;
             $layer = $value->soyouimapssl;
-            $certvalidate = 'novalidate-cert';
-            $url = '{' . $hostname . ':' . $port . '/imap/' . $layer . '/' . $certvalidate . '}INBOX';
+            $url = '{' . $hostname . ':' . $port . '/imap/' . $layer . '}INBOX';
             $inbox = \imap_open($url, $userName, $password, OP_READONLY);
             if ($inbox) {
                 $emailData = imap_search($inbox, 'UNSEEN');
@@ -203,18 +207,19 @@ try {
 
         
                         /* inserting the email id if Email seen*/
-                        $isSeen = $helper->get_data("mod_soyoustart_seenMessage", ["id" => 1], "first");
-                        if (isset($isSeen->id)) {
-                            $seenIds = json_decode($isSeen->value, true);
-                            if (!in_array($header->message_id, $seenIds)) {
-                                $seenIds[] = $header->message_id;
-                            } else {
-                                continue;
-                            }
-                            $helper->insert_update("mod_soyoustart_seenMessage", ["id" => 1], ["value" => json_encode($seenIds)]);
-                        } else {
-                            $helper->insert_update("mod_soyoustart_seenMessage", ["id" => 1], ["value" => json_encode([$header->message_id])]);
+                        $messageId = isset($header->message_id) ? trim((string) $header->message_id) : "";
+                        if ($messageId === "") {
+                            logActivity("Email send cron skipped an IMAP message without a Message-ID.");
+                            continue;
                         }
+                        $isSeen = $helper->get_data("mod_soyoustart_seenMessage", ["id" => 1], "first");
+                        $seenIds = isset($isSeen->id) ? json_decode($isSeen->value, true) : [];
+                        $seenIds = is_array($seenIds) ? $seenIds : [];
+                        if (in_array($messageId, $seenIds, true)) {
+                            continue;
+                        }
+                        $seenIds[] = $messageId;
+                        $helper->insert_update("mod_soyoustart_seenMessage", ["id" => 1], ["value" => json_encode($seenIds)]);
                         /* end of inserting the email id if Email seen*/
                         foreach ($allServices as $service) {
                             // if ((str_contains($header->subject, $service->ovh_server_name) || str_contains($body, $service->ovh_server_name))) {
@@ -362,10 +367,14 @@ try {
                                     }
                                 } elseif (str_contains($header->subject, "Hardware reboot")) {
                                     if (!isset($aclSettings["Hardwarereboot"]) || $aclSettings["Hardwarereboot"] == "") {
-                                        $serverName = rtrim(seachData($body, "your server"), ".");
+                                        $serverName = rtrim(trim((string) seachData($body, "your server")), ".");
+                                        if (!preg_match('/\A[A-Za-z0-9][A-Za-z0-9.-]{0,252}\z/D', $serverName)) {
+                                            logActivity("Email send cron skipped an invalid server identifier in an IMAP message.");
+                                            continue;
+                                        }
                                         $serverInfo = $apiCall->get("/dedicated/server/{$serverName}", $accountId, $location, "getting server details", true);
                                         if ($serverInfo["httpcode"] != 200) {
-                                            logActivity($emailData["result"]->message . ", account(" . $service->ovh_account . "), service Id(" . $service->id . "), email Id(" . $emailId . ")");
+                                            logActivity("Email send cron: OVH server lookup failed for IMAP message " . (int) $msg . " (service ID " . (int) $service->id . ", HTTP " . (int) ($serverInfo["httpcode"] ?? 0) . ").");
                                             continue;
                                         }
                                         $osName = $serverInfo["result"]->os;
@@ -420,25 +429,30 @@ try {
                 $allMessageIds = gmailApiCall("GET", $apiUrl, $accessToken, "getting all messages");
                 if ($allMessageIds["httpcode"] != 200) {
                     /* need to store error message in log */
-                    logActivity($allEmailIds["result"]->message . ", account(" . $service->ovh_account . "), service id(" . $service->id . ")");
+                    logActivity("Email send cron: Gmail message-list request failed for configured account row " . (int) $value->id . " (HTTP " . (int) ($allMessageIds["httpcode"] ?? 0) . ").");
                     continue;
                 }
-                foreach ($allMessageIds["result"]->messages as $message) {
+                $gmailMessages = is_object($allMessageIds["result"] ?? null)
+                    && isset($allMessageIds["result"]->messages)
+                    && is_array($allMessageIds["result"]->messages)
+                    ? $allMessageIds["result"]->messages : [];
+                foreach ($gmailMessages as $message) {
+                    if (!is_object($message) || !isset($message->id)
+                        || !preg_match('/\A[A-Za-z0-9_-]{1,256}\z/D', (string) $message->id)) {
+                        logActivity("Email send cron skipped a Gmail message with an invalid identifier.");
+                        continue;
+                    }
 
                     /* inserting the email id if Email seen*/
                     $isSeen = $helper->get_data("mod_soyoustart_seenMessage", ["id" => 1], "first");
 
-                    if (isset($isSeen->id)) {
-                        $seenIds = json_decode($isSeen->value, true);
-                        if (!in_array($message->id, $seenIds)) {
-                            $seenIds[] = $message->id;
-                        } else {
-                            continue;
-                        }
-                        $helper->insert_update("mod_soyoustart_seenMessage", ["id" => 1], ["value" => json_encode($seenIds)]);
-                    } else {
-                        $helper->insert_update("mod_soyoustart_seenMessage", ["id" => 1], ["value" => json_encode([$message->id])]);
+                    $seenIds = isset($isSeen->id) ? json_decode($isSeen->value, true) : [];
+                    $seenIds = is_array($seenIds) ? $seenIds : [];
+                    if (in_array((string) $message->id, $seenIds, true)) {
+                        continue;
                     }
+                    $seenIds[] = (string) $message->id;
+                    $helper->insert_update("mod_soyoustart_seenMessage", ["id" => 1], ["value" => json_encode($seenIds)]);
                     /* end of inserting the email id if Email seen*/
 
                     /* getting email contant of message id */
@@ -446,7 +460,7 @@ try {
                     $emailContent = gmailApiCall("GET", $apiUrl, $accessToken, "getting email content");
                     if ($emailContent["httpcode"] != 200) {
                         /* need to store error message in log */
-                        logActivity($allEmailIds["result"]->message . ", account(" . $service->ovh_account . "), service id(" . $service->id . ")");
+                        logActivity("Email send cron: Gmail message-content request failed for configured account row " . (int) $value->id . " (HTTP " . (int) ($emailContent["httpcode"] ?? 0) . ").");
                         continue;
                     }
 
@@ -539,10 +553,14 @@ try {
                                         }
                                     } elseif (str_contains($header->value, "Hardware reboot")) {
                                         if (!isset($aclSettings["Hardwarereboot"]) || $aclSettings["Hardwarereboot"] == "") {
-                                            $serverName = rtrim(seachData($decodedMessage, "your server"), ".");
+                                            $serverName = rtrim(trim((string) seachData($decodedMessage, "your server")), ".");
+                                            if (!preg_match('/\A[A-Za-z0-9][A-Za-z0-9.-]{0,252}\z/D', $serverName)) {
+                                                logActivity("Email send cron skipped an invalid server identifier in a Gmail message.");
+                                                continue;
+                                            }
                                             $serverInfo = $apiCall->get("/dedicated/server/{$serverName}", $accountId, $location, "getting server details", true);
                                             if ($serverInfo["httpcode"] != 200) {
-                                                logActivity($emailData["result"]->message . ", account(" . $service->ovh_account . "), service Id(" . $service->id . "), email Id(" . $emailId . ")");
+                                                logActivity("Email send cron: OVH server lookup failed for Gmail message (service ID " . (int) $service->id . ", HTTP " . (int) ($serverInfo["httpcode"] ?? 0) . ").");
                                                 continue;
                                             }
                                             $osName = $serverInfo["result"]->os;
@@ -552,7 +570,7 @@ try {
                                             $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Hardware reboot"];
                                             insertLog("mod_soyoustart_email_log", $data);
                                         }
-                                    } elseif (str_contains($emailData["result"]->subject, "Access settings for RESCUE mode")) {
+                                    } elseif (str_contains($header->value, "Access settings for RESCUE mode")) {
                                         $ipAddress = rtrim(seachData($decodedMessage, "IP:"), ".");
                                         $userName = rtrim(seachData($decodedMessage, "user:"), ".");
                                         $password = rtrim(seachData($decodedMessage, "Password:"), ".");
@@ -569,60 +587,17 @@ try {
             }
         }
     }
-} catch (\Exception $e) {
+} catch (\Throwable $e) {
     logActivity('Cron Error: Email send(' . $e->getMessage() . ')');
 }
 logActivity('Email send cron completed');
 function gmailApiCall($method, $apiUrl, $accessToken, $action, $data = [])
 {
-    $curl = curl_init();
-    switch ($method) {
-        case 'POST':
-            curl_setopt($curl, CURLOPT_POST, 1);
-            curl_setopt($curl, CURLOPT_POSTFIELDS, (count($data) ? json_encode($data) : ""));
-            break;
-        case 'PUT':
-            curl_setopt($curl, CURLOPT_POSTFIELDS, (count($data) ? json_encode($data) : ""));
-            break;
-        case 'DELETE':
-            curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'DELETE');
-            curl_setopt($curl, CURLOPT_POSTFIELDS, (count($data) ? json_encode($data) : ""));
-            break;
-        default:
-            curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'GET');
-    }
-    curl_setopt($curl, CURLOPT_URL, $apiUrl);
-    curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, 0);
-    curl_setopt($curl, CURLOPT_MAXREDIRS, 10);
-    curl_setopt($curl, CURLOPT_FOLLOWLOCATION, 1);
-    curl_setopt($curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
-    curl_setopt($curl, CURLOPT_HTTPHEADER, array(
-        'Accept: application/json',
-        'Authorization: Bearer ' . $accessToken
-    ));
-    $response = curl_exec($curl);
-    $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-    if (curl_errno($curl)) {
-        throw new \Exception(curl_error($curl));
-    }
-    curl_close($curl);
-    return ['httpcode' => $httpCode, 'result' => json_decode($response)];
+    return \CloudHost247\SoYouStart\Cron\GoogleMailClient::request($method, $apiUrl, $accessToken);
 }
 function sendEmail($template, $clientId, $customVars)
 {
-    try {
-        $postData = array(
-            'messagename' => $template,
-            'id' => $clientId,
-            'customvars' => $customVars,
-        );
-        $results = localAPI("SendEmail", $postData);
-        logModuleCall("Soyoustart", "sending email for $template", $postData, $results);
-        return $results;
-    } catch (\Exception $e) {
-        //throw $th;
-    }
+    return \CloudHost247\SoYouStart\Cron\EmailSender::send($template, $clientId, $customVars);
 }
 function getIpFromEmail($string)
 {

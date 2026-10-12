@@ -117,18 +117,12 @@ function CloudHost247_tool_time_calculator($post)
     ];
 }
 
-function CloudHost247_tool_bin_checker($post)
+/**
+ * Combine an explicit, limited local prefix heuristic with optional Binlist data.
+ * Pure and deterministic so source selection can be tested without the network.
+ */
+function CloudHost247_tools_bin_lookup_result($bin6, array $apiResult)
 {
-    $bin = CloudHost247_tools_sanitize($post['bin'] ?? '', 'string');
-    $bin = preg_replace('/[^0-9]/', '', $bin);
-
-    if (strlen($bin) < 6) {
-        return ['error' => 'BIN must be at least 6 digits'];
-    }
-
-    $bin6 = substr($bin, 0, 6);
-
-    // Small built-in BIN database
     $bins = [
         '4' => ['network' => 'Visa', 'type' => 'Credit/Debit'],
         '5' => ['network' => 'Mastercard', 'type' => 'Credit/Debit'],
@@ -144,34 +138,95 @@ function CloudHost247_tool_bin_checker($post)
 
     $network = 'Unknown';
     $type = 'Unknown';
+    $bank = 'Unknown';
+    $country = 'Unknown';
+    $networkSource = 'No source returned a value';
+    $typeSource = 'No source returned a value';
+    $bankSource = 'Not supplied';
+    $countrySource = 'Not supplied';
+    $localMatch = false;
+    $localSource = 'Bundled prefix heuristic (limited; source/version not recorded)';
 
     foreach ($bins as $prefix => $data) {
         if (strpos($bin6, $prefix) === 0) {
             $network = $data['network'];
             $type = $data['type'];
+            $networkSource = $localSource;
+            $typeSource = $localSource;
+            $localMatch = true;
             break;
         }
     }
 
-    // Try external API
-    $apiResult = CloudHost247_tools_curl("https://lookup.binlist.net/{$bin6}", null, [], 10);
-    if ($apiResult['code'] === 200) {
-        $data = json_decode($apiResult['body'], true);
-        if ($data) {
-            $network = $data['scheme'] ?? $network;
-            $type = $data['type'] ?? $type;
-            $bank = $data['bank']['name'] ?? 'Unknown';
-            $country = $data['country']['name'] ?? 'Unknown';
+    $providerData = [];
+    if (($apiResult['code'] ?? 0) === 200 && isset($apiResult['body']) && is_string($apiResult['body'])) {
+        $decoded = json_decode($apiResult['body'], true);
+        if (is_array($decoded)) {
+            $providerData = $decoded;
         }
     }
+
+    $bankData = isset($providerData['bank']) && is_array($providerData['bank']) ? $providerData['bank'] : [];
+    $countryData = isset($providerData['country']) && is_array($providerData['country']) ? $providerData['country'] : [];
+    $scheme = isset($providerData['scheme']) && is_string($providerData['scheme']) ? trim($providerData['scheme']) : '';
+    $providerType = isset($providerData['type']) && is_string($providerData['type']) ? trim($providerData['type']) : '';
+    $providerBank = isset($bankData['name']) && is_string($bankData['name']) ? trim($bankData['name']) : '';
+    $providerCountry = isset($countryData['name']) && is_string($countryData['name']) ? trim($countryData['name']) : '';
+    $scheme = substr(preg_replace('/[\\x00-\\x1F\\x7F]/', '', $scheme), 0, 64);
+    $providerType = substr(preg_replace('/[\\x00-\\x1F\\x7F]/', '', $providerType), 0, 64);
+    $providerBank = substr(preg_replace('/[\\x00-\\x1F\\x7F]/', '', $providerBank), 0, 160);
+    $providerCountry = substr(preg_replace('/[\\x00-\\x1F\\x7F]/', '', $providerCountry), 0, 80);
+
+    if ($scheme !== '') {
+        $network = $scheme;
+        $networkSource = 'Binlist API (first six digits only)';
+    }
+    if ($providerType !== '') {
+        $type = $providerType;
+        $typeSource = 'Binlist API (first six digits only)';
+    }
+    if ($providerBank !== '') {
+        $bank = $providerBank;
+        $bankSource = 'Binlist API (first six digits only)';
+    }
+    if ($providerCountry !== '') {
+        $country = $providerCountry;
+        $countrySource = 'Binlist API (first six digits only)';
+    }
+
+    $hasProviderValue = $scheme !== '' || $providerType !== '' || $providerBank !== '' || $providerCountry !== '';
+    $status = $hasProviderValue ? 'provider_data' : ($localMatch ? 'local_fallback' : 'no_data');
+    $source = $hasProviderValue ? 'Binlist API plus any explicitly identified local fallback fields'
+        : ($localMatch ? $localSource : 'No source returned a value');
 
     return [
         'bin' => $bin6,
         'network' => ucfirst($network),
         'type' => ucfirst($type),
-        'bank' => $bank ?? 'Unknown',
-        'country' => $country ?? 'Unknown',
+        'bank' => $bank,
+        'country' => $country,
+        'status' => $status,
+        'source' => $source,
+        'sources' => [
+            'network' => $networkSource,
+            'type' => $typeSource,
+            'bank' => $bankSource,
+            'country' => $countrySource,
+        ],
+        'note' => 'Only the first six digits are sent to Binlist. Full card numbers are not accepted. The bundled fallback is a small, unversioned prefix heuristic, not a complete or authoritative IIN registry; unknown does not mean unassigned.',
     ];
+}
+
+function CloudHost247_tool_bin_checker($post)
+{
+    $raw = $post['bin'] ?? '';
+    if (!is_string($raw) || !preg_match('/^(?:[0-9]{6}|[0-9]{8})$/D', $raw)) {
+        return ['error' => 'Enter only a 6- or 8-digit BIN/IIN prefix. Do not enter a full card number.'];
+    }
+
+    $bin6 = substr($raw, 0, 6);
+    $apiResult = CloudHost247_tools_curl('https://lookup.binlist.net/' . $bin6, null, [], 10);
+    return CloudHost247_tools_bin_lookup_result($bin6, $apiResult);
 }
 
 function CloudHost247_tool_credit_card_validator($post)
@@ -237,31 +292,37 @@ function CloudHost247_tool_reverse_image_search($post)
 
 function CloudHost247_tool_username_checker($post)
 {
-    $username = CloudHost247_tools_sanitize($post['username'] ?? '', 'string');
-    if (empty($username) || strlen($username) < 3) {
-        return ['error' => 'Username must be at least 3 characters'];
+    $raw = $post['username'] ?? '';
+    if (!is_string($raw) && !is_numeric($raw)) {
+        return ['error' => 'Enter a username using letters, numbers, periods, underscores or hyphens.'];
+    }
+    // Do not trim or strip invalid characters into a different username.
+    $username = (string) $raw;
+    if (!preg_match('/^[A-Za-z0-9._-]{3,30}$/D', $username)) {
+        return ['error' => 'Use 3–30 characters: letters, numbers, periods, underscores or hyphens.'];
     }
 
-    // Simulate checking common platforms
+    // No platform APIs are configured. Provide direct profile URLs for manual
+    // checking instead of presenting fabricated availability results.
+    $segment = rawurlencode($username);
     $platforms = [
-        ['name' => 'Twitter/X', 'url' => 'https://twitter.com/' . $username, 'available' => mt_rand(0, 1) === 1],
-        ['name' => 'Instagram', 'url' => 'https://instagram.com/' . $username, 'available' => mt_rand(0, 1) === 1],
-        ['name' => 'GitHub', 'url' => 'https://github.com/' . $username, 'available' => mt_rand(0, 1) === 1],
-        ['name' => 'Reddit', 'url' => 'https://reddit.com/user/' . $username, 'available' => mt_rand(0, 1) === 1],
-        ['name' => 'TikTok', 'url' => 'https://tiktok.com/@' . $username, 'available' => mt_rand(0, 1) === 1],
+        ['name' => 'X', 'url' => 'https://x.com/' . $segment, 'status' => 'Manual check required'],
+        ['name' => 'Instagram', 'url' => 'https://www.instagram.com/' . $segment . '/', 'status' => 'Manual check required'],
+        ['name' => 'GitHub', 'url' => 'https://github.com/' . $segment, 'status' => 'Manual check required'],
+        ['name' => 'Reddit', 'url' => 'https://www.reddit.com/user/' . $segment . '/', 'status' => 'Manual check required'],
+        ['name' => 'TikTok', 'url' => 'https://www.tiktok.com/@' . $segment, 'status' => 'Manual check required'],
     ];
 
-    // Note: Real availability checking would require APIs or scraping
     return [
         'username' => $username,
-        'note' => 'These are simulated results for demonstration. Real username checking requires platform APIs.',
+        'note' => 'These are profile links only. CloudHost247 does not query platform availability or claim that a username is free; sign in to each provider and check its current rules.',
         'platforms' => $platforms,
     ];
 }
 
 function CloudHost247_tool_online_notepad($post)
 {
-    $content = $_POST['content'] ?? '';
+    $content = $post['content'] ?? '';
     $action = CloudHost247_tools_sanitize($post['notepad_action'] ?? 'save', 'string');
 
     if ($action === 'save') {
@@ -323,7 +384,7 @@ function CloudHost247_tool_small_text($post)
 
 function CloudHost247_tool_word_counter($post)
 {
-    $text = $_POST['text'] ?? '';
+    $text = $post['text'] ?? '';
     $characters = strlen($text);
     $charactersNoSpaces = strlen(preg_replace('/\s/', '', $text));
     $words = str_word_count($text);
@@ -344,32 +405,31 @@ function CloudHost247_tool_word_counter($post)
 
 function CloudHost247_tool_domain_availability($post)
 {
-    $domain = CloudHost247_tools_sanitize($post['domain'] ?? '', 'domain');
+    $rawDomain = $post['domain'] ?? '';
+    if (!is_string($rawDomain) && !is_numeric($rawDomain)) {
+        return ['error' => 'Invalid domain format'];
+    }
+    $domain = CloudHost247_tools_sanitize((string) $rawDomain, 'domain');
     if (!CloudHost247_tools_validate_domain($domain)) {
         return ['error' => 'Invalid domain format'];
     }
 
     $tld = substr(strrchr($domain, '.'), 1);
     $whois = CloudHost247_tools_whois($domain);
-    $result = $whois['result'] ?? '';
-
-    $available = stripos($result, 'No match') !== false ||
-        stripos($result, 'NOT FOUND') !== false ||
-        stripos($result, 'not found') !== false ||
-        stripos($result, 'No entries found') !== false ||
-        stripos($result, 'Domain Status: free') !== false;
+    $classification = CloudHost247_tools_classify_domain_whois($whois, $domain);
 
     return [
         'domain' => $domain,
-        'available' => $available,
         'tld' => $tld,
-        'whois_server' => $whois['server'] ?? 'Unknown',
+        'status' => $classification['status'],
+        'whois_server' => $classification['whois_server'],
+        'note' => $classification['note'],
     ];
 }
 
 function CloudHost247_tool_rot13($post)
 {
-    $text = $_POST['text'] ?? '';
+    $text = $post['text'] ?? '';
     $mode = CloudHost247_tools_sanitize($post['mode'] ?? 'encode', 'string');
 
     if (empty($text)) {

@@ -208,9 +208,9 @@ Not changed: `external-api/tools/productivity.php` `qrScanner()` still returns i
 
 **Fix:** new `external-api/outbound.php`. It accepts only http/https on ports 80/443 with no credentials, resolves the host and rejects any non-public address (deny-list covers IPv4-mapped IPv6, CGNAT, NAT64 and the other reserved ranges), pins the connection to the validated IP, and re-validates every redirect hop (maximum 5). Sockets use `tc_open_public_socket()`. `api.php` dispatches only public, non-magic methods declared on the tool class. A link the guard refuses is reported as unreachable rather than aborting the report.
 
-**Tests:** `tests/outbound-guard.php` (60 offline checks, run with `tests/run-php-guard.mjs` on php-wasm). The PHP syntax check passes on all 19 PHP files. Live DNS and network behaviour is **not run** in the sandbox.
+**Tests at the original T-6/T-7 follow-up:** `tests/outbound-guard.php` had 60 offline checks, run with `tests/run-php-guard.mjs` on php-wasm. It now has 62 checks, including TLS-socket guard cases (see the Module 11 outbound addendum). The PHP syntax check at that time passed on all 19 PHP files. Live DNS and network behaviour is **not run** in the sandbox.
 
-**Still open:** the unused `qrScanner()` and `qrGenerator()` in `external-api/` (owner decision, unchanged); T-8 (owner decision on verification); the external API's wildcard CORS header (`Access-Control-Allow-Origin: *`), which is also unchanged.
+**Current state (refreshed 2026-10-12):** T-8 remains accepted/open: `outbound.php` still does not explicitly enable TLS certificate/hostname verification, and HTTP remains allowed. The unused `qrScanner()` and `qrGenerator()` remain an owner cleanup decision. The prior wildcard CORS finding is resolved in source: the API now uses an opt-in exact-origin allowlist (empty by default); see the Module 11 addendum below. Deployed web-server headers remain unverified.
 
 ## Module 3 — cloudhost247apps (hosting control plane)
 
@@ -882,7 +882,7 @@ Good practice already present: every interpolation is escaped (`|escape:'html'` 
 Authentication runs **before** category/action resolution, so all three reflected error strings are reachable only with a valid API token — an anonymous attacker gets a static `401 Unauthorized`. That caps this at Medium rather than High. Two things still make it worth fixing promptly:
 
 - The token is a single shared static credential (the WHMCS module calls its own external API with it), so anyone who obtains it gets the XSS.
-- `api.php` sets **`Access-Control-Allow-Origin: *`**, which widens who can drive an authenticated request from a browser context. That wildcard is a pre-existing open item carried from Module 2 and is **unchanged** here — see the note below.
+- At the time of this historical Module 11 pass, `api.php` still emitted **`Access-Control-Allow-Origin: *`**, which could widen who can drive an authenticated request from a browser context. That finding is resolved in source as of 2026-10-12: CORS is opt-in and exact-origin allowlisted; see the dated addendum below. Live web-server header behavior remains unverified.
 
 ### Checked and found sound
 
@@ -893,7 +893,7 @@ Authentication runs **before** category/action resolution, so all three reflecte
 
 ### Pre-existing items referenced, not re-raised
 
-- The external API's `Access-Control-Allow-Origin: *` wildcard (Module 2 open item) — unchanged.
+- Historical CORS wildcard finding (Module 2/11 open item at the time) — **resolved in source 2026-10-12**, see the dated addendum below.
 - The unused `qrScanner()` / `qrGenerator()` in `external-api/` (owner decision) — unchanged.
 
 ### Changes made
@@ -909,6 +909,22 @@ Authentication runs **before** category/action resolution, so all three reflecte
 - Executed: **93 assertions, 0 failures** — `run-tests.js` 33 (was 31), `run-php-guard.mjs` 60. One SKIP remains (jsdom not installed).
 - Mutation checks, each caught and each restored byte-identical (`diff -q` verified): removing `escapeHtml()` from the error banner (1 failure) and restoring the exception echo (1 failure).
 - Not evidence: no live run. Both fixes are verified by static assertion only; the XSS needs a staging click-through to confirm end to end.
+
+### Module 11 / Tools Center addendum — 2026-10-12
+
+- Resolved the prior wildcard-CORS source finding: `external-api/api.php` sends `Access-Control-Allow-Origin` only when the request's `Origin` exactly matches a configured `allowed_origins` entry. The allowlist defaults empty; unlisted origins are rejected. `tests/run-tests.js` pins the exact-match behavior and absence of the wildcard header.
+- Latest local evidence after the transport and resolver reviews: Tools Center UI/static checks **12/12** with jsdom (including the 81-action crosswalk); PHP-WASM auth/CSRF/rate-limit/input checks **37/37**, domain search **20/20**, client-area routes **4/4**, host-directed/DNS regressions **28/28**, and outbound SSRF/redirect/socket/DNS-name guards **89/89**. See `modules/addons/tools_center/tests/README.md` for scope and current counts.
+- Limits: no native `php -l`, live WHMCS, deployed web-server CORS-header, browser viewport, or concurrent PHP-FPM validation was performed. The code-level allowlist does not prove an external proxy/web server will not add its own headers.
+- T-8 remains an accepted security risk pending owner review: `external-api/outbound.php` has no explicit cURL TLS certificate/hostname verification options and still permits HTTP. No production service change was made.
+
+### Module 11 follow-up — outbound-call bypasses (2026-10-12)
+
+| ID | Finding | Evidence | Severity | Status |
+|---|---|---|---|---|
+| TC-3 | **Host-directed network tools bypassed the centralized outbound policy and the SSL checker overstated its results.** `ping`/`traceroute` sent caller-supplied hosts to shell commands without public-address checks or pinned resolution; `getGeoInfo()` used direct cURL with redirects enabled; IP/ASN WHOIS used raw sockets; `sslChecker` opened a direct TLS socket to any supplied host without address validation. Its grade/score was also based on certificate expiry alone, not an SSL Labs or full TLS assessment. DNS propagation passed an unrestricted query type to `dig` and had no explicit domain-shape check or retry bound. | `external-api/tools/ip.php` (`ping`, `traceroute`, `getGeoInfo`, `queryWhois`); `external-api/tools/network.php` (`queryASNWhois`); `external-api/tools/security.php` (`sslChecker`) | High (private-network probing / guarded-transport bypass; misleading SSL rating) | **Fixed in source** — diagnostics resolve through `tc_resolve_public_ips()`, reject non-public answers, and pass a pinned numeric IP to shell commands; GeoIP uses `tc_fetch_url()` with redirects set to zero; WHOIS uses `tc_open_public_socket()` with bounded reads/timeouts; SSL inspection uses `tc_open_public_tls_socket()` with public-address pinning and SNI. SSL results now say metadata-only, trust validation not performed, grade not assessed; the unsupported numeric score is removed. GeoIP fields now map to the consuming IP tools; VPN status is unknown when the provider has no such classification. DNS propagation validates FQDN shape and allowlists A/AAAA/MX/NS/TXT, uses only its fixed public resolver list, and bounds `dig` to one retry with a two-second timeout. Input bounds now have positive lower limits. |
+| TC-4 | **Caller-controlled DNS lookups could disclose local namespaces or trigger resolver lookups for special-use names returned by DNS.** Domain validators accepted `.local`/`.internal`/similar suffixes; PTR, DNSBL, and ASN-by-IP accepted private/reserved IPs; CNAME/NS/MX follow-up lookup paths could recurse to a local target. | `tools_center/external-api/outbound.php`, `tools/*.php`; `CloudHost247_tools` validators/DNS helper, email verifier and IPv6 compatibility; `domainbroker/lib/Core/DomainName.php`; retired `hostx_tools/includes/SecurityManager.php` | Medium (local-name disclosure to configured/public resolvers; private reverse-query disclosure) | **Fixed in source** — shared DNS-name validators reject single-label, special-use and common local suffixes before resolution; DNS response targets are filtered before secondary lookups; PTR/DNSBL/ASN-by-IP reject non-public IPs. Deterministic synthetic-DNS regressions cover no-query behavior. The retired HostX addon remains a deployment risk until its previously approved WHMCS deactivation is completed. |
+
+Regression evidence: `run-php-tool-outbound.mjs` **28/28** (mocked commands, GeoIP, WHOIS, TLS, DNS records/resolvers, private-IP reverse-query rejection, and local CNAME/NS/MX target refusal); `run-php-guard.mjs` **89/89** (including DNS-name namespace validation); `run-php-security.mjs` domain search **20/20** and auth/CSRF/rate limits **37/37**; `run-tests.js` **12/12** with jsdom (9 static checks + 3 UI checks). No live DNS, provider, socket, TLS handshake, or command execution was used. `API.md` and the audit report note provider/T-8 and SSL metadata-only limitations. The change does not claim all 81 registered tools are individually complete.
 
 ## Module 12 — cloudhost247cloudflare
 
@@ -980,50 +996,71 @@ Suite: `modules/servers/cloudhost247cloudflare/tests/01_ServerModuleTest.php` �
 
 | Field | Information |
 |---|---|
-| Module | `modules/addons/soyoustart/` — 34 PHP files, 8,857 lines. **Vendored third-party code** (`WGS-OVH-v8.0.8-Sourcecode.zip`): OVH API consumer setup, product/price settings, order management, existing-server import, server status, email templates. |
+| Module | `modules/addons/soyoustart/` — 34 original PHP files, 8,857 lines. **Vendored third-party code** (`WGS-OVH-v8.0.8-Sourcecode.zip`): OVH API consumer setup, product/price settings, order management, existing-server import, server status, email templates. |
 | Specification | `docs/MODULES.md` lines 29, 37, 49, 52. |
-| Status | **Audited; two findings recorded and NOT patched (SO-1, SO-2).** No test suite exists and none was added. No live run. |
+| Status | **SO-1 and SO-2 fixed 2026-10-12 in a narrow, deliberate in-tree fork.** New addon regression suite: **31 checks, 0 failures**. Dedicated-server suite: 131/131; VPS suite: 165/165. No live WHMCS/OVH run. |
 
-This is the second of the six addons with no completion record. It was prioritised because it is the largest of them with **zero tests** and it handles OVH API credentials and server provisioning.
+This is the second of the six addons with no completion record. The original audit prioritised it because it was the largest such addon with zero tests and it handles OVH API credentials and server provisioning.
 
-### A deliberate decision: record, do not patch
+### Fork decision and scope
 
-`soyoustart` is **vendored third-party code**, unlike every module audited before it. Editing it means forking upstream, and the next vendor drop silently reverts or conflicts with any local fix. Both findings below are therefore **recorded rather than patched**, for owner action. This is a change of approach from Modules 6–12 and is stated so the difference is visible rather than looking like an omission.
+The 2026-10-11 baseline deliberately recorded the two findings without patching because this is vendor code. The user later directed that unfinished modules be completed one by one. This follow-up applies only the two scoped fixes below and records the choice as a **local fork**; future WGS vendor drops must be diffed and these fixes reapplied or reconciled. No OVH/WHMCS production state was changed and no provider request was made.
 
-If the owner prefers fixes in-tree, the work is small and described per finding — but it should be a conscious choice to fork this module.
+SO-1 caller/configuration tracing before editing:
+
+- Signed requests continue to use the existing per-account `createHeader()` path; it reads the configured application key, consumer key and secret from `mod_soyoustart`.
+- The application-only `get`/`post`/`put`/`delete`, cart-item, cart-configuration, cart-creation and OS-catalog calls now build `X-Ovh-Application` from an active `mod_soyoustart.application_key` row. A supplied account ID selects that exact row. Missing, inactive, malformed-ID, empty-key or control-character-key cases fail closed before cURL.
+- The original `createCart()` API had no account-ID parameter, although its dedicated and VPS provisioning callers already have one. It now accepts an optional fourth account-ID argument; every in-repo cart caller passes its service credential ID. Old callers without that argument remain region-scoped by their explicit location rather than selecting another region's credential.
+- Two `addConfigOptInCart()` callers passed an empty account ID for the configuration endpoint despite having the service account ID; those callers now pass it.
+- The existing admin OS-list call remains `getOs()` with no argument. Since that call is pinned to `ca.api.ovh.com` and `ConsumerSetting::authApiUrl('canada')` maps Canadian credentials to that region, the account-less call selects the lowest-ID active Canadian credential deterministically. It does not borrow a different region's key; if there is no active Canadian credential with an application key, it fails closed. An owner still needs to confirm this matches the live installation's credential setup.
 
 ### Findings
 
 | ID | Finding | Evidence | Severity | Status |
 |---|---|---|---|---|
-| SO-1 | **Hardcoded OVH application keys in source.** Two literal application keys are committed: `t7r8jC5iiznmTNNm` in **7** header constructions, and `iE3vL3mgAtLZg00l` in a further one (`classes/ApiCall.php:264`). The module has a correct, configuration-driven path — `createHeader()` reads `application_key` from the `mod_soyoustart` table — but these call sites bypass it and send a fixed key instead. | `classes/ApiCall.php` lines 142, 163, 185, 207, 237, 251, 328, and 264; contrast with line 380 `trim($authData->application_key)` | Medium | **Open, recorded.** Rotation requires a code change, and these calls ignore the operator's configured OVH application entirely — so they are also very likely *broken*, not merely untidy. |
-| SO-2 | **`$endPoint` is interpolated into a URL without validation.** `getOs($endPoint)` builds `"https://ca.api.ovh.com/1.0/dedicated/installationTemplate/{$endPoint}"` with no format check, so a value containing `../`, `?` or `#` alters the request path. | `classes/ApiCall.php:265` | Low | **Open, recorded.** The host is a hardcoded literal, so this cannot reach a non-OVH host — it is path manipulation within OVH's API, not SSRF. |
+| SO-1 | **Hardcoded OVH application identifiers bypassed the operator's configured application.** The old source contained two fixed identifiers across eight application-only headers. | `classes/ApiCall.php`; compare the untouched signed `createHeader()` path and the `mod_soyoustart` credential schema. | Medium (configuration bypass, not signing-secret exposure) | **Fixed 2026-10-12.** All application-only headers now read the selected active database credential; no former identifier remains in production `ApiCall.php`. Regression tests cover generic verbs, cart operations, regional fallback, no cross-account fallback, invalid keys, and the account-less Canadian OS listing. |
+| SO-2 | **`getOs($endPoint)` previously interpolated an unvalidated path segment.** | `classes/ApiCall.php::getOs()` | Low | **Fixed 2026-10-12.** A supplied template ID must match `[A-Za-z0-9][A-Za-z0-9._-]{0,127}` and is encoded as one path segment. `null` preserves the original collection URL including its trailing slash; empty strings, slashes, query/fragment characters, non-strings and overlong values fail before cURL. |
 
-**Important qualifier on SO-1:** the **signing secret is not exposed.** It is read from the database (`$authData->secret_key`) and never hardcoded, and `generateSignature()` implements OVH's scheme correctly (`'$1$' . sha1(secret + consumer + method + url + data + time)`). OVH's application key is an identifier, not a signing credential, so possession of these literals alone does **not** permit forging signed requests or taking over an account. The severity rests on **non-rotation and bypass of configuration**, not on credential compromise.
+**Credential qualifier:** the application key is an application identifier, not the signing secret. The `secret_key` remains in the existing signed-request flow; this patch neither exposed nor rotated credentials. There was no evidence of signing-credential compromise, and no live credential change was attempted.
 
-### Verified, including a documentation claim
+### Previously verified and still applicable
 
-`docs/MODULES.md` states that *"the legacy OVH transport verifies TLS and restricts signed requests to trusted OVH API endpoints."* That claim was checked against the code and **holds**:
+`docs/MODULES.md` states that the legacy OVH transport verifies TLS and restricts signed requests to trusted OVH API endpoints. That claim still holds:
 
-- `CURLOPT_SSL_VERIFYPEER => true` and `CURLOPT_SSL_VERIFYHOST => 2` — TLS is verified.
-- `CURLOPT_FOLLOWLOCATION => false` — redirects are not followed, so the `X-Ovh-Signature` header cannot be forwarded to a redirect target.
-- `CURLOPT_CONNECTTIMEOUT => 20`, `CURLOPT_TIMEOUT => 60`.
-- API hosts are hardcoded OVH literals (`api.us.ovhcloud.com`, `eu.api.ovh.com`, `ca.api.ovh.com`, `api.ovh.com`); no request host is derived from user input.
+- `CURLOPT_SSL_VERIFYPEER => true`, `CURLOPT_SSL_VERIFYHOST => 2`; redirects are disabled.
+- Connect and total request timeouts are 20 and 60 seconds.
+- API hosts are fixed OVH literals and are checked by `TrustedEndpoint`; caller input does not choose a request host.
+- No raw SQL string interpolation or direct `mysql_*`/`PDO::query()` usage was found; persistence uses WHMCS `Capsule` query builders.
 
-Also checked and sound:
+### Changes made
 
-- **No SQL injection surface anywhere in the module.** There is no raw SQL string interpolation and no direct `mysql_*`/`PDO::query()` call; all persistence goes through the WHMCS `Capsule` schema and query builders (`classes/CustomDatabase.php` is schema DDL only).
-- **Credential storage**: the application key, consumer key and secret are held in the `mod_soyoustart` table and read per request, rather than being derived from a public value — so this module does **not** repeat the `hostx_email` H-4 pattern.
+| File | Change |
+|---|---|
+| `modules/addons/soyoustart/classes/ApiCall.php` | Added a fail-closed configured application-header helper; replaced all eight fixed application identifiers; kept signed `createHeader()` unchanged; validated and encoded OS template path segments while preserving the no-argument list endpoint; added optional account context to `getOsDetails()` and `createCart()`. |
+| `modules/servers/soyoustart/soyoustart.php` | Pass the existing account ID through both cart-creation sites and the config-cart endpoint. |
+| `modules/servers/soyoustart_vps/soyoustart_vps.php` | Pass the existing account ID through all four cart-creation sites and the config-cart endpoint. |
+| `modules/addons/soyoustart/tests/ApiCallSecurityTest.php` | New offline `Capsule`/cURL-double suite covering credential selection, fail-closed behavior, the OS path, no hardcoded keys and all in-repo cart callers. |
+| `modules/addons/soyoustart/tests/run.mjs` | PHP-WASM 8.3 runner; makes no provider or network calls. |
+| `ci/run-php.sh` | `mod_soyoustart` now runs the addon suite and dedicated-server suite. |
+| `modules/servers/soyoustart_vps/tests/04_SourcePinsTest.php` | Escaped a PHP variable in a static source assertion, removing a test-only warning found while rerunning the adjacent VPS suite. |
 
-### Testing note
+### Test evidence and limits
 
-No test suite exists and **none was added.** Every other module audited in this programme got one, and the omission is deliberate for two reasons: this is vendored code that the owner may replace wholesale, and a meaningful suite would need an offline OVH API harness plus a `Capsule` shim. That is a real gap and is recorded as such — the assertions that would matter most are "no hardcoded credentials" and "every request host is an OVH literal", both of which are cheap to add if the owner wants them.
+| Command | Result |
+|---|---|
+| `node modules/addons/soyoustart/tests/run.mjs` | **31 PASS, 0 FAIL** (php-wasm 8.3; fake Capsule and namespaced cURL; no live requests). |
+| `node modules/servers/soyoustart/tests/run.mjs` | **131 PASS, 0 FAIL**. |
+| `node modules/servers/soyoustart_vps/tests/run.mjs` | **165 PASS, 0 FAIL**; rerun is warning-free after the source-assertion correction. |
+| `node modules/addons/cloudhost247apps/tests/run.mjs` | **2,494 PASS, 0 FAIL** across 28 suites, including the existing signed OVH transport regression. One unrelated existing warning remains at `cloudhost247apps.php:282` (`$mysqlEnabled` undefined). Temporary ignored `node_modules` symlink was removed after the run. |
+| `git diff --check` on the changed module/CI files | Clean. |
 
-### Recommended owner action
+Native `php` is not installed in this sandbox, so the addon suite was executed with the repository's PHP-WASM 8.3 runner; CI will execute the same PHP test file via `ci/run-php.sh`. No live OVH API, WHMCS session, or checkout was exercised.
 
-1. Rotate the OVH application credentials, and confirm whether the 7 hardcoded call sites are currently failing (they bypass the configured application, so they may already be broken).
-2. Decide fork-vs-replace for this module. If replacing, the findings resolve themselves; if forking, both are small, well-localised changes.
-3. Confirm with the vendor whether a newer WGS-OVH release already addresses SO-1.
+### Remaining owner validation
+
+1. Confirm the production addon has an active Canadian credential row with a valid application key and manually verify the admin OS-list workflow in a WHMCS staging install. If the OS catalog is intended to use a different shared OVH application, update the account-selection contract explicitly rather than restoring a literal.
+2. Reconcile this in-tree fork when updating the WGS-OVH vendor package.
+3. Live provider/WHMCS checks remain owner work; the offline tests prove only the local header/path behavior and no network side effects.
 
 ## Module 14 — the last four addons (baseline verified, targeted review)
 
@@ -1198,7 +1235,7 @@ was re-read and remains accurate, no changes needed.
 
 ## Additional audit (after workstreams 1–5)
 
-Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools`, `cloudhost247services`, `hostx`, announcement bar, `tools_center`. Each item follows the same workflow and needs approval before the next one starts.
+Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools`, `cloudhost247services`, `hostx`, announcement bar, `tools_center`. The user's 2026-10-12 instruction now authorizes continued offline module-by-module remediation; owner-held decisions and live checks remain gated.
 
 **Progress: the original 11-item list is complete, and every addon in `MODULES.md` now has a completion record.** Six addons had **no completion record at all** and so were unfinished under the original definition — `cloudhost247ai`, `cloudhost247cart_recovery`, `cloudhost247cloudflare`, `cloudhost247marketing`, `cloudhost247passkey`, `soyoustart` (~57,600 lines between them). All six are now recorded: `cloudhost247cloudflare` (Module 12), `soyoustart` (Module 13), and the remaining four (Module 14).
 
@@ -1212,9 +1249,9 @@ Order: `hostx_tools`, `customaffiliate`, `digitalproducts`, `hostx_email`, `phon
 
 **Open owner decisions:** D-2 (deactivation, partially done), D-6 (decided (b) via B-2 2026-10-11), D-7 (routing `/tools/<slug>` — decided via A-6 2026-10-11), D-8 (policy for the two 100% ionCube-encoded modules). Plus the pre-existing High items: **P-5** (`phoneservices` all-tenant API key) and **M-5** (`smmaddon` client-controlled order quantity).
 
-**Not done anywhere in this programme:** no CI (fifteen suites, nothing runs them), and no live WHMCS or browser run.
+**At the time of the original audit:** there was no CI (fifteen suites, nothing ran them); E-1 later added repository CI. Live WHMCS/browser checks remain outstanding.
 
-**Note on method:** `soyoustart` is vendored third-party code, so its findings are **recorded rather than patched** (forking upstream creates upgrade pain). That is a deliberate departure from Modules 6–12 and is stated in the Module 13 section.
+**Note on method:** the initial Module 13 audit recorded its vendor findings without patching. The 2026-10-12 follow-up now applies SO-1/SO-2 as a narrow, explicit in-tree fork, at the user's direction; future WGS vendor drops must reconcile the local changes. See Module 13.
 
 Original 11-item list — all done: `hostx_tools` (decision D-2 = retire, deactivation pending), `customaffiliate`, `digitalproducts` (Module 6), `hostx_email`, `phoneservices`, `smmaddon`, `CloudHost247_tools` (Module 7), `cloudhost247services` (Module 8 — cleanest module reviewed: no functional defect, one latent JSON-LD hardening fixed), `hostx` (Module 9 — **cannot be audited**, 63/63 files ionCube-encoded; decision D-8), announcement bar (Module 10 — spec-complete, two cosmetic/a11y fixes), `tools_center` (Module 11 — second pass, reflected XSS and exception-leak fixed).
 
@@ -1566,7 +1603,7 @@ ll, not a subdirectory.
 | Specification | WHMCS server-module contract (entry functions, ClientArea template return, AdminServicesTabFields) + OVH VPS API behaviour. |
 | Status | **Audited; eighteen findings fixed (VS-1–VS-16, VS-23, VS-24).** New offline suite **165 checks, 0 failures** (`modules/servers/soyoustart_vps/tests/`, php-wasm runner + `mod_soyoustart_vps` CI step). Six findings recorded open (VS-17–VS-22: vendor-JS/owner-side). No live run. |
 
-Patching rationale: Module 13 recorded the sibling addon as do-not-fork, but `main` already carries in-tree hardening of the shared WGS transport (C-5: `TrustedEndpoint` host pinning, TLS verify, redacted logging) — the fork decision predates C-4. The C-4 fixes below stay inside that established direction: small, behaviour-preserving, suite-pinned. Architectural items (CSRF, server-side ACL) remain open for an owner decision rather than a risky blind rewire.
+Patching rationale: the original Module 13 do-not-fork decision for the sibling addon predated C-4; `main` already carried in-tree hardening of the shared WGS transport (C-5: `TrustedEndpoint` host pinning, TLS verification and redacted logging). The C-4 fixes below stay inside that established direction: small, behaviour-preserving and suite-pinned. The 2026-10-12 Module 13 follow-up separately authorizes a narrow addon fork for SO-1/SO-2; see that section. Architectural items (CSRF, server-side ACL) remain open rather than being blindly rewired.
 
 ### Findings (fixed)
 
@@ -1839,7 +1876,7 @@ Not a finding — endpoint concatenation deliberately preserved: `baseUrl` (`…
 | Specification | WHMCS provisioning contract and existing OVH request shapes, as implied by the vendor code. No verified external OVH checkout contract. |
 | Status | **Audited and targeted fixes applied (SD-1–SD-14).** New offline suite **131 checks, 0 failures** (30 load + 53 auth/invoice + 16 escape/robustness + 32 source/parse), `mod_soyoustart` in CI (23 steps). No WHMCS/OVH live run. The open vendor/owner decisions below remain explicit. |
 
-Module 13's do-not-fork decision covered the **addon** and its unpatched SO-1/SO-2 credential/path findings. The server provisioning files already share an in-tree hardened transport (see Module 16). This pass makes small, pinned server fixes plus two one-line shared-module corrections; it does **not** rotate the addon application keys, change its transport contract, or attempt the cross-surface CSRF/ACL redesign.
+At the time of this C-5 pass, the earlier Module 13 do-not-fork decision still covered the **addon** and its SO-1/SO-2 credential/path findings. The server provisioning files already shared an in-tree hardened transport (see Module 16). This C-5 pass made small, pinned server fixes plus two one-line shared-module corrections; it did not rotate application keys or attempt the cross-surface CSRF/ACL redesign. A later 2026-10-12 Module 13 follow-up resolves SO-1/SO-2 through a separate, targeted in-tree fork.
 
 ### Fixed findings
 
@@ -1870,10 +1907,49 @@ Module 13's do-not-fork decision covered the **addon** and its unpatched SO-1/SO
 | SD-O4 | OVH checkout precedes WHMCS invoice and tracking-row insertion. If localAPI/DB fails after checkout, reconciliation is manual; no atomic OVH/WHMCS transaction or retry key. | Cross-system workflow redesign, not solvable with an offline micro-patch. |
 | SD-O5 | `soyoustart_Renew()` is an empty implementation that returns success; the vendor may renew automatically, but WHMCS's callback does not renew at OVH. | Owner must confirm billing contract before connecting a paid OVH endpoint. |
 | SD-O6 | Floating CDN versions/no SRI; `ipinfo.io` visitor-IP call; `CheckLicense` network call on each create/client visit. | Same vendor-side owner concerns as VS-20/VS-22/VS-21. |
-| SD-O7 | The shared addon still has SO-1/SO-2 (hardcoded application keys, unvalidated `getOs` endpoint); this C-5 pass does not change those. | Module 13 fork-vs-replace/rotation decision remains open. |
+
+**Related addon follow-up:** SD-O7's SO-1/SO-2 note was resolved in Module 13 on 2026-10-12. The addon now uses configured active application keys and validates OS template path segments; there has still been no live OVH/WHMCS validation.
 
 ### Completion evidence and limits
 
 - **131/131 offline assertions**, four independent PHP suites. Both C-4 (165/165) and C-5 suites run green on php-wasm 8.3. CI step invokes the same self-contained PHP files natively. PHP entry/lib/ajax/hooks parsed via `token_get_all(TOKEN_PARSE)` and real entry/lib loads; `bash -n ci/run-php.sh` clean.
 - Four mutations caught then byte-restored: wrong module check (2 failures), HTML escaper disabled (multiple failures), positive-price check inverted, IP-ownership membership forced true. Green rechecked after restore.
 - Not evidence: no live OVH checkout, no real WHMCS admin session/hook rendering or Smarty execution. Admin and client dispatcher branch order is pinned statically; most branches are not executed against real WHMCS. The independent addon findings and open workflow risks above are **not** declared fixed.
+
+## Module 21 — OVH / SoYouStart cron scripts (B-18)
+
+| Field | Information |
+|---|---|
+| Module | `crons/priceSync.php`, `crons/getServer.php`, `crons/getIpStatus.php`, `crons/emailSend.php`, plus shared pure helpers in `crons/lib/`. |
+| Specification | `README.md` documents CLI schedules: `getServer.php` and `getIpStatus.php` every 5 minutes, `emailSend.php` every 10 minutes, `priceSync.php` daily. No verified production-side billing/provider contract is present in the checkout. |
+| Status | **Partially hardened; closure blocked on owner and live staging validation.** Four entry points now reject non-CLI SAPIs before loading `config.php` or WHMCS. Offline regression suite: **67 checks, 0 failures** under PHP-WASM 8.3. Cron entry points were parsed/read as source only; none was included or executed. No live WHMCS, IMAP, Gmail, OVH, checkout, payment, or IP-move calls were made. |
+
+### Findings addressed
+
+| ID | Finding | Change |
+|---|---|---|
+| CR-1 | Cron entry points could be requested through a web SAPI, reaching WHMCS bootstrap and provider/email side effects without a job-specific web authorization layer. | New `CronGuard` returns a generic 404 outside `cli`; all four scripts invoke it before loading the optional local config or WHMCS `init.php`. README schedules already use the PHP CLI. |
+| CR-2 | `priceSync.php` wrote the next cursor using `id = 'cronHit'` although reads/reset used `key = 'cronHit'`, so it could insert duplicate rows and repeatedly select the stale first cursor. Advancing by the count of processed (non-opt-out) products could also overlap or stall pages. | New pure `PriceSyncBatch` normalizes offsets and advances fixed 10-product windows; opt-out rows still advance the page. Both cursor writes now address the row by `key`. Visibility/pricing API effects remain untested. |
+| CR-3 | `emailSend.php` passed serialized/base64 custom variables and the complete `SendEmail` response to `logModuleCall`; the merge data includes FTP/Rescue credentials. | Extracted `EmailSender`; the mail payload is preserved for `localAPI`, while durable module logs receive only template, integer client ID, and a success/error bit. Fake localAPI/logger tests verify a unique secret is not logged. |
+| CR-4 | Gmail transport accepted arbitrary URLs, followed redirects with a Bearer token, had a zero connect timeout, and did not explicitly verify TLS. | Extracted read-only `GoogleMailClient`: exact HTTPS Google host and message paths/query keys, validated message IDs/tokens, TLS peer/hostname checks, 10/30-second connection/total timeouts, redirects disabled. Its cURL calls are stubbed in tests. |
+| CR-5 | The IMAP URL explicitly disabled certificate validation; malformed ACL JSON/null rows and invalid seen-ID JSON could produce warnings/type errors. Mailbox-derived OVH server names were interpolated into a signed API path without validation. | Removed the `novalidate-cert` option (IMAP's default certificate validation remains enabled); ACL/seen-ID JSON is guarded; IMAP/Gmail hardware-reboot server identifiers are allowlisted before API access. Missing Gmail message-list/content error paths no longer read undefined variables, and the rescue subject check uses the Gmail header value. |
+| CR-6 | `getServer.php` could dereference a missing OVH account record; zero, fractional, or out-of-range additional-IP quantities could enter the cart path; cart creation omitted the service-selected account ID and could pick another active key in the same region. `getIpStatus.php` dereferenced the first service row without checking for a deleted/inactive service or missing account credentials. | Services with absent account mappings are skipped with non-sensitive context; additional-IP quantity must be an integer from 1 to 256; cart creation now passes the service-selected account ID; stale IP-order rows and incomplete account mappings are skipped before provider calls. |
+| CR-7 | Top-level catches handled only `Exception`, not PHP `Error`/`TypeError`. | The cron-level catches now handle `Throwable` so structural runtime failures are logged rather than escaping the job boundary. |
+
+### Open findings / explicit non-actions
+
+| ID | Finding | Reason |
+|---|---|---|
+| CR-O1 | **High risk:** after `$ipcheckout`, `getServer.php` reads `$response['result']->orderId` although the checkout result is in `$ipcheckout`; its tracking-row insert omits `invoiceid` even though `mod_soyoustart_ips_orders.invoiceid` is required; the surrounding flow sets `autoPayWithPreferredPaymentMethod` and then calls `getpaymentdetail()`/`PayAmount()` again. The same path also builds account data from an apparently unset `$params['configoption3']`. | This is a paid provider-order path. Do not “fix and verify” it by running the cron or issuing a live order. The existing code implies a checkout response shape from the dedicated/VPS modules, but the actual auto-pay vs explicit-pay and invoice/tracking semantics are not verified. Owner must approve a reconciliation/idempotency design and test it in an isolated provider/WHMCS staging account before changing this flow. Related cross-system risk: SD-O4 in Module 20. |
+| CR-O2 | `getIpStatus.php` can move purchased IP blocks to a service and marks rows complete after the provider response; its destination matching assumes a `vps` collection and has no concurrent-run/single-flight protection. | A wrong or replayed destination can alter a live service. Provider response shapes, retry semantics, and move idempotency require staging evidence; no live call was made. |
+| CR-O3 | `priceSync.php` changes WHMCS product visibility, base prices and configurable-option prices from provider/catalog/currency data; its advisory availability feed also requires per-install secret configuration. | No production catalog, margins, currency rates or secret configuration was validated. Do not run the price-writing cron as an offline test. |
+| CR-O4 | Both IMAP and Gmail paths record message IDs before downstream parsing/delivery succeeds, so a transient `SendEmail` or provider failure can permanently suppress a retry. The legacy shared AES key/IV still protects stored IMAP credentials. | Correct retry/idempotency and key rotation need an owner-approved data migration and delivery policy; no existing stored credentials or historical logs were modified. Historical module-call rows may already contain credential-bearing merge data, so the owner should assess access/retention and rotate exposed mailbox/server passwords where appropriate. |
+| CR-O5 | Cron overlap is not prevented; concurrent `priceSync` runs can race the shared cursor and concurrent email runs can race the seen-message record. | A shared DB lock/lease needs an operational timeout/recovery policy; deferred rather than adding an unverified lock around live jobs. |
+| CR-O6 | Removing `/novalidate-cert` means IMAP endpoints must present a verifiable certificate chain. | Expected secure default, but configured mailbox compatibility is not live-tested; install the correct CA/trust chain rather than disabling verification if a host fails. |
+
+### Tests and limits
+
+- Executed `node crons/tests/run.mjs`: **67/67**. The suite tests pure cursor/quantity helpers, fake localAPI/logging callbacks, stubbed Gmail cURL options/URL validation, and source parsing/static guards including account-scoped cart creation. It never includes the cron entrypoints.
+- Executed in the same turn: SoYouStart addon **31/31**, dedicated-server module **131/131**, and VPS module **165/165** PHP-WASM checks; `bash -n ci/run-php.sh`, `node --check crons/tests/run.mjs`, and `git diff --check` pass.
+- `crons/tests/README.md` describes the offline scope. `ci/run-php.sh` includes `crons/tests/*Test.php` under the existing `mod_soyoustart` group; no new module group was added.
+- **Not evidence:** no cron was run, no CLI/web HTTP request was made, no WHMCS database/API was available, no email account was contacted, no provider catalog/rate was fetched, and no IP move/order/payment was tested. B-18 remains open until CR-O1–CR-O5 are resolved or explicitly accepted by the owner and the relevant staging/live checks are completed.

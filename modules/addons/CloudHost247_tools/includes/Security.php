@@ -72,14 +72,15 @@ class CloudHost247ToolsSecurity
     /** Hostnames that are never resolvable through the tools. */
     protected static $blockedHosts = [
         'localhost', 'localhost.localdomain', 'ip6-localhost', 'ip6-loopback',
-        'metadata', 'metadata.google.internal', 'metadata.goog',
+        'metadata', 'metadata.google.internal', 'metadata.goog', 'home.arpa',
         'instance-data', 'instance-data.ec2.internal',
     ];
 
     /** Hostname suffixes that indicate an internal name. */
     protected static $blockedSuffixes = [
         '.local', '.localhost', '.internal', '.intranet', '.lan', '.home',
-        '.corp', '.private', '.test', '.example', '.invalid', '.onion',
+        '.corp', '.private', '.test', '.example', '.invalid', '.onion', '.alt',
+        '.home.arpa', '.localdomain',
     ];
 
     // -----------------------------------------------------------------
@@ -150,7 +151,7 @@ class CloudHost247ToolsSecurity
 
         $host = strtolower($host);
 
-        if (!preg_match('/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/', $host)) {
+        if (!preg_match('/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{2,59}[a-z0-9])$/', $host)) {
             return false;
         }
 
@@ -166,8 +167,29 @@ class CloudHost247ToolsSecurity
         if ($host === false || self::isIp($host)) {
             throw new CloudHost247ToolsSecurityException('Please enter a valid domain name, for example example.com');
         }
+        self::assertHostnameAllowed($host);
 
         return $host;
+    }
+
+    /** True for local/special-use names or values that are not hostnames. */
+    public static function isBlockedDnsName($host)
+    {
+        if (!is_string($host) && !is_numeric($host)) {
+            return true;
+        }
+        $host = strtolower(trim((string) $host));
+        $host = rtrim($host, '.');
+        if ($host === '' || strlen($host) > 253 || self::isIp($host)
+            || in_array($host, self::$blockedHosts, true)) {
+            return true;
+        }
+        foreach (self::$blockedSuffixes as $suffix) {
+            if (substr($host, -strlen($suffix)) === $suffix) {
+                return true;
+            }
+        }
+        return strpos($host, '.') === false;
     }
 
     public static function validateIp($ip, $version = null)
@@ -188,12 +210,19 @@ class CloudHost247ToolsSecurity
 
     public static function validatePort($port)
     {
-        $port = (int) $port;
-        if ($port < 1 || $port > 65535) {
+        if (is_int($port)) {
+            $value = $port;
+        } elseif (is_string($port) && preg_match('/^\\d+$/', trim($port))) {
+            $value = (int) trim($port);
+        } else {
+            throw new CloudHost247ToolsSecurityException('Port must be a whole number between 1 and 65535.');
+        }
+
+        if ($value < 1 || $value > 65535) {
             throw new CloudHost247ToolsSecurityException('Port must be between 1 and 65535.');
         }
 
-        return $port;
+        return $value;
     }
 
     /**
@@ -359,6 +388,70 @@ class CloudHost247ToolsSecurity
     }
 
     /**
+     * Choose one already-resolved public address, optionally requiring a
+     * specific IP family. Never fall back to another family when requested.
+     *
+     * @param array $ips Addresses already returned by assertPublicHost/assertPublicUrl.
+     * @param int|null $version 4, 6, or null for the first validated address.
+     */
+    public static function selectPublicAddress(array $ips, $version = null)
+    {
+        if ($version !== null && !in_array($version, [4, 6], true)) {
+            throw new CloudHost247ToolsSecurityException('IP version must be 4 or 6.');
+        }
+
+        $selected = null;
+        foreach ($ips as $ip) {
+            if (!is_string($ip) || !self::isIp($ip)) {
+                continue;
+            }
+            $reason = self::blockedIpReason($ip);
+            if ($reason !== false) {
+                throw new CloudHost247ToolsSecurityException(
+                    'That address is in a reserved range (' . $reason . ') and cannot be targeted by CloudHost247 tools.'
+                );
+            }
+            if ($selected === null && ($version === null
+                || ($version === 4 && self::isIpv4($ip))
+                || ($version === 6 && self::isIpv6($ip)))) {
+                $selected = $ip;
+            }
+        }
+        if ($selected !== null) {
+            return $selected;
+        }
+
+        $family = $version === 6 ? 'IPv6' : ($version === 4 ? 'IPv4' : 'usable');
+        throw new CloudHost247ToolsSecurityException('No public ' . $family . ' address is available for this hostname.');
+    }
+
+    /**
+     * Resolve and pin a public TCP/TLS probe target to a vetted address.
+     * Callers must still apply the purpose-specific port allowlist before
+     * connecting. Returning a literal address prevents a second DNS lookup
+     * from reintroducing DNS-rebinding risk in stream_socket_client().
+     *
+     * @return array{host:string,ip:string,ips:array,port:int,socket_host:string}
+     */
+    public static function publicConnectTarget($host, $port)
+    {
+        $checked = self::assertPublicHost($host);
+        $port = self::validatePort($port);
+        $ip = reset($checked['ips']);
+        if (!$ip) {
+            throw new CloudHost247ToolsSecurityException('That hostname does not resolve to a usable IP address.');
+        }
+
+        return [
+            'host' => $checked['host'],
+            'ip' => $ip,
+            'ips' => $checked['ips'],
+            'port' => $port,
+            'socket_host' => self::isIpv6($ip) ? '[' . $ip . ']' : $ip,
+        ];
+    }
+
+    /**
      * Validate a user-supplied URL for outbound fetching.
      *
      * @return array{url:string, host:string, scheme:string, port:int, ips:array}
@@ -393,8 +486,9 @@ class CloudHost247ToolsSecurity
         }
 
         $checked = self::assertPublicHost($parts['host']);
+        $urlHost = self::isIpv6($checked['host']) ? '[' . $checked['host'] . ']' : $checked['host'];
 
-        $rebuilt = $scheme . '://' . $checked['host']
+        $rebuilt = $scheme . '://' . $urlHost
             . (isset($parts['port']) ? ':' . $port : '')
             . ($parts['path'] ?? '/')
             . (isset($parts['query']) ? '?' . $parts['query'] : '');
@@ -414,23 +508,49 @@ class CloudHost247ToolsSecurity
      * Redirects are followed manually so every hop is re-validated, the
      * response body is hard-capped, and nothing in private space is reachable.
      *
-     * @return array{status:int,headers:array,body:string,url:string,redirects:array,time:float}
+     * @return array{status:int,headers:array,body:string,url:string,host:string,connected_ip:string,redirects:array,time:float}
      */
     public static function fetch($url, array $options = [])
     {
-        $method     = strtoupper($options['method'] ?? 'GET');
-        $timeout    = min(20, max(1, (int) ($options['timeout'] ?? 12)));
-        $maxBytes   = min(self::MAX_FETCH_BYTES, (int) ($options['max_bytes'] ?? self::MAX_FETCH_BYTES));
-        $userAgent  = $options['user_agent'] ?? 'CloudHost247-Tools/3.0 (+https://www.cloudhost247.com/tools)';
-        $extraHead  = $options['headers'] ?? [];
+        $method = strtoupper($options['method'] ?? 'GET');
+        if (!in_array($method, ['GET', 'HEAD', 'POST'], true)) {
+            throw new CloudHost247ToolsSecurityException('Only GET, HEAD and POST requests are supported.');
+        }
+        $timeout   = min(20, max(1, (int) ($options['timeout'] ?? 12)));
+        $maxBytes  = min(self::MAX_FETCH_BYTES, max(1, (int) ($options['max_bytes'] ?? self::MAX_FETCH_BYTES)));
+        $userAgent = $options['user_agent'] ?? 'CloudHost247-Tools/3.0 (+https://www.cloudhost247.com/tools)';
+        $extraHead = $options['headers'] ?? [];
+        $body      = $options['body'] ?? null;
+        $ipVersion = $options['ip_version'] ?? null;
+        if ($ipVersion !== null && !in_array($ipVersion, [4, 6], true)) {
+            throw new CloudHost247ToolsSecurityException('IP version must be 4 or 6.');
+        }
+
+        if (!is_array($extraHead)) {
+            throw new CloudHost247ToolsSecurityException('Request headers must be an array.');
+        }
+        foreach ($extraHead as $header) {
+            if (!is_string($header) || preg_match('/[\\r\\n]/', $header)) {
+                throw new CloudHost247ToolsSecurityException('Request headers contain invalid characters.');
+            }
+        }
+        if ($body !== null && $method !== 'POST') {
+            throw new CloudHost247ToolsSecurityException('A request body is only supported for POST.');
+        }
 
         $redirects = [];
         $current   = self::assertPublicUrl($url);
+        if (!function_exists('curl_init')) {
+            throw new CloudHost247ToolsSecurityException('The cURL extension is not available on this server.');
+        }
         $started   = microtime(true);
 
         for ($hop = 0; $hop <= self::MAX_REDIRECTS; $hop++) {
+            // Select the family-specific, already-vetted address per redirect
+            // hop. An IPv6 request must never silently fall back to IPv4.
+            $connectIp = self::selectPublicAddress($current['ips'], $ipVersion);
             $ch = curl_init();
-            curl_setopt_array($ch, [
+            $curlOptions = [
                 CURLOPT_URL            => $current['url'],
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_HEADER         => true,
@@ -451,22 +571,36 @@ class CloudHost247ToolsSecurity
                 CURLOPT_PROGRESSFUNCTION => function ($res, $dlTotal, $dlNow) use ($maxBytes) {
                     return $dlNow > $maxBytes ? 1 : 0;
                 },
-            ]);
+            ];
+            if ($method === 'POST' && $body !== null) {
+                $curlOptions[CURLOPT_POSTFIELDS] = $body;
+            }
+            if ($ipVersion !== null) {
+                $resolveOption = defined('CURLOPT_IPRESOLVE') ? constant('CURLOPT_IPRESOLVE') : null;
+                $resolveModeName = $ipVersion === 6 ? 'CURL_IPRESOLVE_V6' : 'CURL_IPRESOLVE_V4';
+                if ($resolveOption === null || !defined($resolveModeName)) {
+                    curl_close($ch);
+                    throw new CloudHost247ToolsSecurityException('This server cannot force the requested IP version for outbound checks.');
+                }
+                $curlOptions[$resolveOption] = constant($resolveModeName);
+            }
+            curl_setopt_array($ch, $curlOptions);
 
-            // Pin the connection to an address we already validated, so a DNS
-            // rebind between validation and connect cannot reach private space.
-            if (!empty($current['ips'][0])) {
-                $ip = $current['ips'][0];
+            // Pin the connection to the selected validated address, so a DNS
+            // rebind or a different-family fallback cannot change the target.
+            if (!self::isIp($current['host'])) {
+                $resolveIp = self::isIpv6($connectIp) ? '[' . $connectIp . ']' : $connectIp;
                 curl_setopt($ch, CURLOPT_RESOLVE, [
-                    $current['host'] . ':' . $current['port'] . ':' . $ip,
+                    $current['host'] . ':' . $current['port'] . ':' . $resolveIp,
                 ]);
             }
 
-            $raw      = curl_exec($ch);
-            $errNo    = curl_errno($ch);
-            $error    = curl_error($ch);
-            $status   = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $headSize = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+            $raw         = curl_exec($ch);
+            $errNo       = curl_errno($ch);
+            $error       = curl_error($ch);
+            $status      = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $headSize    = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+            $connectedIp = (string) curl_getinfo($ch, CURLINFO_PRIMARY_IP);
             curl_close($ch);
 
             if ($raw === false) {
@@ -486,10 +620,30 @@ class CloudHost247ToolsSecurity
                     $next = end($next);
                 }
                 $next = self::resolveRelative($current['url'], $next);
-                $redirects[] = ['from' => $current['url'], 'to' => $next, 'status' => $status];
                 // Re-validate the redirect target - this is where open
                 // redirects would otherwise become an SSRF.
-                $current = self::assertPublicUrl($next);
+                $nextTarget = self::assertPublicUrl($next);
+                $originChanged = $current['scheme'] !== $nextTarget['scheme']
+                    || $current['host'] !== $nextTarget['host']
+                    || $current['port'] !== $nextTarget['port'];
+
+                if ($method === 'POST' && $originChanged && !in_array($status, [301, 302, 303], true)) {
+                    throw new CloudHost247ToolsSecurityException('POST redirects to another host are not followed.');
+                }
+                if ($method === 'POST' && in_array($status, [301, 302, 303], true)) {
+                    // Match common browser/cURL redirect semantics without
+                    // forwarding the submitted body or caller headers.
+                    $method = 'GET';
+                    $body = null;
+                    $extraHead = [];
+                } elseif ($originChanged) {
+                    // Do not forward caller-supplied Authorization or other
+                    // custom headers to a different origin.
+                    $extraHead = [];
+                }
+
+                $redirects[] = ['from' => $current['url'], 'to' => $next, 'status' => $status];
+                $current = $nextTarget;
                 continue;
             }
 
@@ -499,6 +653,7 @@ class CloudHost247ToolsSecurity
                 'body'      => $body,
                 'url'       => $current['url'],
                 'host'      => $current['host'],
+                'connected_ip' => $connectedIp,
                 'redirects' => $redirects,
                 'time'      => round((microtime(true) - $started) * 1000, 2),
             ];

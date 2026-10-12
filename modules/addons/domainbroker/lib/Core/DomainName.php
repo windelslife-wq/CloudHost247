@@ -112,6 +112,22 @@ class DomainName
             return null;
         }
 
+        // These namespaces are reserved for local, documentation, or other
+        // special use. Domain intelligence must not disclose them to the host
+        // resolver or RDAP service.
+        $blockedSuffixes = [
+            'localhost', 'localdomain', 'local', 'internal', 'intranet', 'lan',
+            'home', 'corp', 'private', 'test', 'example', 'invalid', 'onion', 'alt',
+        ];
+        foreach ($blockedSuffixes as $suffix) {
+            if ($value === $suffix || substr($value, -(strlen($suffix) + 1)) === '.' . $suffix) {
+                return null;
+            }
+        }
+        if ($value === 'home.arpa' || substr($value, -10) === '.home.arpa') {
+            return null;
+        }
+
         return $value;
     }
 

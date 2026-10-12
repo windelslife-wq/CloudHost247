@@ -164,45 +164,203 @@ class SecurityManager
     }
     
     /**
-     * Sanitize domain input
+     * Sanitize a DNS name. Public IP literals are accepted only for PTR lookups,
+     * where they are converted to their reverse-DNS owner name.
      *
      * @param string $domain
+     * @param bool $allowPublicPtr Whether a public IP literal/reverse owner is allowed
      * @return string|false Returns sanitized domain or false if invalid
      */
-    public static function sanitizeDomain($domain)
+    public static function sanitizeDomain($domain, $allowPublicPtr = false)
     {
         if (empty($domain)) {
             return false;
         }
-        
-        // Remove whitespace and convert to lowercase
+
         $domain = strtolower(trim($domain));
-        
-        // Remove protocol if present
-        $domain = preg_replace('/^(https?:\/\/)?(www\.)?/i', '', $domain);
-        
-        // Remove path, query string, etc.
+        $plainIp = trim($domain, '[]');
+        if ($allowPublicPtr && filter_var($plainIp, FILTER_VALIDATE_IP) !== false) {
+            return self::publicIpToReverseName($plainIp);
+        }
+
+        // Remove protocol if present, then extract the host before normalizing.
+        $domain = preg_replace('/^(https?:\\/\\/)?(www\\.)?/i', '', $domain);
         $domain = parse_url('http://' . $domain, PHP_URL_HOST) ?: $domain;
-        
-        // Remove any remaining invalid characters
-        $domain = preg_replace('/[^a-z0-9\.\-]/', '', $domain);
-        
-        // Validate domain format
-        if (!preg_match('/^([a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9\-]{0,61}[a-z0-9]$/i', $domain)) {
-            // Allow IDN (internationalized domain names)
-            if (!preg_match('/^([a-z0-9\x{00a1}-\x{ffff}]([a-z0-9\x{00a1}-\x{ffff}\-]{0,61}[a-z0-9\x{00a1}-\x{ffff}])?\.)+[a-z0-9\x{00a1}-\x{ffff}][a-z0-9\x{00a1}-\x{ffff}\-]{0,61}[a-z0-9\x{00a1}-\x{ffff}]$/iu', $domain)) {
+        $domain = trim($domain, '[]');
+
+        if ($allowPublicPtr && filter_var($domain, FILTER_VALIDATE_IP) !== false) {
+            return self::publicIpToReverseName($domain);
+        }
+
+        // Preserve the legacy normalization for ordinary domain names.
+        $domain = preg_replace('/[^a-z0-9\\.\\-]/', '', $domain);
+        if (strlen($domain) > 253 || filter_var($domain, FILTER_VALIDATE_IP) !== false
+            || preg_match('/^\\d{1,3}(?:\\.\\d{1,3}){3}$/', $domain)) {
+            return false;
+        }
+
+        if (!preg_match('/^([a-z0-9]([a-z0-9\\-]{0,61}[a-z0-9])?\\.)+[a-z0-9][a-z0-9\\-]{0,61}[a-z0-9]$/i', $domain)) {
+            // Allow IDN (internationalized domain names).
+            if (!preg_match('/^([a-z0-9\\x{00a1}-\\x{ffff}]([a-z0-9\\x{00a1}-\\x{ffff}\\-]{0,61}[a-z0-9\\x{00a1}-\\x{ffff}])?\\.)+[a-z0-9\\x{00a1}-\\x{ffff}][a-z0-9\\x{00a1}-\\x{ffff}\\-]{0,61}[a-z0-9\\x{00a1}-\\x{ffff}]$/iu', $domain)) {
                 return false;
             }
         }
-        
-        // Check length
-        if (strlen($domain) > 253) {
+
+        // Reverse namespaces are permitted only for explicit PTR requests; when
+        // permitted, only a full owner for a public address is accepted.
+        $isReverseNamespace = preg_match('/(?:^|\\.)in-addr\\.arpa$/', $domain)
+            || preg_match('/(?:^|\\.)ip6\\.(?:arpa|int)$/', $domain);
+        if ($isReverseNamespace && !$allowPublicPtr) {
             return false;
         }
-        
+        if ($allowPublicPtr) {
+            $reverseName = self::validateReversePtrName($domain);
+            if ($reverseName === false) {
+                return false;
+            }
+            if ($reverseName !== null) {
+                return $reverseName;
+            }
+        }
+
+        // Do not disclose local, split-DNS, or special-use names to the host resolver.
+        $blockedHosts = [
+            'metadata', 'metadata.goog', 'metadata.google.internal', 'instance-data',
+            'instance-data.ec2.internal', 'localhost.localdomain', 'home.arpa',
+        ];
+        if (in_array($domain, $blockedHosts, true)) {
+            return false;
+        }
+        $blockedSuffixes = [
+            '.localhost', '.local', '.localdomain', '.internal', '.intranet', '.lan',
+            '.home', '.corp', '.private', '.test', '.example', '.invalid', '.onion',
+            '.alt', '.home.arpa',
+        ];
+        foreach ($blockedSuffixes as $suffix) {
+            if (substr($domain, -strlen($suffix)) === $suffix) {
+                return false;
+            }
+        }
+
         return $domain;
     }
-    
+
+    /** True only when an address is outside common non-public/special-use ranges. */
+    private static function isPublicPtrAddress($ip)
+    {
+        if (filter_var($ip, FILTER_VALIDATE_IP) === false) {
+            return false;
+        }
+
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+            $ipLong = ip2long($ip);
+            $blocked = [
+                ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10],
+                ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12],
+                ['192.0.0.0', 24], ['192.0.2.0', 24], ['192.88.99.0', 24],
+                ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24],
+                ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4],
+            ];
+            foreach ($blocked as $range) {
+                $network = ip2long($range[0]);
+                $mask = (-1 << (32 - $range[1])) & 0xFFFFFFFF;
+                if (($ipLong & $mask) === ($network & $mask)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        $packed = @inet_pton($ip);
+        if ($packed === false) {
+            return false;
+        }
+        $blocked = [
+            ['::', 128], ['::1', 128], ['::ffff:0:0', 96], ['64:ff9b::', 96],
+            ['100::', 64], ['2001:db8::', 32], ['fc00::', 7], ['fe80::', 10],
+            ['ff00::', 8],
+        ];
+        foreach ($blocked as $range) {
+            $network = @inet_pton($range[0]);
+            if ($network === false) {
+                continue;
+            }
+            $bits = $range[1];
+            $bytes = intdiv($bits, 8);
+            $remainingBits = $bits % 8;
+            if ($bytes > 0 && strncmp($packed, $network, $bytes) !== 0) {
+                continue;
+            }
+            if ($remainingBits > 0) {
+                $mask = (0xFF << (8 - $remainingBits)) & 0xFF;
+                if ((ord($packed[$bytes]) & $mask) !== (ord($network[$bytes]) & $mask)) {
+                    continue;
+                }
+            }
+            return false;
+        }
+
+        return true;
+    }
+
+    /** Convert only globally routable IP literals to reverse-DNS owner names. */
+    private static function publicIpToReverseName($ip)
+    {
+        if (!self::isPublicPtrAddress($ip)) {
+            return false;
+        }
+
+        $packed = @inet_pton($ip);
+        if ($packed === false) {
+            return false;
+        }
+        if (strlen($packed) === 4) {
+            return implode('.', array_reverse(explode('.', $ip))) . '.in-addr.arpa';
+        }
+        if (strlen($packed) === 16) {
+            return implode('.', array_reverse(str_split(bin2hex($packed)))) . '.ip6.arpa';
+        }
+
+        return false;
+    }
+
+    /** Validate a full IPv4/IPv6 PTR owner and reject private/reserved addresses. */
+    private static function validateReversePtrName($domain)
+    {
+        $domain = strtolower($domain);
+
+        if (preg_match('/(?:^|\\.)in-addr\\.arpa$/', $domain)) {
+            if (!preg_match('/^((?:\\d{1,3}\\.){4})in-addr\\.arpa$/', $domain, $matches)) {
+                return false;
+            }
+            $octets = explode('.', rtrim($matches[1], '.'));
+            $ip = implode('.', array_reverse($octets));
+            if (!self::isPublicPtrAddress($ip)) {
+                return false;
+            }
+            return $domain;
+        }
+
+        if (preg_match('/(?:^|\\.)ip6\\.(?:arpa|int)$/', $domain)) {
+            if (!preg_match('/^((?:[0-9a-f]\\.){32})ip6\\.arpa$/', $domain, $matches)) {
+                return false;
+            }
+            $reversedHex = str_replace('.', '', rtrim($matches[1], '.'));
+            $hex = strrev($reversedHex);
+            $packed = @hex2bin($hex);
+            if ($packed === false || strlen($packed) !== 16) {
+                return false;
+            }
+            $ip = @inet_ntop($packed);
+            if ($ip === false || !self::isPublicPtrAddress($ip)) {
+                return false;
+            }
+            return $domain;
+        }
+
+        return null;
+    }
+
     /**
      * Sanitize IP address input
      *

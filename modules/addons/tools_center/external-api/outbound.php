@@ -78,6 +78,54 @@ if (!function_exists('tc_is_public_ip')) {
     }
 }
 
+if (!function_exists('tc_is_public_dns_name')) {
+    /**
+     * Validate a normal public DNS name without performing a lookup. Reserved
+     * single-label/local-use namespaces are blocked to avoid querying split-DNS
+     * or local resolver names from the hosted tools service.
+     */
+    function tc_is_public_dns_name($host)
+    {
+        if (!is_string($host) || $host === '' || strlen($host) > 254
+            || filter_var($host, FILTER_VALIDATE_IP)) {
+            return false;
+        }
+        $host = strtolower($host);
+        if (substr($host, -1) === '.') {
+            $host = substr($host, 0, -1);
+            if (substr($host, -1) === '.') return false;
+        }
+        if ($host === '' || strlen($host) > 253 || strpos($host, '.') === false) {
+            return false;
+        }
+        $blockedHosts = ['metadata', 'metadata.goog', 'metadata.google.internal', 'instance-data', 'instance-data.ec2.internal', 'ip6-localhost', 'ip6-loopback', 'localhost.localdomain'];
+        if (in_array($host, $blockedHosts, true)) {
+            return false;
+        }
+        $blockedSuffixes = [
+            'localhost', 'local', 'internal', 'intranet', 'lan', 'home', 'corp',
+            'private', 'test', 'example', 'invalid', 'onion', 'alt', 'localdomain',
+        ];
+        foreach ($blockedSuffixes as $suffix) {
+            if ($host === $suffix || substr($host, -strlen('.' . $suffix)) === '.' . $suffix) {
+                return false;
+            }
+        }
+        if ($host === 'home.arpa' || substr($host, -10) === '.home.arpa') {
+            return false;
+        }
+        $labels = explode('.', $host);
+        if (count($labels) < 2) return false;
+        foreach ($labels as $label) {
+            if (strlen($label) > 63 || preg_match('/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/D', $label) !== 1) {
+                return false;
+            }
+        }
+        $tld = end($labels);
+        return strlen($tld) >= 2 && preg_match('/[a-z]/', $tld) === 1;
+    }
+}
+
 if (!function_exists('tc_resolve_public_ips')) {
     /**
      * Resolve a host to its addresses. Throws unless every address is public.
@@ -85,17 +133,20 @@ if (!function_exists('tc_resolve_public_ips')) {
      */
     function tc_resolve_public_ips($host)
     {
-        $host = strtolower(rtrim((string) $host, '.'));
+        $host = strtolower(trim((string) $host));
+        if (substr($host, -1) === '.') {
+            $host = substr($host, 0, -1);
+        }
         if ($host === '' || strlen($host) > 253) {
             throw new Exception('Invalid host');
         }
         if (filter_var($host, FILTER_VALIDATE_IP)) {
-            $ips = [trim($host, '[]')];
+            $ips = [$host];
         } else {
             if (!preg_match('/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/', $host)) {
                 throw new Exception('Invalid host');
             }
-            if ($host === 'localhost' || substr($host, -10) === '.localhost' || substr($host, -6) === '.local' || strpos($host, '.') === false) {
+            if (!tc_is_public_dns_name($host)) {
                 throw new Exception('Target address is not public');
             }
             $ips = [];
@@ -237,5 +288,33 @@ if (!function_exists('tc_open_public_socket')) {
         $ip = $ips[0];
         $target = strpos($ip, ':') !== false ? '[' . $ip . ']' : $ip;
         return @fsockopen($target, $port, $errno, $errstr, $timeout);
+    }
+}
+
+if (!function_exists('tc_open_public_tls_socket')) {
+    /**
+     * Open TLS to a public host over its first already-validated numeric address.
+     * The original host remains available to TLS for SNI/certificate inspection;
+     * the socket itself cannot trigger a second DNS resolution.
+     */
+    function tc_open_public_tls_socket($host, $port, $timeout, array $sslOptions, &$errno = 0, &$errstr = '')
+    {
+        $port = (int) $port;
+        if ($port < 1 || $port > 65535) {
+            throw new Exception('Invalid port');
+        }
+        $ips = tc_resolve_public_ips($host);
+        $ip = $ips[0];
+        $target = strpos($ip, ':') !== false ? '[' . $ip . ']' : $ip;
+        $timeout = min(30, max(1, (int) $timeout));
+        $context = stream_context_create(['ssl' => $sslOptions]);
+        return @stream_socket_client(
+            'ssl://' . $target . ':' . $port,
+            $errno,
+            $errstr,
+            $timeout,
+            STREAM_CLIENT_CONNECT,
+            $context
+        );
     }
 }

@@ -1,5 +1,5 @@
 /**
- * CloudHost247 Tools - IP & Email Blacklist Checker
+ * CloudHost247 Tools - IPv4 Blacklist Checker
  *
  * Route-split module: this file is loaded only on /tools/blacklist-checker.
  * Execution: server.
@@ -13,7 +13,7 @@
         new CH.ToolPage({
             slug: "blacklist-checker",
             exec: "server",
-            fields: [{"name": "ip", "label": "IP address", "placeholder": "8.8.8.8", "required": true, "spellcheck": false}],
+            fields: [{"name": "ip", "label": "Public IPv4 address", "placeholder": "8.8.8.8", "required": true, "spellcheck": false}],
             render: function (d) {
                 var wrap = CH.el('div');
                 if (!d || typeof d !== 'object') {

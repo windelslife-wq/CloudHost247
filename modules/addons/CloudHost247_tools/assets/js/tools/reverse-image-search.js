@@ -13,7 +13,7 @@
         new CH.ToolPage({
             slug: "reverse-image-search",
             exec: "server",
-            fields: [{"name": "image", "label": "Image", "type": "file", "width": "full", "required": true}],
+            fields: [{"name": "url", "label": "Public image URL", "type": "url", "placeholder": "https://example.com/image.jpg", "hint": "External search providers receive this URL only when you open their links. CloudHost247 does not download or upload the image.", "width": "full", "required": true}],
             render: function (d) {
                 var wrap = CH.el('div');
                 if (!d || typeof d !== 'object') {
