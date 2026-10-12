@@ -18,6 +18,7 @@ obligations. This is not yet 100% of all application content.
 | WHMCS custom overrides | 700/700 English keys in fr/es/de/pt-BR | `ci/apply-override-translations.php --check` |
 | Real Smarty page rendering | All 8 translated body templates, 3 header layouts and 9 automatic-detection scenarios in public/account/cart contexts | `tests/staging/RenderedTemplatesTest.php` |
 | Fallback footers | 43 link/heading labels in `footer_block.tpl` + `footer_block_latest.tpl`, no literal copy left | `tests/i18n/FooterTemplateTest.php` |
+| Cart recovery pages | 15 keys x 5 locales in `lang/site/<locale>/cart-recovery.php`; `<html lang>`/dir from the active locale; no literal copy left in `recover.php` | `cloudhost247_cart_recovery/tests/run.php` + `tests/test_static.py` |
 
 Translated page bodies: **legal index, FAQs, refund policy, backup policy,
 cybercrime policy, trademark/copyright policy, Help Center, Terms & Conditions**.
@@ -202,6 +203,19 @@ exclusions in `ci/check-encoding.py`; they are never rewritten wholesale.
    switcher, built from the same library and the same validated URLs as the
    theme, so a choice made on a tool page is the same choice everywhere. Its own
    body copy is still English.
+   *Also addressed:* the abandoned-cart recovery and unsubscribe pages
+   (`modules/addons/cloudhost247_cart_recovery/recover.php`). They render their
+   own document — no client-area hook runs there — so `<html lang="en">` was
+   hardcoded and the page copy sat inline in PHP. A customer reading the whole
+   site in French got an English page from the one email this module sends. The
+   page now resolves the customer's language through the shared library (same
+   precedence: explicit `?language=` > account preference > remembered cookie >
+   default) and reads its strings from `lang/site/<locale>/cart-recovery.php`,
+   so translating the module is adding a file to an existing locale. Detection
+   is deliberately off on that endpoint: a token link opens from a mailbox, and
+   a language guessed from whatever network the customer is on would beat the
+   one they actually chose. Its reminder/unsubscribe *emails* were already
+   admin-editable in `tblemailtemplates`.
 4. **Installed database content:** product/group descriptions, HostX page blocks,
    menus, announcements, knowledge-base articles and email templates require
    curated translations in the existing WHMCS/HostX translation infrastructure.
