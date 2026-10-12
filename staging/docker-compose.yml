@@ -1,0 +1,53 @@
+# Licensed WHMCS staging ONLY. Not executed in the sandbox: Docker, commercial
+# core and a licensed staging hostname are operator prerequisites.
+# See staging/README.md. Never mount production data or deploy this stack publicly.
+services:
+  db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+      MARIADB_DATABASE: whmcs_staging
+      MARIADB_USER: whmcs_staging
+      MARIADB_PASSWORD: ${STAGING_DB_PASSWORD:?Set a staging-only password in staging/.env}
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  whmcs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      # Local-only by default. Set STAGING_BIND=0.0.0.0 ONLY behind an
+      # authenticated staging proxy/firewall. WHMCS SystemURL must match it.
+      - "${STAGING_BIND:-127.0.0.1}:${STAGING_PORT:-8080}:80"
+    volumes:
+      - ../whmcs:/var/www/html:rw
+      - whmcs-cache:/var/www/html/templates_c
+
+  # Optional: reload the addon cache AFTER native WHMCS automation has refreshed
+  # tblcurrencies.rate. This does not fetch new rates or invent an API action.
+  rate-cache:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["cache"]
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../whmcs:/var/www/html:rw
+    entrypoint: ["php", "/var/www/html/crons/currencyRateRefresh.php"]
+
+volumes:
+  db-data:
+  whmcs-cache:

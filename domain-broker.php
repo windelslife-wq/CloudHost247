@@ -16,6 +16,7 @@
 use WHMCS\ClientArea;
 
 require_once __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/ch247_content.php';
 
 $brokerModule = __DIR__ . '/modules/addons/domainbroker/autoload.php';
 $brokerAvailable = file_exists($brokerModule);
@@ -25,9 +26,9 @@ if ($brokerAvailable) {
 
 $ca = new ClientArea();
 
-$ca->setPageTitle('Domain Broker Service');
+$ca->setPageTitle(ch247_page_title('domain-broker', 'Domain Broker Service'));
 $ca->addToBreadCrumb('index.php', Lang::trans('globalsystemname'));
-$ca->addToBreadCrumb('domain-broker.php', 'Domain Broker Service');
+$ca->addToBreadCrumb('domain-broker.php', ch247_page_title('domain-broker', 'Domain Broker Service'));
 $ca->initPage();
 
 /* ------------------------------------------------------------------ copy -- */

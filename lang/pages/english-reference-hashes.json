@@ -1,0 +1,20 @@
+{
+    "arrays": {
+        "legal": "791731de513e02c26092d8c591ba84b2a97f62158948d29d5f4bf90be40ca611",
+        "faqs": "f07f4b0f83a2eb06e839d1a153f58028d055b5df9dc4735f0b14cb4918f52cda",
+        "refund-policy": "9aacfdbb1179dc0b3d90e3288b7feafe7eefdfcf9b81cb244c1396bc712187be",
+        "backup-policy": "21126b52732a6c0728bb5a6216e8fc8798406d936f378f9d10d96076ffc8ca5e",
+        "cybercrime-policy": "0d132e6ba2e2f9bb369c62c1786005f54f7825c6ac194551f73d55ba8d6a9ffd",
+        "trademark-policy": "e0e34c35e01b5e5c60498a70e017f9ffc5ec93371be136152a2eaca009907d56"
+    },
+    "templates": {
+        "legal": "c3994ca899dc3d74d2660c484e7135a01ffba0b6b92bcc4e130a877fcb4c0af8",
+        "faqs": "f5306639af6aea277e6dca63bbbe2e471de48f77c7ce31e51e46cced974e1038",
+        "refundpolicy": "6ecf7510ea886cac9b0a756c133a730b24747444e01a058c3ab1e93e22ae4d2b",
+        "backuppolicy": "3fb564144fadee92074e11798219f5d050746090e464c0c28ec9bb509d7b3701",
+        "cybercrimepolicy": "1cee56157bf6cdf1cc0f24d905e59f33332417fc225f0c2ea9c90e8b4f9fd4cf",
+        "trademarkpolicy": "37fe266a2fb859311e084ed8bda0d0e1f5b37b3514ec776421c2d0bb737cf4ab",
+        "helpcenter": "9bdba6bba0ddb10975f70b70d5988e84ed5827381cacdb0bf4bcef306a232179",
+        "termsofservice": "76260aece154b58c5dfb17b5514d9e80c7b91b2f70ca83803658cdc39228cb21"
+    }
+}

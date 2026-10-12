@@ -11,6 +11,12 @@
 		  </li>
 		</ul>
 		<ul class="second-nav">
+		  {* CloudHost247 i18n: mobile switcher. Same component as the desktop
+		     header, rendered full-width so it cannot overflow the off-canvas
+		     panel on a 320px screen. *}
+		  <li class="devices ch247-switcher-mobile-item">
+			 {include file="$template/hostx_includes/language-currency-switcher-mobile.tpl"}
+		  </li>
 		{foreach $topMenusData as $topMenuData}
 		  <li class="devices">
 			{if $topMenuData.url != '#' && $topMenuData.url != ''  }

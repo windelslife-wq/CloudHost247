@@ -1,3 +1,4 @@
+{include file="$template/includes/currency-transaction-notice.tpl"}
 {if $checkout}
     {include file="orderforms/$carttpl/checkout.tpl"}
 {else}

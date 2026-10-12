@@ -10,7 +10,8 @@
 
 define('CLIENTAREA', true);
 
-require $_SERVER['DOCUMENT_ROOT'] . '/init.php';
+require_once __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/ch247_content.php';
 
 $ca = new WHMCS\ClientArea();
 
@@ -20,7 +21,7 @@ $ca = new WHMCS\ClientArea();
  * Sets the page title and assigns the Smarty template.
  * No authentication required — public compliance page.
  */
-$ca->setPageTitle('Data Protection Standards');
+$ca->setPageTitle(ch247_page_title('data-protection-standards', 'Data Protection Standards'));
 $ca->initPage();
 
 /**

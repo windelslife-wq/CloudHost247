@@ -7,8 +7,8 @@
     <div class="container">
         <div class="row">
             <div class="col-12 text-center">
-                <h1>HELP CENTER</h1>
-                <p class="legal-effective-date">Effective Date: August 14, 2025</p>
+                <h1>{$LANG.ch247_helpcenter_f97bfa12ae}</h1>
+                <p class="legal-effective-date">{$LANG.ch247_helpcenter_35986808e7}</p>
             </div>
         </div>
     </div>
@@ -20,14 +20,14 @@
         <div class="row">
             <div class="col-12 col-md-8 offset-md-2">
                 <div class="search-box-wrapper text-center">
-                    <p class="search-intro">How can we help you today?</p>
-                    <div class="input-group help-search-group">
-                        <input type="text" class="form-control" placeholder="Search for answers..." aria-label="Search help articles">
+                    <p class="search-intro">{$LANG.ch247_helpcenter_597e4efe88}</p>
+                    <form class="input-group help-search-group" method="post" action="{routePath('knowledgebase-search')}">
+                        <input type="search" name="search" class="form-control" placeholder="{$LANG.ch247_helpcenter_f9bb0e70e2|escape:'html'}" aria-label="{$LANG.ch247_helpcenter_dbbaee2ceb|escape:'html'}">
                         <div class="input-group-append">
-                            <button class="btn btn-primary" type="button"><i class="fas fa-search"></i> Search</button>
+                            <button class="btn btn-primary" type="submit">{$LANG.ch247_helpcenter_bade282a77}</button>
                         </div>
-                    </div>
-                    <p class="search-hint">Try keywords like "billing", "password", "migration", or "refund"</p>
+                    </form>
+                    <p class="search-hint">{$LANG.ch247_helpcenter_13f5c985bf}</p>
                 </div>
             </div>
         </div>
@@ -41,31 +41,31 @@
 
             {* Introductory Statement *}
             <div class="legal-intro">
-                <p>Welcome to the CloudHost247 Isc Help Center — your one-stop destination for support, troubleshooting, and guidance on all our services. Whether you're a new customer or an experienced user, you'll find the resources you need to get the most out of our hosting and cloud solutions.</p>
+                <p>{$LANG.ch247_helpcenter_0adc1eb2cf}</p>
             </div>
 
             {* Section 1: Getting Started *}
             <div class="help-section" id="getting-started">
-                <h3><i class="fas fa-rocket section-icon"></i> Getting Started</h3>
+                <h3>{$LANG.ch247_helpcenter_359ee747a6}</h3>
                 <div class="faq-item">
-                    <h4 class="faq-question">How do I create an account?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_99935c067c}</h4>
                     <div class="faq-answer">
                         <ol>
-                            <li>Visit <a href="https://www.cloudhost247.com" target="_blank" rel="noopener">www.cloudhost247.com</a></li>
-                            <li>Click <strong>Sign Up</strong></li>
-                            <li>Fill in your details and submit the form</li>
-                            <li>Verify your email address</li>
-                            <li>Log in to your Client Area</li>
+                            <li>{$LANG.ch247_helpcenter_bfa3d325c8}</li>
+                            <li>{$LANG.ch247_helpcenter_0803b99a20}</li>
+                            <li>{$LANG.ch247_helpcenter_73abe96d2f}</li>
+                            <li>{$LANG.ch247_helpcenter_e4b357d6d9}</li>
+                            <li>{$LANG.ch247_helpcenter_cc77c6d2b1}</li>
                         </ol>
                     </div>
                 </div>
                 <div class="faq-item">
-                    <h4 class="faq-question">How do I access my services?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_bfdbdd1a5a}</h4>
                     <div class="faq-answer">
                         <ul>
-                            <li>Log in to your Client Area</li>
-                            <li>Go to <strong>My Services</strong></li>
-                            <li>Select the product or service you wish to manage</li>
+                            <li>{$LANG.ch247_helpcenter_cc77c6d2b1}</li>
+                            <li>{$LANG.ch247_helpcenter_969031584f}</li>
+                            <li>{$LANG.ch247_helpcenter_1904c1b002}</li>
                         </ul>
                     </div>
                 </div>
@@ -73,187 +73,187 @@
 
             {* Section 2: Account & Billing *}
             <div class="help-section" id="account-billing">
-                <h3><i class="fas fa-user-circle section-icon"></i> Account & Billing</h3>
+                <h3>{$LANG.ch247_helpcenter_c852a770fc}</h3>
                 <div class="faq-item">
-                    <h4 class="faq-question">How do I update my account information?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_8f0ac6e92d}</h4>
                     <div class="faq-answer">
                         <ol>
-                            <li>Log in to your Client Area</li>
-                            <li>Navigate to <strong>Profile Settings</strong></li>
-                            <li>Update your details and click <strong>Save Changes</strong></li>
+                            <li>{$LANG.ch247_helpcenter_cc77c6d2b1}</li>
+                            <li>{$LANG.ch247_helpcenter_4e40a4ee1d}</li>
+                            <li>{$LANG.ch247_helpcenter_391728422d}</li>
                         </ol>
                     </div>
                 </div>
                 <div class="faq-item">
-                    <h4 class="faq-question">How do I change my password?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_9e20a78a93}</h4>
                     <div class="faq-answer">
                         <ul>
-                            <li>Go to <strong>Security Settings</strong> in your Client Area</li>
-                            <li>Choose <strong>Change Password</strong></li>
-                            <li>Use a strong password (combination of letters, numbers, and symbols)</li>
+                            <li>{$LANG.ch247_helpcenter_5deeafa246}</li>
+                            <li>{$LANG.ch247_helpcenter_e0da620e9a}</li>
+                            <li>{$LANG.ch247_helpcenter_534ea62051}</li>
                         </ul>
                     </div>
                 </div>
                 <div class="faq-item">
-                    <h4 class="faq-question">What payment methods do you accept?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_3033519f42}</h4>
                     <div class="faq-answer">
                         <ul>
-                            <li>Credit/Debit Cards</li>
-                            <li>PayPal</li>
-                            <li>Bank Transfer</li>
-                            <li>Cryptocurrency (where applicable)</li>
+                            <li>{$LANG.ch247_helpcenter_2dec3d89f9}</li>
+                            <li>{$LANG.ch247_helpcenter_ab8a4f6bb8}</li>
+                            <li>{$LANG.ch247_helpcenter_ee82ae2801}</li>
+                            <li>{$LANG.ch247_helpcenter_d458ac677e}</li>
                         </ul>
                     </div>
                 </div>
                 <div class="faq-item">
-                    <h4 class="faq-question">How do I view my invoices?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_4a9aca4309}</h4>
                     <div class="faq-answer">
                         <ul>
-                            <li>Log in to your Client Area</li>
-                            <li>Go to <strong>Billing → My Invoices</strong></li>
-                            <li>Click <strong>View Invoice</strong> to see payment details</li>
+                            <li>{$LANG.ch247_helpcenter_cc77c6d2b1}</li>
+                            <li>{$LANG.ch247_helpcenter_65fffedc06}</li>
+                            <li>{$LANG.ch247_helpcenter_d07417bd13}</li>
                         </ul>
                     </div>
                 </div>
                 <div class="faq-item">
-                    <h4 class="faq-question">How do I request a refund?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_5715eaf15e}</h4>
                     <div class="faq-answer">
-                        <p>Refer to our <a href="refund-policy.php">Refund Policy</a> to check eligibility, then email <a href="mailto:billing@cloudhost247.com">billing@cloudhost247.com</a> with your invoice number.</p>
+                        <p>{$LANG.ch247_helpcenter_f689833c48}</p>
                     </div>
                 </div>
             </div>
 
             {* Section 3: Services & Features *}
             <div class="help-section" id="services-features">
-                <h3><i class="fas fa-cogs section-icon"></i> Services & Features</h3>
+                <h3>{$LANG.ch247_helpcenter_f2092cb96f}</h3>
                 <div class="faq-item">
-                    <h4 class="faq-question">What hosting plans do you offer?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_6b5f700cf3}</h4>
                     <div class="faq-answer">
-                        <p>We offer a range of hosting solutions including Shared Hosting, VPS Hosting, Dedicated Servers, Cloud Hosting, and WordPress Hosting. Visit our <a href="cart.php">Services page</a> for full details and pricing.</p>
+                        <p>{$LANG.ch247_helpcenter_0312e9bdd5}</p>
                     </div>
                 </div>
                 <div class="faq-item">
-                    <h4 class="faq-question">Do you offer website migration?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_fba766779e}</h4>
                     <div class="faq-answer">
-                        <p>Yes, we offer free migration assistance for most hosting plans. To request migration:</p>
+                        <p>{$LANG.ch247_helpcenter_57dff2347f}</p>
                         <ol>
-                            <li>Open a support ticket with your current hosting details</li>
-                            <li>Our migration team will confirm compatibility and schedule the transfer</li>
-                            <li>You'll be notified once migration is complete</li>
+                            <li>{$LANG.ch247_helpcenter_b3d322ed00}</li>
+                            <li>{$LANG.ch247_helpcenter_3aff3fe57c}</li>
+                            <li>{$LANG.ch247_helpcenter_5adc040ca0}</li>
                         </ol>
                     </div>
                 </div>
                 <div class="faq-item">
-                    <h4 class="faq-question">Can I upgrade or downgrade my plan?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_9c31193f66}</h4>
                     <div class="faq-answer">
-                        <p>Yes, you can upgrade or downgrade at any time from your Client Area. Go to <strong>My Services</strong>, select your plan, and choose the upgrade or downgrade option. Changes typically take effect immediately.</p>
+                        <p>{$LANG.ch247_helpcenter_17a0c4d3ec}</p>
                     </div>
                 </div>
                 <div class="faq-item">
-                    <h4 class="faq-question">What control panel do you use?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_d1abb4a009}</h4>
                     <div class="faq-answer">
-                        <p>We provide cPanel/WHM for Linux hosting and Plesk for Windows hosting. Both include intuitive interfaces for managing your websites, email, databases, and DNS.</p>
+                        <p>{$LANG.ch247_helpcenter_76b1c51ad1}</p>
                     </div>
                 </div>
             </div>
 
             {* Section 4: Technical Support *}
             <div class="help-section" id="technical-support">
-                <h3><i class="fas fa-wrench section-icon"></i> Technical Support</h3>
+                <h3>{$LANG.ch247_helpcenter_958a52294f}</h3>
                 <div class="faq-item">
-                    <h4 class="faq-question">How do I contact support?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_d0a1cbde97}</h4>
                     <div class="faq-answer">
                         <ul>
-                            <li><strong>Email:</strong> <a href="mailto:support@cloudhost247.com">support@cloudhost247.com</a></li>
-                            <li><strong>Live Chat:</strong> Available on our website</li>
-                            <li><strong>Support Tickets:</strong> Submit via Client Area</li>
+                            <li>{$LANG.ch247_helpcenter_73060b0e0b}</li>
+                            <li>{$LANG.ch247_helpcenter_4fcc2f3a6d}</li>
+                            <li>{$LANG.ch247_helpcenter_55f8645a6f}</li>
                         </ul>
                     </div>
                 </div>
                 <div class="faq-item">
-                    <h4 class="faq-question">My website is not loading. What should I check?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_02f36b7ae2}</h4>
                     <div class="faq-answer">
-                        <p>Check DNS settings and hosting status in your Client Area. Ensure your domain is pointed to the correct nameservers and that your hosting account is active.</p>
+                        <p>{$LANG.ch247_helpcenter_093320cc31}</p>
                     </div>
                 </div>
                 <div class="faq-item">
-                    <h4 class="faq-question">My email is not working. How do I fix it?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_0992b1c4ee}</h4>
                     <div class="faq-answer">
-                        <p>Verify MX records and email configuration in your control panel. Ensure your domain's MX records point to the correct mail server and that your email accounts are properly configured.</p>
+                        <p>{$LANG.ch247_helpcenter_3d920f9a85}</p>
                     </div>
                 </div>
                 <div class="faq-item">
-                    <h4 class="faq-question">I forgot my password. How do I reset it?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_a6566cdf06}</h4>
                     <div class="faq-answer">
-                        <p>Use the password reset option on the <a href="clientarea.php">login page</a>. Enter your email address and follow the instructions sent to your inbox.</p>
+                        <p>{$LANG.ch247_helpcenter_d96b9db7e1}</p>
                     </div>
                 </div>
             </div>
 
             {* Section 5: FAQs *}
             <div class="help-section" id="faqs">
-                <h3><i class="fas fa-question-circle section-icon"></i> Frequently Asked Questions</h3>
+                <h3>{$LANG.ch247_helpcenter_073437bd61}</h3>
                 <div class="faq-item">
-                    <h4 class="faq-question">How do I keep my account safe?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_f41b54b52e}</h4>
                     <div class="faq-answer">
                         <ul>
-                            <li>Use strong passwords</li>
-                            <li>Enable two-factor authentication (2FA)</li>
-                            <li>Avoid sharing login details</li>
+                            <li>{$LANG.ch247_helpcenter_624b158104}</li>
+                            <li>{$LANG.ch247_helpcenter_67c9f725ce}</li>
+                            <li>{$LANG.ch247_helpcenter_4f07c1f419}</li>
                         </ul>
                     </div>
                 </div>
                 <div class="faq-item">
-                    <h4 class="faq-question">How do you protect my data?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_48476a7ce6}</h4>
                     <div class="faq-answer">
-                        <p>We comply with GDPR, CCPA, and industry best practices to protect your information. See our <a href="data-protection-standards.php">Data Protection Standards</a> for details.</p>
+                        <p>{$LANG.ch247_helpcenter_5452c0ccfd}</p>
                     </div>
                 </div>
                 <div class="faq-item">
-                    <h4 class="faq-question">How do I request account deletion?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_73aa476d89}</h4>
                     <div class="faq-answer">
-                        <p>To request account deletion, follow our <a href="data-deletion.php">Data Deletion Instructions</a>. Some data may be retained for legal or security purposes before permanent removal.</p>
+                        <p>{$LANG.ch247_helpcenter_95e29f7526}</p>
                     </div>
                 </div>
                 <div class="faq-item">
-                    <h4 class="faq-question">Where can I find your legal policies?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_92882468a5}</h4>
                     <div class="faq-answer">
-                        <p>Our legal policies are available here:</p>
+                        <p>{$LANG.ch247_helpcenter_c002dbdbd9}</p>
                         <ul>
-                            <li><a href="terms-of-service.php">Terms & Conditions</a></li>
-                            <li><a href="privacy-policy.php">Privacy Policy</a></li>
-                            <li><a href="refund-policy.php">Refund Policy</a></li>
-                            <li><a href="cookie-policy.php">Cookie Policy</a></li>
-                            <li><a href="data-protection-standards.php">Data Protection Standards</a></li>
+                            <li>{$LANG.ch247_helpcenter_93ccee0b90}</li>
+                            <li>{$LANG.ch247_helpcenter_75e92f47a3}</li>
+                            <li>{$LANG.ch247_helpcenter_fd900d0159}</li>
+                            <li>{$LANG.ch247_helpcenter_05b93d5aaa}</li>
+                            <li>{$LANG.ch247_helpcenter_2638637d2d}</li>
                         </ul>
                     </div>
                 </div>
                 <div class="faq-item">
-                    <h4 class="faq-question">What is your uptime guarantee?</h4>
+                    <h4 class="faq-question">{$LANG.ch247_helpcenter_efcc4ff9bd}</h4>
                     <div class="faq-answer">
-                        <p>We offer a 99.9% uptime guarantee for all hosting services. If we fall below this threshold, you may be eligible for service credits as outlined in our Service Level Agreement (SLA).</p>
+                        <p>{$LANG.ch247_helpcenter_d2a53c2f3f}</p>
                     </div>
                 </div>
             </div>
 
             {* Section 6: Contact Us *}
             <div class="help-section contact-section" id="contact-us">
-                <h3><i class="fas fa-envelope section-icon"></i> Contact Us</h3>
+                <h3>{$LANG.ch247_helpcenter_f9fd576486}</h3>
                 <div class="contact-grid">
                     <div class="contact-card">
-                        <h5>General Inquiries</h5>
+                        <h5>{$LANG.ch247_helpcenter_4c1f0f7440}</h5>
                         <p><a href="mailto:info@cloudhost247.com">info@cloudhost247.com</a></p>
                     </div>
                     <div class="contact-card">
-                        <h5>Technical Support</h5>
+                        <h5>{$LANG.ch247_helpcenter_b23a1425e7}</h5>
                         <p><a href="mailto:support@cloudhost247.com">support@cloudhost247.com</a></p>
                     </div>
                     <div class="contact-card">
-                        <h5>Billing</h5>
+                        <h5>{$LANG.ch247_helpcenter_3ac8bbca9a}</h5>
                         <p><a href="mailto:billing@cloudhost247.com">billing@cloudhost247.com</a></p>
                     </div>
                     <div class="contact-card">
-                        <h5>Website</h5>
+                        <h5>{$LANG.ch247_helpcenter_b5a229ac8b}</h5>
                         <p><a href="https://www.cloudhost247.com" target="_blank" rel="noopener">www.cloudhost247.com</a></p>
                     </div>
                 </div>

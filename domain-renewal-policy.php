@@ -11,13 +11,14 @@
 define('CLIENTAREA', true);
 
 require __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/ch247_content.php';
 
 $ca = new WHMCS\ClientArea();
 
-$ca->setPageTitle(Lang::trans('Domain Name Auto-Renewal and Deletion Policy'));
+$ca->setPageTitle(ch247_page_title('domain-renewal-policy', 'Domain Name Auto-Renewal and Deletion Policy'));
 
 $ca->addToBreadCrumb('index.php', Lang::trans('Home'));
-$ca->addToBreadCrumb('domain-renewal-policy.php', Lang::trans('Domain Name Auto-Renewal and Deletion Policy'));
+$ca->addToBreadCrumb('domain-renewal-policy.php', ch247_page_title('domain-renewal-policy', 'Domain Name Auto-Renewal and Deletion Policy'));
 
 $ca->initPage();
 

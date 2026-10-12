@@ -9,16 +9,16 @@
  */
 
 define('CLIENTAREA', true);
-require $_SERVER['DOCUMENT_ROOT'] . '/init.php';
-require 'configadminioncontroller.php';
+require_once __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/ch247_content.php';
 
 use WHMCS\ClientArea;
 use WHMCS\Authentication\CurrentUser;
 
 $ca = new ClientArea();
-$ca->setPageTitle('Backup Policy');
+$ca->setPageTitle(ch247_page_title('backup-policy', 'Backup Policy'));
 $ca->addToBreadCrumb('index.php', Lang::trans('globalsystemname'));
-$ca->addToBreadCrumb('backup-policy.php', 'Backup Policy');
+$ca->addToBreadCrumb('backup-policy.php', ch247_page_title('backup-policy', 'Backup Policy'));
 $ca->initPage();
 
 /**
@@ -123,6 +123,6 @@ $backupSections = [
     ]
 ];
 
-$ca->assign('backupData', $backupSections);
+$ca->assign('backupData', ch247_content('backup-policy', $backupSections));
 $ca->setTemplate('backuppolicy');
 $ca->output();

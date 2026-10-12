@@ -66,21 +66,21 @@
                                 <p>{$cybercrimeData.contact.content}</p>
                                 <ul class="term-list contact-list">
                                     <li>
-                                        <strong>Abuse Email:</strong>
+                                        <strong>{$LANG.ch247_cybercrimepolicy_9fed8e5117}</strong>
                                         <a href="mailto:{$cybercrimeData.contact.email}">{$cybercrimeData.contact.email}</a>
                                     </li>
                                     {if $cybercrimeData.contact.email_secondary}
                                         <li>
-                                            <strong>Support Email:</strong>
+                                            <strong>{$LANG.ch247_cybercrimepolicy_079e216355}</strong>
                                             <a href="mailto:{$cybercrimeData.contact.email_secondary}">{$cybercrimeData.contact.email_secondary}</a>
                                         </li>
                                     {/if}
                                     <li>
-                                        <strong>Website:</strong>
+                                        <strong>{$LANG.ch247_cybercrimepolicy_cf2fb5335e}</strong>
                                         <a href="https://{$cybercrimeData.contact.website}" target="_blank" rel="noopener">{$cybercrimeData.contact.website}</a>
                                     </li>
                                     <li>
-                                        <strong>Support:</strong> Open a ticket through our client <a href="{$WEB_ROOT}/submitticket.php">{$cybercrimeData.contact.portal}</a>.
+                                        <strong>{$LANG.ch247_cybercrimepolicy_99126e703e}</strong> {$LANG.ch247_policy_open_ticket_prefix} <a href="{$WEB_ROOT}/submitticket.php">{$cybercrimeData.contact.portal}</a>.
                                     </li>
                                 </ul>
                             </div>

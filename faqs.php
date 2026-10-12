@@ -12,21 +12,22 @@ use WHMCS\ClientArea;
 use WHMCS\Authentication\CurrentUser;
 
 require_once __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/ch247_content.php';
 
 $ca = new ClientArea();
 
 // Set page title
-$ca->setPageTitle('Frequently Asked Questions');
+$ca->setPageTitle(ch247_page_title('faqs', 'Frequently Asked Questions'));
 
 // Add breadcrumb
 $ca->addToBreadCrumb('index.php', Lang::trans('globalsystemname'));
-$ca->addToBreadCrumb('faqs.php', 'Frequently Asked Questions');
+$ca->addToBreadCrumb('faqs.php', ch247_page_title('faqs', 'Frequently Asked Questions'));
 
 // Initialize template
 $ca->initPage();
 
 // Assign FAQ data to template
-$ca->assign('faqItems', [
+$ca->assign('faqItems', ch247_content('faqs', [
     [
         'id' => 'faq-1',
         'question' => 'What is CloudHost247 Isc?',
@@ -87,7 +88,7 @@ $ca->assign('faqItems', [
         'question' => 'Where can I read your full policies?',
         'answer' => 'All our policies, including Privacy Policy, Terms & Conditions, Refund Policy, Cookie Policy, and Data Protection Standards, are available on our website at <a href="https://www.cloudhost247.com/legal" target="_blank">www.cloudhost247.com/legal</a>.'
     ]
-]);
+]));
 
 // Output template
 $ca->setTemplate('faqs');

@@ -10,7 +10,8 @@
 
 define('CLIENTAREA', true);
 
-require $_SERVER['DOCUMENT_ROOT'] . '/init.php';
+require_once __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/ch247_content.php';
 
 $ca = new WHMCS\ClientArea();
 
@@ -20,7 +21,7 @@ $ca = new WHMCS\ClientArea();
  * Sets the page title and assigns the Smarty template.
  * No authentication required — public legal page.
  */
-$ca->setPageTitle('Legal Notice');
+$ca->setPageTitle(ch247_page_title('legal-notice', 'Legal Notice'));
 $ca->initPage();
 
 /**
@@ -29,7 +30,7 @@ $ca->initPage();
  * Adds structured breadcrumb trail for easy navigation back to home.
  */
 $ca->addToBreadCrumb('index.php', $_LANG['globalsystemname']);
-$ca->addToBreadCrumb('legal-notice.php', 'Legal Notice');
+$ca->addToBreadCrumb('legal-notice.php', ch247_page_title('legal-notice', 'Legal Notice'));
 
 /**
  * Template Assignment

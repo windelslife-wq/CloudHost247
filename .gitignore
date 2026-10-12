@@ -44,3 +44,12 @@ modules/servers/Smtphosting/storage/config/*.php
 modules/servers/Smtphosting/storage/app/smtp-usage-ratelimit/
 modules/addons/cloudhost247cloudflare/node_modules
 modules/addons/cloudhost247passkey/node_modules
+
+# Developer-only staging runtime, licensed WHMCS and verification artifacts
+.cache/
+whmcs/
+staging/i18n-preview/public/pages/
+staging/artifacts/
+staging/.env
+staging/ioncube/*.so
+staging/i18n-preview/node_modules/
