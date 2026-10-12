@@ -170,7 +170,12 @@ if (!function_exists('ch247_i18n_detection_config')) {
         $splitList = function ($value) {
             $value = trim((string) $value);
 
-            return $value === '' ? array() : preg_split('/[\s,]+/', $value) ?: array();
+            // Two steps on purpose: `a ? b : c ?: d` is an unparenthesized
+            // nested ternary, which is a fatal parse error on PHP 8 (and
+            // deprecated on 7.4). It also reads better this way.
+            $split = $value === '' ? array() : preg_split('/[\s,]+/', $value);
+
+            return $split ?: array();
         };
 
         $endpoint = isset($settings['geo_endpoint']) ? trim((string) $settings['geo_endpoint']) : '';
