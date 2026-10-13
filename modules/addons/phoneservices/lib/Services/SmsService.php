@@ -273,6 +273,133 @@ class SmsService
     }
     
     /**
+     * Map a provider delivery status to the module's message status enum.
+     *
+     * Pure function (finding P-8): status callbacks and DLRs must move the
+     * stored message record, not only the log. Kept dependency-free so it
+     * can be exercised offline.
+     *
+     * @return string One of the mod_phoneservices_messages.status enum values.
+     */
+    public static function mapProviderStatus(string $provider, string $status): string
+    {
+        $status = strtolower(trim($status));
+
+        if ($provider === 'twilio') {
+            switch ($status) {
+                case 'queued':
+                    return 'pending';
+                case 'sent':
+                    return 'sent';
+                case 'delivered':
+                    return 'delivered';
+                case 'received':
+                    return 'received';
+                case 'read':
+                    return 'read';
+                case 'failed':
+                case 'expired':
+                    return 'failed';
+                default:
+                    return 'sent';
+            }
+        }
+
+        if ($provider === 'vonage') {
+            // Vonage DLR numeric status codes and their text equivalents.
+            switch ($status) {
+                case '0':
+                case 'accepted':
+                    return 'sent';
+                case '1':
+                case 'queued':
+                    return 'pending';
+                case '2':
+                case 'delivered':
+                    return 'delivered';
+                case '3':   // expired
+                case '4':   // undelivered
+                case '5':   // rejected
+                case '6':   // deleted
+                case '8':   // cancelled
+                case '9':   // not-delivered
+                case '10':  // failed
+                case '11':  // error
+                case '12':  // unknown error
+                case 'expired':
+                case 'undelivered':
+                case 'rejected':
+                case 'cancelled':
+                case 'failed':
+                case 'error':
+                    return 'failed';
+                case '7':
+                    // Delivered to the network; receipt unavailable.
+                    return 'sent';
+                default:
+                    return 'sent';
+            }
+        }
+
+        switch ($status) {
+            case 'queued':
+                return 'pending';
+            case 'sent':
+            case 'accepted':
+                return 'sent';
+            case 'delivered':
+                return 'delivered';
+            case 'received':
+                return 'received';
+            case 'read':
+                return 'read';
+            case 'failed':
+            case 'rejected':
+            case 'expired':
+            case 'undelivered':
+                return 'failed';
+            default:
+                return 'sent';
+        }
+    }
+
+    /**
+     * Update a stored outbound message from a provider status callback / DLR
+     * (finding P-8). Matches on message_id + provider so a callback can only
+     * touch records that this module recorded for that provider.
+     *
+     * @return array{success: bool, updated: int, status: string, error: string}
+     */
+    public function updateMessageStatus(string $messageId, string $provider, string $status, string $errorMessage = ''): array
+    {
+        if ($messageId === '') {
+            return ['success' => false, 'updated' => 0, 'status' => '', 'error' => 'Missing message ID'];
+        }
+
+        $mapped = self::mapProviderStatus($provider, $status);
+        $update = ['status' => $mapped];
+        if ($mapped === 'failed' && $errorMessage !== '') {
+            $update['error_message'] = mb_substr($errorMessage, 0, 255);
+        }
+
+        $updated = \WHMCS\Database\Capsule::table('mod_phoneservices_messages')
+            ->where('message_id', $messageId)
+            ->where('provider', $provider)
+            ->where('direction', 'outbound')
+            ->update($update);
+
+        Logger::info('Message status updated from provider callback', [
+            'message_id' => $messageId,
+            'provider' => $provider,
+            'raw_status' => $status,
+            'mapped_status' => $mapped,
+            'updated' => $updated,
+        ]);
+
+        return ['success' => $updated > 0, 'updated' => $updated, 'status' => $mapped, 'error' => ''];
+    }
+
+    /**
      * Get user messages
      */
     public function getUserMessages(int $userId, array $filters = []): array

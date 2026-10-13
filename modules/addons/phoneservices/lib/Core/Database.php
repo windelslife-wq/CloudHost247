@@ -16,14 +16,27 @@ class Database
         foreach ($params as $key => $value) {
             $sql = str_replace(':' . $key, "'" . db_escape_string($value) . "'", $sql);
         }
-        
-        $result = full_query($sql);
-        
-        if (!$result) {
-            Logger::error('Database query failed: ' . $sql . ' | Error: ' . mysql_error());
+
+        try {
+            $result = full_query($sql);
+        } catch (\Throwable $e) {
+            Logger::error('Database query failed: ' . $sql . ' | Error: ' . $e->getMessage());
+            return false;
         }
-        
+
         return $result;
+    }
+
+    /**
+     * Build a Capsule query with equality constraints
+     */
+    private static function tableQuery($table, $where = [])
+    {
+        $query = \WHMCS\Database\Capsule::table($table);
+        foreach ((array) $where as $column => $value) {
+            $query->where($column, $value);
+        }
+        return $query;
     }
     
     /**
@@ -48,12 +61,14 @@ class Database
      */
     public static function select($table, $fields = '*', $where = [], $orderBy = 'id', $orderDir = 'ASC', $limit = null)
     {
-        $result = select_query($table, $fields, $where, $orderBy, $orderDir, $limit);
-        $rows = [];
-        while ($row = mysql_fetch_assoc($result)) {
-            $rows[] = $row;
+        $query = self::tableQuery($table, $where)->orderBy($orderBy, strtoupper($orderDir) === 'DESC' ? 'desc' : 'asc');
+        if ($limit !== null) {
+            $query->limit((int) $limit);
         }
-        return $rows;
+        $columns = is_array($fields) ? $fields : [$fields];
+        return $query->get($columns)->map(function ($row) {
+            return (array) $row;
+        })->all();
     }
     
     /**
@@ -70,9 +85,7 @@ class Database
      */
     public static function count($table, $where = [])
     {
-        $result = select_query($table, 'COUNT(*) as total', $where);
-        $row = mysql_fetch_assoc($result);
-        return (int) $row['total'];
+        return (int) self::tableQuery($table, $where)->count();
     }
     
     /**

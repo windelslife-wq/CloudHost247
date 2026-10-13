@@ -20,8 +20,12 @@
                 </div>
                 <div class="form-group">
                     <label>SMM Panel API Key</label>
-                    <input type="password" name="api_key" class="form-control" value="<?php echo htmlspecialchars($config['api_key'] ?? ''); ?>" placeholder="Your API Key" required>
-                    <small class="text-muted">Keep this key secure. It is stored encrypted in the database.</small>
+                    <input type="password" name="api_key" class="form-control" autocomplete="new-password"
+                        placeholder="<?php echo !empty($config['api_key'] ?? '') ? 'Currently configured - leave blank to keep, or enter a new key' : 'Your API Key'; ?>">
+                    <small class="text-muted">
+                        Keep this key secure. It is stored encrypted in the database and is never echoed back into this form.
+                        The API URL must use HTTPS.
+                    </small>
                 </div>
                 <div class="form-group">
                     <label>

@@ -301,14 +301,14 @@ class EsimService
      */
     public function getExpiringEsims(int $days = 7): array
     {
-        $sql = "SELECT * FROM mod_phoneservices_esims 
-                WHERE status = 'active' 
-                AND expires_at <= DATE_ADD(NOW(), INTERVAL " . (int)$days . " DAY)";
-        $result = full_query($sql);
-        $esims = [];
-        while ($row = mysql_fetch_assoc($result)) {
-            $esims[] = $row;
-        }
-        return $esims;
+        $cutoff = date('Y-m-d H:i:s', strtotime('+' . $days . ' days'));
+        return \WHMCS\Database\Capsule::table('mod_phoneservices_esims')
+            ->where('status', 'active')
+            ->where('expires_at', '<=', $cutoff)
+            ->get()
+            ->map(function ($row) {
+                return (array) $row;
+            })
+            ->all();
     }
 }

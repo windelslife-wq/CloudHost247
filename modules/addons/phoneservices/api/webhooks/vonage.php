@@ -79,10 +79,13 @@ if ($type === 'voice') {
 
 if ($type === 'dlr') {
     $messageId = $data['messageId'] ?? '';
-    $status = $data['status'] ?? '';
-    
-    Logger::info('Vonage DLR received', ['message_id' => $messageId, 'status' => $status]);
-    
+    $status = (string) ($data['status'] ?? '');
+
+    // Finding P-8: move the stored message record, not only the log.
+    $result = (new SmsService())->updateMessageStatus($messageId, 'vonage', $status, (string) ($data['error-text'] ?? ''));
+
+    Logger::info('Vonage DLR received', ['message_id' => $messageId, 'status' => $status, 'updated' => $result['updated']]);
+
     http_response_code(200);
     echo 'OK';
     exit;

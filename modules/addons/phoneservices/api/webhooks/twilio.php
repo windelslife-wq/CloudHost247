@@ -92,17 +92,17 @@ if ($type === 'voice') {
     exit;
 }
 
-// Status callback
+// Status callback (finding P-8: move the stored message record, not only the log)
 if ($type === 'status') {
     $smsService = new SmsService();
-    
+
     $messageId = $_POST['MessageSid'] ?? '';
     $status = $_POST['MessageStatus'] ?? '';
-    
-    if ($messageId) {
-        Logger::info('Twilio status callback', ['message_id' => $messageId, 'status' => $status]);
-    }
-    
+
+    $result = $smsService->updateMessageStatus($messageId, 'twilio', $status, (string) ($_POST['ErrorMessage'] ?? ''));
+
+    Logger::info('Twilio status callback', ['message_id' => $messageId, 'status' => $status, 'updated' => $result['updated']]);
+
     http_response_code(200);
     echo 'OK';
     exit;

@@ -10,6 +10,42 @@ use SmmAddon\ApiClient;
 
 require_once __DIR__ . '/lib/Helper.php';
 require_once __DIR__ . '/lib/ApiClient.php';
+require_once __DIR__ . '/lib/OrderQuantity.php';
+
+use SmmAddon\OrderQuantity;
+
+/**
+ * Derive the order quantity from the paid product config options (M-5).
+ *
+ * Config options are the values the client paid for at purchase time, so
+ * they are the only trusted quantity source. Free-form custom fields can be
+ * edited from the client area and must not drive billing.
+ */
+function smmaddon_derive_paid_quantity($serviceId)
+{
+    try {
+        $rows = Capsule::table('tblconfigoptions')
+            ->join('tblproductconfigoptions', function ($join) {
+                $join->on('tblproductconfigoptions.relationid', '=', 'tblconfigoptions.productid')
+                    ->on('tblproductconfigoptions.optionid', '=', 'tblconfigoptions.optionid');
+            })
+            ->where('tblconfigoptions.domainid', (int) $serviceId)
+            ->select('tblproductconfigoptions.name', 'tblconfigoptions.value')
+            ->get();
+
+        foreach ($rows as $row) {
+            if (OrderQuantity::isQuantityOptionName((string) $row->name)) {
+                $qty = OrderQuantity::parseOptionValue($row->value);
+                if ($qty >= 1) {
+                    return $qty;
+                }
+            }
+        }
+    } catch (Exception $e) {
+        logActivity('SMM Addon: could not derive paid quantity for service ' . (int) $serviceId . ': ' . $e->getMessage());
+    }
+    return 0;
+}
 
 /**
  * Daily Cron Hook - Sync services and check order statuses
@@ -70,7 +106,7 @@ add_hook('AfterModuleCreate', 1, function ($vars) {
             ->get();
 
         $link = '';
-        $quantity = 0;
+        $clientQuantity = 0; // legacy client-editable source (M-5 fallback only)
         $comments = '';
         $usernames = '';
 
@@ -80,7 +116,7 @@ add_hook('AfterModuleCreate', 1, function ($vars) {
                 $link = $cf->value;
             }
             if (strpos($name, 'quantity') !== false || strpos($name, 'count') !== false || strpos($name, 'amount') !== false) {
-                $quantity = (int) $cf->value;
+                $clientQuantity = (int) $cf->value;
             }
             if (strpos($name, 'comment') !== false) {
                 $comments = $cf->value;
@@ -98,17 +134,40 @@ add_hook('AfterModuleCreate', 1, function ($vars) {
             }
         }
 
-        if (empty($link) || $quantity < 1) {
-            logActivity("SMM Addon: Missing link or quantity for service ID {$serviceId}");
+        // M-5: derive the quantity from the paid product config options.
+        // The client-editable custom field is only a fallback, and only
+        // when the service publishes a positive maximum (smm_max). The paid
+        // quantity is the final cap, so a client can never inflate the
+        // order beyond what they paid for - even when smm_max = 0.
+        $paidQuantity = smmaddon_derive_paid_quantity($serviceId);
+        $resolved = OrderQuantity::resolve(
+            $paidQuantity,
+            $clientQuantity,
+            (int) $smmService->smm_min,
+            (int) $smmService->smm_max
+        );
+        if ($resolved['refused']) {
+            logActivity("SMM Addon: order refused for service {$serviceId}: {$resolved['reason']} (M-5)");
+            Capsule::table('mod_smm_orders')->insert([
+                'whmcs_order_id'  => $orderId,
+                'whmcs_service_id'=> $serviceId,
+                'whmcs_user_id'   => $userId,
+                'smm_order_id'    => '',
+                'smm_service_id'  => $smmService->smm_service_id,
+                'quantity'        => 0,
+                'link'            => (string) $link,
+                'status'          => 'error',
+                'api_response'    => json_encode(['refused' => true, 'reason' => $resolved['reason']]),
+                'created_at'      => date('Y-m-d H:i:s'),
+                'updated_at'      => date('Y-m-d H:i:s'),
+            ]);
             return;
         }
+        $quantity = $resolved['quantity'];
 
-        // Ensure quantity is within min/max bounds
-        if ($quantity < $smmService->smm_min) {
-            $quantity = (int) $smmService->smm_min;
-        }
-        if ($smmService->smm_max > 0 && $quantity > $smmService->smm_max) {
-            $quantity = (int) $smmService->smm_max;
+        if (empty($link)) {
+            logActivity("SMM Addon: Missing link for service ID {$serviceId}");
+            return;
         }
 
         $config = Helper::getServerConfig($smmService->whmcs_server_id);

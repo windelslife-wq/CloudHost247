@@ -47,14 +47,25 @@ class AdminDispatcher
                     $autoSync = isset($_POST['auto_sync']) ? 'on' : 'off';
                     $debugMode = isset($_POST['debug_mode']) ? 'on' : 'off';
 
-                    if (!empty($apiUrl) && !empty($apiKey)) {
+                    $existingKey = Helper::getConfig('api_key');
+                    $urlOk = preg_match('#^https://#i', $apiUrl)
+                        || preg_match('#^http://(localhost|127\.0\.0\.1|\[?::1\]?)#i', $apiUrl);
+
+                    if (empty($apiUrl) || !$urlOk) {
+                        // M-6: the panel API must be HTTPS (local hosts only for sandbox testing).
+                        $this->setFlash('error', 'API URL must use HTTPS (http:// is only permitted for localhost).');
+                    } elseif ($apiKey === '' && empty($existingKey)) {
+                        $this->setFlash('error', 'API URL and Key are required.');
+                    } else {
                         Helper::setConfig('api_url', $apiUrl);
-                        Helper::setConfig('api_key', $apiKey);
+                        // M-7: the key is encrypted at rest; a blank field
+                        // keeps the currently stored credential.
+                        if ($apiKey !== '') {
+                            Helper::setConfig('api_key', $apiKey);
+                        }
                         Helper::setConfig('auto_sync', $autoSync);
                         Helper::setConfig('debug_mode', $debugMode);
                         $this->setFlash('success', 'Settings saved successfully.');
-                    } else {
-                        $this->setFlash('error', 'API URL and Key are required.');
                     }
                     header('Location: ' . $this->vars['modulelink'] . '&action=settings');
                     exit;
@@ -129,6 +140,17 @@ class AdminDispatcher
     {
         header('Content-Type: application/json');
         try {
+            // M-2: state-changing AJAX actions must come from a POST request
+            // carrying the session CSRF token - a plain GET (e.g. an <img>
+            // tag from a third-party page) can no longer trigger them.
+            // Read-only actions may use GET.
+            $mutating = in_array($action, ['sync_services', 'refresh_order'], true);
+            if ($mutating && ($_SERVER['REQUEST_METHOD'] !== 'POST' || !$this->csrfValid())) {
+                http_response_code(403);
+                echo json_encode(['status' => 'error', 'message' => 'Forbidden: POST with a valid CSRF token is required']);
+                exit;
+            }
+
             switch ($action) {
                 case 'sync_services':
                     $result = $this->syncServices(true);

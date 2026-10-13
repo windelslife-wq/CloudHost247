@@ -249,6 +249,11 @@ namespace {
             && strpos($serverSource, 'if ($quantity !== false && !$chkexistIp)') !== false);
     cronCheck('getServer creates an additional-IP cart under the service-selected OVH account',
         strpos($serverSource, '$apiCall->createCart($location, $planCode . "add Additional IPs", $ovhSubsidiary, $accountId)') !== false);
+    cronCheck('getServer reads the new order ID from the checkout response, not an undefined variable',
+        strpos($serverSource, '$orderId = $ipcheckout["result"]->orderId;') !== false
+            && strpos($serverSource, '$response["result"]->orderId') === false);
+    cronCheck('getServer inserts the tracking row with the schema-required invoiceid (0 = paid outside WHMCS invoices)',
+        strpos($serverSource, "insert(array('service_id' => \$service->id, 'invoiceid' => 0, 'iporderid' => \$orderId, 'status' => '0'))") !== false);
     $ipStatusSource = file_get_contents(dirname(__DIR__) . '/getIpStatus.php');
     cronCheck('getIpStatus skips stale orders and missing account rows before dereferencing them',
         strpos($ipStatusSource, 'if (!isset($serviceMatches[0]))') !== false

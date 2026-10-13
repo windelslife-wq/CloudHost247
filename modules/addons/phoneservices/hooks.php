@@ -58,13 +58,17 @@ add_hook('InvoicePaid', 1, function($vars) {
         $invoiceId = $vars['invoiceid'];
         
         // Check if this invoice is related to phone services
-        $items = select_query('tblinvoiceitems', '*', ['invoiceid' => $invoiceId]);
-        while ($item = mysql_fetch_assoc($items)) {
-            if (strpos($item['description'], 'Phone Number') !== false 
-                || strpos($item['description'], 'eSIM') !== false
-                || strpos($item['description'], 'VoIP') !== false) {
-                
-                Logger::info('Phone service invoice paid', ['invoice' => $invoiceId, 'item' => $item['id']]);
+        $items = \WHMCS\Database\Capsule::table('tblinvoiceitems')
+            ->where('invoiceid', $invoiceId)
+            ->get(['id', 'description'])
+            ->all();
+        foreach ($items as $item) {
+            $description = (string) $item->description;
+            if (strpos($description, 'Phone Number') !== false
+                || strpos($description, 'eSIM') !== false
+                || strpos($description, 'VoIP') !== false) {
+
+                Logger::info('Phone service invoice paid', ['invoice' => $invoiceId, 'item' => $item->id]);
                 
                 // Update transaction status
                 $usageService = new UsageService();
