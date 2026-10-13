@@ -91,7 +91,7 @@ class AccountRepository
     private function validateApiBase($base)
     {
         $parts = parse_url($base);
-        if (!$parts || strtolower((string) ($parts['scheme'] ?? '')) !== 'https' || strtolower((string) ($parts['host'] ?? '')) !== 'api.cloudflare.com' || rtrim((string) ($parts['path'] ?? ''), '/') !== '/client/v4' || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) throw new ValidationException('Use the official Cloudflare API endpoint: https://api.cloudflare.com/client/v4');
+        if (!$parts || strtolower((string) ($parts['scheme'] ?? '')) !== 'https' || strtolower((string) ($parts['host'] ?? '')) !== 'api.cloudflare.com' || rtrim((string) ($parts['path'] ?? ''), '/') !== '/client/v4' || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment']) || (isset($parts['port']) && (int) $parts['port'] !== 443)) throw new ValidationException('Use the official Cloudflare API endpoint: https://api.cloudflare.com/client/v4');
     }
     private function parseNameservers($value)
     {

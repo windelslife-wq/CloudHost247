@@ -214,6 +214,67 @@ class Helper
     }
 
     /**
+     * Resolve the WHMCS server ID for an SMM order row (fixes passing
+     * whmcs_service_id directly to getServerConfig).
+     */
+    public static function resolveServerIdForOrder($order): int
+    {
+        if (!is_object($order)) {
+            return 0;
+        }
+        try {
+            if (!empty($order->service_map_id)) {
+                $serverId = Capsule::table('mod_smm_services')
+                    ->where('id', (int) $order->service_map_id)
+                    ->value('whmcs_server_id');
+                if ((int) $serverId > 0) {
+                    return (int) $serverId;
+                }
+            }
+            if (!empty($order->whmcs_service_id)) {
+                $serverId = Capsule::table('tblhosting')
+                    ->where('id', (int) $order->whmcs_service_id)
+                    ->value('server');
+                if ((int) $serverId > 0) {
+                    return (int) $serverId;
+                }
+                $productId = Capsule::table('tblhosting')
+                    ->where('id', (int) $order->whmcs_service_id)
+                    ->value('packageid');
+                if ((int) $productId > 0) {
+                    $serverId = Capsule::table('mod_smm_services')
+                        ->where('whmcs_product_id', (int) $productId)
+                        ->where('is_active', 1)
+                        ->value('whmcs_server_id');
+                    if ((int) $serverId > 0) {
+                        return (int) $serverId;
+                    }
+                }
+            }
+            if (!empty($order->smm_service_id)) {
+                $serverId = Capsule::table('mod_smm_services')
+                    ->where('smm_service_id', (string) $order->smm_service_id)
+                    ->where('is_active', 1)
+                    ->value('whmcs_server_id');
+                if ((int) $serverId > 0) {
+                    return (int) $serverId;
+                }
+            }
+        } catch (Exception $e) {
+            return 0;
+        }
+        return 0;
+    }
+
+    /**
+     * Get server config for an SMM order row (resolves whmcs_server_id first).
+     */
+    public static function getServerConfigForOrder($order): array
+    {
+        return self::getServerConfig(self::resolveServerIdForOrder($order));
+    }
+
+    /**
      * Get server config from provisioning module
      */
     public static function getServerConfig($serverId)

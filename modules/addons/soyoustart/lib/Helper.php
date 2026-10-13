@@ -1269,16 +1269,46 @@ class Helper
     }
     function encryptData($data)
     {
+        $data = (string) $data;
+        if ($data === '') {
+            return '';
+        }
+        if (function_exists('encrypt')) {
+            return 'enc:v1:' . base64_encode((string) encrypt($data));
+        }
         $encrypted = openssl_encrypt($data, "AES-256-CBC", $this->secretKey, OPENSSL_RAW_DATA, $this->iv);
         return base64_encode($encrypted);
+    }
+    function decryptSecretValue($stored)
+    {
+        $stored = (string) $stored;
+        if ($stored === '') {
+            return '';
+        }
+        if (strpos($stored, 'enc:v1:') === 0) {
+            $decoded = base64_decode(substr($stored, 7), true);
+            if ($decoded !== false && function_exists('decrypt')) {
+                $plain = decrypt($decoded);
+                if (is_string($plain) && $plain !== '') {
+                    return $plain;
+                }
+            }
+            return is_string($decoded) ? $decoded : '';
+        }
+        $raw = base64_decode($stored, true);
+        if (is_string($raw) && $raw !== '' && (strlen($raw) % 16 === 0)) {
+            $legacy = openssl_decrypt($raw, "AES-256-CBC", $this->secretKey, OPENSSL_RAW_DATA, $this->iv);
+            if (is_string($legacy) && $legacy !== '') {
+                return $legacy;
+            }
+        }
+        return $stored;
     }
     function decryptData($data = [])
     {
         foreach ($data as $key => $value) {
-            $soyouimapuser = base64_decode($value->soyouimapuser);
-            $soyouimappass = base64_decode($value->soyouimappass);
-            $data[$key]->soyouimapuser = openssl_decrypt($soyouimapuser, "AES-256-CBC", $this->secretKey, OPENSSL_RAW_DATA, $this->iv);
-            $data[$key]->soyouimappass = openssl_decrypt($soyouimappass, "AES-256-CBC", $this->secretKey, OPENSSL_RAW_DATA, $this->iv);
+            $data[$key]->soyouimapuser = $this->decryptSecretValue($value->soyouimapuser ?? '');
+            $data[$key]->soyouimappass = $this->decryptSecretValue($value->soyouimappass ?? '');
         }
         return $data;
     }

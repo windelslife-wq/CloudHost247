@@ -137,7 +137,15 @@ namespace {
             $placed = $c;
         }
     }
-    check('max 0 disables cap (M-5 open)', $res === 'success' && $placed[3] === 99999);
+    check('max 0 refuses unbounded client quantity (M-5 fixed)', strpos($res, 'Quantity validation failed:') === 0 && $placed === null);
+    list($res) = $ok(mkparams(['configoptions' => ['Quantity' => 1500], 'customfields' => ['Link' => 'https://social.example/u1', 'Quantity' => '99999']]));
+    $placed = null;
+    foreach (\SmmAddon\ApiClient::$constructed as $c) {
+        if ($c[0] === 'placeOrder') {
+            $placed = $c;
+        }
+    }
+    check('paid configoptions caps inflated client customfield (M-5)', $res === 'success' && $placed !== null && $placed[3] === 1500);
 
     echo "== success row + notes ==\n";
     list($res, $ord, $host) = $ok(mkparams());

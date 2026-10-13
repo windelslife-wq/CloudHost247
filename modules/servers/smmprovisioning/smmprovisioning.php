@@ -11,9 +11,11 @@ if (!defined('WHMCS')) {
 
 require_once __DIR__ . '/../../addons/smmaddon/lib/Helper.php';
 require_once __DIR__ . '/../../addons/smmaddon/lib/ApiClient.php';
+require_once __DIR__ . '/../../addons/smmaddon/lib/OrderQuantity.php';
 
 use SmmAddon\Helper;
 use SmmAddon\ApiClient;
+use SmmAddon\OrderQuantity;
 
 
 /**
@@ -56,6 +58,60 @@ function smmprovisioning_matchField(array $pairs, $configuredName, array $needle
             }
         }
     }
+    return null;
+}
+
+/**
+ * Derive paid/configured quantity for a WHMCS service (finding M-5).
+ * Checks $params['configoptions'] first, then falls back to tblhostingconfigoptions.
+ */
+function smmprovisioning_derive_paid_quantity(array $params, $qtyFieldName = 'Quantity')
+{
+    if (!empty($params['configoptions']) && is_array($params['configoptions'])) {
+        $pairs = array();
+        foreach ($params['configoptions'] as $optName => $optValue) {
+            $pairs[] = array($optName, $optValue);
+        }
+        $found = smmprovisioning_matchField($pairs, $qtyFieldName, array('quantity', 'count', 'amount'));
+        if ($found !== null && $found !== '') {
+            if (is_numeric($found) && (int) $found > 0) {
+                return (int) $found;
+            }
+            if (is_string($found) && preg_match('/(\d+)/', $found, $m) && (int) $m[1] > 0) {
+                return (int) $m[1];
+            }
+        }
+    }
+
+    $serviceId = isset($params['serviceid']) ? (int) $params['serviceid'] : 0;
+    if ($serviceId > 0) {
+        try {
+            $rows = \Illuminate\Database\Capsule\Manager::table('tblhostingconfigoptions as hco')
+                ->join('tblproductconfigoptions as pco', 'pco.id', '=', 'hco.configid')
+                ->leftJoin('tblproductconfigoptionssub as pcos', 'pcos.id', '=', 'hco.optionid')
+                ->where('hco.relid', $serviceId)
+                ->select('pco.optionname', 'pco.optiontype', 'hco.qty', 'pcos.optionname as suboptionname')
+                ->get();
+
+            foreach ($rows as $row) {
+                $name = strtolower(trim((string) explode('|', (string) $row->optionname)[0]));
+                $want = strtolower(trim((string) $qtyFieldName));
+                if ($name !== $want && strpos($name, 'quantity') === false && strpos($name, 'qty') === false && strpos($name, 'count') === false) {
+                    continue;
+                }
+                if ((int) $row->optiontype === 4 && (int) $row->qty > 0) {
+                    return (int) $row->qty;
+                }
+                $sub = trim((string) explode('|', (string) ($row->suboptionname ?? ''))[0]);
+                if ($sub !== '' && ctype_digit($sub) && (int) $sub > 0) {
+                    return (int) $sub;
+                }
+            }
+        } catch (Exception $e) {
+            // Optional table in offline tests or custom WHMCS setups
+        }
+    }
+
     return null;
 }
 
@@ -250,17 +306,19 @@ function smmprovisioning_CreateAccount(array $params)
             $link = $params['domain'];
         }
 
-        if (empty($link) || $quantity < 1) {
+        // Resolve quantity using M-5 bounds and paid-quantity enforcement
+        $paidQty   = (int) (smmprovisioning_derive_paid_quantity($params, $qtyFieldName) ?? 0);
+        $clientQty = $quantity > 0 ? (int) $quantity : 0;
+
+        if (empty($link) || ($clientQty < 1 && $paidQty < 1)) {
             return 'Missing required fields: Link/URL and Quantity must be provided.';
         }
 
-        // Validate quantity bounds
-        if ($quantity < $minQty) {
-            $quantity = $minQty;
+        $qtyResolution = OrderQuantity::resolve($paidQty, $clientQty, $minQty, $maxQty);
+        if (!empty($qtyResolution['refused'])) {
+            return 'Quantity validation failed: ' . $qtyResolution['reason'];
         }
-        if ($maxQty > 0 && $quantity > $maxQty) {
-            $quantity = $maxQty;
-        }
+        $quantity = (int) $qtyResolution['quantity'];
 
         // Use server-specific config if available
         list($apiUrl, $apiKey, $endpointError) = smmprovisioning_apiEndpoint($params);

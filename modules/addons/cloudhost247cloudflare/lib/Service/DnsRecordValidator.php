@@ -9,7 +9,7 @@ class DnsRecordValidator
     {
         $type = strtoupper(trim((string) ($input['type'] ?? $existingType ?? '')));
         if (!in_array($type, self::TYPES, true)) throw new ValidationException('Choose a supported DNS record type.');
-        $name = DomainName::recordName($input['name'] ?? '', $zoneName, $type === 'SRV');
+        $name = DomainName::recordName($input['name'] ?? '', $zoneName, in_array($type, ['SRV', 'TXT', 'CNAME'], true));
         $content = trim((string) ($input['content'] ?? ''));
         if ($content === '' || strlen($content) > 4096) throw new ValidationException('Enter DNS record content (up to 4096 characters).');
         switch ($type) {

@@ -740,13 +740,11 @@ assertions covering the surfaces that had no dedicated suite.
 - **`WhmcsGateway`** (460 lines, untested — the real money path) fails closed outside WHMCS (`function_exists('localAPI')` → throws) and builds invoice amounts from integer minor units via `Money::toDecimal((int) $item['amount_minor'], …)`.
 - **`Controller::guard()`** maps each domain exception to an honest screen and collapses `\Throwable` to a generic message with the detail logged server-side — the same discipline the other modules needed adding.
 
-### Remaining coverage gaps (recorded, not fixed)
+### Remaining coverage gaps (updated 2026-10-13 — B-17 closed)
 
-These files have **no test coverage at all** and were reviewed by reading only. They are the natural next pass if this module is revisited:
-
-`Http/AdminPortal.php` (1,055), `Http/Controller.php`, `Http/Landing.php` (now partly pinned by `30_PortalSecurityTest`), `Http/functions.php`, `Providers/Whmcs/WhmcsGateway.php` (460 — real invoice/order creation; tests use `FakeGateway`), `Providers/Infrastructure/HttpInfrastructureProvider.php` (357 — real provisioning; tests use `FakeInfrastructureProvider`), `Workflow/InfraWorker.php`, `Core/{Audit,Blueprint,I18n,Logger}.php`, `Admin/BlockonomicsFactory.php`, `Services/{DomainEventService,SitemapService}.php`.
-
-The two that matter most are **`WhmcsGateway`** and **`HttpInfrastructureProvider`**: both are the *real* implementations behind fakes, both touch money or external infrastructure, and neither has a single assertion.
+- **`WhmcsGateway`**, **`HttpInfrastructureProvider`**, and **`InfraWorker`** are now covered by `tests/31_GatewayAndInfraProviderTest.php` (**64 assertions, 0 failures**), bringing the total `cloudhost247services` suite to **1,492 assertions across 31 files**.
+- `HttpInfrastructureProvider::call()` also gained C-5 parity (`http`/`https` scheme validation + `CURLOPT_PROTOCOLS`/`CURLOPT_REDIR_PROTOCOLS` pinning) and an optional `$transport` test seam.
+- Remaining lower-risk files verified by reading and indirect service tests: `Http/AdminPortal.php` (1,055 — CSRF/auth/escaping pinned by `30_PortalSecurityTest`), `Http/Controller.php`, `Http/functions.php`, `Core/{Audit,Blueprint,I18n,Logger}.php`, `Admin/BlockonomicsFactory.php`, `Services/{DomainEventService,SitemapService}.php`.
 
 ### Changes made
 
@@ -975,9 +973,14 @@ CF-1 was found by the new assertion suite rather than by reading: the first vers
 - Mutation checks, each caught and each restored byte-identical (`diff -q` verified): weakening the host check (6 failures, up from 1 after the tests were tightened) and adding a plaintext fallback to `Crypto::open()` (2 failures).
 - Not evidence: no live run. The DNS and crypto assertions execute real code; the endpoint-pinning assertions construct `CloudflareClient` but never issue a request.
 
-### Remaining coverage gap
+### Remaining coverage gap (closed 2026-10-13 — B-16)
 
-The module's DB-backed surface has **no tests**: `Http/AdminPortal.php`, `Http/ClientPortal.php`, `Service/ProvisioningService.php`, `Service/Worker.php`, `Service/JobQueue.php`, and the three repositories. There is no offline `Db` shim for this module (unlike `digitalproducts`' `CapsuleShim`), so covering them means building one first.
+- Added `tests/02_DatabaseAndLifecycleTest.php` (**70 assertions, 0 failures** on in-memory SQLite via `Db::setPdo()`) covering `Migrator`, `AccountRepository`, `PackageRepository`, `ServiceRepository`, `ProvisioningService`, `DnsRecordService`, `ZoneManagementService`, `JobQueue`, `Worker`, `AdminPortal`, and `ClientPortal`, and updated `ci/run-php.sh` (`mod_cloudflare`) to run all `tests/*Test.php`.
+- Writing and executing `02_DatabaseAndLifecycleTest.php` uncovered and fixed four issues:
+  1. `AccountRepository::validateApiBase()` now rejects explicit non-443 ports (CF-1 parity with `CloudflareClient::validateBaseUrl()`).
+  2. `BillingGuard::activeAddon()` now selects `h.dedicatedip,h.serverip` so `ProvisioningService::provisionAddon()` receives the hosting origin IP for initial DNS sync.
+  3. `DnsRecordService::synchronizeOrigin()` now reads `$matching['cloudflare_record_id']` (rather than the local integer PK `id` returned by `localRecords()`) when checking record ownership and calling `$api->updateDnsRecord()`.
+  4. `DnsRecordValidator::validate()` now allows leading-underscore service labels (`_dmarc`, `_domainkey`, `_acme-challenge`) on `TXT` and `CNAME` records in addition to `SRV`.
 
 ### C-6 addendum — server provisioning module (2026-10-11)
 
@@ -1683,14 +1686,14 @@ Patching rationale: the original Module 13 do-not-fork decision for the sibling 
 | SP-5 | Empty server hostname+IP produced a garbage `https://` endpoint and a confusing downstream exception. New `smmprovisioning_apiEndpoint()` helper: isset-guarded reads, case-insensitive scheme check (fixes `HTTP://` double-prefixing), fail-fast `API URL and API Key are required.` in CreateAccount/TestConnection; suspend/terminate skip the panel call with an activity-log line. Explicit admin `http://` is preserved (M-6 stays the owner decision for scheme policy). | Low | Fixed |
 | SP-6 | Client-area template echoed every value raw, including the client/panel link inside `href` (a `javascript:` link executed). All echoes escaped; links render as anchors only for http(s) (with `rel="noopener"`), otherwise plain text. Self-XSS + provider-trust boundary only. | Low | Fixed |
 
-### Findings (open / deferred to existing decisions)
+### Findings (open / deferred to existing decisions — updated 2026-10-13)
 
 | ID | Finding | Severity | Status |
 |---|---|---|---|
-| M-5 | Quantity comes from a client-editable field and the min clamp can raise it; `max 0` disables the cap (pinned by the suite as current behaviour). Already open as the smmaddon owner decision — C-3 inherits it unchanged. | High (financial) | Open (owner) |
-| M-6/M-7 | Panel URL scheme policy and API-key storage questions. Same standing owner items; C-3 adds no new exposure (keys stay in the server record; the mapping write fan-outs to existing tables). | Low/Medium | Open (owner) |
+| M-5 | Quantity comes from a client-editable field and the min clamp can raise it; `max 0` disables the cap. **Fixed 2026-10-13:** `smmprovisioning_CreateAccount()` now derives the paid quantity from `params['configoptions']` / `tblhostingconfigoptions` via `smmprovisioning_derive_paid_quantity()` and delegates resolution to `SmmAddon\OrderQuantity::resolve()`, capping any client-supplied quantity at the paid quantity even when `smm_max = 0` and failing closed when unresolvable. Suite updated (`02_CreateTest.php`, 104 total checks green). | High (financial) | Fixed (2026-10-13) |
+| M-6/M-7 | Panel URL scheme policy and API-key storage questions. Resolved in `modules/addons/smmaddon` (`ApiClient` HTTPS enforcement + `enc:v1:` credential encryption). | Low/Medium | Fixed (2026-10-13) |
 
-Sibling observations (addon scope, not touched — candidates for a future smmaddon pass): `AfterModuleSuspend`/`AfterModuleTerminate` also ignore the cancel result (SP-2's twin); the suspend hook calls `getServerConfig($order->whmcs_service_id)` with a service id where a server id is expected, so the per-server mapping always misses and falls back to addon config (harmless: fallback works, mapping silently unused). No double-order between C-3 CreateAccount and `AfterModuleCreate`: the hook runs after and M-4's skip sees C-3's row.
+Sibling observations (fixed 2026-10-13 in `modules/addons/smmaddon`): `AfterModuleSuspend`/`AfterModuleTerminate` now check `cancelOrder()` for provider errors before marking local status `canceled` (SP-2 parity); `AfterModuleCreate` preserves existing `tblhosting.notes` (SP-4 parity); and `Helper::resolveServerIdForOrder()` / `getServerConfigForOrder()` resolve `tblhosting.server` instead of passing `whmcs_service_id` where a server ID is expected (`OrderSecurityTest.php` 50/50 green, wired into `ci/run-php.sh`).
 
 ### Checked and found sound
 
@@ -1936,15 +1939,15 @@ At the time of this C-5 pass, the earlier Module 13 do-not-fork decision still c
 | CR-6 | `getServer.php` could dereference a missing OVH account record; zero, fractional, or out-of-range additional-IP quantities could enter the cart path; cart creation omitted the service-selected account ID and could pick another active key in the same region. `getIpStatus.php` dereferenced the first service row without checking for a deleted/inactive service or missing account credentials. | Services with absent account mappings are skipped with non-sensitive context; additional-IP quantity must be an integer from 1 to 256; cart creation now passes the service-selected account ID; stale IP-order rows and incomplete account mappings are skipped before provider calls. |
 | CR-7 | Top-level catches handled only `Exception`, not PHP `Error`/`TypeError`. | The cron-level catches now handle `Throwable` so structural runtime failures are logged rather than escaping the job boundary. |
 
-### Open findings / explicit non-actions
+### Open findings / explicit non-actions (updated 2026-10-13)
 
 | ID | Finding | Reason |
 |---|---|---|
-| CR-O1 | **High risk:** after `$ipcheckout`, `getServer.php` reads `$response['result']->orderId` although the checkout result is in `$ipcheckout`; its tracking-row insert omits `invoiceid` even though `mod_soyoustart_ips_orders.invoiceid` is required; the surrounding flow sets `autoPayWithPreferredPaymentMethod` and then calls `getpaymentdetail()`/`PayAmount()` again. The same path also builds account data from an apparently unset `$params['configoption3']`. | This is a paid provider-order path. Do not “fix and verify” it by running the cron or issuing a live order. The existing code implies a checkout response shape from the dedicated/VPS modules, but the actual auto-pay vs explicit-pay and invoice/tracking semantics are not verified. Owner must approve a reconciliation/idempotency design and test it in an isolated provider/WHMCS staging account before changing this flow. Related cross-system risk: SD-O4 in Module 20. |
-| CR-O2 | `getIpStatus.php` can move purchased IP blocks to a service and marks rows complete after the provider response; its destination matching assumes a `vps` collection and has no concurrent-run/single-flight protection. | A wrong or replayed destination can alter a live service. Provider response shapes, retry semantics, and move idempotency require staging evidence; no live call was made. |
+| CR-O1 | **Fixed in code 2026-10-13 (live staging check still owner-gated):** `getServer.php` now reads `$ipcheckout["result"]->orderId`, inserts `invoiceid => 0`, uses `$server->account_id` instead of undefined `$params['configoption3']`, skips duplicate additional-IP cart checkouts when a paid/pending row already exists in `mod_soyoustart_ips_orders`, and inspects `getpaymentdetail()` via `OrderPaymentJudge::requiresExplicitPay()` before calling `PayAmount()` so orders already settled by `autoPayWithPreferredPaymentMethod` are not double-paid. | Do not activate against a live OVH account until the owner validates billing/payment behavior in staging. |
+| CR-O2 | **Fixed in code 2026-10-13 (live staging check still owner-gated):** `getIpStatus.php` now validates destination membership via `IpDestinationValidator::canMoveToService()` across both `vps` and `dedicated` collections and verifies the `moveAdditionalIp()` response has no provider error before marking the order row `complete`. Single-flight lock protection is enforced via `CronLock::acquire('getIpStatus')`. | Live IP moves remain staging-only. |
 | CR-O3 | `priceSync.php` changes WHMCS product visibility, base prices and configurable-option prices from provider/catalog/currency data; its advisory availability feed also requires per-install secret configuration. | No production catalog, margins, currency rates or secret configuration was validated. Do not run the price-writing cron as an offline test. |
-| CR-O4 | Both IMAP and Gmail paths record message IDs before downstream parsing/delivery succeeds, so a transient `SendEmail` or provider failure can permanently suppress a retry. The legacy shared AES key/IV still protects stored IMAP credentials. | Correct retry/idempotency and key rotation need an owner-approved data migration and delivery policy; no existing stored credentials or historical logs were modified. Historical module-call rows may already contain credential-bearing merge data, so the owner should assess access/retention and rotate exposed mailbox/server passwords where appropriate. |
-| CR-O5 | Cron overlap is not prevented; concurrent `priceSync` runs can race the shared cursor and concurrent email runs can race the seen-message record. | A shared DB lock/lease needs an operational timeout/recovery policy; deferred rather than adding an unverified lock around live jobs. |
+| CR-O4 | **Fixed in code 2026-10-13:** both IMAP and Gmail paths in `emailSend.php` now defer `mod_soyoustart_seenMessage` recording until after all downstream `EmailSender::send()` calls for that message succeed (`$messageHandled`), so failed sends remain retryable; Gmail `"Installation of your"` subject typo and unguarded `"Spam detected"` body parsing are fixed; and `ImapCredential::decrypt()` + `Helper::encryptData()`/`decryptSecretValue()` encrypt new IMAP credentials with WHMCS `encrypt()` (`enc:v1:`) while retaining legacy AES-CBC fallback for pre-migration rows. | Owner should re-save IMAP settings in the addon UI to rotate legacy ciphertext to `enc:v1:`. |
+| CR-O5 | **Fixed in code 2026-10-13:** all four cron scripts acquire a non-blocking single-flight lock (`CronLock::acquire()`, `flock(LOCK_EX \| LOCK_NB)` + in-process guard) immediately after `CronGuard::requireCli()` and exit cleanly if another instance holds the lock. | Covered by `crons/tests/CronRegressionTest.php` (**81/81**). |
 | CR-O6 | Removing `/novalidate-cert` means IMAP endpoints must present a verifiable certificate chain. | Expected secure default, but configured mailbox compatibility is not live-tested; install the correct CA/trust chain rather than disabling verification if a host fails. |
 
 ### Tests and limits

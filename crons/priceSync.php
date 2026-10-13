@@ -1,6 +1,10 @@
 <?php
 require_once __DIR__ . '/lib/CronRuntime.php';
 \CloudHost247\SoYouStart\Cron\CronGuard::requireCli();
+$__cronLock = \CloudHost247\SoYouStart\Cron\CronLock::acquire('priceSync');
+if ($__cronLock === null) {
+    exit(0);
+}
 
 $whmcspath = "";
 
@@ -193,6 +197,8 @@ try {
     $helper->insert_update("mod_acl_settings", ['key' => 'cronHit'], ['key' => 'cronHit', 'value' => $nextCronHit]);
 } catch (\Throwable $e) {
     logActivity('Cron Error: Price SYNC(' . $e->getMessage() . ')');
+} finally {
+    \CloudHost247\SoYouStart\Cron\CronLock::release($__cronLock);
 }
 
 logActivity('Price SYNC end');

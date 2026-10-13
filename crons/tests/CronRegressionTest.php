@@ -259,6 +259,71 @@ namespace {
         strpos($ipStatusSource, 'if (!isset($serviceMatches[0]))') !== false
             && strpos($ipStatusSource, 'if (!is_object($accountInfo) || empty($accountInfo->id) || empty($accountInfo->location))') !== false);
 
+    echo "== CR-O1..CR-O5 operational regressions ==\n";
+    // CR-O1: OrderPaymentJudge
+    cronCheck('CR-O1: splitConfigOption handles pipe-separated and plain strings',
+        \CloudHost247\SoYouStart\Cron\OrderPaymentJudge::splitConfigOption('yes|Auto-Pay', 1) === 'Auto-Pay'
+            && \CloudHost247\SoYouStart\Cron\OrderPaymentJudge::splitConfigOption('yes', 1) === 'yes'
+            && \CloudHost247\SoYouStart\Cron\OrderPaymentJudge::splitConfigOption('12345|Card', 0) === '12345');
+    cronCheck('CR-O1: isPaymentSucceeded accepts "success" and HTTP 200 array without error message',
+        \CloudHost247\SoYouStart\Cron\OrderPaymentJudge::isPaymentSucceeded('success') === true
+            && \CloudHost247\SoYouStart\Cron\OrderPaymentJudge::isPaymentSucceeded(['httpcode' => 200, 'result' => (object) ['orderId' => 99]]) === true);
+    cronCheck('CR-O1: isPaymentSucceeded rejects error strings, non-200 arrays, and error objects',
+        \CloudHost247\SoYouStart\Cron\OrderPaymentJudge::isPaymentSucceeded('Please add default payment method first.') === false
+            && \CloudHost247\SoYouStart\Cron\OrderPaymentJudge::isPaymentSucceeded('Error description: card declined') === false
+            && \CloudHost247\SoYouStart\Cron\OrderPaymentJudge::isPaymentSucceeded(['httpcode' => 400, 'result' => (object) ['message' => 'Bad request']]) === false
+            && \CloudHost247\SoYouStart\Cron\OrderPaymentJudge::isPaymentSucceeded(null) === false);
+    cronCheck('CR-O1: getServer reads configoption3 from $productDetails, disables checkout autoPay, and transitions paid IP orders to status 2',
+        strpos($serverSource, "\$params['configoption3']") === false
+            && strpos($serverSource, "'autoPayWithPreferredPaymentMethod' => false") !== false
+            && strpos($serverSource, 'OrderPaymentJudge::isPaymentSucceeded($paymentresponse)') !== false
+            && strpos($serverSource, "->update(['status' => '2'])") !== false);
+
+    // CR-O2: IpDestinationValidator
+    $destResponse = [
+        'httpcode' => 200,
+        'result' => (object) [
+            'vps' => [(object) ['serviceName' => 'vps-abc.ovh.net']],
+            'dedicatedServer' => [(object) ['serviceName' => 'ns12345.ip-1-2-3.eu']],
+        ],
+    ];
+    cronCheck('CR-O2: findEligibleService matches VPS and dedicatedServer destinations and rejects unknown targets',
+        \CloudHost247\SoYouStart\Cron\IpDestinationValidator::findEligibleService($destResponse, 'vps-abc.ovh.net') === 'vps-abc.ovh.net'
+            && \CloudHost247\SoYouStart\Cron\IpDestinationValidator::findEligibleService($destResponse, 'ns12345.ip-1-2-3.eu') === 'ns12345.ip-1-2-3.eu'
+            && \CloudHost247\SoYouStart\Cron\IpDestinationValidator::findEligibleService($destResponse, 'unlisted.ovh.net') === null);
+    cronCheck('CR-O2: getIpStatus verifies eligible destination before moveIpToService',
+        strpos($ipStatusSource, 'IpDestinationValidator::findEligibleService(') !== false
+            && strpos($ipStatusSource, 'if ($matchedDestination === null)') !== false);
+
+    // CR-O4: ImapCredential + deferred seen-message persistence + Gmail Installation fix
+    $legacyCipher = base64_encode(openssl_encrypt('secret-imap-pass', 'AES-256-CBC', 'encryptionKey1234567891234567', OPENSSL_RAW_DATA, '1234567891011121'));
+    cronCheck('CR-O4: ImapCredential decrypts legacy AES-256-CBC and plaintext values',
+        \CloudHost247\SoYouStart\Cron\ImapCredential::decrypt($legacyCipher) === 'secret-imap-pass'
+            && \CloudHost247\SoYouStart\Cron\ImapCredential::decrypt('plain-user@example.com') === 'plain-user@example.com');
+    cronCheck('CR-O4: emailSend uses ImapCredential::decrypt and removes hardcoded AES key',
+        strpos($emailSource, 'ImapCredential::decrypt(') !== false
+            && strpos($emailSource, '$key = "encryptionKey1234567891234567"') === false);
+    cronCheck('CR-O4: emailSend persists seen message IDs only after downstream delivery succeeds',
+        substr_count($emailSource, 'if (!$messageDeliveryFailed)') === 2
+            && strpos($emailSource, '$ftpServer, "new_password" => $password];' . "\n" . '                                            $sendEmailResponse = sendEmail("Ftp Backup Password change"') === false);
+
+    // CR-O5: CronLock single-flight guard
+    $tmpDir = sys_get_temp_dir();
+    $lock1 = \CloudHost247\SoYouStart\Cron\CronLock::acquire('test_job_' . getmypid(), $tmpDir);
+    $lock2 = \CloudHost247\SoYouStart\Cron\CronLock::acquire('test_job_' . getmypid(), $tmpDir);
+    cronCheck('CR-O5: CronLock acquires primary lock and rejects overlapping acquisition',
+        is_resource($lock1) && $lock2 === null);
+    \CloudHost247\SoYouStart\Cron\CronLock::release($lock1);
+    $lock3 = \CloudHost247\SoYouStart\Cron\CronLock::acquire('test_job_' . getmypid(), $tmpDir);
+    cronCheck('CR-O5: CronLock allows re-acquisition after release', is_resource($lock3));
+    \CloudHost247\SoYouStart\Cron\CronLock::release($lock3);
+    $priceSyncSource = file_get_contents(dirname(__DIR__) . '/priceSync.php');
+    cronCheck('CR-O5: all four cron entrypoints acquire and release CronLock',
+        strpos($priceSyncSource, "CronLock::acquire('priceSync')") !== false
+            && strpos($serverSource, "CronLock::acquire('getServer')") !== false
+            && strpos($ipStatusSource, "CronLock::acquire('getIpStatus')") !== false
+            && strpos($emailSource, "CronLock::acquire('emailSend')") !== false);
+
     foreach ($failures as $failure) {
         echo "  - {$failure}\n";
     }
