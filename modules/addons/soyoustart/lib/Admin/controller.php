@@ -541,7 +541,7 @@ class Controller
                             // checking webmail connection 
                             $response =  $helper->checkWebMailConn($_POST);
                             if ($response == "Connection success!") {
-                                Capsule::table('mod_soyoustart_imap')->insert(["soyouimaphost" => $whmcs->get_req_var("hostname"), "soyouimapuser" => $whmcs->get_req_var("username"), "soyouimappass" => $whmcs->get_req_var("password"), "soyouimapport" => $whmcs->get_req_var("portnumber"), "soyouimapssl" => $whmcs->get_req_var("ssltype"), "language" => $whmcs->get_req_var("language"), "account_user" => $whmcs->get_req_var("userAccount"), "status" => "Active"]);
+                                Capsule::table('mod_soyoustart_imap')->insert(["soyouimaphost" => $whmcs->get_req_var("hostname"), "soyouimapuser" => $helper->encryptData($whmcs->get_req_var("username")), "soyouimappass" => $helper->encryptData($whmcs->get_req_var("password")), "soyouimapport" => $whmcs->get_req_var("portnumber"), "soyouimapssl" => $whmcs->get_req_var("ssltype"), "language" => $whmcs->get_req_var("language"), "account_user" => $whmcs->get_req_var("userAccount"), "status" => "Active"]);
                                 $this->tplVar["message"] = "WebMail data inserted successfully!";
                             } else {
                                 $this->tplVar["warning"] = $response;
@@ -550,10 +550,10 @@ class Controller
                             $this->tplVar["warning"] = "WebMail account user already exist!";
                         }
                     } elseif ($_POST["editImap"] && isset($_POST["editImap"])) {
-                        //edit webmail  
+                        //edit webmail
                         $response =  $helper->checkWebMailConn($_POST);
                         if ($response == "Connection success!") {
-                            Capsule::table('mod_soyoustart_imap')->where('id', '=', $_GET["id"])->update(["soyouimaphost" => $_POST["hostname"], "soyouimapuser" => $_POST["username"], "soyouimappass" => $_POST["password"], "soyouimapport" => $_POST["portnumber"], "soyouimapssl" => $_POST["ssltype"], "language" => $_POST["language"], "account_user" => $_POST["userAccount"], "status" => "Active"]);
+                            Capsule::table('mod_soyoustart_imap')->where('id', '=', (int) $_GET["id"])->update(["soyouimaphost" => $_POST["hostname"], "soyouimapuser" => $helper->encryptData($_POST["username"]), "soyouimappass" => $helper->encryptData($_POST["password"]), "soyouimapport" => $_POST["portnumber"], "soyouimapssl" => $_POST["ssltype"], "language" => $_POST["language"], "account_user" => $_POST["userAccount"], "status" => "Active"]);
                             $this->tplVar["message"] = "WebMail data updated successfully!";
                         } else {
                             $this->tplVar["warning"] = $response;

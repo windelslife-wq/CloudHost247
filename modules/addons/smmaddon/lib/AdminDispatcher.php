@@ -327,7 +327,7 @@ class AdminDispatcher
             throw new Exception('Order not found.');
         }
 
-        $config = Helper::getServerConfig($order->whmcs_service_id);
+        $config = Helper::getServerConfigForOrder($order);
         $apiUrl = $config['api_url'];
         $apiKey = $config['api_key'];
         $debug  = Helper::getConfig('debug_mode') === 'on';
@@ -377,7 +377,7 @@ class AdminDispatcher
             throw new Exception('Order not found.');
         }
 
-        $config = Helper::getServerConfig($order->whmcs_service_id);
+        $config = Helper::getServerConfigForOrder($order);
         $apiUrl = $config['api_url'];
         $apiKey = $config['api_key'];
         $debug  = Helper::getConfig('debug_mode') === 'on';

@@ -90,10 +90,11 @@ namespace SmmAddon {
 }
 namespace {
     require_once __DIR__ . '/bootstrap.php';
+    require_once c3_root() . '/modules/addons/smmaddon/lib/OrderQuantity.php';
     $src = file_get_contents(dirname(__DIR__) . '/smmprovisioning.php');
     $stripped = preg_replace('/^require_once __DIR__ .*$/m', '', $src);
-    if ($stripped === null || substr_count($src, 'require_once __DIR__') !== 2) {
-        throw new \Exception('eval harness: expected 2 require lines to strip');
+    if ($stripped === null || substr_count($src, 'require_once __DIR__') !== 3) {
+        throw new \Exception('eval harness: expected 3 require lines to strip');
     }
     $stripped = preg_replace('/^<\?php/', '', $stripped, 1);
     eval($stripped);

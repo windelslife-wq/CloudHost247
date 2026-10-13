@@ -31,13 +31,16 @@ class HttpInfrastructureProvider extends AbstractInfrastructureProvider
     private $credentialsEnc;
     /** @var array|null unsealed credentials (request-scoped) */
     private $credentials;
+    /** @var callable|null test seam */
+    private $transport;
 
-    public function __construct($id, $name, array $config = [], $credentialsEnc = '')
+    public function __construct($id, $name, array $config = [], $credentialsEnc = '', callable $transport = null)
     {
         parent::__construct($config);
         $this->id = (int) $id;
         $this->name = (string) $name;
         $this->credentialsEnc = (string) $credentialsEnc;
+        $this->transport = $transport;
     }
 
     public function providerId()
@@ -290,10 +293,17 @@ class HttpInfrastructureProvider extends AbstractInfrastructureProvider
             }
         }
         $url = rtrim((string) $this->config['base_url'], '/') . '/' . ltrim($path, '/');
+        // C-5 parity: restrict outbound calls to http(s) URLs only.
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            throw ProviderFailure::permanent(
+                'PROVIDER_ERROR: infrastructure endpoint must be an http or https URL.',
+                'PROVIDER_ERROR'
+            );
+        }
 
         $body = in_array($method, ['POST', 'PUT', 'PATCH'], true) ? json_encode($params) : null;
 
-        $ch = curl_init($url);
         $headers = [
             'Accept: application/json',
             'Content-Type: application/json',
@@ -305,34 +315,56 @@ class HttpInfrastructureProvider extends AbstractInfrastructureProvider
         if ($authHeader !== '' && isset($creds[$tokenField]) && $creds[$tokenField] !== '') {
             $headers[] = $authHeader . ': ' . $authPrefix . $creds[$tokenField];
         }
-        curl_setopt_array($ch, [
-            CURLOPT_CUSTOMREQUEST  => $method,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => max(5, Settings::int('provider_http_timeout_seconds', 15)),
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_HTTPHEADER     => $headers,
-            CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_SSL_VERIFYHOST => 2,
-        ]);
-        if ($body !== null) {
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
-        }
+        $timeout = max(5, Settings::int('provider_http_timeout_seconds', 15));
 
-        $response = curl_exec($ch);
-        if ($response === false) {
-            $errno = curl_errno($ch);
-            $error = curl_error($ch);
-            curl_close($ch);
-            if (in_array($errno, [CURLE_OPERATION_TIMEDOUT, 28], true)) {
-                throw ProviderFailure::timeout($operation);
+        if ($this->transport !== null) {
+            $rawResult = call_user_func($this->transport, $method, $url, $headers, $body, $timeout);
+            $response = isset($rawResult['body']) ? $rawResult['body'] : false;
+            $status = isset($rawResult['status']) ? (int) $rawResult['status'] : 0;
+            $errno = isset($rawResult['errno']) ? (int) $rawResult['errno'] : 0;
+            $error = isset($rawResult['error']) ? (string) $rawResult['error'] : '';
+            if ($response === false || $errno !== 0) {
+                if ($errno === 28) {
+                    throw ProviderFailure::timeout($operation);
+                }
+                throw ProviderFailure::transient(
+                    'PROVIDER_UNREACHABLE: ' . $operation . ' failed (' . $error . ').',
+                    'PROVIDER_UNREACHABLE'
+                );
             }
-            throw ProviderFailure::transient(
-                'PROVIDER_UNREACHABLE: ' . $operation . ' failed (' . $error . ').',
-                'PROVIDER_UNREACHABLE'
-            );
+        } else {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_CUSTOMREQUEST   => $method,
+                CURLOPT_RETURNTRANSFER  => true,
+                CURLOPT_TIMEOUT         => $timeout,
+                CURLOPT_CONNECTTIMEOUT  => 10,
+                CURLOPT_HTTPHEADER      => $headers,
+                CURLOPT_SSL_VERIFYPEER  => true,
+                CURLOPT_SSL_VERIFYHOST  => 2,
+                CURLOPT_PROTOCOLS       => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+                CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+            ]);
+            if ($body !== null) {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+            }
+
+            $response = curl_exec($ch);
+            if ($response === false) {
+                $errno = curl_errno($ch);
+                $error = curl_error($ch);
+                curl_close($ch);
+                if (in_array($errno, [CURLE_OPERATION_TIMEDOUT, 28], true)) {
+                    throw ProviderFailure::timeout($operation);
+                }
+                throw ProviderFailure::transient(
+                    'PROVIDER_UNREACHABLE: ' . $operation . ' failed (' . $error . ').',
+                    'PROVIDER_UNREACHABLE'
+                );
+            }
+            $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            curl_close($ch);
         }
-        $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        curl_close($ch);
 
         $decoded = json_decode((string) $response, true);
         if (!is_array($decoded)) {

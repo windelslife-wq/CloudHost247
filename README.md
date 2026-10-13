@@ -41,8 +41,12 @@ rsync -av --exclude '.git' --exclude 'docs' ./ /path/to/whmcs/
 Then activate the modules you need from **Configuration → Addon Modules /
 Payment Gateways**, and assign the provisioning modules to the relevant products.
 
-See [`docs/MODULES.md`](docs/MODULES.md) for the full module inventory,
-per-module install notes and the duplicate-resolution decisions.
+See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) for the complete from-scratch
+installation guide (server stack, ionCube, per-module WHMCS Admin setup, server
+provisioning bindings, payment gateways, and troubleshooting),
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the step-by-step release and
+upgrade runbook, and [`docs/MODULES.md`](docs/MODULES.md) for the full module
+inventory and duplicate-resolution decisions.
 
 ## Notes
 

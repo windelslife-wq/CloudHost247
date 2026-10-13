@@ -22,7 +22,7 @@ class BillingGuard
     }
     public static function activeAddon($addonInstanceId)
     {
-        $row = Db::firstQuery('SELECT a.id,a.hostingid,a.addonid,a.status,a.name,h.userid,h.packageid,h.domain,h.domainstatus '
+        $row = Db::firstQuery('SELECT a.id,a.hostingid,a.addonid,a.status,a.name,h.userid,h.packageid,h.domain,h.domainstatus,h.dedicatedip,h.serverip '
             . 'FROM tblhostingaddons a JOIN tblhosting h ON h.id=a.hostingid WHERE a.id=? LIMIT 1', [(int) $addonInstanceId]);
         if (!$row || strtolower((string) $row['status']) !== 'active' || strtolower((string) $row['domainstatus']) !== 'active') throw new AuthorizationException('The paid CloudHost247 addon or its hosting service is not active.');
         return $row;

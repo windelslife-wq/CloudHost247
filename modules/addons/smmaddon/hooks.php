@@ -199,11 +199,16 @@ add_hook('AfterModuleCreate', 1, function ($vars) {
                 'updated_at'      => date('Y-m-d H:i:s'),
             ]);
 
-            // Update WHMCS service notes
+            // Append to WHMCS service notes without clobbering existing admin notes (SP-4 parity)
+            $priorNotes = Capsule::table('tblhosting')
+                ->where('id', $serviceId)
+                ->value('notes');
+            $notes = trim((string) $priorNotes);
+            $notes .= ($notes === '' ? '' : "\n") . 'SMM Order ID: ' . $result['order'];
             Capsule::table('tblhosting')
                 ->where('id', $serviceId)
                 ->update([
-                    'notes' => 'SMM Order ID: ' . $result['order'],
+                    'notes' => $notes,
                 ]);
 
             logActivity("SMM Addon: Order placed successfully. WHMCS Service {$serviceId} -> SMM Order {$result['order']}");
@@ -240,12 +245,19 @@ add_hook('AfterModuleSuspend', 1, function ($vars) {
         $serviceId = $vars['params']['serviceid'] ?? 0;
         $order = Helper::getOrderByServiceId($serviceId);
         if ($order && !empty($order->smm_order_id)) {
-            $config = Helper::getServerConfig($order->whmcs_service_id);
+            $config = Helper::getServerConfigForOrder($order);
             $apiUrl = $config['api_url'];
             $apiKey = $config['api_key'];
             $debug  = Helper::getConfig('debug_mode') === 'on';
             $client = new ApiClient($apiUrl, $apiKey, $debug);
-            $client->cancelOrder($order->smm_order_id);
+            $cancelResult = $client->cancelOrder($order->smm_order_id);
+            if (!isset($cancelResult['error'])) {
+                Helper::updateOrderStatus($order->id, 'canceled', [
+                    'api_response' => json_encode($cancelResult),
+                ]);
+            } else {
+                logActivity("SMM Addon AfterModuleSuspend: cancel rejected for order {$order->smm_order_id}: " . $cancelResult['error']);
+            }
         }
     } catch (Exception $e) {
         logActivity('SMM Addon AfterModuleSuspend Error: ' . $e->getMessage());
@@ -260,12 +272,19 @@ add_hook('AfterModuleTerminate', 1, function ($vars) {
         $serviceId = $vars['params']['serviceid'] ?? 0;
         $order = Helper::getOrderByServiceId($serviceId);
         if ($order && !empty($order->smm_order_id)) {
-            $config = Helper::getServerConfig($order->whmcs_service_id);
+            $config = Helper::getServerConfigForOrder($order);
             $apiUrl = $config['api_url'];
             $apiKey = $config['api_key'];
             $debug  = Helper::getConfig('debug_mode') === 'on';
             $client = new ApiClient($apiUrl, $apiKey, $debug);
-            $client->cancelOrder($order->smm_order_id);
+            $cancelResult = $client->cancelOrder($order->smm_order_id);
+            if (!isset($cancelResult['error'])) {
+                Helper::updateOrderStatus($order->id, 'canceled', [
+                    'api_response' => json_encode($cancelResult),
+                ]);
+            } else {
+                logActivity("SMM Addon AfterModuleTerminate: cancel rejected for order {$order->smm_order_id}: " . $cancelResult['error']);
+            }
         }
     } catch (Exception $e) {
         logActivity('SMM Addon AfterModuleTerminate Error: ' . $e->getMessage());
@@ -373,7 +392,7 @@ function smmaddon_check_orders()
                     continue;
                 }
 
-                $config = Helper::getServerConfig($order->whmcs_service_id);
+                $config = Helper::getServerConfigForOrder($order);
                 $apiUrl = $config['api_url'];
                 $apiKey = $config['api_key'];
                 $debug  = Helper::getConfig('debug_mode') === 'on';

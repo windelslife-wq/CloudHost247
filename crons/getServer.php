@@ -1,6 +1,10 @@
 <?php
 require_once __DIR__ . '/lib/CronRuntime.php';
 \CloudHost247\SoYouStart\Cron\CronGuard::requireCli();
+$__cronLock = \CloudHost247\SoYouStart\Cron\CronLock::acquire('getServer');
+if ($__cronLock === null) {
+    exit(0);
+}
     $whmcspath = "";
     if (file_exists(dirname(__FILE__) . "/config.php"))
         require_once dirname(__FILE__) . "/config.php";
@@ -115,13 +119,18 @@ require_once __DIR__ . '/lib/CronRuntime.php';
                 $noOfIps = explode(' ', trim((string) ($params['configoptions']['additional ips'] ?? '')))[0];
                 $chkexistIp = Capsule::table('mod_soyoustart_ips_orders')->where(['service_id' => $service->id, "invoiceid" => 0])->count();
                 $ovhPaymentMethod = $helper->get_data("mod_soyoustart_pricesetting", ["server" => "OVH", "servertype" => "VPS"], "first");
-                $paymentmethod = $ovhPaymentMethod->paymentmethod;
+                $paymentmethod = is_object($ovhPaymentMethod) ? ($ovhPaymentMethod->paymentmethod ?? '') : '';
                 $productDetails = $helper->get_data("tblproducts", ["id" => $service->packageid], "first");
-                $ovhSubsidiary = explode("=", $productDetails->configoption4)[1];
-                $ovhAccountData = explode('-', $params['configoption3']);
-                $configoption2 = explode('@', $productDetails->configoption2);
-                $planGroup = $configoption2["0"];
-                $planCode = $configoption2["1"];
+                if (!is_object($productDetails)) {
+                    logActivity('Cron Error: product details missing for serviceId(' . $service->id . ')');
+                    continue;
+                }
+                $ovhSubsidiaryParts = explode("=", (string) ($productDetails->configoption4 ?? ''));
+                $ovhSubsidiary = isset($ovhSubsidiaryParts[1]) ? $ovhSubsidiaryParts[1] : $ovhSubsidiaryParts[0];
+                $ovhAccountData = explode('-', (string) ($productDetails->configoption3 ?? ''));
+                $configoption2 = explode('@', (string) ($productDetails->configoption2 ?? ''));
+                $planGroup = $configoption2[0] ?? '';
+                $planCode = $configoption2[1] ?? $configoption2[0] ?? '';
                 $quantity = \CloudHost247\SoYouStart\Cron\AdditionalIpQuantity::parse($noOfIps);
                 if ($quantity !== false && !$chkexistIp) {
                     $billingData = formateBillingCycle($billingCycle);
@@ -152,19 +161,26 @@ require_once __DIR__ . '/lib/CronRuntime.php';
                         logActivity('Cron Error: Assigning cart for(' . $service->id . ') error message(' . $cartassign["result"]->message . ') ');
                         continue;
                     }
-                    $ipcheckout = $apiCall->post("/order/cart/{$cartId}/checkout", $accountId, $location, ['autoPayWithPreferredPaymentMethod' => true, 'waiveRetractationPeriod' => false], "creating order for additional IPs", true);
+                    $ipcheckout = $apiCall->post("/order/cart/{$cartId}/checkout", $accountId, $location, ['autoPayWithPreferredPaymentMethod' => false, 'waiveRetractationPeriod' => false], "creating order for additional IPs", true);
                     if ($ipcheckout["httpcode"] != 200) {
                         logActivity('Cron Error: ordering additional IPS for(' . $service->id . ') error message(' . $ipcheckout["result"]->message . ') ');
                         continue;
                     }
                     $orderId = $ipcheckout["result"]->orderId;
                     Capsule::table('mod_soyoustart_ips_orders')->insert(array('service_id' => $service->id, 'invoiceid' => 0, 'iporderid' => $orderId, 'status' => '0'));
-                    $paymentresponse = $apiCall->getpaymentdetail(["configoption3" => $productDetails->configoption3], $orderId, $paymentmethod, $service->packageid, $service->id, $ovhAccountData, $location);
-                    if (!isset($paymentresponse["result"]->message)) {
+                    $paymentConfig = [
+                        "configoption1" => \CloudHost247\SoYouStart\Cron\OrderPaymentJudge::splitConfigOption($productDetails->configoption1 ?? '', 1),
+                        "configoption3" => \CloudHost247\SoYouStart\Cron\OrderPaymentJudge::splitConfigOption($productDetails->configoption3 ?? '', 1),
+                        "configoption5" => \CloudHost247\SoYouStart\Cron\OrderPaymentJudge::splitConfigOption($productDetails->configoption5 ?? '', 1),
+                        "configoption7" => \CloudHost247\SoYouStart\Cron\OrderPaymentJudge::splitConfigOption($productDetails->configoption7 ?? '', 0),
+                    ];
+                    $paymentresponse = $apiCall->getpaymentdetail($paymentConfig, $orderId, $paymentmethod, $service->packageid, $service->id, $ovhAccountData, $location);
+                    if (\CloudHost247\SoYouStart\Cron\OrderPaymentJudge::isPaymentSucceeded($paymentresponse)) {
                         logActivity('Additional IP order #' . $orderId . ' mark paid with this service ID:' . $service->id);
-                        Capsule::table('mod_soyoustart_ips_orders')->where('service_id', $service->id)->where('status', '0')->update(['status' => '1']);
+                        Capsule::table('mod_soyoustart_ips_orders')->where('service_id', $service->id)->where('iporderid', $orderId)->where('status', '0')->update(['status' => '2']);
                     } else {
-                        logActivity('Additional IP payment(service id: ' . $service->id . ') not recieved,' . $paymentresponse["result"]->message);
+                        $errMsg = is_string($paymentresponse) ? $paymentresponse : ($paymentresponse["result"]->message ?? 'Unknown payment error');
+                        logActivity('Additional IP payment(service id: ' . $service->id . ') not recieved,' . $errMsg);
                     }
                 }
             }
@@ -172,6 +188,8 @@ require_once __DIR__ . '/lib/CronRuntime.php';
         }
     } catch (\Throwable $e) {
         logActivity('Cron Error: getting server datails after create command(' . $e->getMessage() . ')');
+    } finally {
+        \CloudHost247\SoYouStart\Cron\CronLock::release($__cronLock);
     }
     logActivity('Get Serve cron completed!');
     function formateBillingCycle($billingCycle)

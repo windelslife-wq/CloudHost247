@@ -98,5 +98,18 @@ check('server-map key encrypted on write, decrypted on read', strpos($helper, "s
 $tpl = $read('templates/admin/settings.php');
 check('settings form no longer prefills the stored key', strpos($tpl, "htmlspecialchars(\$config['api_key']") === false);
 
+echo "== Server ID resolution + lifecycle parity (SP-2 / SP-4) ==\n";
+$adminDisp = $read('lib/AdminDispatcher.php');
+check('hooks.php never passes whmcs_service_id directly to getServerConfig', strpos($hooks, 'getServerConfig($order->whmcs_service_id)') === false);
+check('AdminDispatcher.php never passes whmcs_service_id directly to getServerConfig', strpos($adminDisp, 'getServerConfig($order->whmcs_service_id)') === false);
+check('Helper defines getServerConfigForOrder and resolveServerIdForOrder', strpos($helper, 'function getServerConfigForOrder(') !== false && strpos($helper, 'function resolveServerIdForOrder(') !== false);
+check('hooks.php uses getServerConfigForOrder in suspend, terminate, and cron', substr_count($hooks, 'Helper::getServerConfigForOrder($order)') === 3);
+check('AdminDispatcher.php uses getServerConfigForOrder in refresh and cancel', substr_count($adminDisp, 'Helper::getServerConfigForOrder($order)') === 2);
+check('hooks.php AfterModuleCreate preserves existing tblhosting.notes (SP-4 parity)', strpos($hooks, "->value('notes')") !== false && strpos($hooks, '($notes === \'\' ? \'\' : "\n")') !== false);
+check('hooks.php AfterModuleSuspend/Terminate check cancelOrder result before marking canceled (SP-2 parity)', substr_count($hooks, "!isset(\$cancelResult['error'])") === 2 && substr_count($hooks, "Helper::updateOrderStatus(\$order->id, 'canceled'") === 2);
+
+$provSrc = file_get_contents(dirname($moduleDir) . '/../servers/smmprovisioning/smmprovisioning.php');
+check('smmprovisioning CreateAccount enforces OrderQuantity::resolve (M-5 parity)', strpos($provSrc, 'OrderQuantity::resolve(') !== false && strpos($provSrc, 'smmprovisioning_derive_paid_quantity(') !== false);
+
 echo "PASS={$pass} FAIL={$fail}\n";
 exit($fail === 0 ? 0 : 1);

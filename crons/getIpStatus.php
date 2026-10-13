@@ -1,6 +1,10 @@
 <?php
 require_once __DIR__ . '/lib/CronRuntime.php';
 \CloudHost247\SoYouStart\Cron\CronGuard::requireCli();
+$__cronLock = \CloudHost247\SoYouStart\Cron\CronLock::acquire('getIpStatus');
+if ($__cronLock === null) {
+    exit(0);
+}
 
 
     $whmcspath = "";
@@ -105,18 +109,20 @@ require_once __DIR__ . '/lib/CronRuntime.php';
                                     continue;
                                 }
 
-                                foreach ($destinations["result"]->vps as $destination) {
-                                    if ($destination->serviceName == $ovh_server_name) {
-                                        $ovh_server_name = $destination->serviceName;
-                                        break;
-                                    }
+                                $matchedDestination = \CloudHost247\SoYouStart\Cron\IpDestinationValidator::findEligibleService(
+                                    $destinations,
+                                    $ovh_server_name
+                                );
+                                if ($matchedDestination === null) {
+                                    logActivity('Cron Error: target service(' . $ovh_server_name . ') is not in eligible move destinations for IP(' . $domainName . ') on serviceId(' . $service->id . ')');
+                                    continue;
                                 }
 
                                 $assignResponse = $apiCall->moveIpToService(
                                     $location,
                                     $accountId,
                                     $domainName,
-                                    $ovh_server_name
+                                    $matchedDestination
                                 );
 
                                 if ($assignResponse["httpcode"] != 200) {
@@ -134,6 +140,8 @@ require_once __DIR__ . '/lib/CronRuntime.php';
         }
     } catch (\Throwable $e) {
         logActivity('Cron Error: getting server datails after create command(' . $e->getMessage() . ')');
+    } finally {
+        \CloudHost247\SoYouStart\Cron\CronLock::release($__cronLock);
     }
 
 

@@ -78,14 +78,17 @@ class DnsRecordService
                 if (strtoupper((string) ($item['type'] ?? '')) === $target['type'] && strtolower(rtrim((string) ($item['name'] ?? ''), '.')) === $target['name']) { $matching = $item; break; }
             }
             if ($matching) {
-                $local = Db::first('dns_records', ['service_id' => (int) $service['id'], 'cloudflare_record_id' => (string) ($matching['id'] ?? '')]);
+                $cfRecordId = (string) ($matching['cloudflare_record_id'] ?? $matching['id'] ?? '');
+                $local = isset($matching['ownership'])
+                    ? $matching
+                    : Db::first('dns_records', ['service_id' => (int) $service['id'], 'cloudflare_record_id' => $cfRecordId]);
                 if (!$local || $local['ownership'] !== 'SYSTEM_MANAGED') { $skipped++; continue; }
                 if ((string) ($matching['content'] ?? '') !== $target['content']) {
                     $payload = [
                         'type' => $target['type'], 'name' => $target['name'], 'content' => $target['content'],
                         'ttl' => (int) ($matching['ttl'] ?? 1), 'proxied' => array_key_exists('proxied', $matching) ? (bool) $matching['proxied'] : !empty($service['proxy_default']),
                     ];
-                    $saved = $api->updateDnsRecord($service['zone_id'], (string) $matching['id'], $payload);
+                    $saved = $api->updateDnsRecord($service['zone_id'], $cfRecordId, $payload);
                     $this->store($service, $saved, 'SYSTEM_MANAGED'); $updated++;
                 }
                 continue;

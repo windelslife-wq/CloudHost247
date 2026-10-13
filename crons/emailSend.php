@@ -1,6 +1,10 @@
 <?php
 require_once __DIR__ . '/lib/CronRuntime.php';
 \CloudHost247\SoYouStart\Cron\CronGuard::requireCli();
+$__cronLock = \CloudHost247\SoYouStart\Cron\CronLock::acquire('emailSend');
+if ($__cronLock === null) {
+    exit(0);
+}
 require_once __DIR__ . '/lib/EmailSender.php';
 require_once __DIR__ . '/lib/GoogleMailClient.php';
 $whmcspath = "";
@@ -100,27 +104,8 @@ try {
     foreach ($configuredImapData as $key => $value) {
 
         if (!empty($value->soyouimaphost)) {
-            // $userName = openssl_decrypt($value->soyouimapuser, "AES-256-CBC", "encryptionKey1234567891234567", 0, 1234567891011121);
-            // $password = openssl_decrypt($value->soyouimappass, "AES-256-CBC", "encryptionKey1234567891234567", 0, 1234567891011121);
-
-            $key = "encryptionKey1234567891234567";
-            $iv  = "1234567891011121";
-
-            $userName = openssl_decrypt(
-                $value->soyouimapuser,
-                "AES-256-CBC",
-                $key,
-                0,
-                $iv
-            );
-
-            $password = openssl_decrypt(
-                $value->soyouimappass,
-                "AES-256-CBC",
-                $key,
-                0,
-                $iv
-            );
+            $userName = \CloudHost247\SoYouStart\Cron\ImapCredential::decrypt($value->soyouimapuser ?? '');
+            $password = \CloudHost247\SoYouStart\Cron\ImapCredential::decrypt($value->soyouimappass ?? '');
             $hostname = $value->soyouimaphost;
             $port = $value->soyouimapport;
             $layer = $value->soyouimapssl;
@@ -206,7 +191,7 @@ try {
                         $body = trim($body);
 
         
-                        /* inserting the email id if Email seen*/
+                        /* checking if Email already seen (persisted only after downstream processing succeeds - CR-O4) */
                         $messageId = isset($header->message_id) ? trim((string) $header->message_id) : "";
                         if ($messageId === "") {
                             logActivity("Email send cron skipped an IMAP message without a Message-ID.");
@@ -218,9 +203,7 @@ try {
                         if (in_array($messageId, $seenIds, true)) {
                             continue;
                         }
-                        $seenIds[] = $messageId;
-                        $helper->insert_update("mod_soyoustart_seenMessage", ["id" => 1], ["value" => json_encode($seenIds)]);
-                        /* end of inserting the email id if Email seen*/
+                        $messageDeliveryFailed = false;
                         foreach ($allServices as $service) {
                             // if ((str_contains($header->subject, $service->ovh_server_name) || str_contains($body, $service->ovh_server_name))) {
                             if (!empty($service->ovh_server_name) && (stripos($header->subject, $service->ovh_server_name) !== false || stripos($body, $service->ovh_server_name) !== false)) {
@@ -232,6 +215,9 @@ try {
                                     $password = seachData($body, "Password:");
                                     $postData = ["ftp_server_name" => $ftpServer, "new_password" => $password];
                                     $sendEmailResponse = sendEmail("Ftp Backup Password change", $service->clientid, base64_encode(serialize($postData)));
+                                    if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                        $messageDeliveryFailed = true;
+                                    }
                                     $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Ftp Backup Password change"];
                                     insertLog("mod_soyoustart_email_log", $data);
                                 } elseif (str_contains($header->subject, "Additional IP addresses")) {
@@ -239,6 +225,9 @@ try {
                                         $ipAddress = seachData($body, "additional IPs:", true);
                                         $postData = ["ipaddress" => $ipAddress];
                                         $sendEmailResponse = sendEmail("Additional IP addresses", $service->clientid, base64_encode(serialize($postData)));
+                                        if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                            $messageDeliveryFailed = true;
+                                        }
                                         $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Additional IP addresses"];
                                         insertLog("mod_soyoustart_email_log", $data);
                                     }
@@ -250,6 +239,9 @@ try {
                                         $additionalInfo = nl2br(htmlspecialchars($additionalInfo, ENT_QUOTES));
                                         $postData = ["detail" => $additionalInfo];
                                         $sendEmailResponse = sendEmail("Anti-hack", $service->clientid, base64_encode(serialize($postData)));
+                                        if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                            $messageDeliveryFailed = true;
+                                        }
                                         $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Anti-hack"];
                                         insertLog("mod_soyoustart_email_log", $data);
                                     }
@@ -258,50 +250,14 @@ try {
                                         $ipAddress = seachData($body, "IP address");
                                         $postData = ["ipaddress" => $ipAddress];
                                         $sendEmailResponse = sendEmail("Detection of an attack on IP", $service->clientid, base64_encode(serialize($postData)));
+                                        if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                            $messageDeliveryFailed = true;
+                                        }
                                         $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Detection of an attack on IP"];
                                         insertLog("mod_soyoustart_email_log", $data);
                                     }
-                                }
-                                // } elseif (str_contains($header->subject, "Installation of your") || str_contains($header->subject, "Install of your VPS")) {
-                                //     if (!isset($aclSettings["Installationofyouserver"]) || $aclSettings["Installationofyouserver"] == "") {
-                                //         // $ipAddress = seachData($body, "IP address: ") == '' ? seachData($body, "IPv4 address: ") : "";   
-                                //         // $userName = seachData($body, "user: ") == '' ? seachData($body, "Username: ") : "";
-                                //         $ipAddress = seachData($body, "IP address: ");
-
-                                //         if (empty($ipAddress)) {
-                                //             $ipAddress = seachData($body, "IPv4 address: ");
-                                //         }
-
-                                //         $userName = seachData($body, "user: ");
-
-                                //         if (empty($userName)) {
-                                //             $userName = seachData($body, "Username: ");
-                                //         }
-                                //         $password = seachData($body, "password: ");
-                                //         if (!$password) {
-                                //             $parts = explode("Your password must be generated using this link:", $body);
-                                //             if (count($parts) > 1) {
-                                //                 $afterPhrase = trim($parts[1]);
-                                //                 $words = explode(" ", $afterPhrase);
-                                //                 foreach ($words as $word) {
-                                //                     if (strpos($word, "https://") === 0) {
-                                //                         $password = "Your password must be generated using this link: $word This link is valid for 30 days following receipt of this email. Once the link is opened, the validity period will be reduced to 7 days.";
-                                //                         break;
-                                //                     }
-                                //                 }
-                                //             }
-                                //         }
-                                //         $postData = ["server_ipaddress" => $ipAddress, "server_username" => $userName, "server_password" => $password];
-                                //         $sendEmailResponse = sendEmail("Server Details", $service->clientid, base64_encode(serialize($postData)));
-                                //         $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Ftp Backup Password change"];
-                                //         insertLog("mod_soyoustart_email_log", $data);
-                                //     }
-                                // } 
-
-                                elseif (str_contains($header->subject, "Installation of your") || str_contains($header->subject, "Install of your VPS")) {
+                                } elseif (str_contains($header->subject, "Installation of your") || str_contains($header->subject, "Install of your VPS")) {
                                     if (!isset($aclSettings["Installationofyouserver"]) || $aclSettings["Installationofyouserver"] == "") {
-                                        // $ipAddress = seachData($body, "IP address: ") == '' ? seachData($body, "IPv4 address: ") : "";   
-                                        // $userName = seachData($body, "user: ") == '' ? seachData($body, "Username: ") : "";
                                         $ipAddress = seachData($body, "IP address: ");
 
                                         if (empty($ipAddress)) {
@@ -329,7 +285,10 @@ try {
                                         }
                                         $postData = ["server_ipaddress" => $ipAddress, "server_username" => $userName, "server_password" => $password];
                                         $sendEmailResponse = sendEmail("Server Details", $service->clientid, base64_encode(serialize($postData)));
-                                        $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Ftp Backup Password change"];
+                                        if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                            $messageDeliveryFailed = true;
+                                        }
+                                        $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Server Details"];
                                         insertLog("mod_soyoustart_email_log", $data);
                                     }
                                 } elseif (str_contains($header->subject, "End of attack")) {
@@ -337,6 +296,9 @@ try {
                                         $ipAddress = seachData($body, "IP address");
                                         $postData = base64_encode(serialize(array("ipaddress" => $ipAddress)));
                                         $sendEmailResponse = sendEmail("End of Attack", $service->clientid, $postData);
+                                        if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                            $messageDeliveryFailed = true;
+                                        }
                                         $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "End of attack"];
                                         insertLog("mod_soyoustart_email_log", $data);
                                     }
@@ -346,13 +308,17 @@ try {
                                         $password = seachData($body, "Password:");
                                         $postData = base64_encode(serialize(array("username" => $userName, "password" => $password)));
                                         $sendEmailResponse = sendEmail("BSD10 Rescue mode", $service->clientid, $postData);
+                                        if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                            $messageDeliveryFailed = true;
+                                        }
                                         $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "BSD10 Rescue mode"];
                                         insertLog("mod_soyoustart_email_log", $data);
                                     }
                                 } elseif (str_contains($header->subject, "Spam detected")) {
                                     if (!isset($aclSettings["SpamdetectedfromyourIPaddress"]) || $aclSettings["SpamdetectedfromyourIPaddress"] == "") {
                                         $ipAddress = seachData($body, "IP address: ");
-                                        $detectedDetail = trim(explode("If you identified and fixed the spam issue", explode("some advanced details on your emails:", $body)[1])[0]);
+                                        $spamParts = explode("some advanced details on your emails:", $body, 2);
+                                        $detectedDetail = isset($spamParts[1]) ? trim(explode("If you identified and fixed the spam issue", $spamParts[1])[0]) : '';
                                         $otherDetailsLines = explode(PHP_EOL, $detectedDetail);
                                         $otherDetailsText = '';
                                         foreach ($otherDetailsLines as $key => $otherDetailsLine) {
@@ -362,6 +328,9 @@ try {
                                         }
                                         $postData = base64_encode(serialize(array("ipaddress" => $ipAddress, "detected_detail" => $otherDetailsText)));
                                         $sendEmailResponse = sendEmail("Spam Detected", $service->clientid, $postData);
+                                        if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                            $messageDeliveryFailed = true;
+                                        }
                                         $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Spam Detected"];
                                         insertLog("mod_soyoustart_email_log", $data);
                                     }
@@ -374,6 +343,7 @@ try {
                                         }
                                         $serverInfo = $apiCall->get("/dedicated/server/{$serverName}", $accountId, $location, "getting server details", true);
                                         if ($serverInfo["httpcode"] != 200) {
+                                            $messageDeliveryFailed = true;
                                             logActivity("Email send cron: OVH server lookup failed for IMAP message " . (int) $msg . " (service ID " . (int) $service->id . ", HTTP " . (int) ($serverInfo["httpcode"] ?? 0) . ").");
                                             continue;
                                         }
@@ -381,6 +351,9 @@ try {
                                         $osName = ucfirst(str_replace("_", " ", $osName));
                                         $postData = base64_encode(serialize(array("custom_server_name" => $ovhCustomHostname, "operating_system" => $osName)));
                                         $sendEmailResponse = sendEmail("Hardware Reboot", $service->clientid, $postData);
+                                        if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                            $messageDeliveryFailed = true;
+                                        }
                                         $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Hardware reboot"];
                                         insertLog("mod_soyoustart_email_log", $data);
                                     }
@@ -390,10 +363,17 @@ try {
                                     $password = rtrim(seachData($body, "Password:"), ".");
                                     $postData = base64_encode(serialize(array("ipaddress" => $ipAddress, "username" => $userName, "password" => $password)));
                                     $sendEmailResponse = sendEmail("Rescue-Pro Mode", $service->clientid, $postData);
+                                    if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                        $messageDeliveryFailed = true;
+                                    }
                                     $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Rescue-Pro Mode"];
                                     insertLog("mod_soyoustart_email_log", $data);
                                 }
                             }
+                        }
+                        if (!$messageDeliveryFailed) {
+                            $seenIds[] = $messageId;
+                            $helper->insert_update("mod_soyoustart_seenMessage", ["id" => 1], ["value" => json_encode($seenIds)]);
                         }
                     }
                 }
@@ -443,7 +423,7 @@ try {
                         continue;
                     }
 
-                    /* inserting the email id if Email seen*/
+                    /* checking if Email already seen (persisted only after fetch + downstream delivery succeed - CR-O4) */
                     $isSeen = $helper->get_data("mod_soyoustart_seenMessage", ["id" => 1], "first");
 
                     $seenIds = isset($isSeen->id) ? json_decode($isSeen->value, true) : [];
@@ -451,11 +431,8 @@ try {
                     if (in_array((string) $message->id, $seenIds, true)) {
                         continue;
                     }
-                    $seenIds[] = (string) $message->id;
-                    $helper->insert_update("mod_soyoustart_seenMessage", ["id" => 1], ["value" => json_encode($seenIds)]);
-                    /* end of inserting the email id if Email seen*/
 
-                    /* getting email contant of message id */
+                    /* getting email content of message id */
                     $apiUrl = "https://gmail.googleapis.com/gmail/v1/users/me/messages/{$message->id}?fields=payload";
                     $emailContent = gmailApiCall("GET", $apiUrl, $accessToken, "getting email content");
                     if ($emailContent["httpcode"] != 200) {
@@ -464,6 +441,7 @@ try {
                         continue;
                     }
 
+                    $messageDeliveryFailed = false;
                     foreach ($emailContent["result"]->payload->headers as $header) {
                         if ($header->name == "Subject") {
                             foreach ($allServices as $service) {
@@ -480,15 +458,31 @@ try {
                                         $password = seachData($decodedMessage, "Password:");
                                         $postData = ["ftp_server_name" => $ftpServer, "new_password" => $password];
                                         $sendEmailResponse = sendEmail("Ftp Backup Password change", $service->clientid, base64_encode(serialize($postData)));
+                                        if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                            $messageDeliveryFailed = true;
+                                        }
                                         $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Ftp Backup Password change"];
                                         insertLog("mod_soyoustart_email_log", $data);
-                                    } elseif (str_contains($header->value, "Installation of your")) {
+                                    } elseif (str_contains($header->value, "Installation of your") || str_contains($header->value, "Install of your VPS")) {
                                         if (!isset($aclSettings["Installationofyouserver"]) || $aclSettings["Installationofyouserver"] == "") {
                                             $ipAddress = seachData($decodedMessage, "IP address: ");
+                                            if (empty($ipAddress)) {
+                                                $ipAddress = seachData($decodedMessage, "IPv4 address: ");
+                                            }
+                                            $userName = seachData($decodedMessage, "user: ");
+                                            if (empty($userName)) {
+                                                $userName = seachData($decodedMessage, "Username: ");
+                                            }
                                             $password = seachData($decodedMessage, "Password:");
-                                            $postData = ["ftp_server_name" => $ftpServer, "new_password" => $password];
-                                            $sendEmailResponse = sendEmail("Ftp Backup Password change", $service->clientid, base64_encode(serialize($postData)));
-                                            $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Ftp Backup Password change"];
+                                            if (!$password) {
+                                                $password = seachData($decodedMessage, "password: ");
+                                            }
+                                            $postData = ["server_ipaddress" => $ipAddress, "server_username" => $userName, "server_password" => $password];
+                                            $sendEmailResponse = sendEmail("Server Details", $service->clientid, base64_encode(serialize($postData)));
+                                            if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                                $messageDeliveryFailed = true;
+                                            }
+                                            $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Server Details"];
                                             insertLog("mod_soyoustart_email_log", $data);
                                         }
                                     } elseif (str_contains($header->value, "End of attack")) {
@@ -496,6 +490,9 @@ try {
                                             $ipAddress = seachData($decodedMessage, "IP address: ");
                                             $postData = base64_encode(serialize(array("ipaddress" => $ipAddress)));
                                             $sendEmailResponse = sendEmail("End of Attack", $service->clientid, $postData);
+                                            if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                                $messageDeliveryFailed = true;
+                                            }
                                             $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "End of Attack"];
                                             insertLog("mod_soyoustart_email_log", $data);
                                         }
@@ -505,6 +502,9 @@ try {
                                             $password = seachData($decodedMessage, "Password:");
                                             $postData = base64_encode(serialize(array("username" => $userName, "password" => $password)));
                                             $sendEmailResponse = sendEmail("BSD10 Rescue mode", $service->clientid, $postData);
+                                            if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                                $messageDeliveryFailed = true;
+                                            }
                                             $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "BSD10 Rescue mode"];
                                             insertLog("mod_soyoustart_email_log", $data);
                                         }
@@ -513,13 +513,17 @@ try {
                                             $ipAddress = seachData($decodedMessage, "IP address: ");
                                             $postData = base64_encode(serialize(array("ipaddress" => $ipAddress)));
                                             $sendEmailResponse = sendEmail("Detection of an attack", $service->clientid, $postData);
+                                            if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                                $messageDeliveryFailed = true;
+                                            }
                                             $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Detection of an attack"];
                                             insertLog("mod_soyoustart_email_log", $data);
                                         }
                                     } elseif (str_contains($header->value, "Spam detected")) {
                                         if (!isset($aclSettings["SpamdetectedfromyourIPaddress"]) || $aclSettings["SpamdetectedfromyourIPaddress"] == "") {
                                             $ipAddress = seachData($decodedMessage, "IP address: ");
-                                            $detectedDetail = trim(explode("If you identified and fixed the spam issue", explode("some advanced details on your emails:", $decodedMessage)[1])[0]);
+                                            $spamParts = explode("some advanced details on your emails:", $decodedMessage, 2);
+                                            $detectedDetail = isset($spamParts[1]) ? trim(explode("If you identified and fixed the spam issue", $spamParts[1])[0]) : '';
                                             $otherDetailsLines = explode(PHP_EOL, $detectedDetail);
                                             $otherDetailsText = '';
                                             foreach ($otherDetailsLines as $key => $otherDetailsLine) {
@@ -529,6 +533,9 @@ try {
                                             }
                                             $postData = base64_encode(serialize(array("ipaddress" => $ipAddress, "detected_detail" => $otherDetailsText)));
                                             $sendEmailResponse = sendEmail("Spam Detected", $service->clientid, $postData);
+                                            if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                                $messageDeliveryFailed = true;
+                                            }
                                             $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Spam detected"];
                                             insertLog("mod_soyoustart_email_log", $data);
                                         }
@@ -537,6 +544,9 @@ try {
                                             $ipAddress = seachData($decodedMessage, "additional IPs:", true);
                                             $postData = ["ipaddress" => $ipAddress];
                                             $sendEmailResponse = sendEmail("Additional IP addresses", $service->clientid, base64_encode(serialize($postData)));
+                                            if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                                $messageDeliveryFailed = true;
+                                            }
                                             $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Additional IP addresses"];
                                             insertLog("mod_soyoustart_email_log", $data);
                                         }
@@ -548,6 +558,9 @@ try {
                                             $additionalInfo = nl2br(htmlspecialchars($additionalInfo, ENT_QUOTES));
                                             $postData = ["detail" => $additionalInfo];
                                             $sendEmailResponse = sendEmail("Anti-hack", $service->clientid, base64_encode(serialize($postData)));
+                                            if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                                $messageDeliveryFailed = true;
+                                            }
                                             $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Anti-hack"];
                                             insertLog("mod_soyoustart_email_log", $data);
                                         }
@@ -560,6 +573,7 @@ try {
                                             }
                                             $serverInfo = $apiCall->get("/dedicated/server/{$serverName}", $accountId, $location, "getting server details", true);
                                             if ($serverInfo["httpcode"] != 200) {
+                                                $messageDeliveryFailed = true;
                                                 logActivity("Email send cron: OVH server lookup failed for Gmail message (service ID " . (int) $service->id . ", HTTP " . (int) ($serverInfo["httpcode"] ?? 0) . ").");
                                                 continue;
                                             }
@@ -567,6 +581,9 @@ try {
                                             $osName = ucfirst(str_replace("_", " ", $osName));
                                             $postData = base64_encode(serialize(array("custom_server_name" => $ovhCustomHostname, "operating_system" => $osName)));
                                             $sendEmailResponse = sendEmail("Hardware Reboot", $service->clientid, $postData);
+                                            if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                                $messageDeliveryFailed = true;
+                                            }
                                             $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Hardware reboot"];
                                             insertLog("mod_soyoustart_email_log", $data);
                                         }
@@ -576,6 +593,9 @@ try {
                                         $password = rtrim(seachData($decodedMessage, "Password:"), ".");
                                         $postData = base64_encode(serialize(array("ipaddress" => $ipAddress, "username" => $userName, "password" => $password)));
                                         $sendEmailResponse = sendEmail("Rescue-Pro Mode", $service->clientid, $postData);
+                                        if (is_array($sendEmailResponse) && ($sendEmailResponse["result"] ?? "") === "error") {
+                                            $messageDeliveryFailed = true;
+                                        }
                                         $data = ["datetime" => date("Y/m/d h:i"), "account_user" => $service->ovh_account . "(" . $service->ovh_server_location . ")", "email" => $service->email, "language" => "English", "email_subject" => "Rescue-Pro Mode"];
                                         insertLog("mod_soyoustart_email_log", $data);
                                     }
@@ -583,12 +603,18 @@ try {
                             }
                         }
                     }
+                    if (!$messageDeliveryFailed) {
+                        $seenIds[] = (string) $message->id;
+                        $helper->insert_update("mod_soyoustart_seenMessage", ["id" => 1], ["value" => json_encode($seenIds)]);
+                    }
                 }
             }
         }
     }
 } catch (\Throwable $e) {
     logActivity('Cron Error: Email send(' . $e->getMessage() . ')');
+} finally {
+    \CloudHost247\SoYouStart\Cron\CronLock::release($__cronLock);
 }
 logActivity('Email send cron completed');
 function gmailApiCall($method, $apiUrl, $accessToken, $action, $data = [])

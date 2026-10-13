@@ -287,6 +287,17 @@ namespace {
     soyouCheck('VPS config-cart calls no longer discard the account id',
         strpos($vpsSource, "'/configuration', '', \$postData") === false);
 
+    $helperSource = file_get_contents(dirname(__DIR__) . '/lib/Helper.php');
+    $controllerSource = file_get_contents(dirname(__DIR__) . '/lib/Admin/controller.php');
+    soyouCheck('Helper encryptData supports WHMCS encrypt() with enc:v1: prefix and dual-read decryptSecretValue',
+        strpos($helperSource, "return 'enc:v1:' . base64_encode((string) encrypt(\$data));") !== false
+            && strpos($helperSource, 'function decryptSecretValue($stored)') !== false);
+    soyouCheck('Admin controller encrypts webmail credentials on both AJAX and non-AJAX submit/edit paths',
+        strpos($controllerSource, '"soyouimapuser" => $whmcs->get_req_var("username")') === false
+            && strpos($controllerSource, '"soyouimappass" => $_POST["password"]') === false
+            && strpos($controllerSource, '$helper->encryptData($whmcs->get_req_var("password"))') !== false
+            && strpos($controllerSource, '$helper->encryptData($_POST["password"])') !== false);
+
     foreach ($failures as $failure) {
         echo "  - {$failure}\n";
     }
