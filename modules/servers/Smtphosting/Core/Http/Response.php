@@ -225,9 +225,17 @@ class Response extends SymfonyRespose
 
     public function returnClientAddon($vars, $path, $fileName)
     {
+        $pageTitle = 'Reseller Area';
+        if ($this->lang && method_exists($this->lang, 'absoluteT')) {
+            $translated = $this->lang->absoluteT('AddonCA', 'pagetitle', 'Reseller Area');
+            if (!empty($translated)) {
+                $pageTitle = $translated;
+            }
+        }
+
         return [
             'vars'         => $vars,
-            //'pagetitle' => $this->lang->absoluteT("AddonCA","pagetitle","Reseller Area"), TODO!!!
+            'pagetitle'    => $pageTitle,
             'templatefile' => str_replace(\ModulesGarden\ProductsReseller\Server\Smtphosting\Core\ModuleConstants::getTemplateDir() . DIRECTORY_SEPARATOR,
                 '', $path . DIRECTORY_SEPARATOR . $fileName),
             'requirelogin' => true,

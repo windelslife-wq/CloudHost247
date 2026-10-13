@@ -3,6 +3,7 @@
 namespace ModulesGarden\ProductsReseller\Server\Smtphosting\Core\Http\View;
 
 use ModulesGarden\ProductsReseller\Server\Smtphosting\Core\ServiceLocator;
+use ModulesGarden\ProductsReseller\Server\Smtphosting\Core\DependencyInjection\DependencyInjection;
 use ModulesGarden\ProductsReseller\Server\Smtphosting\Core\ModuleConstants;
 use function ModulesGarden\ProductsReseller\Server\Smtphosting\Core\Helper\isAdmin;
 
@@ -124,7 +125,7 @@ class Smarty
             $errorManager->addError(self::class, 'Unable to find Template: ' . $file, ['file' => $file]);
             return (string)$errorManager;
         }
-        if (isset($vars['isError']) && $vars['isError'] === false || !isset($vars['isError']) || ServiceLocator::$isDebug === false)
+        if (isset($vars['isError']) && $vars['isError'] === false || !isset($vars['isError']) || DependencyInjection::$isDebug === false)
         {
             return $this->smarty->fetch($template . '.tpl', uniqid());
         }

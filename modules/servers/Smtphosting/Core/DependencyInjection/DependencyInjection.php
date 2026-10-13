@@ -9,6 +9,13 @@ namespace ModulesGarden\ProductsReseller\Server\Smtphosting\Core\DependencyInjec
 class DependencyInjection
 {
     /**
+     * Global debug flag for the module.
+     * When enabled, error pages and log output include additional diagnostic detail.
+     *
+     * @var bool
+     */
+    public static $isDebug = false;
+    /**
      * @param null $className
      * @param null $methodName
      * @param bool $canClone

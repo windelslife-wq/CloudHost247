@@ -6,14 +6,15 @@ use ModulesGarden\ProductsReseller\Server\Smtphosting\Core\DependencyInjection\D
 
 /**
  * Class ServiceLocator
+ *
  * @package ModulesGarden\ProductsReseller\Server\Smtphosting\Core
- * @TODO remove that class //MM
+ *
+ * @deprecated Use {@see DependencyInjection} directly. This class is retained
+ *             only as a backward-compatible alias so that the many existing
+ *             ServiceLocator::call() / ServiceLocator::create() / ServiceLocator::get()
+ *             call-sites across the module continue to resolve.
+ *             The $isDebug flag has been moved to {@see DependencyInjection::$isDebug}.
  */
 class ServiceLocator extends DependencyInjection
 {
-    /**
-     * @var bool
-     * @TODO - move it to different class //MM
-     */
-    public static $isDebug = false;
 }
