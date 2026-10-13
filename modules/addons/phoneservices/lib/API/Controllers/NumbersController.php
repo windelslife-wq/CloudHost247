@@ -67,15 +67,21 @@ class NumbersController extends BaseController
     
     /**
      * POST /api/numbers/:id/renew
+     *
+     * Mutating operations require a client-scoped identity (P-5); unscoped
+     * requests can no longer act on any customer's number.
      */
     public function renew(array $params = []): array
     {
         $id = (int) ($params['id'] ?? 0);
         $userId = $this->getUserId();
+        if ($userId <= 0) {
+            return ['success' => false, 'error' => 'Client authentication required', 'code' => 403];
+        }
         
         $number = $this->service->getNumber($id);
-        if (!$number || ($userId > 0 && $number['user_id'] != $userId)) {
-            return ['success' => false, 'error' => 'Number not found'];
+        if (!$number || $number['user_id'] != $userId) {
+            return ['success' => false, 'error' => 'Number not found', 'code' => 404];
         }
         
         $result = $this->service->renewNumber($id, (int) ($_POST['months'] ?? 1));
@@ -89,10 +95,13 @@ class NumbersController extends BaseController
     {
         $id = (int) ($params['id'] ?? 0);
         $userId = $this->getUserId();
+        if ($userId <= 0) {
+            return ['success' => false, 'error' => 'Client authentication required', 'code' => 403];
+        }
         
         $number = $this->service->getNumber($id);
-        if (!$number || ($userId > 0 && $number['user_id'] != $userId)) {
-            return ['success' => false, 'error' => 'Number not found'];
+        if (!$number || $number['user_id'] != $userId) {
+            return ['success' => false, 'error' => 'Number not found', 'code' => 404];
         }
         
         $this->service->suspendNumber($id, $_POST['reason'] ?? '');
@@ -106,10 +115,13 @@ class NumbersController extends BaseController
     {
         $id = (int) ($params['id'] ?? 0);
         $userId = $this->getUserId();
+        if ($userId <= 0) {
+            return ['success' => false, 'error' => 'Client authentication required', 'code' => 403];
+        }
         
         $number = $this->service->getNumber($id);
-        if (!$number || ($userId > 0 && $number['user_id'] != $userId)) {
-            return ['success' => false, 'error' => 'Number not found'];
+        if (!$number || $number['user_id'] != $userId) {
+            return ['success' => false, 'error' => 'Number not found', 'code' => 404];
         }
         
         $this->service->releaseNumber($id);

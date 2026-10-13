@@ -157,8 +157,8 @@ require_once __DIR__ . '/lib/CronRuntime.php';
                         logActivity('Cron Error: ordering additional IPS for(' . $service->id . ') error message(' . $ipcheckout["result"]->message . ') ');
                         continue;
                     }
-                    $orderId = $response["result"]->orderId;
-                    Capsule::table('mod_soyoustart_ips_orders')->insert(array('service_id' => $service->id, 'iporderid' => $orderId, 'status' => '0'));
+                    $orderId = $ipcheckout["result"]->orderId;
+                    Capsule::table('mod_soyoustart_ips_orders')->insert(array('service_id' => $service->id, 'invoiceid' => 0, 'iporderid' => $orderId, 'status' => '0'));
                     $paymentresponse = $apiCall->getpaymentdetail(["configoption3" => $productDetails->configoption3], $orderId, $paymentmethod, $service->packageid, $service->id, $ovhAccountData, $location);
                     if (!isset($paymentresponse["result"]->message)) {
                         logActivity('Additional IP order #' . $orderId . ' mark paid with this service ID:' . $service->id);

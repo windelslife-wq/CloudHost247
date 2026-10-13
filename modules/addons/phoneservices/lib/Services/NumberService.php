@@ -290,14 +290,14 @@ class NumberService
      */
     public function getRenewalDueNumbers(int $days = 7): array
     {
-        $sql = "SELECT * FROM mod_phoneservices_numbers 
-                WHERE status = 'active' 
-                AND next_renewal <= DATE_ADD(NOW(), INTERVAL " . (int)$days . " DAY)";
-        $result = full_query($sql);
-        $numbers = [];
-        while ($row = mysql_fetch_assoc($result)) {
-            $numbers[] = $row;
-        }
-        return $numbers;
+        $cutoff = date('Y-m-d H:i:s', strtotime('+' . $days . ' days'));
+        return \WHMCS\Database\Capsule::table('mod_phoneservices_numbers')
+            ->where('status', 'active')
+            ->where('next_renewal', '<=', $cutoff)
+            ->get()
+            ->map(function ($row) {
+                return (array) $row;
+            })
+            ->all();
     }
 }

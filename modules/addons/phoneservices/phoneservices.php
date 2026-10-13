@@ -216,6 +216,9 @@ function phoneservices_output($vars)
         case 'api_config':
             $module->renderApiConfig($vars);
             break;
+        case 'api_keys':
+            $module->renderApiKeys($vars);
+            break;
         case 'pricing':
             $module->renderPricing($vars);
             break;
@@ -260,6 +263,7 @@ function phoneservices_sidebar($vars)
     <ul class="menu">
         <li><a href="' . $vars['modulelink'] . '&action=dashboard"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
         <li><a href="' . $vars['modulelink'] . '&action=api_config"><i class="fas fa-cogs"></i> API Configuration</a></li>
+        <li><a href="' . $vars['modulelink'] . '&action=api_keys"><i class="fas fa-key"></i> Client API Keys</a></li>
         <li><a href="' . $vars['modulelink'] . '&action=pricing"><i class="fas fa-dollar-sign"></i> Pricing Control</a></li>
         <li class="divider"></li>
         <li><a href="' . $vars['modulelink'] . '&action=numbers"><i class="fas fa-phone"></i> Numbers</a></li>

@@ -40,7 +40,10 @@ class Module
                 }
             }
         }
-        
+
+        // Per-client API keys table (P-5)
+        ApiKeyStore::ensureTable();
+
         // Insert default settings
         $this->insertDefaultSettings();
     }
@@ -76,6 +79,10 @@ class Module
                 }
             }
         }
+
+        // Per-client API keys table (P-5) — idempotent, also covers fresh
+        // upgrades that run before the migration set above.
+        ApiKeyStore::ensureTable();
     }
     
     /**
@@ -94,9 +101,11 @@ class Module
         ];
         
         foreach ($defaults as $setting) {
-            $exists = select_query('mod_phoneservices_settings', 'id', ['setting_name' => $setting['setting_name']]);
-            if (!mysql_num_rows($exists)) {
-                insert_query('mod_phoneservices_settings', $setting);
+            $exists = \WHMCS\Database\Capsule::table('mod_phoneservices_settings')
+                ->where('setting_name', $setting['setting_name'])
+                ->exists();
+            if (!$exists) {
+                \WHMCS\Database\Capsule::table('mod_phoneservices_settings')->insert($setting);
             }
         }
     }
@@ -135,24 +144,119 @@ class Module
     {
         $allowedFields = [
             'api_mode', 'default_provider', 'twilio_account_sid', 'twilio_auth_token',
-            'vonage_api_key', 'vonage_api_secret', 'airalo_api_token',
+            'vonage_api_key', 'vonage_api_secret', 'vonage_signature_secret',
+            'airalo_api_token',
             'truphone_api_key', 'sendgrid_api_key', 'whatsapp_business_token'
         ];
-        
+
+        $config = new Config();
         foreach ($allowedFields as $field) {
+            // Password fields: a blank submission keeps the stored credential
+            // (the admin UI does not echo secrets back, so blank == unchanged).
+            if ($config->isSensitiveKey($field)) {
+                if (isset($post[$field]) && $post[$field] !== '') {
+                    $config->set($field, $post[$field]);
+                }
+                continue;
+            }
             if (isset($post[$field])) {
-                update_query('tbladdonmodules', ['value' => $post[$field]], ['module' => 'phoneservices', 'setting' => $field]);
+                $config->set($field, $post[$field]);
             }
         }
-        
+
         // Update feature toggles
         $toggles = ['enable_numbers', 'enable_voip', 'enable_sms', 'enable_esim'];
         foreach ($toggles as $toggle) {
-            $value = isset($post[$toggle]) ? '1' : '0';
-            update_query('mod_phoneservices_settings', ['setting_value' => $value], ['setting_name' => $toggle]);
+            $config->set($toggle, isset($post[$toggle]) ? '1' : '0');
         }
-        
+
         header('Location: ' . $vars['modulelink'] . '&action=api_config&success=1');
+        exit;
+    }
+
+    /**
+     * Admin UI: manage per-client API keys (finding P-5). The shared
+     * all-tenant key is retired; keys are issued per client and scope every
+     * REST request to that client.
+     */
+    public function renderApiKeys($vars)
+    {
+        ApiKeyStore::ensureTable();
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $this->handleApiKeyPost($vars, $_POST);
+        }
+
+        $clientid = (int) ($_GET['clientid'] ?? 0);
+        $keys = $clientid > 0 ? ApiKeyStore::listFor($clientid) : [];
+
+        $clients = \WHMCS\Database\Capsule::table('tblclients')
+            ->select('id', 'firstname', 'lastname', 'email')
+            ->orderBy('id', 'asc')
+            ->get()
+            ->map(function ($row) {
+                return (array) $row;
+            })
+            ->all();
+
+        $newKey = isset($_SESSION['ps_new_key']) ? $_SESSION['ps_new_key'] : null;
+        unset($_SESSION['ps_new_key']);
+
+        $flashSuccess = isset($_SESSION['ps_flash_success']) ? $_SESSION['ps_flash_success'] : null;
+        unset($_SESSION['ps_flash_success']);
+        $flashError = isset($_SESSION['ps_flash_error']) ? $_SESSION['ps_flash_error'] : null;
+        unset($_SESSION['ps_flash_error']);
+
+        $template = __DIR__ . '/../../templates/admin/api_keys.tpl';
+        if (file_exists($template)) {
+            extract([
+                'vars' => $vars,
+                'keys' => $keys,
+                'clients' => $clients,
+                'clientid' => $clientid,
+                'clientLabel' => $clientid > 0 ? ApiKeyStore::clientLabel($clientid) : '',
+                'newKey' => $newKey,
+                'flashSuccess' => $flashSuccess,
+                'flashError' => $flashError,
+            ]);
+            include $template;
+        }
+    }
+
+    private function handleApiKeyPost($vars, $post)
+    {
+        $action = (string) ($post['key_action'] ?? '');
+        $clientid = (int) ($post['clientid'] ?? 0);
+
+        if ($action === 'create') {
+            if ($clientid <= 0) {
+                $_SESSION['ps_flash_error'] = 'Select the client to issue the key for.';
+            } else {
+                $client = \WHMCS\Database\Capsule::table('tblclients')->where('id', $clientid)->first();
+                if ($client === null) {
+                    $_SESSION['ps_flash_error'] = 'Client not found.';
+                } else {
+                    $result = ApiKeyStore::create($clientid, trim((string) ($post['name'] ?? '')));
+                    // Shown to the admin exactly once, in-session (never in a URL).
+                    $_SESSION['ps_new_key'] = ['key' => $result['key'], 'client' => $clientid];
+                    Logger::info('Admin issued per-client API key', ['client' => $clientid, 'key_id' => $result['id']]);
+                }
+            }
+        } elseif ($action === 'revoke') {
+            $keyId = (int) ($post['key_id'] ?? 0);
+            if ($keyId > 0 && ApiKeyStore::revoke($keyId)) {
+                $_SESSION['ps_flash_success'] = 'API key revoked.';
+                Logger::info('Admin revoked per-client API key', ['key_id' => $keyId]);
+            } else {
+                $_SESSION['ps_flash_error'] = 'API key not found or already revoked.';
+            }
+        }
+
+        $redirect = $vars['modulelink'] . '&action=api_keys';
+        if ($clientid > 0) {
+            $redirect .= '&clientid=' . $clientid;
+        }
+        header('Location: ' . $redirect);
         exit;
     }
     
@@ -242,11 +346,14 @@ class Module
     
     public function renderUsersAdmin($vars)
     {
-        $result = select_query('tblclients', 'id, firstname, lastname, email, status', '', 'id', 'DESC');
-        $users = [];
-        while ($row = mysql_fetch_assoc($result)) {
-            $users[] = $row;
-        }
+        $users = \WHMCS\Database\Capsule::table('tblclients')
+            ->select('id', 'firstname', 'lastname', 'email', 'status')
+            ->orderBy('id', 'desc')
+            ->get()
+            ->map(function ($row) {
+                return (array) $row;
+            })
+            ->all();
         $template = __DIR__ . '/../../templates/admin/users.tpl';
         if (file_exists($template)) {
             extract(['vars' => $vars, 'users' => $users]);

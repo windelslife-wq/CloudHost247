@@ -10,8 +10,40 @@ use Exception;
 
 class Helper
 {
+    const ENCRYPT_PREFIX = 'enc:v1:';
+
     /**
-     * Get module configuration
+     * Encrypt a secret for storage (finding M-7). Outside a WHMCS context
+     * (offline tests) the value is returned unchanged because encrypt() is
+     * unavailable.
+     */
+    public static function encryptSecret($value): string
+    {
+        $value = (string) $value;
+        if ($value === '' || !function_exists('encrypt')) {
+            return $value;
+        }
+        return self::ENCRYPT_PREFIX . base64_encode((string) encrypt($value));
+    }
+
+    /**
+     * Decrypt a stored secret if it carries the enc:v1: prefix. Legacy
+     * plaintext values (or failed decodes) are returned as stored.
+     */
+    public static function decryptValue($stored): string
+    {
+        $stored = (string) $stored;
+        if (strpos($stored, self::ENCRYPT_PREFIX) === 0 && function_exists('decrypt')) {
+            $plain = decrypt(base64_decode(substr($stored, strlen(self::ENCRYPT_PREFIX))));
+            if (is_string($plain) && $plain !== '') {
+                return $plain;
+            }
+        }
+        return $stored;
+    }
+
+    /**
+     * Get module configuration (provider keys are decrypted transparently)
      */
     public static function getConfig($key = null, $default = null)
     {
@@ -21,7 +53,13 @@ class Helper
                 ->toArray();
 
             if ($key) {
-                return isset($settings[$key]) ? $settings[$key] : $default;
+                if (!isset($settings[$key])) {
+                    return $default;
+                }
+                if ($key === 'api_key') {
+                    return self::decryptValue($settings[$key]);
+                }
+                return $settings[$key];
             }
             return $settings;
         } catch (Exception $e) {
@@ -30,15 +68,16 @@ class Helper
     }
 
     /**
-     * Set module configuration
+     * Set module configuration (provider keys are encrypted at rest)
      */
     public static function setConfig($key, $value)
     {
         try {
+            $stored = $key === 'api_key' ? self::encryptSecret($value) : $value;
             Capsule::table('mod_smm_config')
                 ->updateOrInsert(
                     ['setting' => $key],
-                    ['value' => $value, 'updated_at' => date('Y-m-d H:i:s')]
+                    ['value' => $stored, 'updated_at' => date('Y-m-d H:i:s')]
                 );
             return true;
         } catch (Exception $e) {
@@ -188,7 +227,7 @@ class Helper
             if ($row) {
                 return [
                     'api_url' => $row->api_url,
-                    'api_key' => $row->api_key,
+                    'api_key' => self::decryptValue($row->api_key),
                 ];
             }
 
@@ -216,7 +255,7 @@ class Helper
                     ['server_id' => $serverId],
                     [
                         'api_url'   => $apiUrl,
-                        'api_key'   => $apiKey,
+                        'api_key'   => self::encryptSecret($apiKey),
                         'is_active' => 1,
                         'updated_at'=> date('Y-m-d H:i:s')
                     ]

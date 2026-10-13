@@ -17,6 +17,20 @@ class ApiClient
 
     public function __construct($apiUrl, $apiKey, $debug = false)
     {
+        $apiUrl = trim((string) $apiUrl);
+        if ($apiUrl === '' || !preg_match('#^https?://#i', $apiUrl)) {
+            throw new Exception('SMM API URL must be an absolute http(s) URL');
+        }
+
+        // M-6: the panel API must use HTTPS - the API key travels in every
+        // POST body. Plain HTTP is permitted only for local endpoints
+        // (sandbox testing), never for remote panels.
+        $host = strtolower((string) parse_url($apiUrl, PHP_URL_HOST));
+        $localHost = in_array($host, ['localhost', '127.0.0.1', '::1'], true);
+        if (!preg_match('#^https://#i', $apiUrl) && !$localHost) {
+            throw new Exception('SMM API URL must use HTTPS (http:// is only permitted for localhost)');
+        }
+
         $this->apiUrl = rtrim($apiUrl, '/');
         $this->apiKey = $apiKey;
         $this->debug  = $debug;

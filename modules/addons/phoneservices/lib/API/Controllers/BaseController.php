@@ -22,9 +22,15 @@ class BaseController
     
     /**
      * Get authenticated user ID
+     *
+     * API-key requests are scoped to the client the key belongs to (P-5);
+     * that scope wins over any other identity in the session.
      */
     protected function getUserId(): int
     {
+        if (!empty($_SESSION['api_client_id'])) {
+            return (int) $_SESSION['api_client_id'];
+        }
         if (isset($_SESSION['uid'])) {
             return (int) $_SESSION['uid'];
         }

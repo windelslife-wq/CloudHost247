@@ -37,32 +37,28 @@ class UsageService
      */
     public function getUserUsage(int $userId, array $filters = []): array
     {
-        $sql = "SELECT 
-                    service_type,
-                    COUNT(*) as total_records,
-                    SUM(used_value) as total_used,
-                    MAX(recorded_at) as last_recorded
-                FROM mod_phoneservices_usage 
-                WHERE user_id = " . (int)$userId;
-        
+        $query = \WHMCS\Database\Capsule::table('mod_phoneservices_usage')
+            ->where('user_id', $userId)
+            ->select('service_type')
+            ->selectRaw('COUNT(*) as total_records')
+            ->selectRaw('SUM(used_value) as total_used')
+            ->selectRaw('MAX(recorded_at) as last_recorded');
+
         if (!empty($filters['service_type'])) {
-            $sql .= " AND service_type = '" . db_escape_string($filters['service_type']) . "'";
+            $query->where('service_type', $filters['service_type']);
         }
         if (!empty($filters['from'])) {
-            $sql .= " AND recorded_at >= '" . db_escape_string($filters['from']) . "'";
+            $query->where('recorded_at', '>=', $filters['from']);
         }
         if (!empty($filters['to'])) {
-            $sql .= " AND recorded_at <= '" . db_escape_string($filters['to']) . "'";
+            $query->where('recorded_at', '<=', $filters['to']);
         }
-        
-        $sql .= " GROUP BY service_type";
-        
-        $result = full_query($sql);
+
         $usage = [];
-        while ($row = mysql_fetch_assoc($result)) {
-            $usage[$row['service_type']] = $row;
+        foreach ($query->groupBy('service_type')->get() as $row) {
+            $usage[(string) $row->service_type] = (array) $row;
         }
-        
+
         return $usage;
     }
     
@@ -163,32 +159,27 @@ class UsageService
      */
     public function getSystemUsageReport(array $filters = []): array
     {
-        $sql = "SELECT 
-                    DATE(recorded_at) as date,
-                    service_type,
-                    COUNT(*) as count,
-                    SUM(used_value) as total_used
-                FROM mod_phoneservices_usage 
-                WHERE 1=1";
-        
+        $query = \WHMCS\Database\Capsule::table('mod_phoneservices_usage')
+            ->selectRaw('DATE(recorded_at) as date')
+            ->select('service_type')
+            ->selectRaw('COUNT(*) as count')
+            ->selectRaw('SUM(used_value) as total_used');
+
         if (!empty($filters['from'])) {
-            $sql .= " AND recorded_at >= '" . db_escape_string($filters['from']) . "'";
+            $query->where('recorded_at', '>=', $filters['from']);
         }
         if (!empty($filters['to'])) {
-            $sql .= " AND recorded_at <= '" . db_escape_string($filters['to']) . "'";
+            $query->where('recorded_at', '<=', $filters['to']);
         }
         if (!empty($filters['service_type'])) {
-            $sql .= " AND service_type = '" . db_escape_string($filters['service_type']) . "'";
+            $query->where('service_type', $filters['service_type']);
         }
-        
-        $sql .= " GROUP BY DATE(recorded_at), service_type ORDER BY date DESC";
-        
-        $result = full_query($sql);
+
         $report = [];
-        while ($row = mysql_fetch_assoc($result)) {
-            $report[] = $row;
+        foreach ($query->groupByRaw('DATE(recorded_at), service_type')->orderByRaw('date DESC')->get() as $row) {
+            $report[] = (array) $row;
         }
-        
+
         return $report;
     }
     
@@ -197,10 +188,10 @@ class UsageService
      */
     public function getTotalRevenue(): float
     {
-        $sql = "SELECT SUM(amount) as total FROM mod_phoneservices_transactions WHERE status = 'completed'";
-        $result = full_query($sql);
-        $row = mysql_fetch_assoc($result);
-        return (float) ($row['total'] ?? 0);
+        $total = \WHMCS\Database\Capsule::table('mod_phoneservices_transactions')
+            ->where('status', 'completed')
+            ->sum('amount');
+        return (float) ($total ?? 0);
     }
     
     /**
@@ -208,25 +199,24 @@ class UsageService
      */
     public function getRevenueByService(string $from = null, string $to = null): array
     {
-        $sql = "SELECT service_type, SUM(amount) as revenue, COUNT(*) as count 
-                FROM mod_phoneservices_transactions 
-                WHERE status = 'completed'";
-        
+        $query = \WHMCS\Database\Capsule::table('mod_phoneservices_transactions')
+            ->where('status', 'completed')
+            ->select('service_type')
+            ->selectRaw('SUM(amount) as revenue')
+            ->selectRaw('COUNT(*) as count');
+
         if ($from) {
-            $sql .= " AND created_at >= '" . db_escape_string($from) . "'";
+            $query->where('created_at', '>=', $from);
         }
         if ($to) {
-            $sql .= " AND created_at <= '" . db_escape_string($to) . "'";
+            $query->where('created_at', '<=', $to);
         }
-        
-        $sql .= " GROUP BY service_type";
-        
-        $result = full_query($sql);
+
         $revenue = [];
-        while ($row = mysql_fetch_assoc($result)) {
-            $revenue[$row['service_type']] = $row;
+        foreach ($query->groupBy('service_type')->get() as $row) {
+            $revenue[(string) $row->service_type] = (array) $row;
         }
-        
+
         return $revenue;
     }
     
@@ -260,20 +250,19 @@ class UsageService
     public function generateDailyReport(): array
     {
         $yesterday = date('Y-m-d', strtotime('-1 day'));
-        
-        $sql = "SELECT 
-                    service_type,
-                    COUNT(*) as count,
-                    SUM(used_value) as total_used,
-                    AVG(used_value) as avg_used
-                FROM mod_phoneservices_usage 
-                WHERE DATE(recorded_at) = '{$yesterday}'
-                GROUP BY service_type";
-        
-        $result = full_query($sql);
+
+        $rows = \WHMCS\Database\Capsule::table('mod_phoneservices_usage')
+            ->select('service_type')
+            ->selectRaw('COUNT(*) as count')
+            ->selectRaw('SUM(used_value) as total_used')
+            ->selectRaw('AVG(used_value) as avg_used')
+            ->whereRaw('DATE(recorded_at) = ?', [$yesterday])
+            ->groupBy('service_type')
+            ->get();
+
         $report = [];
-        while ($row = mysql_fetch_assoc($result)) {
-            $report[$row['service_type']] = $row;
+        foreach ($rows as $row) {
+            $report[(string) $row->service_type] = (array) $row;
         }
         
         Logger::info('Daily report generated', ['date' => $yesterday, 'services' => count($report)]);
@@ -286,8 +275,9 @@ class UsageService
     public function cleanupOldUsage(int $days = 365): int
     {
         $cutoff = date('Y-m-d H:i:s', strtotime("-{$days} days"));
-        full_query("DELETE FROM mod_phoneservices_usage WHERE recorded_at < '" . db_escape_string($cutoff) . "'");
-        $affected = mysql_affected_rows();
+        $affected = \WHMCS\Database\Capsule::table('mod_phoneservices_usage')
+            ->where('recorded_at', '<', $cutoff)
+            ->delete();
         Logger::info('Old usage cleaned', ['days' => $days, 'deleted' => $affected]);
         return $affected;
     }
