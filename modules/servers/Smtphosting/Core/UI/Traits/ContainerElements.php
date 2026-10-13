@@ -52,12 +52,6 @@ trait ContainerElements
 
         $this->addElementToContainer($element, $containerName);
 
-//          TODO - Sławek where are you!
-//        if (!$element->wasInitialized() && $this->getRequestValue('ajax') == 1)
-//        {
-//            $element->runInitContentProcess();
-//        }
-
         return $this;
     }
 

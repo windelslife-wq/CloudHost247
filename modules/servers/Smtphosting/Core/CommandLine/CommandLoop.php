@@ -14,13 +14,6 @@ class CommandLoop extends AbstractCommand
     protected $loopInterval = 5;
 
     /**
-     * Loop counter
-     * @var int
-     * @TODO remove me
-     */
-    private $loopCounter = 0;
-
-    /**
      *
      */
     final protected function configure()
@@ -60,24 +53,12 @@ class CommandLoop extends AbstractCommand
              */
             $hypervisor->sleep($this->loopInterval);
 
-            /**
-             * @TODO remove me
-             */
-            $this->loopCounter++;
         } while (!$hypervisor->shouldBeStopped());
 
         /**
          * Unlock command in database
          */
         $hypervisor->unlock();
-    }
-
-    /**
-     * @return int
-     */
-    final protected function getLoopCounter()
-    {
-        return $this->loopCounter;
     }
 }
 

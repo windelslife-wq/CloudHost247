@@ -185,7 +185,10 @@ class CloudHost247ToolsRunner
         }
 
         if (!function_exists($fn)) {
-            throw new \RuntimeException('Handler ' . $fn . ' is not implemented.');
+            throw new \RuntimeException(
+                'Handler function "' . $fn . '" is not implemented for tool "' . $tool['slug'] . '". '
+                . 'Expected handler file: includes/tools/' . $tool['category'] . '_tools.php'
+            );
         }
 
         $previousLimit = null;

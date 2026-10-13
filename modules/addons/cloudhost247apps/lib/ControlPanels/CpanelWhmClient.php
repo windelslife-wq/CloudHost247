@@ -56,7 +56,7 @@ class CpanelWhmClient
         AgentClient::assertWorkerContext();
         $operation = strtolower(trim((string) $operation));
         if (!isset(self::ENDPOINTS[$operation])) {
-            throw new CpanelException('The requested WHM operation is not implemented.', [
+            throw new CpanelException('The requested WHM operation is not supported.', [
                 'operation' => $operation, 'error_code' => 'CPANEL_OPERATION_UNSUPPORTED',
             ]);
         }
@@ -223,13 +223,13 @@ class CpanelWhmClient
     {
         $allowed = ['cpanel.user', 'cpanel.module', 'cpanel.function', 'display'];
         if (count($parameters) !== count($allowed)) {
-            throw new CpanelException('The requested cPanel UAPI bandwidth operation is not implemented.', [
+            throw new CpanelException('The requested cPanel UAPI bandwidth operation is not supported.', [
                 'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
             ]);
         }
         foreach ($allowed as $key) {
             if (!array_key_exists($key, $parameters)) {
-                throw new CpanelException('The requested cPanel UAPI bandwidth operation is not implemented.', [
+                throw new CpanelException('The requested cPanel UAPI bandwidth operation is not supported.', [
                     'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
                 ]);
             }
@@ -239,7 +239,7 @@ class CpanelWhmClient
             || (string) $parameters['cpanel.module'] !== 'StatsBar'
             || (string) $parameters['cpanel.function'] !== 'get_stats'
             || (string) $parameters['display'] !== 'bandwidthusage') {
-            throw new CpanelException('The requested cPanel UAPI bandwidth operation is not implemented.', [
+            throw new CpanelException('The requested cPanel UAPI bandwidth operation is not supported.', [
                 'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
             ]);
         }
@@ -256,13 +256,13 @@ class CpanelWhmClient
     {
         $allowed = ['cpanel.user', 'cpanel.module', 'cpanel.function'];
         if (count($parameters) !== count($allowed)) {
-            throw new CpanelException('The requested cPanel UAPI quota operation is not implemented.', [
+            throw new CpanelException('The requested cPanel UAPI quota operation is not supported.', [
                 'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
             ]);
         }
         foreach ($allowed as $key) {
             if (!array_key_exists($key, $parameters)) {
-                throw new CpanelException('The requested cPanel UAPI quota operation is not implemented.', [
+                throw new CpanelException('The requested cPanel UAPI quota operation is not supported.', [
                     'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
                 ]);
             }
@@ -271,7 +271,7 @@ class CpanelWhmClient
         if (!preg_match('/^[a-z][a-z0-9]{0,15}$/', $username)
             || (string) $parameters['cpanel.module'] !== 'Quota'
             || (string) $parameters['cpanel.function'] !== 'get_quota_info') {
-            throw new CpanelException('The requested cPanel UAPI quota operation is not implemented.', [
+            throw new CpanelException('The requested cPanel UAPI quota operation is not supported.', [
                 'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
             ]);
         }
@@ -287,13 +287,13 @@ class CpanelWhmClient
     {
         $allowed = ['cpanel.user', 'cpanel.module', 'cpanel.function', 'hide_temporary_domains'];
         if (count($parameters) !== count($allowed)) {
-            throw new CpanelException('The requested cPanel UAPI operation is not implemented.', [
+            throw new CpanelException('The requested cPanel UAPI operation is not supported.', [
                 'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
             ]);
         }
         foreach ($allowed as $key) {
             if (!array_key_exists($key, $parameters)) {
-                throw new CpanelException('The requested cPanel UAPI operation is not implemented.', [
+                throw new CpanelException('The requested cPanel UAPI operation is not supported.', [
                     'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
                 ]);
             }
@@ -304,7 +304,7 @@ class CpanelWhmClient
             || (string) $parameters['cpanel.function'] !== (string) $expectedFunction
             || !in_array($expectedFunction, ['list_domains', 'main_domain_builtin_subdomain_aliases'], true)
             || !in_array($parameters['hide_temporary_domains'], [1, '1', true], true)) {
-            throw new CpanelException('The requested cPanel UAPI operation is not implemented.', [
+            throw new CpanelException('The requested cPanel UAPI operation is not supported.', [
                 'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
             ]);
         }
@@ -320,12 +320,12 @@ class CpanelWhmClient
     private function uapiMysqlCreateDatabaseParameters(array $parameters)
     {
         $allowed = ['cpanel.user', 'cpanel.module', 'cpanel.function', 'name'];
-        $this->assertExactParameters($parameters, $allowed, 'The requested cPanel UAPI database operation is not implemented.');
+        $this->assertExactParameters($parameters, $allowed, 'The requested cPanel UAPI database operation is not supported.');
         $username = $this->uapiUsername($parameters['cpanel.user']);
         $name = $this->uapiMysqlName($parameters['name']);
         if ((string) $parameters['cpanel.module'] !== 'Mysql'
             || (string) $parameters['cpanel.function'] !== 'create_database') {
-            throw new CpanelException('The requested cPanel UAPI database operation is not implemented.', [
+            throw new CpanelException('The requested cPanel UAPI database operation is not supported.', [
                 'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
             ]);
         }
@@ -341,7 +341,7 @@ class CpanelWhmClient
     private function uapiMysqlCreateUserParameters(array $parameters)
     {
         $allowed = ['cpanel.user', 'cpanel.module', 'cpanel.function', 'name', 'password'];
-        $this->assertExactParameters($parameters, $allowed, 'The requested cPanel UAPI database-user operation is not implemented.');
+        $this->assertExactParameters($parameters, $allowed, 'The requested cPanel UAPI database-user operation is not supported.');
         $username = $this->uapiUsername($parameters['cpanel.user']);
         $name = $this->uapiMysqlName($parameters['name'], 32);
         $password = isset($parameters['password']) ? (string) $parameters['password'] : '';
@@ -352,7 +352,7 @@ class CpanelWhmClient
         }
         if ((string) $parameters['cpanel.module'] !== 'Mysql'
             || (string) $parameters['cpanel.function'] !== 'create_user') {
-            throw new CpanelException('The requested cPanel UAPI database-user operation is not implemented.', [
+            throw new CpanelException('The requested cPanel UAPI database-user operation is not supported.', [
                 'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
             ]);
         }
@@ -369,14 +369,14 @@ class CpanelWhmClient
     private function uapiMysqlSetPrivilegesParameters(array $parameters)
     {
         $allowed = ['cpanel.user', 'cpanel.module', 'cpanel.function', 'user', 'database', 'privileges'];
-        $this->assertExactParameters($parameters, $allowed, 'The requested cPanel UAPI privilege operation is not implemented.');
+        $this->assertExactParameters($parameters, $allowed, 'The requested cPanel UAPI privilege operation is not supported.');
         $username = $this->uapiUsername($parameters['cpanel.user']);
         $user = $this->uapiMysqlName($parameters['user'], 32);
         $database = $this->uapiMysqlName($parameters['database']);
         if ((string) $parameters['cpanel.module'] !== 'Mysql'
             || (string) $parameters['cpanel.function'] !== 'set_privileges_on_database'
             || (string) $parameters['privileges'] !== 'ALL PRIVILEGES') {
-            throw new CpanelException('The requested cPanel UAPI privilege operation is not implemented.', [
+            throw new CpanelException('The requested cPanel UAPI privilege operation is not supported.', [
                 'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
             ]);
         }
@@ -394,12 +394,12 @@ class CpanelWhmClient
     private function uapiMysqlDeleteDatabaseParameters(array $parameters)
     {
         $allowed = ['cpanel.user', 'cpanel.module', 'cpanel.function', 'name'];
-        $this->assertExactParameters($parameters, $allowed, 'The requested cPanel UAPI database operation is not implemented.');
+        $this->assertExactParameters($parameters, $allowed, 'The requested cPanel UAPI database operation is not supported.');
         $username = $this->uapiUsername($parameters['cpanel.user']);
         $name = $this->uapiMysqlName($parameters['name']);
         if ((string) $parameters['cpanel.module'] !== 'Mysql'
             || (string) $parameters['cpanel.function'] !== 'delete_database') {
-            throw new CpanelException('The requested cPanel UAPI database operation is not implemented.', [
+            throw new CpanelException('The requested cPanel UAPI database operation is not supported.', [
                 'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
             ]);
         }
@@ -431,7 +431,7 @@ class CpanelWhmClient
     {
         $username = strtolower(trim((string) $value));
         if (!preg_match('/^[a-z][a-z0-9]{0,15}$/', $username)) {
-            throw new CpanelException('The requested cPanel UAPI operation is not implemented.', [
+            throw new CpanelException('The requested cPanel UAPI operation is not supported.', [
                 'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
             ]);
         }
@@ -450,7 +450,7 @@ class CpanelWhmClient
     {
         $name = strtolower(trim((string) $value));
         if ($name === '' || strlen($name) > (int) $maxLength || !preg_match('/^[a-z0-9]+$/', $name)) {
-            throw new CpanelException('The requested cPanel UAPI operation is not implemented.', [
+            throw new CpanelException('The requested cPanel UAPI operation is not supported.', [
                 'error_code' => 'CPANEL_UAPI_OPERATION_UNSUPPORTED',
             ]);
         }
