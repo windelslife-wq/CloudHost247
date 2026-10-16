@@ -101,21 +101,23 @@ source exists **in this platform today**.
 
 | Agent | Missing input | What to build first |
 |---|---|---|
-| Infrastructure Guardian / Server Health (§4.2, §4.3) | CPU/RAM/disk/load telemetry | A metrics collector: cron polling provisioning-module APIs + `tblservers` reachability into a `metrics` table with retention. **Weeks of work before any AI** |
-| Provisioning Agent (§4.4) | Structured provisioning outcomes | Provisioning state is scattered across module logs and `tblhosting.domainstatus`. Normalise failures into an events table first |
-| Security Sentinel (§5.8) | Auth-event stream | `tblactivitylog` has login records but is noisy and unindexed for this. Needs a derived, indexed auth-event table |
-| Fraud & Abuse Guardian (§5.9) | Order/payment signal set | WHMCS has fraud fields and gateway data; needs a feature extraction layer. Also the highest false-positive cost — gate hard behind human approval |
+| Infrastructure Guardian / Server Health (§4.2, §4.3) | CPU/RAM/disk/load telemetry | Infrastructure Guardian reads stored provider-status snapshots; Server Health reads explicit passed/failed provider health-check audit events from CloudHost247 Services. Neither measures independent uptime or CPU/RAM/disk/load. Full health telemetry still needs a retained metrics collector polling provider APIs and/or server agents. |
+| Provisioning Agent (§4.4) | Structured provisioning outcomes | A limited read-only WHMCS status snapshot now lists `tblhosting` records currently marked Pending and age since `regdate`; it cannot confirm failed/stuck jobs. Full outcome monitoring still needs normalized provisioning events across module logs and `tblhosting.domainstatus`. |
+| Security Sentinel (§5.8) | Auth-event stream | A derived indexed table and conservative cron collector now project only explicit successful/failed login phrases from `tblactivitylog`, retain 90 days, and HMAC-pseudonymize IPs when the WHMCS encryption hash is available. Ambiguous descriptions are ignored; this is not attack attribution or compromise detection. |
+| Fraud & Abuse Guardian (§5.9) | Order/payment signal set | A narrow reporter now lists orders WHMCS has already marked Fraud. New scoring still needs a vetted feature-extraction layer over orders, payments and gateway responses; it has the highest false-positive cost and must remain human-reviewed. |
 
 ### Tier C — no data source in this platform, do not build (the rest)
 
-Deployment Agent, Root Cause Analyst (no logs/metrics/deploy records), Vulnerability Analyst
-(no inventory of server software versions), Cloud Cost Guardian (no utilisation or cost feed),
-Pricing Analyst (needs the revenue layer first), Pipeline/Sales, Account Expansion, Retention
+Account Expansion, Retention
 (no CRM, no usage metering), Campaigner, Content, SEO Intelligence (partially viable later via
 the HostX page system), Internal IT, **HR Assistant, Recruitment Assistant, Asset & Inventory**
-(no system of record at all), Incident Commander (no incident system yet), Business
+(no system of record at all), Business
 Intelligence (fold into Admin Copilot — it is the same thing), Customer Success, Customer
-Cloud Assistant (viable later, after client-scoped read tools are proven in Tier A).
+Cloud Assistant (viable later, after client-scoped read tools are proven in Tier A). The former
+Asset & Inventory seat reports only configured, non-secret WHMCS `tblservers` records; physical
+hardware, licenses, and datacenter inventory remain out of scope without an asset register. The
+Pricing Analyst currently reports catalog prices and order activity only; it has no usage/cost data
+and must not make pricing recommendations. The Vulnerability Analyst inventories declared Composer/npm lockfile versions only; it has no advisory feed and cannot determine vulnerability status. The Incident Commander currently lists separate failure signals from App Cloud and infrastructure modules; it does not correlate signals into incidents, assess impact, or coordinate response. Cloud Cost Guardian reads administrator-imported provider invoice totals from the AI addon ledger; uploads are not verified against provider APIs and are not usage/margin analytics.
 
 The brief already rejects six generic agents (Care Navigator, Claims Copilot, Intake Attorney,
 Citizen Desk, Tutor, Dispatch) as domain-mismatched. **The same test eliminates another

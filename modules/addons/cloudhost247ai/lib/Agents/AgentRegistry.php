@@ -50,7 +50,7 @@ class AgentDefinition
 
 class AgentRegistry
 {
-    const READ_TOOLS_ADMIN = ['read_clients', 'read_client_details', 'read_invoices', 'read_payments', 'read_orders', 'read_services', 'read_tickets', 'read_domains', 'read_products', 'read_credit', 'read_metrics', 'read_knowledge'];
+    const READ_TOOLS_ADMIN = ['read_clients', 'read_client_details', 'read_invoices', 'read_payments', 'read_orders', 'read_services', 'read_tickets', 'read_domains', 'read_products', 'read_credit', 'read_metrics', 'read_server_inventory', 'read_provisioning_queue', 'read_infrastructure_status', 'read_server_health_checks', 'read_deployment_status', 'read_deployment_timeline', 'read_infrastructure_costs', 'read_security_auth_events', 'read_fraud_review_queue', 'read_dependency_inventory', 'read_incident_failure_signals', 'read_knowledge'];
     const READ_TOOLS_CLIENT = ['read_client_details', 'read_invoices', 'read_services', 'read_domains', 'read_tickets', 'read_orders', 'read_knowledge'];
     const DIAG_TOOLS = ['read_diag_dns_lookup', 'read_diag_dns_health', 'read_diag_dns_propagation', 'read_diag_domain_dns_validation', 'read_diag_ssl_checker', 'read_diag_spf_checker', 'read_diag_dmarc_checker', 'read_diag_dkim_checker', 'read_diag_mx_checker', 'read_diag_ns_checker', 'read_diag_cname_lookup', 'read_diag_reverse_ip', 'read_diag_domain_whois', 'read_diag_website_status', 'read_diag_port_checker', 'read_diag_asn_lookup', 'read_diag_ip_blacklist'];
 
@@ -195,39 +195,105 @@ class AgentRegistry
             return new AgentDefinition($slug, $name, $description, 'scheduled', [], '', false, $collector);
         };
         return [
-            $stub('infrastructure_guardian', 'Infrastructure Guardian',
-                'Server health and resource exhaustion monitoring across VPS, dedicated and shared hosting.',
-                'Server telemetry collector: a cron polling provisioning-module APIs and tblservers reachability into a metrics table with retention. No CPU/RAM/disk/load feed exists in this platform.'),
-            $stub('server_health_agent', 'Server Health Agent',
-                'Per-server uptime, service failures, disk and memory pressure reporting.',
-                'The same server telemetry collector as Infrastructure Guardian.'),
-            $stub('provisioning_agent', 'Provisioning Agent',
-                'Watches provisioning and activation jobs, detects stuck or failed provisioning.',
-                'Normalised provisioning outcomes: provisioning state is scattered across module logs and tblhosting.domainstatus and must be collected into a structured events table first.'),
-            $stub('deployment_agent', 'Deployment Agent',
-                'Deployment, build and rollback health for applications.',
-                'A deployment record source. This platform performs no application deployments and stores no build or release events.'),
-            $stub('security_sentinel', 'Security Sentinel',
-                'Suspicious authentication, account takeover indicators and security event triage.',
-                'A derived, indexed auth-event table. tblactivitylog holds login records but is unindexed and too noisy for detection work.'),
-            $stub('fraud_abuse_guardian', 'Fraud & Abuse Guardian',
-                'Suspicious signups, abnormal ordering, payment anomalies and resource abuse.',
-                'A feature-extraction layer over orders, payments and gateway responses. Highest false-positive cost of any agent; must be approval-gated when built.'),
-            $stub('vulnerability_analyst', 'Vulnerability Analyst',
-                'Dependency and server software vulnerability analysis.',
-                'A software inventory: no record of server software versions or installed dependencies exists.'),
-            $stub('incident_commander', 'Incident Commander',
-                'Correlates events into incidents, coordinates response and verifies recovery.',
-                'An incident system plus the monitoring feed that would create incidents. Neither exists yet.'),
-            $stub('root_cause_analyst', 'Root Cause Analyst',
-                'Post-incident timeline and probable-cause analysis.',
-                'Logs, metrics, deployment records and an incident history. None are collected.'),
-            $stub('cloud_cost_guardian', 'Cloud Cost Guardian',
-                'Infrastructure cost, utilisation and hosting margin optimisation.',
-                'A cost and utilisation feed from the infrastructure providers. No cost data is ingested.'),
-            $stub('pricing_analyst', 'Pricing Analyst',
-                'Plan utilisation, discount and pricing recommendations.',
-                'The usage-metering layer. Product demand exists in orders, but plan utilisation does not.'),
+            new AgentDefinition(
+                'infrastructure_guardian',
+                'Infrastructure Status Guardian',
+                'Reports the latest stored provider status for servers managed by CloudHost247 Services. It does not report independent uptime or resource utilization.',
+                'on_demand',
+                ['read_infrastructure_status'],
+                'You report only the latest stored provider status and timestamps returned by the infrastructure reader. It represents CloudHost247 Services provider synchronization, not an independent uptime probe and not CPU, memory, disk, or network telemetry. Explicitly state these limitations and do not infer incidents from stale or missing data.',
+                false
+            ),
+            new AgentDefinition(
+                'server_health_agent',
+                'Server Health Check Reporter',
+                'Reports explicit passed and failed provider health-check events recorded by CloudHost247 Services. It is not continuous monitoring.',
+                'on_demand',
+                ['read_server_health_checks'],
+                'You report only the explicit passed/failed provider health-check events returned by the tool and their timestamps. A missing event is not evidence of good health. Do not claim continuous uptime, CPU, memory, disk, or network metrics. State clearly that the source covers only servers managed by CloudHost247 Services.',
+                false
+            ),
+            new AgentDefinition(
+                'provisioning_agent',
+                'Provisioning Status Agent',
+                'Reports WHMCS services currently in Pending status with their age since registration. Does not claim a provisioning job failed or is stuck.',
+                'on_demand',
+                ['read_provisioning_queue'],
+                'You report the WHMCS services currently marked Pending and their age since regdate. This is a status snapshot, not a provisioning event log. Never call a service failed or stuck based only on age; state that a human should verify the service in WHMCS and its provisioning module. Do not invent outcomes.',
+                false
+            ),
+            new AgentDefinition(
+                'deployment_agent',
+                'Deployment Status Agent',
+                'Reports recorded App Cloud deployment status, progress, timing, and machine error codes. It does not infer application availability.',
+                'on_demand',
+                ['read_deployment_status'],
+                'You summarize recorded deployment status and progress from the App Cloud deployment reader. You may report status, action, progress, steps and timestamps only when returned by the tool. Do not expose or infer deployment payloads, logs, customer identities, or free-text errors. Recorded deployment success does not prove the deployed application is reachable or healthy.',
+                false
+            ),
+            new AgentDefinition(
+                'security_sentinel',
+                'Security Login Monitor',
+                'Reports conservatively classified login-event counts and recent successful/failed login records from the indexed security event projection.',
+                'on_demand',
+                ['read_security_auth_events'],
+                'You report only counts and records from the derived WHMCS login event table. Activity descriptions are classified only when they match explicit supported success/failure phrases; unrecognized lines are omitted. Counts do not prove an attack or compromise. Never claim an account takeover, identify a threat actor, or expose IP hashes.',
+                false
+            ),
+            new AgentDefinition(
+                'fraud_abuse_guardian',
+                'Fraud Review Reporter',
+                'Lists WHMCS orders already marked Fraud for administrative review. It does not score orders or infer abuse.',
+                'on_demand',
+                ['read_fraud_review_queue'],
+                'You report only WHMCS orders returned with status Fraud. This is an existing WHMCS decision, not your own risk assessment. Do not assign new fraud scores, infer abuse, recommend account sanctions, or claim a status is correct. Escalate decisions to an authorized human reviewer.',
+                false
+            ),
+            new AgentDefinition(
+                'vulnerability_analyst',
+                'Dependency Inventory Reporter',
+                'Reports declared package versions from local Composer/npm lock files. It does not perform CVE matching or establish whether deployed software is safe.',
+                'on_demand',
+                ['read_dependency_inventory'],
+                'You report only package names and declared versions present in local lock files. These files do not prove what is deployed and this installation has no vulnerability advisory feed. Never label a package vulnerable or safe, invent CVEs, or imply the server itself was scanned. State the inventory limitations clearly.',
+                false
+            ),
+            new AgentDefinition(
+                'incident_commander',
+                'Operational Failure Signal Reporter',
+                'Lists recent failed App Cloud deployments, infrastructure provisioning jobs, and provider health checks. It does not correlate or manage incidents.',
+                'on_demand',
+                ['read_incident_failure_signals'],
+                'You report only the separate operational failures returned by the reader. These events are not confirmed or correlated incidents. Do not infer root causes, customer impact, severity, blast radius, or recovery. Recommend that an authorized human review the source systems; do not claim to coordinate or execute response.',
+                false
+            ),
+            new AgentDefinition(
+                'root_cause_analyst',
+                'Deployment Timeline Analyst',
+                'Reports the ordered structured steps and recorded failure point for one App Cloud deployment; it does not claim an underlying root cause.',
+                'on_demand',
+                ['read_deployment_timeline'],
+                'You summarize only the recorded deployment state and ordered structured steps returned by the tool. A failed step/error code is where execution stopped, not proof of the underlying cause. Do not invent causes, expose logs, payloads, context or customer data, or claim application availability. Ask for a deployment id if none is provided.',
+                false
+            ),
+            new AgentDefinition(
+                'cloud_cost_guardian',
+                'Cloud Cost Guardian',
+                'Reports manually imported provider invoice costs, grouped by provider, currency, and billing period. Does not claim provider verification or utilization.',
+                'on_demand',
+                ['read_infrastructure_costs'],
+                'You report only values from the manually imported cost ledger. State that records are manually supplied and not independently verified by provider APIs. Compare only matching provider, currency, and exact billing periods. Never convert currencies, infer utilization/margins, or make cost-saving recommendations without verified cost and usage data.',
+                false
+            ),
+            new AgentDefinition(
+                'pricing_analyst',
+                'Product Pricing Reporter',
+                'Reports current WHMCS product prices and recent order activity. It does not recommend price changes or infer utilization.',
+                'on_demand',
+                ['read_products', 'read_orders'],
+                'You report only current WHMCS product catalog prices and order records returned by tools. Order volume is not utilization, cost, margin, or willingness-to-pay. Do not recommend price changes without approved pricing policy and usage/cost evidence. Clearly state when pricing history or utilization data is unavailable.',
+                false
+            ),
             $stub('account_expansion_agent', 'Account Expansion Agent',
                 'Detects customers outgrowing their plan and genuine upgrade opportunities.',
                 'Per-service resource usage metering. Upgrade signals without usage data would be guesswork.'),
@@ -240,9 +306,15 @@ class AgentRegistry
             $stub('recruitment_assistant', 'Recruitment Assistant',
                 'Candidate pipeline organisation and interview scheduling.',
                 'An applicant tracking system. None exists in this platform.'),
-            $stub('asset_inventory_agent', 'Asset & Inventory Agent',
-                'Hardware, licence and datacenter asset tracking with renewal detection.',
-                'An asset register. Servers exist in tblservers but hardware, licences and datacenter resources are not inventoried.'),
+            new AgentDefinition(
+                'asset_inventory_agent',
+                'WHMCS Server Inventory Agent',
+                'Reports configured WHMCS server records. It does not claim live health, utilization, hardware, licensing, or datacenter inventory.',
+                'on_demand',
+                ['read_server_inventory'],
+                'You report only non-secret fields returned by the WHMCS server inventory tool. This is configuration data, not live reachability, health, utilization, hardware, licenses, or datacenter status. Clearly state when asked for any of those unavailable details. Never infer or invent them.',
+                false
+            ),
         ];
     }
 
