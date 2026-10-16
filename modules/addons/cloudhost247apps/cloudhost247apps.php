@@ -251,6 +251,7 @@ function cloudhost247apps_output($vars)
         $uapiAliasesEnabled = Settings::bool('cpanel_uapi_aliases_enabled', false);
         $uapiQuotaUsageEnabled = Settings::bool('cpanel_uapi_quota_usage_enabled', false);
         $uapiBandwidthUsageEnabled = Settings::bool('cpanel_uapi_bandwidth_usage_enabled', false);
+        $mysqlEnabled = Settings::bool('cpanel_mysql_enabled', false);
         $keyReady = \Ch247Apps\Core\Crypto::isConfigured();
 
         echo '<div class="panel panel-default"><div class="panel-heading"><strong>CloudHost247 App Cloud</strong></div><div class="panel-body">';

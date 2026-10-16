@@ -305,6 +305,7 @@ namespace {
         }
         $bnCode = str_replace($req, '', $bnCode);
     }
+    $bnCode = str_replace('dirname(__FILE__)', 'dirname(__DIR__)', $bnCode);
     $bnCode = (string) preg_replace('/^<\\?php\\s/', '', $bnCode);
     eval($bnCode);
 }

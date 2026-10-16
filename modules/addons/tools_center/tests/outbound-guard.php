@@ -67,6 +67,10 @@ chk('single-label host refused', throws_msg(function () { tc_resolve_public_ips(
 echo "== tc_fetch_url (guard runs before any connection) ==\n";
 chk('fetch refuses private target', throws_msg(function () { tc_fetch_url('http://10.0.0.1/'); }) !== null);
 chk('fetch refuses file scheme', throws_msg(function () { tc_fetch_url('file:///etc/hosts'); }) !== null);
+$outboundSource = file_get_contents(__DIR__ . '/../external-api/outbound.php');
+chk('T-8: tc_fetch_url pins CURLOPT_SSL_VERIFYPEER and CURLOPT_SSL_VERIFYHOST',
+    strpos($outboundSource, 'CURLOPT_SSL_VERIFYPEER => true') !== false
+    && strpos($outboundSource, 'CURLOPT_SSL_VERIFYHOST => 2') !== false);
 
 echo "== tc_open_public_socket ==\n";
 chk('socket refuses loopback', throws_msg(function () { tc_open_public_socket('127.0.0.1', 25, 3); }) !== null);

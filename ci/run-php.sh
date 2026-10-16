@@ -183,7 +183,7 @@ for target in "$@"; do
         all) run_all ;;
         legacy74) run_legacy74 ;;
         lint) mod_lint ;;
-        i18n|tools|apps|services|ai|marketing|domainbroker|digital|cloudflare|blockonomics|soyoustart_vps|smmprovisioning|rdp|lteproxy|affiliate|phones|smm|hostxemail|hostxtools|toolscenter|smtphosting|cartrecovery|passkey)
+        i18n|tools|apps|services|ai|marketing|domainbroker|digital|cloudflare|blockonomics|soyoustart_vps|soyoustart|smmprovisioning|rdp|lteproxy|affiliate|phones|smm|hostxemail|hostxtools|toolscenter|smtphosting|cartrecovery|passkey)
             echo "=== module: $target ==="
             "mod_$target" || true
             ;;

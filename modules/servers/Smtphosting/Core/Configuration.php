@@ -89,9 +89,8 @@ class Configuration
     public function __construct(array $productSettings)
     {
         //Check if registrar is enabled in WHMCS configuration
-        if ($productSettings['apiEndpoint'] === null)
+        if (!isset($productSettings['apiEndpoint']) || $productSettings['apiEndpoint'] === null)
         {
-            print_r(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS));
             throw new \Exception(" Api Endpoint is empty in Product configuration");
         }
         $this->configuration = $productSettings;
@@ -105,8 +104,7 @@ class Configuration
      */
     public function __get($name)
     {
-        //todo wywalic
-        return $this->configuration[$name];
+        return isset($this->configuration[$name]) ? $this->configuration[$name] : null;
     }
 
     /**

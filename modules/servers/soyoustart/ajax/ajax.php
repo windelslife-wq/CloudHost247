@@ -40,6 +40,11 @@ if ($context === null) {
     http_response_code(403);
     exit;
 }
+if (($whmcs->get_req_var("installOs") == "installOs" || $whmcs->get_req_var("cancleReinstallation") == "cancleReinstallation")
+    && !AjaxAuth::verifyCsrf()) {
+    http_response_code(403);
+    exit;
+}
 $ovhServerName = $context['server'];
 $accountId = $context['account'];
 $location = $context['location'];
@@ -229,17 +234,17 @@ elseif ($whmcs->get_req_var("iPaction") == "getFirewallRules") {
 
         $html[] = [
 
-            "sequence" => $response["result"]->sequence,
+            "sequence" => (int) $response["result"]->sequence,
 
-            "action" => strtoupper($response["result"]->action),
+            "action" => htmlspecialchars(strtoupper((string) $response["result"]->action), ENT_QUOTES, 'UTF-8'),
 
-            "protocol" => strtoupper($response["result"]->protocol),
+            "protocol" => htmlspecialchars(strtoupper((string) $response["result"]->protocol), ENT_QUOTES, 'UTF-8'),
 
-            "destination" => $response["result"]->destination,
+            "destination" => htmlspecialchars((string) $response["result"]->destination, ENT_QUOTES, 'UTF-8'),
 
-            "sourcePort" => (is_null($response["result"]->sourcePort) ? "-" : $response["result"]->sourcePort),
+            "sourcePort" => (is_null($response["result"]->sourcePort) ? "-" : htmlspecialchars((string) $response["result"]->sourcePort, ENT_QUOTES, 'UTF-8')),
 
-            "destinationPort" => is_null($response["result"]->destinationPort) ? "-" : $response["result"]->destinationPort,
+            "destinationPort" => is_null($response["result"]->destinationPort) ? "-" : htmlspecialchars((string) $response["result"]->destinationPort, ENT_QUOTES, 'UTF-8'),
 
             "tcpOption" => ($response["result"]->fragments) ? "Fragments" : "-",
 

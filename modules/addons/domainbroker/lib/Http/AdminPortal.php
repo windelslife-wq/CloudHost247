@@ -568,7 +568,7 @@ class AdminPortal extends Controller
                 ['payment_id' => $id],
                 'Release funds',
                 'btn btn-xs btn-success',
-                'Release the escrowed funds to the seller?'
+                'Record escrow release in the ledger so funds can be disbursed to the seller?'
             ) . ' ';
         }
 
@@ -1199,7 +1199,7 @@ class AdminPortal extends Controller
             case 'request:release':
                 $this->attempt(function () {
                     $this->paymentService()->releaseFunds($this->actor, $this->intInput('payment_id'), 'Released from the admin console');
-                }, 'Funds released.');
+                }, 'Escrow release recorded in the ledger for seller disbursement.');
                 break;
 
             case 'request:refund':

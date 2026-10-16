@@ -3,7 +3,7 @@
 <script src="{$tplVar.urlPath}templates/assets/js/script.js?v={$unique_id}"></script>
 <script src="https://ajax.aspnetcdn.com/ajax/jquery.validate/1.14.0/jquery.validate.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-validate/1.19.2/additional-methods.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.10.5/dist/sweetalert2.all.min.js" crossorigin="anonymous"></script>
 
 {if $tplVar["license"]["status"] eq "Active" && $tplVar["action"] eq ''}
     <div class="module_upgrade">

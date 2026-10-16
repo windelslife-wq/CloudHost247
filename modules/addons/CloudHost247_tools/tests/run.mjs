@@ -17,6 +17,7 @@ import { fileURLToPath } from 'url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const moduleRoot = path.resolve(here, '..');
+const repoRoot = path.resolve(moduleRoot, '../../..');
 const filter = process.argv[2] || '';
 
 const files = fs.readdirSync(here)
@@ -40,8 +41,10 @@ for (const file of files) {
   });
   const php = new PHP(id);
   try { php.mkdir('/app'); } catch (e) {}
+  try { php.mkdir('/repo'); } catch (e) {}
   await php.mount('/app', createNodeFsMountHandler(moduleRoot));
-  const res = await php.run({ scriptPath: '/app/tests/' + file });
+  await php.mount('/repo', createNodeFsMountHandler(repoRoot));
+  const res = await php.run({ scriptPath: '/repo/modules/addons/CloudHost247_tools/tests/' + file });
   const out = res.text || '';
   console.log(`\n=== ${file} ===`);
   process.stdout.write(out);

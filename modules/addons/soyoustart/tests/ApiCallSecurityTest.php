@@ -298,6 +298,19 @@ namespace {
             && strpos($controllerSource, '$helper->encryptData($whmcs->get_req_var("password"))') !== false
             && strpos($controllerSource, '$helper->encryptData($_POST["password"])') !== false);
 
+    $hooksSource = file_get_contents(dirname(__DIR__) . '/hooks.php');
+    soyouCheck('SD-O3: addon hooks.php guards null $additionipDatas before reading service_id',
+        strpos($hooksSource, 'if (!is_object($additionipDatas) || empty($additionipDatas->service_id))') !== false);
+    soyouCheck('SD-O3: UpdateConfigOption queries tblproductconfiglinks by packageid instead of hosting id',
+        strpos($hooksSource, '$productId = (int) $hostingdata->packageid;') !== false
+            && strpos($hooksSource, '$productId = $hostingdata->id;') === false);
+    soyouCheck('SD-O3: UpdateConfigOption skips Additional IP invoices and supports Automated Backup',
+        strpos($hooksSource, "stripos(\$desc, 'additional ip') !== false") !== false
+            && strpos($hooksSource, "\$targetOptionName = 'Automated Backup'") !== false);
+    soyouCheck('VS-21: generateRandomString uses cryptographically secure random_int()',
+        strpos($hooksSource, 'random_int(0, $charactersLength - 1)') !== false
+            && strpos($hooksSource, 'rand(0, $charactersLength - 1)') === false);
+
     foreach ($failures as $failure) {
         echo "  - {$failure}\n";
     }

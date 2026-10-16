@@ -49,6 +49,12 @@ for (const file of files) {
     /* already present */
   }
   await php.mount('/app', createNodeFsMountHandler(moduleRoot));
+  try {
+    php.mkdir('/repo');
+    await php.mount('/repo', createNodeFsMountHandler(path.resolve(moduleRoot, '../../..')));
+  } catch (e) {
+    /* optional repo mount */
+  }
 
   // php.run() rejects when the script exits non-zero; the response is still
   // attached to the error, and a failing suite is exactly that case.

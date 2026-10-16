@@ -1,10 +1,13 @@
 
 $(document).ready(function () {
-    localStorage.removeItem('ip');
-    $.get("https://ipinfo.io", (response) => {
-        var ip = response.ip;
-        localStorage.setItem('ip', ip);
-    }, "jsonp");
+    $.ajaxPrefilter(function (options, originalOptions, jqXHR) {
+        if ((options.type || options.method || 'GET').toUpperCase() === 'POST' && (!options.url || options.url.indexOf('http') !== 0)) {
+            var token = window.soyoustartCsrfToken || window.csrfToken || '';
+            if (token) {
+                jqXHR.setRequestHeader('X-CSRF-Token', token);
+            }
+        }
+    });
 
     var dataTableObj = null;
 
@@ -476,7 +479,7 @@ $(document).ready(function () {
         let nfs = $(this).closest("tr").find(".nfs").data("nfs");
         let cifs = $(this).closest("tr").find(".cifs").data("cifs");
         let editFtpIpBlock = $(this).closest("tr").find(".ipBlock").data("ipblock");
-        $("#editFTP #editFtpIpBlock").html(editFtpIpBlock);
+        $("#editFTP #editFtpIpBlock").text(editFtpIpBlock);
         (ftp == "enabled" ? $("#editFTPForm  #FTP").prop('checked', true) : $("#editFTPForm  #FTP").prop('checked', false));
         (cifs == "enabled" ? $("#editFTPForm  #Cifs").prop('checked', true) : $("#editFTPForm  #Cifs").prop('checked', false));
         (nfs == "enabled" ? $("#editFTPForm  #Nfs").prop('checked', true) : $("#editFTPForm  #Nfs").prop('checked', false));
@@ -495,7 +498,7 @@ $(document).ready(function () {
         }).then(async (result) => {
             if (result.isConfirmed) {
                 try {
-                    let ipBlock = $("#editFTPForm #editFtpIpBlock").html();
+                    let ipBlock = $("#editFTPForm #editFtpIpBlock").text();
                     let data = $("#editFTPForm").serialize();
                     $(".updateFTP").append(`<i class="fa fa-spinner fa-spin"></i>`);
                     $(".updateFTP").prop("disabled", true);
@@ -1105,8 +1108,8 @@ $(document).ready(function () {
             $(this).css("border", "1px solid #ced4da")
             $("#additinalIpModalCenter .addAdditionalIp").prop("disabled", false);
         }
-        $("#noOfIps").html(`${numberOfIp}`)
-        $("#ipPrices").html(`${perIpPrice * numberOfIp}`)
+        $("#noOfIps").text(`${numberOfIp}`)
+        $("#ipPrices").text(`${perIpPrice * numberOfIp}`)
     });
 
 
@@ -1143,7 +1146,7 @@ $(document).ready(function () {
     $(document).on("click", "#clientAreaIpmang .viewIpDetails", async function () {
 
         let ipblock = $(this).closest("tr").data("ip");
-        $("#viewIpDetailsIpBlock").html(ipblock);
+        $("#viewIpDetailsIpBlock").text(ipblock);
         $("#viewIpDetailsForm .modal-body .mainSec").find("i").remove();
         $("#viewIpDetailsForm .modal-body .mainSec").html(`<i class="fa fa-spinner fa-spin"></i>`);
         let result = await secureCall({ manage_ips: true, iPaction: "viewIpDetails", ipblock }, 'POST');
@@ -1557,8 +1560,14 @@ const calculateReinstallPercentage = (data = {}, clientarea = true) => {
 
     let html = '';
 
+    const escapeStep = (val) => String(val == null ? '' : val)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     data.forEach((step, index) => {
-        html += `<tr><td>${step.comment}</td><td>${step.status}</td></tr>`;
+        html += `<tr><td>${escapeStep(step.comment)}</td><td>${escapeStep(step.status)}</td></tr>`;
 
         if (step.status == "done") {
             completedTask += 1;
@@ -1616,21 +1625,25 @@ function copyText() {
     copyText.setSelectionRange(0, 99999);
     document.execCommand("copy");
     var tooltip = document.getElementById("myTooltip");
-    tooltip.innerHTML = "Copied: " + copyText.value;
+    tooltip.textContent = "Copied: " + copyText.value;
     copyText.type = 'hidden';
 }
 
 function updateText() {
     var tooltip = document.getElementById("myTooltip");
-    tooltip.innerHTML = "Copy to clipboard";
+    tooltip.textContent = "Copy to clipboard";
 }
 
 const secureCall = (data = {}, method = "GET") => {
+    const payload = (data && typeof data === 'object' && !Array.isArray(data))
+        ? Object.assign({}, data, { csrf_token: window.soyoustartCsrfToken || window.csrfToken || '' })
+        : data;
     return new Promise(function (resolve, reject) {
         $.ajax({
             url: '',
             method: method,
-            data: data,
+            data: payload,
+            headers: { 'X-CSRF-Token': window.soyoustartCsrfToken || window.csrfToken || '' },
             success: function (response) {
                 resolve(response);
             },

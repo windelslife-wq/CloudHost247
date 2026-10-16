@@ -37,6 +37,12 @@ namespace {
     check('APIVersion', $meta['APIVersion'] === '1.1');
     check('RequiresServer', $meta['RequiresServer'] === true);
     check('SSO labels declared', isset($meta['ServiceSingleSignOnLabel'], $meta['AdminSingleSignOnLabel']));
+    check('SSO handlers exist', function_exists('RDP_ServiceSingleSignOn') && function_exists('RDP_AdminSingleSignOn'));
+    $ssoSvc = RDP_ServiceSingleSignOn([]);
+    $ssoAdm = RDP_AdminSingleSignOn([]);
+    check('SSO handlers fail gracefully without dead callback', $ssoSvc['success'] === false && !empty($ssoSvc['errorMsg']) && $ssoAdm['success'] === false && !empty($ssoAdm['errorMsg']));
+    $redacted = RDP_redactParamsForLog(['serveraccesshash' => 'SECRET_TOK', 'serverpassword' => 'PW1', 'password' => 'PW2', 'serviceid' => 9]);
+    check('RD-O3 log param redaction masks secrets', $redacted['serveraccesshash'] === '***' && $redacted['serverpassword'] === '***' && $redacted['password'] === '***' && $redacted['serviceid'] === 9);
     check('suspend is local-only true', RDP_SuspendAccount([]) === true);
     check('unsuspend is local-only true', RDP_UnsuspendAccount([]) === true);
     check('terminate is local-only true', RDP_TerminateAccount([]) === true);

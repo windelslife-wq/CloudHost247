@@ -222,6 +222,8 @@ if (!function_exists('tc_fetch_url')) {
                 CURLOPT_CONNECTTIMEOUT => min(10, $timeout),
                 CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
                 CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
                 CURLOPT_RESOLVE => [$v['host'] . ':' . $v['port'] . ':' . (strpos($v['ip'], ':') !== false ? '[' . $v['ip'] . ']' : $v['ip'])],
                 CURLOPT_USERAGENT => $opts['user_agent'] ?? 'Mozilla/5.0 (compatible; CloudHost247-ToolsCenter/1.0)',
             ]);

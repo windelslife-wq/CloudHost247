@@ -262,10 +262,7 @@ the result the scenario is expected to produce.
 - Full PHP driver executed 188 files. The sole sandbox failure was the passkey
   vendor dependency preflight (Composer dependencies absent locally). CI installs
   them. All executed substantive suites passed.
-- Pre-existing/environment-specific PHP 7.4 Tools failures were reproduced in
-  unchanged `HandlerTest.php` (two BIN fallback metadata checks) and
-  `SecurityTest.php` (IDN expectation); the previous PR commit already had a
-  failing native 7.4 job. These are separate from the green i18n suites.
+- **2026-10-16 PHP 7.4 Tools compatibility fixed:** `productivity_tools.php` now casts integer BIN array keys to string before `strpos()` (`HandlerTest.php` 146/146 on PHP 7.4), `Security.php` provides a pure-PHP RFC 3492 Punycode fallback when `ext-intl` is absent (`SecurityTest.php` 118/118 on PHP 7.4 without Intl), and `CloudHost247_tools/tests/run.mjs` mounts the repository root for i18n switcher checks (`935/935` across all 14 suites).
 - Tools Center: 12/12 with jsdom UI wiring enabled; remaining JS suites pass.
 
 No production deployment or PR merge is authorized or performed.

@@ -129,9 +129,13 @@ class HookManager
         ];
     }
 
-    public function registerWithName($name,$callback, $sort = 1)
+    public function registerWithName($name, $callback, $sort = 1)
     {
-
+        $this->hookRegister[] = [
+            "name"     => $name,
+            "function" => $callback,
+            "sort"     => $sort
+        ];
     }
 
 

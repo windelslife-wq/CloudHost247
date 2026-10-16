@@ -6,6 +6,25 @@ use WHMCS\Module\Server\RDP\Helper;
 if (!defined("WHMCS")) {
     die("This file cannot be accessed directly");
 }
+function RDP_redactParamsForLog($params)
+{
+    if (!is_array($params)) {
+        return $params;
+    }
+    $sensitiveKeys = ['password', 'serverpassword', 'serveraccesshash', 'accesshash', 'token'];
+    $redacted = [];
+    foreach ($params as $key => $value) {
+        if (in_array(strtolower((string) $key), $sensitiveKeys, true)) {
+            $redacted[$key] = '***';
+        } elseif (is_array($value)) {
+            $redacted[$key] = RDP_redactParamsForLog($value);
+        } else {
+            $redacted[$key] = $value;
+        }
+    }
+    return $redacted;
+}
+
 function RDP_MetaData()
 {
     return array(
@@ -17,6 +36,22 @@ function RDP_MetaData()
         'ServiceSingleSignOnLabel' => 'Login to Panel as User',
         'AdminSingleSignOnLabel' => 'Login to Panel as Admin',
     );
+}
+
+function RDP_ServiceSingleSignOn(array $params)
+{
+    return [
+        'success' => false,
+        'errorMsg' => 'Single Sign-On is not supported by the RDPArena reseller API; use the RDP credentials shown in the service overview.',
+    ];
+}
+
+function RDP_AdminSingleSignOn(array $params)
+{
+    return [
+        'success' => false,
+        'errorMsg' => 'Single Sign-On is not supported by the RDPArena reseller API.',
+    ];
 }
 
 function RDP_ConfigOptions($params)
@@ -118,7 +153,7 @@ function RDP_CreateAccount(array $params)
         logModuleCall(
             'RDPmodule',
             __FUNCTION__,
-            $params,
+            RDP_redactParamsForLog($params),
             $e->getMessage(),
             $e->getTraceAsString()
         );
@@ -136,7 +171,7 @@ function RDP_SuspendAccount(array $params)
         logModuleCall(
             'RDPmodule',
             __FUNCTION__,
-            $params,
+            RDP_redactParamsForLog($params),
             $e->getMessage(),
             $e->getTraceAsString()
         );
@@ -156,7 +191,7 @@ function RDP_UnsuspendAccount(array $params)
         logModuleCall(
             'RDPmodule',
             __FUNCTION__,
-            $params,
+            RDP_redactParamsForLog($params),
             $e->getMessage(),
             $e->getTraceAsString()
         );
@@ -174,7 +209,7 @@ function RDP_TerminateAccount(array $params)
         logModuleCall(
             'RDPmodule',
             __FUNCTION__,
-            $params,
+            RDP_redactParamsForLog($params),
             $e->getMessage(),
             $e->getTraceAsString()
         );
@@ -209,7 +244,7 @@ function RDP_Renew(array $params)
         logModuleCall(
             'RDPmodule',
             __FUNCTION__,
-            $params,
+            RDP_redactParamsForLog($params),
             $e->getMessage(),
             $e->getTraceAsString()
         );
@@ -263,7 +298,7 @@ function RDP_ClientArea(array $params)
         logModuleCall(
             'custom Server module',
             __FUNCTION__,
-            $params,
+            RDP_redactParamsForLog($params),
             $e->getMessage(),
             $e->getTraceAsString()
         );
@@ -349,7 +384,7 @@ function RDP_AdminServicesTabFields(array $params)
 
         return ["RDP Information" => $html];
     } catch (Exception $e) {
-        logModuleCall('custom server module', __FUNCTION__, $params, $e->getMessage(), $e->getTraceAsString());
+        logModuleCall('custom server module', __FUNCTION__, RDP_redactParamsForLog($params), $e->getMessage(), $e->getTraceAsString());
         return ["RDP Information" => '<div class="alert alert-warning" role="alert">Something went wrong. Please check the system log.</div>'];
     }
 }
@@ -376,7 +411,7 @@ function RDP_TestConnection(array $params)
         logModuleCall(
             'provisioningmodule',
             __FUNCTION__,
-            $params,
+            RDP_redactParamsForLog($params),
             $e->getMessage(),
             $e->getTraceAsString()
         );

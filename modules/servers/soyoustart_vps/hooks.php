@@ -18,11 +18,19 @@ if (!defined("WHMCS")) {
 add_hook('AdminAreaHeadOutput', 1, function ($vars) {
 
     if ($vars["filename"] == "clientsservices") {
+        if (!isset($_SESSION) || !is_array($_SESSION)) {
+            $_SESSION = [];
+        }
+        if (empty($_SESSION['soyoustart_csrf_token']) || !is_string($_SESSION['soyoustart_csrf_token'])) {
+            $_SESSION['soyoustart_csrf_token'] = bin2hex(random_bytes(32));
+        }
+        $csrfTokenJson = json_encode($_SESSION['soyoustart_csrf_token']);
         $style = '
-        <link href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css" rel="stylesheet">
-        <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+        <link href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css" rel="stylesheet" crossorigin="anonymous">
+        <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js" crossorigin="anonymous"></script>
+        <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.10.5/dist/sweetalert2.all.min.js" crossorigin="anonymous"></script>
         <script>
+            window.soyoustartCsrfToken = ' . $csrfTokenJson . ';
             $(document).ready(function(){
                 $("#disk_vps").DataTable();
                 $("#ipaddress_vps").DataTable();
@@ -276,12 +284,15 @@ add_hook('AdminAreaHeadOutput', 1, function ($vars) {
             });
 
                 const secureCall = (data = {}, method = "GET") => {
-
+                    const payload = (data && typeof data === "object" && !Array.isArray(data))
+                        ? Object.assign({}, data, { csrf_token: window.soyoustartCsrfToken || window.csrfToken || "" })
+                        : data;
                     return new Promise(function (resolve, reject) {
                         $.ajax({
                             url: "",
                             method: method,
-                            data: data,
+                            data: payload,
+                            headers: { "X-CSRF-Token": window.soyoustartCsrfToken || window.csrfToken || "" },
                             success: function (response) {
                                 resolve(response);
                             },
