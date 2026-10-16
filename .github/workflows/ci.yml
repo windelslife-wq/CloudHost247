@@ -51,6 +51,18 @@ jobs:
         run: ci/run-php.sh digital
       - name: cloudflare (cloudhost247cloudflare)
         run: ci/run-php.sh cloudflare
+      - name: blockonomics (modules/gateways/blockonomics)
+        run: ci/run-php.sh blockonomics
+      - name: soyoustart_vps (modules/servers/soyoustart_vps)
+        run: ci/run-php.sh soyoustart_vps
+      - name: soyoustart (addon + server + crons)
+        run: ci/run-php.sh soyoustart
+      - name: smmprovisioning (modules/servers/smmprovisioning)
+        run: ci/run-php.sh smmprovisioning
+      - name: rdp (modules/servers/RDP)
+        run: ci/run-php.sh rdp
+      - name: lteproxy (modules/servers/cloudhost247_lteproxy)
+        run: ci/run-php.sh lteproxy
       - name: affiliate (customaffiliate)
         run: ci/run-php.sh affiliate
       - name: phones (phoneservices)

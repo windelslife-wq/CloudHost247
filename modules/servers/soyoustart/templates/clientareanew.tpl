@@ -7,13 +7,14 @@
 
 {assign var=unique_id value=10|mt_rand:20000000}
 <link href="{$assets|escape}/css/style.css?v={$unique_id|escape}" rel="stylesheet">
+<script>window.soyoustartCsrfToken = "{$csrfToken|escape}";</script>
 <script src="{$assets|escape}/js/script.js?v={$unique_id|escape}"></script>
 <script src="{$assets|escape}/js/highcharts.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.10.5/dist/sweetalert2.all.min.js" crossorigin="anonymous"></script>
 <script src="{$assets|escape}/js/jquerygrowl.js" type="text/javascript"></script>
 <link href="{$assets|escape}/css/jquerygrowl.css" rel="stylesheet" type="text/css" />
-<link rel="stylesheet" href="//cdn.datatables.net/1.13.1/css/jquery.dataTables.min.css">
-<script src="//cdn.datatables.net/1.13.1/js/jquery.dataTables.min.js"></script>
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css" crossorigin="anonymous">
+<script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js" crossorigin="anonymous"></script>
 
 {if $clientareatemplate|strstr:"lagom"}
 <link href="{$assets|escape}/css/compatible_lagom.css?v={$unique_id|escape}" rel="stylesheet">

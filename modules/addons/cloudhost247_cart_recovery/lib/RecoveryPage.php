@@ -33,8 +33,6 @@ final class RecoveryPage
      */
     public static function render(string $titleKey, string $messageKey, int $httpStatus = 200): void
     {
-        http_response_code($httpStatus);
-
         $companyName = EmailService::companyName();
         $home = RecoveryService::baseUrl();
         $title = Locale::trans($titleKey);
@@ -48,6 +46,7 @@ final class RecoveryPage
         // print a readable page rather than warn its way through two
         // "headers already sent" notices.
         if (!headers_sent()) {
+            http_response_code($httpStatus);
             header('Content-Type: text/html; charset=utf-8');
             header('X-Robots-Tag: noindex, nofollow');
         }

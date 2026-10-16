@@ -105,7 +105,7 @@ class SoyoustartServer extends Configuration
     public function serviceInfoHtml($serverInfo, $LANG, $hardwareInfo = null, $processor= null, $disk =null, $dataCenter =null, $apiCall =null, $location = '', $serverType ='', $ovhServerName ='', $accountId ='', $cardBody = true, $serviceId = 0)
     {
         $html = '
-        <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+        <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.10.5/dist/sweetalert2.all.min.js" crossorigin="anonymous"></script>
         <script>
 
         $(document).ready(function(){

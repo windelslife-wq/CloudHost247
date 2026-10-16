@@ -239,9 +239,19 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
           return this.container(this.content());
         }
       }, {
+        key: "escapeHtml",
+        value: function escapeHtml(value) {
+          return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        }
+      }, {
         key: "content",
         value: function content() {
-          return "<div class='" + this.settings.namespace + "-close'>" + this.settings.close + "</div>\n<div class='" + this.settings.namespace + "-title'>" + this.settings.title + "</div>\n<div class='" + this.settings.namespace + "-message'>" + this.settings.message + "</div>";
+          return "<div class='" + this.escapeHtml(this.settings.namespace) + "-close'>" + this.settings.close + "</div>\n<div class='" + this.escapeHtml(this.settings.namespace) + "-title'>" + this.escapeHtml(this.settings.title) + "</div>\n<div class='" + this.escapeHtml(this.settings.namespace) + "-message'>" + this.escapeHtml(this.settings.message) + "</div>";
         }
       }, {
         key: "container",

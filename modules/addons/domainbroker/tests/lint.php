@@ -47,7 +47,7 @@ foreach ($iterator as $file) {
 sort($files);
 
 $bad = 0;
-$verbose = in_array('-v', $argv === null ? [] : (array) $argv, true);
+$verbose = in_array('-v', (!isset($argv) || $argv === null) ? [] : (array) $argv, true);
 
 foreach ($files as $file) {
     $label = str_replace($root . '/', '', $file);

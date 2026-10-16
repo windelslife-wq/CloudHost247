@@ -268,6 +268,23 @@ add_hook('AdminAreaHeadOutput', 1, function ($vars) {
         <link href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css" rel="stylesheet">
         <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
         <script>
+            window.soyoustartCsrfToken = ' . json_encode((function () {
+                if (!isset($_SESSION) || !is_array($_SESSION)) {
+                    $_SESSION = [];
+                }
+                if (empty($_SESSION['soyoustart_csrf_token']) || !is_string($_SESSION['soyoustart_csrf_token'])) {
+                    $_SESSION['soyoustart_csrf_token'] = bin2hex(random_bytes(32));
+                }
+                return $_SESSION['soyoustart_csrf_token'];
+            })()) . ';
+            jQuery.ajaxPrefilter(function (options, originalOptions, jqXHR) {
+                if ((options.type || options.method || "GET").toUpperCase() === "POST" && (!options.url || options.url.indexOf("http") !== 0)) {
+                    var token = window.soyoustartCsrfToken || window.csrfToken || "";
+                    if (token) {
+                        jqXHR.setRequestHeader("X-CSRF-Token", token);
+                    }
+                }
+            });
             $(document).ready(function(){
                 $("#ipsDetails").DataTable();
                 var dataTableObj = null;
@@ -327,7 +344,7 @@ add_hook('AdminAreaHeadOutput', 1, function ($vars) {
 
                 $(document).on("click", "#ipsDetails .viewIpDetails", async function () {
                     let ipblock = $(this).closest("tr").data("ip");
-                    $("#viewIpDetailsIpBlock").html(ipblock);
+                    $("#viewIpDetailsIpBlock").text(ipblock);
                     $("#viewIpDetailsForm .modal-body .mainSec").find("i").remove();
                     $("#viewIpDetailsForm .modal-body .mainSec").html(`<i class="fa fa-spinner fa-spin"></i>`);
                     let result = await secureCall({ ajaxAction: true, iPaction: "viewIpDetails", ipblock }, "POST");

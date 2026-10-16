@@ -78,6 +78,8 @@ T::contains('readiness page discloses the safe UAPI domain-inventory default',
     'cPanel UAPI domain inventory</dt><dd>Disabled (safe default)</dd>', $output);
 T::contains('readiness page discloses the safe built-in alias-inventory default',
     'cPanel built-in alias inventory</dt><dd>Disabled (safe default)</dd>', $output);
+T::contains('readiness page discloses the safe cPanel MySQL provisioning default',
+    'cPanel MySQL provisioning</dt><dd>Disabled (safe default)</dd>', $output);
 T::contains('staff can reach the linked-account domain inventory page', 'Linked cPanel accounts', $output);
 Identity::override(Harness::adminActor(1, Actor::ROLE_SUPER_ADMIN));
 $_GET['action'] = 'panel_accounts';

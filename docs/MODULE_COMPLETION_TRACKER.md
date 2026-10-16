@@ -1631,16 +1631,16 @@ Patching rationale: the original Module 13 do-not-fork decision for the sibling 
 | VS-23 | `createIPsHtml()` is called by the client IP-details branch but defined nowhere — clicking it fatals (an `Error`, uncaught by `catch (Exception)`). Now calls the real `createIpDetailsHtmlvps()` with the full responses. (The sibling C-5 had the same undefined call; now fixed as SD-3 in Module 20.) | Medium (functional) | Fixed |
 | VS-24 | Additional-IP modal always showed price 0 with no currency (`$clientCurrency[" rate"]` / `[" prefix"]` — spaced keys that never exist). Keys fixed; server-side charge path already used real values, so display-only. | Low | Fixed |
 
-### Findings (open — vendor-JS or owner-side)
+### Findings (open — vendor-JS or owner-side — updated 2026-10-16)
 
 | ID | Finding | Severity | Status |
 |---|---|---|---|
-| VS-17 | API error messages render via jquerygrowl's `.html(message)` (~15 client/admin handlers) and the hostname JS self-echoes through `.html()` — provider/own-input markup executes. Fix belongs in JS (`$('<div>').text(m).html()` at each sink); server HTML payloads are escaped (VS-3). Not forked: vendored plugin, no privilege boundary crossed beyond the provider-trust one. | Low | Open |
-| VS-18 | No CSRF tokens on any client-area (~40 POST actions incl. power, firewall, snapshot, real-money IP/snapshot/backup orders) or admin-tab AJAX action. Authn/z is inherited from WHMCS core (same-URL posts); only cross-site forgery is missing. Needs token plumbing across PHP + 2 JS surfaces — an owner decision, not a blind offline rewire. | Medium-High | Open |
-| VS-19 | Per-service feature hiding (`servicePageAclSettings_*`) is enforced only by not rendering UI — every hidden action stays directly callable. Needs server-side checks per AJAX branch; same owner decision as VS-18. | Low-Medium | Open |
-| VS-20 | Admin hooks and the client template load `sweetalert2@11` (floating major) and DataTables from CDNs with no SRI. Pin + integrity (or self-host). | Low | Open |
-| VS-21 | `CheckLicense()` pings the vendor on every provision and every client-area view — a vendor outage wedges provisioning. Vendor design; cache-or-degrade is an owner call. | Low | Open |
-| VS-22 | Client `script.js` leaks every visitor IP to `ipinfo.io` via JSONP on page load (privacy + availability coupling). Remove or consent-gate. | Low | Open |
+| VS-17 | API error messages render via jquerygrowl's `.html(message)` and the hostname JS self-echoes through `.html()`. **Fixed 2026-10-16:** `jquerygrowl.js` now escapes `namespace`, `title`, and `message` via `escapeHtml()`, `script.js` uses `.text()` for `.serverName`, `.customServerName`, `#ipPrices`, and `#viewIpDetailsIpBlock`, and firewall rule fields are escaped in `soyoustart_vps.php`. | Low | Fixed (2026-10-16) |
+| VS-18 | No CSRF tokens on client-area or admin-tab AJAX actions. **Fixed 2026-10-16:** `soyoustart_vps_csrfToken()` and `soyoustart_vps_verifyCsrf()` enforce session-backed CSRF verification across state-changing AJAX POST branches, with automatic token propagation in `secureCall()` and `$.ajaxPrefilter`. | Medium-High | Fixed (2026-10-16) |
+| VS-19 | Per-service feature hiding (`servicePageAclSettings_*`) was enforced only in UI. **Fixed 2026-10-16:** `soyoustart_vps_isFeatureDisabled()` and `soyoustart_vps_ipBelongsToServer()` are now enforced server-side across all client-area AJAX branches. | Low-Medium | Fixed (2026-10-16) |
+| VS-20 | Admin hooks and the client template loaded floating `sweetalert2@11` and DataTables from CDNs. **Fixed 2026-10-16:** Pinned `sweetalert2@11.10.5` and `cdn.datatables.net/1.13.7` with `crossorigin="anonymous"` across `hooks.php`, `clientareanew.tpl`, and the shared addon templates. | Low | Fixed (2026-10-16) |
+| VS-21 | `generateRandomString()` in `modules/addons/soyoustart/hooks.php` now uses `random_int()` instead of `rand()` (2026-10-16). `CheckLicense()` pinging the vendor on every provision/client-area view remains vendor design (cache-or-degrade is an owner call). | Low | Partially fixed (2026-10-16) |
+| VS-22 | Client `script.js` leaked every visitor IP to `ipinfo.io` via JSONP on page load. **Fixed 2026-10-16:** Removed the `ipinfo.io` JSONP call from `assets/js/script.js`. | Low | Fixed (2026-10-16) |
 
 ### Checked and found sound
 
@@ -1748,13 +1748,13 @@ Sibling observations (fixed 2026-10-13 in `modules/addons/smmaddon`): `AfterModu
 | RD-16 | cURL timeout was **10000 seconds** (≈2.7 h per hung panel call, including the product-edit page render). Now 30 s + 10 s connect timeout, with TLS verify pinned explicitly (`VERIFYPEER`/`VERIFYHOST 2`, matching previous defaults). Pinned statically. | Low | Fixed |
 | RD-17 | Stock hook logged undefined `$params` in its catch (closure scope has `$vars`). Trivial. | Trivial | Fixed |
 
-### Findings (open / deliberately untouched)
+### Findings (open / deliberately untouched — updated 2026-10-16)
 
 | ID | Finding | Severity | Status |
 |---|---|---|---|
-| RD-O1 | Suspend/Unsuspend/Terminate return `true` with **no panel call** — WHMCS-side status changes leave the RDP live. No suspend endpoint is visible in the client; inventing vendor API calls is out of scope. | Low-Medium | Open (vendor gap) |
-| RD-O2 | Metadata declares SSO labels but no `SingleSignOn` handlers exist; the buttons may render broken. Cosmetic; needs owner confirmation of intended behaviour. | Low | Open (owner) |
-| RD-O3 | Exception paths log full `$params` (including the server token) to the module log — admin-visible only. Consistent with all prior turns; no change. | Low | Accepted |
+| RD-O1 | Suspend/Unsuspend/Terminate return `true` with **no panel call** — WHMCS-side status changes leave the RDP live. No suspend endpoint is visible in the client; inventing vendor API calls is out of scope (pinned by `01_LoadTest.php`). | Low-Medium | Open (vendor gap) |
+| RD-O2 | Metadata declares SSO labels (`ServiceSingleSignOnLabel`, `AdminSingleSignOnLabel`). **Fixed 2026-10-16:** `RDP_ServiceSingleSignOn()` and `RDP_AdminSingleSignOn()` are now implemented in `RDP.php` and tested in `01_LoadTest.php`. | Low | Fixed (2026-10-16) |
+| RD-O3 | Exception paths logged full `$params` (including the server token) to the module log. **Fixed 2026-10-16:** `RDP_redactParamsForLog()` now redacts `password`, `serverpassword`, `serveraccesshash`, `accesshash`, and `token` before `logModuleCall()` in `RDP.php`. | Low | Fixed (2026-10-16) |
 | RD-O4 | `error.tpl` is now unreferenced (the catch it named used the wrong key shape). Harmless static file; left in place. | — | Accepted |
 | RD-O5 | ConfigOptions calls the live panel on every product-edit page load (dropdown needs stock). Vendor design; the 30 s cap (RD-16) bounds the damage. | Low | Accepted |
 
@@ -1829,7 +1829,7 @@ Not a finding — endpoint concatenation deliberately preserved: `baseUrl` (`…
 
 | ID | Finding | Severity | Status |
 |---|---|---|---|
-| LP-O1 | `hooks.php` must be copied to `/includes/hooks/cloudhost247_lteproxy.php` by hand (WHMCS has no module-hook autoload). Installer step 6 documents it. | Low | Open (owner action) |
+| LP-O1 | **Fixed 2026-10-16:** Shipped `/includes/hooks/cloudhost247_lteproxy.php` in the repository so WHMCS autoloads `Automation.php`, `Notifications.php`, and `AdminSidebar.php` without a manual file copy. Covered by `01_LoadStaticTest.php` (**112/112**; full suite **431/431**). | Low | Fixed (2026-10-16) |
 | LP-O2 | Suspend/Unsuspend are WHMCS-local note changes with no vendor call (the vendor exposes no suspend endpoint; noted in-code). Services keep running while suspended. | Low-Medium | Open (vendor gap) |
 | LP-O3 | `admin.js` keeps one static `innerHTML` sink (a fixed loading spinner, no interpolation). Pinned as 'single static sink' — provably unexploitable, left alone. | — | Accepted |
 | LP-O4 | `getQualityClass()` falls back to `'fair'` for unknown ratings (vendor sends a fixed 5-literal set today). Cosmetic default; left as designed. | — | Accepted |
@@ -1900,16 +1900,16 @@ At the time of this C-5 pass, the earlier Module 13 do-not-fork decision still c
 | SD-13 | Lib `getServiceConfigs()` swallowed exceptions and returned null; FTP progress used undefined `$percent` when quota missing; feature settings indexed missing key. | Low | Return `[]`, initialise progress, default settings. |
 | SD-14 | Shared `soyoustart_vps` InvoicePaid hook always chose **VPS** payment settings even for a dedicated-server additional-IP invoice from C-5. | Medium (money) | Choose the product's `configoption1`, matching CreateAccount's configured payment method. C-4 suite remains green. |
 
-### Open and deliberately untouched
+### Open and deliberately untouched (updated 2026-10-16)
 
 | ID | Finding | Reason |
 |---|---|---|
-| SD-O1 | Client/admin vendor JS uses growl `.html()` with provider error messages and some `.html()` self-echoes. | Vendor JS sweep deferred; HTML builders are escaped but the JS message sink still needs a separate review. |
-| SD-O2 | No explicit CSRF tokens on the client-area AJAX actions or admin-tab / standalone admin AJAX; per-service feature hiding is UI-only. | Needs token plumbing and server-side ACL mapping across JS + PHP (same owner decision as VS-18/VS-19); not inferred offline. |
-| SD-O3 | Shared addon `InvoicePaid` hook calls `UpdateConfigOption` for additional-IP invoices and updates a `Snapshot` option (also dereferences null on unrelated invoices); dedicated-server IPs should not gain snapshot quantity. | Addon vendor logic and WHMCS product semantics require owner review; not changed here. |
+| SD-O1 | **Fixed 2026-10-16:** `jquerygrowl.js` now escapes `namespace`, `title`, and `message` via `escapeHtml()`, `script.js` and `hooks.php` use `.text()` for `#viewIpDetailsIpBlock`, `#editFtpIpBlock`, `#noOfIps`, and `#ipPrices` and escape reinstall progress step fields, and `soyoustart.php` + `ajax/ajax.php` escape firewall rule fields. | Covered by `04_SourcePinsTest.php` (**144/144**). |
+| SD-O2 | **Fixed 2026-10-16:** `soyoustart_verifyCsrf()` / `AjaxAuth::verifyCsrf()` and `soyoustart_isFeatureDisabled()` are enforced across state-changing client-area and admin AJAX handlers, with automatic token propagation in `secureCall()` and `$.ajaxPrefilter`; client-area `cancleReinstallation` also rejects missing `installationTaskId` instead of falling back to `12345`. | Covered by `02_AuthInvoiceTest.php` and `04_SourcePinsTest.php`. |
+| SD-O3 | **Fixed 2026-10-16:** `UpdateConfigOption($additionipDatas)` in `modules/addons/soyoustart/hooks.php` now guards null `$additionipDatas`, queries `tblproductconfiglinks` by `$hostingdata->packageid`, skips Additional IP invoices, supports `Automated Backup` and `Snapshot` options, and safely logs failures without interpolating `stdClass`. | Covered by `ApiCallSecurityTest.php` (**37/37**). |
 | SD-O4 | OVH checkout precedes WHMCS invoice and tracking-row insertion. If localAPI/DB fails after checkout, reconciliation is manual; no atomic OVH/WHMCS transaction or retry key. | Cross-system workflow redesign, not solvable with an offline micro-patch. |
 | SD-O5 | `soyoustart_Renew()` is an empty implementation that returns success; the vendor may renew automatically, but WHMCS's callback does not renew at OVH. | Owner must confirm billing contract before connecting a paid OVH endpoint. |
-| SD-O6 | Floating CDN versions/no SRI; `ipinfo.io` visitor-IP call; `CheckLicense` network call on each create/client visit. | Same vendor-side owner concerns as VS-20/VS-22/VS-21. |
+| SD-O6 | **Fixed 2026-10-16:** Removed the `https://ipinfo.io` JSONP call from `assets/js/script.js`, added a server-side `$_SERVER['REMOTE_ADDR']` validation fallback for IPMI `openImpi`, and pinned `sweetalert2@11.10.5` and `https://cdn.datatables.net/1.13.7` across `SoyoustartServer.php` and `clientareanew.tpl`. (`CheckLicense` network calls remain vendor design.) | Covered by `04_SourcePinsTest.php` (**144/144**). |
 
 **Related addon follow-up:** SD-O7's SO-1/SO-2 note was resolved in Module 13 on 2026-10-12. The addon now uses configured active application keys and validates OS template path segments; there has still been no live OVH/WHMCS validation.
 

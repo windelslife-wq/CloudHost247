@@ -36,4 +36,14 @@ foreach ([$entry,$ajax,$lib,$hooks,file_get_contents($root.'/lib/AjaxAuth.php')]
     try { token_get_all($source, TOKEN_PARSE); check('PHP source parses',true); }
     catch (ParseError $e) { check('PHP source parses: '.$e->getMessage(),false); }
 }
+$growl=file_get_contents($root.'/assets/js/jquerygrowl.js');
+$script=file_get_contents($root.'/assets/js/script.js');
+$addonHooks=file_get_contents(dirname(dirname($root)).'/addons/soyoustart/hooks.php');
+check('SD-O1 jquerygrowl escapes title and message',strpos($growl,'this.escapeHtml(this.settings.title)')!==false && strpos($growl,'this.escapeHtml(this.settings.message)')!==false);
+check('SD-O1 script.js uses .text() for viewIpDetailsIpBlock and editFtpIpBlock',strpos($script,'$("#viewIpDetailsIpBlock").text(ipblock)')!==false && strpos($script,'$("#editFTP #editFtpIpBlock").text(editFtpIpBlock)')!==false);
+check('SD-O2 entry enforces soyoustart_verifyCsrf and soyoustart_isFeatureDisabled',substr_count($entry,'soyoustart_verifyCsrf()')>=6 && substr_count($entry,'soyoustart_isFeatureDisabled(')>=10);
+check('SD-O3 addon UpdateConfigOption guards null and uses packageid',strpos($addonHooks,'if (!is_object($additionipDatas) || empty($additionipDatas->service_id))')!==false && strpos($addonHooks,'$hostingdata->packageid')!==false);
+check('SD-O6 ipinfo.io beacon removed from script.js',strpos($script,'ipinfo.io')===false);
+check('SD-O6 sweetalert2 and datatables CDN URLs pinned over HTTPS',strpos($lib,'sweetalert2@11.10.5')!==false && strpos($tpl,'sweetalert2@11.10.5')!==false && strpos($tpl,'href="//cdn.datatables.net')===false && strpos($tpl,'src="//cdn.datatables.net')===false);
+check('SD-12 client cancel reinstall rejects missing taskId',strpos($entry,'12345')===false);
 echo "source: PASS=$pass FAIL=$fail\n";exit($fail?1:0);

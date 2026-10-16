@@ -44,6 +44,57 @@ function soyoustart_vps_consoleScript($consoleUrl)
 {
     return '<script>window.open(' . json_encode((string) $consoleUrl) . ')</script>';
 }
+function soyoustart_vps_ipBelongsToServer($ownedResponse, $requested)
+{
+    if (!is_string($requested) || $requested === ''
+        || !is_array($ownedResponse) || ($ownedResponse['httpcode'] ?? 0) !== 200
+        || !isset($ownedResponse['result']) || !is_array($ownedResponse['result'])) {
+        return false;
+    }
+    if (in_array($requested, $ownedResponse['result'], true)) {
+        return true;
+    }
+    $firstIp = soyoustart_vps_firstIp($requested);
+    return $firstIp !== null && in_array($firstIp, $ownedResponse['result'], true);
+}
+function soyoustart_vps_isFeatureDisabled($aclSettings, $addonSettings, $serviceKey, $addonKey)
+{
+    $serviceDisabled = is_array($aclSettings) && ($aclSettings[$serviceKey] ?? '') === 'on';
+    $addonDisabled = is_array($addonSettings) && in_array($addonKey, $addonSettings, true);
+    return $serviceDisabled || $addonDisabled;
+}
+function soyoustart_vps_csrfToken()
+{
+    if (!isset($_SESSION) || !is_array($_SESSION)) {
+        $_SESSION = [];
+    }
+    if (empty($_SESSION['soyoustart_csrf_token']) || !is_string($_SESSION['soyoustart_csrf_token'])) {
+        $_SESSION['soyoustart_csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['soyoustart_csrf_token'];
+}
+function soyoustart_vps_verifyCsrf($submitted = null, $session = null)
+{
+    $sess = is_array($session) ? $session : (isset($_SESSION) && is_array($_SESSION) ? $_SESSION : []);
+    if ($submitted === null) {
+        if (isset($_POST['csrf_token']) && is_string($_POST['csrf_token']) && $_POST['csrf_token'] !== '') {
+            $submitted = $_POST['csrf_token'];
+        } elseif (isset($_POST['token']) && is_string($_POST['token']) && $_POST['token'] !== '') {
+            $submitted = $_POST['token'];
+        } elseif (isset($_SERVER['HTTP_X_CSRF_TOKEN']) && is_string($_SERVER['HTTP_X_CSRF_TOKEN']) && $_SERVER['HTTP_X_CSRF_TOKEN'] !== '') {
+            $submitted = $_SERVER['HTTP_X_CSRF_TOKEN'];
+        }
+    }
+    if (!is_string($submitted) || $submitted === '') {
+        return false;
+    }
+    foreach (['soyoustart_csrf_token', 'tkval'] as $key) {
+        if (!empty($sess[$key]) && is_string($sess[$key]) && hash_equals($sess[$key], $submitted)) {
+            return true;
+        }
+    }
+    return false;
+}
 function soyoustart_vps_ConfigOptions()
 {
     return [
@@ -337,6 +388,13 @@ function soyoustart_vps_AdminServicesTabFields(array $params)
             $accountId = soyoustart_vps_cfgPart($params, "configoption3", 0, '-');
             $ovhCustomHostname = $params["customfields"]["ovh_custom_hostname"];
             /* Get serviceinfo  */
+            $adminSnapAction = $whmcs->get_req_var("snapshotAction");
+            if ($whmcs->get_req_var("snapshot") && !in_array($adminSnapAction, ["getData", "getStatus"], true)) {
+                if (!soyoustart_vps_verifyCsrf()) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "Invalid or missing CSRF token."]]);
+                    exit;
+                }
+            }
             if ($whmcs->get_req_var("snapshot")) {
                 if ($whmcs->get_req_var("snapshotAction") == "getData") {
                     $response = $apiCall->get("/vps/{$ovhServerName}/snapshot", $accountId, $location, "Get SnapshotInfo", true);
@@ -685,11 +743,23 @@ function soyoustart_vps_ClientArea(array $params)
                 }
             }
             if ($whmcs->get_req_var("monitoring") == "slaMonitoring") {
+                if (!soyoustart_vps_verifyCsrf()) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "Invalid or missing CSRF token."]]);
+                    exit;
+                }
+                if (soyoustart_vps_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Monitoring", "monitoring")) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                    exit;
+                }
                 $data = ["slaMonitoring" => ($whmcs->get_req_var("ftpAction") == "disable" ? false : true)];
                 $response = $apiCall->enableDisableMonitoring($location, $accountId, $ovhServerName, $data, $serverType);
                 echo json_encode($response);
                 exit;
             } elseif ($whmcs->get_req_var("updateServerName")) {
+                if (!soyoustart_vps_verifyCsrf()) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "Invalid or missing CSRF token."]]);
+                    exit;
+                }
                 $customServerName = $whmcs->get_req_var("customServerName");
                 $response = $apiCall->put("/vps/{$ovhServerName}", $accountId, $location, ["displayName" => $customServerName], "Updating custome server name", true);
                 if ($response["httpcode"] != 200) {
@@ -705,6 +775,25 @@ function soyoustart_vps_ClientArea(array $params)
                 }
                 exit;
             } elseif ($whmcs->get_req_var("manage_ips")) {
+                if (soyoustart_vps_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Manage_IPs", "manageIps")) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                    exit;
+                }
+                $ipAction = $whmcs->get_req_var("iPaction");
+                if ($ipAction && !in_array($ipAction, ["getFirewallRules", "viewIpDetails"], true)) {
+                    if (!soyoustart_vps_verifyCsrf()) {
+                        echo json_encode(["httpcode" => 403, "result" => ["message" => "Invalid or missing CSRF token."]]);
+                        exit;
+                    }
+                }
+                if ($whmcs->get_req_var("getIpDetails") || ($ipAction && $ipAction !== 'addAdditionalIp')) {
+                    $requestedIp = $whmcs->get_req_var("ipblock") ?: $whmcs->get_req_var("ip");
+                    $ownedIps = $apiCall->get("/vps/{$ovhServerName}/ips", $accountId, $location, "Checking assigned IPs", true);
+                    if (!soyoustart_vps_ipBelongsToServer($ownedIps, $requestedIp)) {
+                        echo json_encode(["httpcode" => 404, "result" => ["message" => "IP block not assigned to this server"]]);
+                        exit;
+                    }
+                }
                 if ($whmcs->get_req_var("getIpDetails")) {
                     $ip = $whmcs->get_req_var("ip");
                     $ipdetails = $apiCall->get("/vps/{$ovhServerName}/ips/$ip", $accountId, $location, "Get ip data", true);
@@ -783,12 +872,12 @@ function soyoustart_vps_ClientArea(array $params)
                             $state = "<span class=\"badge bg-danger\">Deleting</span>";
                         }
                         $html[] = [
-                            "sequence" => $response["result"]->sequence,
-                            "action" => strtoupper($response["result"]->action),
-                            "protocol" => strtoupper($response["result"]->protocol),
-                            "destination" => $response["result"]->destination,
-                            "sourcePort" => (is_null($response["result"]->sourcePort) ? "-" : $response["result"]->sourcePort),
-                            "destinationPort" => is_null($response["result"]->destinationPort) ? "-" : $response["result"]->destinationPort,
+                            "sequence" => (int) $response["result"]->sequence,
+                            "action" => server::escapeHtml(strtoupper($response["result"]->action)),
+                            "protocol" => server::escapeHtml(strtoupper($response["result"]->protocol)),
+                            "destination" => server::escapeHtml($response["result"]->destination),
+                            "sourcePort" => (is_null($response["result"]->sourcePort) ? "-" : server::escapeHtml($response["result"]->sourcePort)),
+                            "destinationPort" => is_null($response["result"]->destinationPort) ? "-" : server::escapeHtml($response["result"]->destinationPort),
                             "tcpOption" => ($response["result"]->fragments) ? "Fragments" : "-",
                             "state" => $state,
                             "delete" => $action,
@@ -924,7 +1013,19 @@ function soyoustart_vps_ClientArea(array $params)
                     exit;
                 }
             } elseif ($whmcs->get_req_var("power")) {
+                if (!soyoustart_vps_verifyCsrf()) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "Invalid or missing CSRF token."]]);
+                    exit;
+                }
+                if (soyoustart_vps_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Power", "power")) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                    exit;
+                }
                 if ($whmcs->get_req_var("boot") == "hardreboot") {
+                    if (soyoustart_vps_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Reboot", "reboot")) {
+                        echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                        exit;
+                    }
                     $response = $apiCall->post("/vps/{$ovhServerName}/reboot", $accountId, $location, [], "Reboot Server ", true);
                     if ($response["httpcode"] != 200) {
                         $error = $response["result"]->message;
@@ -934,11 +1035,19 @@ function soyoustart_vps_ClientArea(array $params)
                     echo json_encode($response);
                     exit;
                 } elseif ($whmcs->get_req_var("boot") == "netBoot") {
+                    if (soyoustart_vps_isFeatureDisabled($enableSettings, $enableSettingsAddon, "NetBoot", "netboot")) {
+                        echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                        exit;
+                    }
                     $data = ($whmcs->get_req_var("type") == "local") ? ["netbootMode" => "local"] : ["netbootMode" => "rescue"];
                     $response = $apiCall->recuseService($location, $accountId, $ovhServerName, $data);
                     echo json_encode($response);
                     exit;
                 } elseif ($whmcs->get_req_var("boot") == "serverOnOff") {
+                    if (soyoustart_vps_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Power_On/Off", "powerOnOff")) {
+                        echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                        exit;
+                    }
                     $powerAction = soyoustart_vps_powerAction($whmcs->get_req_var("type"));
                     if ($powerAction === null) {
                         echo json_encode(["httpcode" => 400, "result" => ["message" => "Invalid power action."]]);
@@ -949,6 +1058,14 @@ function soyoustart_vps_ClientArea(array $params)
                     exit;
                 }
             } elseif ($whmcs->get_req_var("console")) {
+                if (!soyoustart_vps_verifyCsrf()) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "Invalid or missing CSRF token."]]);
+                    exit;
+                }
+                if (soyoustart_vps_isFeatureDisabled($enableSettings, $enableSettingsAddon, "IMPI_Console", "impiConsole")) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                    exit;
+                }
                 $response = $apiCall->post("/vps/{$ovhServerName}/getConsoleUrl", $accountId, $location, [], "console ", true);
                 if ($response["httpcode"] != 200) {
                     $error = $response["result"]->message;
@@ -992,6 +1109,15 @@ function soyoustart_vps_ClientArea(array $params)
                 echo json_encode(["ipv4" => $ipV4, "ipv6" => $ipV6]);
                 exit;
             } elseif ($whmcs->get_req_var("snapshot")) {
+                if (soyoustart_vps_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Manage_Snapshot", "manageSnapshot")) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                    exit;
+                }
+                $snapAction = $whmcs->get_req_var("snapshotAction");
+                if ($snapAction && $snapAction !== "getStatus" && !soyoustart_vps_verifyCsrf()) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "Invalid or missing CSRF token."]]);
+                    exit;
+                }
                 if ($whmcs->get_req_var("snapshotAction") == "orderSnapshot") {
                     /* creating cart */
                     $cartDetails = $apiCall->createCart($location, $planCode . "creating cart", $subsidiaryLocation, $accountId);
@@ -1092,6 +1218,15 @@ function soyoustart_vps_ClientArea(array $params)
                     exit;
                 }
             } elseif ($whmcs->get_req_var("reinstall")) {
+                if (soyoustart_vps_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Power", "power")
+                    || soyoustart_vps_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Reinstall", "reinstall")) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                    exit;
+                }
+                if ($whmcs->get_req_var("reinstallAction") == "re-install" && !soyoustart_vps_verifyCsrf()) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "Invalid or missing CSRF token."]]);
+                    exit;
+                }
                 if ($whmcs->get_req_var("reinstallAction") == "gettemplate") {
                     // $availableTemplates = $apiCall->get("/vps/{$ovhServerName}/templates", $accountId, $location, "Getting Templates ids", true);
                     $availableTemplates = $apiCall->get("/vps/{$ovhServerName}/images/available", $accountId, $location, "Getting Templates ids", true);
@@ -1122,7 +1257,15 @@ function soyoustart_vps_ClientArea(array $params)
                     exit;
                 }
             } elseif ($whmcs->get_req_var("backup")) {
+                if (soyoustart_vps_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Automated_Backup", "automatedBackup")) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                    exit;
+                }
                 if ($whmcs->get_req_var("backupAction") == "orderBackup") {
+                    if (!soyoustart_vps_verifyCsrf()) {
+                        echo json_encode(["httpcode" => 403, "result" => ["message" => "Invalid or missing CSRF token."]]);
+                        exit;
+                    }
                     $cartDetails = $apiCall->createCart($location, $planCode . "creating cart", $subsidiaryLocation, $accountId);
                     if ($cartDetails["httpcode"] != 200) {
                         echo json_encode($cartDetails);
@@ -1207,6 +1350,7 @@ function soyoustart_vps_ClientArea(array $params)
                     'serverInfo' => $serverInfo["result"],
                     'aclSettingsVps' => $enableSettings,
                     'enableSettingsAddon' => $enableSettingsAddon,
+                    'csrfToken' => soyoustart_vps_csrfToken(),
                     'clientCurrency' => getCurrency($params["userid"]),
                     'clientareatemplate' => $params["clientareatemplate"],
                 )

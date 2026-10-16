@@ -148,7 +148,7 @@ function CloudHost247_tools_bin_lookup_result($bin6, array $apiResult)
     $localSource = 'Bundled prefix heuristic (limited; source/version not recorded)';
 
     foreach ($bins as $prefix => $data) {
-        if (strpos($bin6, $prefix) === 0) {
+        if (strpos($bin6, (string) $prefix) === 0) {
             $network = $data['network'];
             $type = $data['type'];
             $networkSource = $localSource;

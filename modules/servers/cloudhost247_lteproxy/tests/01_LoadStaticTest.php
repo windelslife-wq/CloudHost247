@@ -115,6 +115,14 @@ namespace {
         && strpos($hooksBoot, 'Notifications.php') !== false
         && strpos($hooksBoot, 'AdminSidebar.php') !== false);
     check('hooks.php documents the copy target', strpos($hooksBoot, '/includes/hooks/cloudhost247_lteproxy.php') !== false);
+    $repoHookPath = dirname(__DIR__, 4) . '/includes/hooks/cloudhost247_lteproxy.php';
+    $repoHookSrc = is_file($repoHookPath) ? (string) file_get_contents($repoHookPath) : '';
+    check('LP-O1: /includes/hooks/cloudhost247_lteproxy.php exists and loads all 3 hook files',
+        $repoHookSrc !== ''
+        && strpos($repoHookSrc, "defined('WHMCS')") !== false
+        && strpos($repoHookSrc, 'Automation.php') !== false
+        && strpos($repoHookSrc, 'Notifications.php') !== false
+        && strpos($repoHookSrc, 'AdminSidebar.php') !== false);
 
     echo "== Capsule imports (LP-1) ==\n";
     foreach (['cloudhost247_lteproxy.php', 'hooks/Automation.php', 'hooks/Notifications.php',

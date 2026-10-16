@@ -200,7 +200,18 @@ class ConfigOptions extends \ModulesGarden\ProductsReseller\Server\Smtphosting\C
         }
         catch (\Exception $exception)
         {
-            //todo log me
+            try
+            {
+                if (class_exists('\\ModulesGarden\\ProductsReseller\\Server\\Smtphosting\\Core\\ServiceLocator'))
+                {
+                    \ModulesGarden\ProductsReseller\Server\Smtphosting\Core\ServiceLocator::call('errorManager')
+                        ->addError(self::class, $exception->getMessage(), $exception->getTrace());
+                }
+            }
+            catch (\Throwable $logError)
+            {
+                // Do not mask the false return when errorManager is unavailable.
+            }
             return false;
         }
 

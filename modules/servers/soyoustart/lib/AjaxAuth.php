@@ -23,4 +23,27 @@ final class AjaxAuth
         }
         return ['server' => $serverName, 'account' => $accountId, 'location' => $location];
     }
+
+    public static function verifyCsrf($submitted = null, $session = null)
+    {
+        $sess = is_array($session) ? $session : (isset($_SESSION) && is_array($_SESSION) ? $_SESSION : []);
+        if ($submitted === null) {
+            if (isset($_POST['csrf_token']) && is_string($_POST['csrf_token']) && $_POST['csrf_token'] !== '') {
+                $submitted = $_POST['csrf_token'];
+            } elseif (isset($_POST['token']) && is_string($_POST['token']) && $_POST['token'] !== '') {
+                $submitted = $_POST['token'];
+            } elseif (isset($_SERVER['HTTP_X_CSRF_TOKEN']) && is_string($_SERVER['HTTP_X_CSRF_TOKEN']) && $_SERVER['HTTP_X_CSRF_TOKEN'] !== '') {
+                $submitted = $_SERVER['HTTP_X_CSRF_TOKEN'];
+            }
+        }
+        if (!is_string($submitted) || $submitted === '') {
+            return false;
+        }
+        foreach (['soyoustart_csrf_token', 'tkval'] as $key) {
+            if (!empty($sess[$key]) && is_string($sess[$key]) && hash_equals($sess[$key], $submitted)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

@@ -13,12 +13,17 @@ if (!defined("WHMCS")) {
 
 add_hook('InvoicePaid', 1, function ($vars) {
     try {
+        $invoiceid = isset($vars['invoiceid']) ? (int) $vars['invoiceid'] : 0;
+        if ($invoiceid < 1) {
+            return;
+        }
         $apiCall = new ApiCall();
-        $helper = new Helper();
-        $invoiceid = $vars['invoiceid'];
         $additionipDatas = $apiCall->get_data("mod_soyoustart_ips_orders", ["invoiceid" => $invoiceid], "first");
-        $response = UpdateConfigOption($additionipDatas);
-    } catch (Exception $e) {
+        if (!is_object($additionipDatas) || empty($additionipDatas->service_id)) {
+            return;
+        }
+        UpdateConfigOption($additionipDatas);
+    } catch (\Throwable $e) {
         logActivity('soyoustart vps Hook-error' . $e->getMessage());
     }
 });
@@ -27,8 +32,8 @@ add_hook('ShoppingCartValidateProductUpdate', 1, function ($vars) {
 
     $helper = new Helper();
     $apiCall = new ApiCall();
-    $aclSettings = $helper->get_data("mod_acl_settings", ["key" => "generalaclSettings"], "first")->value;
-    $aclSettings = !empty($aclSettings) ? json_decode($aclSettings, true) : [];
+    $aclSettingsRow = $helper->get_data("mod_acl_settings", ["key" => "generalaclSettings"], "first");
+    $aclSettings = (is_object($aclSettingsRow) && !empty($aclSettingsRow->value)) ? json_decode($aclSettingsRow->value, true) : [];
     if (isset($aclSettings["showErrorOnCart"]) && $aclSettings["showErrorOnCart"] == "on") {
         $cartProduct = end($_SESSION["cart"]["products"]);
         $pid = $cartProduct["pid"];
@@ -450,35 +455,61 @@ function generateRandomString($length = 15)
     $charactersLength = strlen($characters);
     $randomString = '';
     for ($i = 0; $i < $length; $i++) {
-        $randomString .= $characters[rand(0, $charactersLength - 1)];
+        $randomString .= $characters[random_int(0, $charactersLength - 1)];
     }
     return $randomString;
 }
 
 function UpdateConfigOption($additionipDatas)
 {
+    if (!is_object($additionipDatas) || empty($additionipDatas->service_id)) {
+        return;
+    }
     $helper = new Helper();
-    $serviceId = $additionipDatas->service_id;
-    if ($additionipDatas) {
-        $hostingdata = $helper->get_data("tblhosting", ["id" => $serviceId], "first");
-        $productId = $hostingdata->id;
-        $configLinkData = $helper->get_data("tblproductconfiglinks", ["pid" => $productId], "first");
-        if ($configLinkData) {
-            $gid = $configLinkData->gid;
-            $configOptionData = Capsule::table('tblproductconfigoptions')->where("optionname", 'Snapshot')->where('gid', $gid)->first();
-            $configOptionID = $configOptionData->id;
-            $configSubOptionData = Capsule::table('tblproductconfigoptionssub')->where("configid", $configOptionID)->first();
-            $optionId = $configSubOptionData->id;
-            $updateSnapshot = Capsule::table('tblhostingconfigoptions')
-                ->where("relid", $serviceId)
-                ->where('configid', $configOptionID)
-                ->where('optionid', $optionId)
-                ->update(['qty' => 1]);
-
-            if ($updateSnapshot != "1") {
-                logActivity("Error: snapshot update : $configSubOptionData ");
+    $serviceId = (int) $additionipDatas->service_id;
+    $hostingdata = $helper->get_data("tblhosting", ["id" => $serviceId], "first");
+    if (!is_object($hostingdata) || empty($hostingdata->packageid)) {
+        return;
+    }
+    $productId = (int) $hostingdata->packageid;
+    $configLinkData = $helper->get_data("tblproductconfiglinks", ["pid" => $productId], "first");
+    if (!is_object($configLinkData) || empty($configLinkData->gid)) {
+        return;
+    }
+    $targetOptionName = 'Snapshot';
+    if (!empty($additionipDatas->invoiceid)) {
+        $invoiceItem = $helper->get_data("tblinvoiceitems", ["invoiceid" => (int) $additionipDatas->invoiceid], "first");
+        if (is_object($invoiceItem) && isset($invoiceItem->description)) {
+            $desc = (string) $invoiceItem->description;
+            if (stripos($desc, 'additional ip') !== false) {
+                return;
+            }
+            if (stripos($desc, 'automated backup') !== false) {
+                $targetOptionName = 'Automated Backup';
+            } elseif (stripos($desc, 'snapshot') !== false) {
+                $targetOptionName = 'Snapshot';
             }
         }
+    }
+    $gid = $configLinkData->gid;
+    $configOptionData = Capsule::table('tblproductconfigoptions')->where("optionname", $targetOptionName)->where('gid', $gid)->first();
+    if (!is_object($configOptionData) || empty($configOptionData->id)) {
+        return;
+    }
+    $configOptionID = $configOptionData->id;
+    $configSubOptionData = Capsule::table('tblproductconfigoptionssub')->where("configid", $configOptionID)->first();
+    if (!is_object($configSubOptionData) || empty($configSubOptionData->id)) {
+        return;
+    }
+    $optionId = $configSubOptionData->id;
+    $updateSnapshot = Capsule::table('tblhostingconfigoptions')
+        ->where("relid", $serviceId)
+        ->where('configid', $configOptionID)
+        ->where('optionid', $optionId)
+        ->update(['qty' => 1]);
+
+    if ($updateSnapshot != "1") {
+        logActivity("Error: config option ({$targetOptionName}) update failed for service #{$serviceId} (option #{$optionId})");
     }
 }
 

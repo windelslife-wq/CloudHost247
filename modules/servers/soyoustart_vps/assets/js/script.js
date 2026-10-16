@@ -1,10 +1,13 @@
 
 $(document).ready(function () {
-    localStorage.removeItem('ip');
-    $.get("https://ipinfo.io", (response) => {
-        var ip = response.ip;
-        localStorage.setItem('ip', ip);
-    }, "jsonp");
+    $.ajaxPrefilter(function (options, originalOptions, jqXHR) {
+        if ((options.type || options.method || 'GET').toUpperCase() === 'POST' && (!options.url || options.url.indexOf('http') !== 0)) {
+            var token = window.soyoustartCsrfToken || window.csrfToken || '';
+            if (token) {
+                jqXHR.setRequestHeader('X-CSRF-Token', token);
+            }
+        }
+    });
 
     /* show hide password text */
     // (() => {
@@ -52,8 +55,8 @@ $(document).ready(function () {
                     $(this).find("i").remove();
                     $(this).prop("disabled", false);
                     $("#editServerName").modal('hide');
-                    $(".serverName").html(`${customServerName}`)
-                    $(".serverDetailInfo .customServerName").html(`${customServerName}`)
+                    $(".serverName").text(customServerName)
+                    $(".serverDetailInfo .customServerName").text(customServerName)
                 }
             }
         })
@@ -71,7 +74,7 @@ $(document).ready(function () {
             $(this).css("border", "1px solid #ced4da")
             $("#additinalIpModalCenter .addAdditionalIp").prop("disabled", false);
         }
-        $("#ipPrices").html(`${numberOfIp} = ${perIpPrice * numberOfIp}${currencycode}`)
+        $("#ipPrices").text(`${numberOfIp} = ${perIpPrice * numberOfIp}${currencycode}`)
     });
     $(document).on("click", "#addIpDescriptionsForm .updateIPDesc", async function (e) {
         Swal.fire({
@@ -159,7 +162,7 @@ $(document).ready(function () {
 
     $(document).on("click", "#clientAreaIpmang .viewIpDetails", async function () {
         let ipblock = $(this).closest("tr").data("ip");
-        $("#viewIpDetailsIpBlock").html(ipblock);
+        $("#viewIpDetailsIpBlock").text(ipblock);
         $("#viewIpDetailsForm .modal-body .mainSec").find("i").remove();
         $("#viewIpDetailsForm .modal-body .mainSec").html(`<i class="fa fa-spinner fa-spin"></i>`);
         let result = await secureCall({ manage_ips: true, iPaction: "viewIpDetails", ipblock }, 'POST');
@@ -1217,12 +1220,15 @@ const mtrGraph = (data, type = "%", name = ' ') => {
     });
 }
 const secureCall = (data = {}, method = "GET") => {
-
+    const payload = (data && typeof data === 'object' && !Array.isArray(data))
+        ? Object.assign({}, data, { csrf_token: window.soyoustartCsrfToken || window.csrfToken || '' })
+        : data;
     return new Promise(function (resolve, reject) {
         $.ajax({
             url: '',
             method: method,
-            data: data,
+            data: payload,
+            headers: { 'X-CSRF-Token': window.soyoustartCsrfToken || window.csrfToken || '' },
             success: function (response) {
                 resolve(response);
             },
@@ -1279,13 +1285,13 @@ function copyText() {
     copyText.setSelectionRange(0, 99999);
     document.execCommand("copy");
     var tooltip = document.getElementById("myTooltip");
-    tooltip.innerHTML = "Copied: " + copyText.value;
+    tooltip.textContent = "Copied: " + copyText.value;
     copyText.type = 'hidden';
 }
 
 function updateText() {
     var tooltip = document.getElementById("myTooltip");
-    tooltip.innerHTML = "Copy to clipboard";
+    tooltip.textContent = "Copy to clipboard";
 }
 
 const powerOnOffVps = async (action) => {

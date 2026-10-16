@@ -225,7 +225,7 @@ class Blockonomics
     public function getConfirmations()
     {
         $gatewayParams = getGatewayVariables('blockonomics');
-        $confirmations = $gatewayParams['Confirmations'];
+        $confirmations = $gatewayParams['Confirmations'] ?? null;
         if (isset($confirmations)) {
             return $confirmations;
         }

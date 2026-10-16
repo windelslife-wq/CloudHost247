@@ -46,6 +46,14 @@ namespace {
     check('only the legitimate $diskid use remains', substr_count($entry, '$diskid["result"]->message') === 1);
     check('account id reads hardened x11', substr_count($entry, 'soyoustart_vps_cfgPart($params, "configoption3", 0, \'-\')') === 11);
     check('tpl escapes applied', substr_count($tpl, '|escape}') >= 15);
+    $growl = file_get_contents(dirname(__DIR__) . '/assets/js/jquerygrowl.js');
+    $script = file_get_contents(dirname(__DIR__) . '/assets/js/script.js');
+    check('VS-17: jquerygrowl escapes title and message', strpos($growl, 'this.escapeHtml(this.settings.title)') !== false && strpos($growl, 'this.escapeHtml(this.settings.message)') !== false);
+    check('VS-17: script.js uses .text() for customServerName and viewIpDetailsIpBlock', strpos($script, '$(".serverName").text(customServerName)') !== false && strpos($script, '$("#viewIpDetailsIpBlock").text(ipblock)') !== false);
+    check('VS-18: entry enforces soyoustart_vps_verifyCsrf', substr_count($entry, 'soyoustart_vps_verifyCsrf()') >= 8);
+    check('VS-19: entry enforces soyoustart_vps_isFeatureDisabled', substr_count($entry, 'soyoustart_vps_isFeatureDisabled(') >= 9);
+    check('VS-20: sweetalert2 pinned to exact version in hooks and template', strpos($hooks, 'sweetalert2@11.10.5') !== false && strpos($tpl, 'sweetalert2@11.10.5') !== false && strpos($hooks, 'sweetalert2@11"') === false && strpos($tpl, 'sweetalert2@11"') === false);
+    check('VS-22: ipinfo.io beacon removed from script.js', strpos($script, 'ipinfo.io') === false);
 
     echo "\nsource pins: PASS=$pass FAIL=$fail\nFAIL=$fail\n";
     exit($fail > 0 ? 1 : 0);

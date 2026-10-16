@@ -71,10 +71,15 @@ class BaseModelDataProvider extends BaseDataProvider
 
     public function update()
     {
+        if (!isset($this->formData['id']))
+        {
+            return (new ResponseTemplates\HtmlDataJsonResponse())->setMessageAndTranslate('ItemNotFound')->setStatusError()->setCallBackFunction($this->callBackFunction);
+        }
+
         $dbData = $this->model->where('id', $this->formData['id'])->first();
         if ($dbData === null)
         {
-            return (new ResponseTemplates\HtmlDataJsonResponse())->setMessageAndTranslate('ItemNotFound')->setStatusError()->setCallBackFunction($this->callBackFunction);;
+            return (new ResponseTemplates\HtmlDataJsonResponse())->setMessageAndTranslate('ItemNotFound')->setStatusError()->setCallBackFunction($this->callBackFunction);
         }
 
         $dbData->fill($this->formData)->save();
@@ -84,7 +89,7 @@ class BaseModelDataProvider extends BaseDataProvider
     {
         if (!isset($this->formData['id']))
         {
-            //todo return
+            return (new ResponseTemplates\HtmlDataJsonResponse())->setMessageAndTranslate('ItemNotFound')->setStatusError()->setCallBackFunction($this->callBackFunction);
         }
 
         $this->model->where('id', $this->formData['id'])->delete();

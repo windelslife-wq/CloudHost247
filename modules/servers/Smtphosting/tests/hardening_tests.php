@@ -63,3 +63,22 @@ smtp_test('S-4: the dead CronInfo page that points at a missing cron script is r
     }
     smtp_assert($refs === [], 'nothing may reference CronInfo: ' . implode(', ', $refs));
 });
+
+smtp_test('F-5: BaseModelDataProvider::delete and update return an error response when id is missing', function () {
+    $src = smtp_module_file('Core/UI/Widget/Forms/DataProviders/BaseModelDataProvider.php');
+    smtp_assert(strpos($src, '//todo return') === false, 'BaseModelDataProvider::delete must not fall through on missing id');
+    smtp_assert(substr_count($src, "setMessageAndTranslate('ItemNotFound')") >= 3,
+        'BaseModelDataProvider::update and delete must return ItemNotFound when id is missing');
+});
+
+smtp_test('F-5: ConfigOptions logs exceptions, Configuration removes debug_backtrace print_r, and HookManager::registerWithName is implemented', function () {
+    $cfgOpts = smtp_module_file('Core/App/Controllers/Instances/Addon/ConfigOptions.php');
+    $cfg = smtp_module_file('Core/Configuration.php');
+    $hooks = smtp_module_file('Core/Hook/HookManager.php');
+    smtp_assert(strpos($cfgOpts, '//todo log me') === false && strpos($cfgOpts, 'errorManager') !== false,
+        'ConfigOptions catch block must log via errorManager');
+    smtp_assert(strpos($cfg, 'print_r(debug_backtrace') === false && strpos($cfg, 'isset($this->configuration[$name])') !== false,
+        'Configuration must not dump debug_backtrace to stdout and must guard __get');
+    smtp_assert(strpos($hooks, '"name"     => $name') !== false,
+        'HookManager::registerWithName must register the named hook');
+});

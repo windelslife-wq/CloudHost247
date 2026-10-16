@@ -53,6 +53,48 @@ function soyoustart_ipBelongsToServer($response, $candidate)
     return in_array($candidate, $response['result'], true);
 }
 
+/** Check whether a client-area feature is disabled by service ACL or product addon settings (SD-O2). */
+function soyoustart_isFeatureDisabled($aclSettings, $addonSettings, $serviceKey, $addonKey)
+{
+    $serviceDisabled = is_array($aclSettings) && ($aclSettings[$serviceKey] ?? '') === 'on';
+    $addonDisabled = is_array($addonSettings) && in_array($addonKey, $addonSettings, true);
+    return $serviceDisabled || $addonDisabled;
+}
+
+function soyoustart_csrfToken()
+{
+    if (!isset($_SESSION) || !is_array($_SESSION)) {
+        $_SESSION = [];
+    }
+    if (empty($_SESSION['soyoustart_csrf_token']) || !is_string($_SESSION['soyoustart_csrf_token'])) {
+        $_SESSION['soyoustart_csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['soyoustart_csrf_token'];
+}
+
+function soyoustart_verifyCsrf($submitted = null, $session = null)
+{
+    $sess = is_array($session) ? $session : (isset($_SESSION) && is_array($_SESSION) ? $_SESSION : []);
+    if ($submitted === null) {
+        if (isset($_POST['csrf_token']) && is_string($_POST['csrf_token']) && $_POST['csrf_token'] !== '') {
+            $submitted = $_POST['csrf_token'];
+        } elseif (isset($_POST['token']) && is_string($_POST['token']) && $_POST['token'] !== '') {
+            $submitted = $_POST['token'];
+        } elseif (isset($_SERVER['HTTP_X_CSRF_TOKEN']) && is_string($_SERVER['HTTP_X_CSRF_TOKEN']) && $_SERVER['HTTP_X_CSRF_TOKEN'] !== '') {
+            $submitted = $_SERVER['HTTP_X_CSRF_TOKEN'];
+        }
+    }
+    if (!is_string($submitted) || $submitted === '') {
+        return false;
+    }
+    foreach (['soyoustart_csrf_token', 'tkval'] as $key) {
+        if (!empty($sess[$key]) && is_string($sess[$key]) && hash_equals($sess[$key], $submitted)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function soyoustart_ConfigOptions()
 {
 
@@ -391,6 +433,11 @@ function soyoustart_AdminServicesTabFields(array $params)
 
             $ipsErrors = '';
             if ($whmcs->get_req_var("ajaxAction")) {
+                $adminIpAction = $whmcs->get_req_var("iPaction");
+                if ($adminIpAction && $adminIpAction !== "viewIpDetails" && !soyoustart_verifyCsrf()) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "Invalid or missing CSRF token."]]);
+                    exit;
+                }
 
                 if ($whmcs->get_req_var("serviceinfoAction") == "getServiceInfo") {
                     $serverInfo = $apiCall->getServerInfo($location, $serverType, $ovhServerName, $accountId);
@@ -741,6 +788,10 @@ function soyoustart_ClientArea(array $params)
                 }
                 exit;
             } elseif ($whmcs->get_req_var("intervention")) {
+                if (soyoustart_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Logs", "logs")) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                    exit;
+                }
 
                 $interventions = $apiCall->get("/dedicated/server/{$ovhServerName}/intervention", $accountId, $location, "Getting Interventions", true);
 
@@ -754,7 +805,15 @@ function soyoustart_ClientArea(array $params)
                 echo $interventionHtml;
                 exit;
             } elseif ($whmcs->get_req_var("manage_ips")) {
+                if (soyoustart_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Manage_IPs", "manageIps")) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                    exit;
+                }
                 $ipAction = $whmcs->get_req_var("iPaction");
+                if ($ipAction && !in_array($ipAction, ["getFirewallRules", "viewIpDetails"], true) && !soyoustart_verifyCsrf()) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "Invalid or missing CSRF token."]]);
+                    exit;
+                }
                 if ($whmcs->get_req_var("getIpDetails") || ($ipAction && $ipAction !== 'addAdditionalIp')) {
                     $requestedIp = $whmcs->get_req_var("ipblock") ?: $whmcs->get_req_var("ip");
                     $ownedIps = $apiCall->get("/dedicated/server/{$ovhServerName}/ips", $accountId, $location, "Checking assigned IPs", true);
@@ -865,12 +924,12 @@ function soyoustart_ClientArea(array $params)
                         }
 
                         $html[] = [
-                            "sequence" => $response["result"]->sequence,
-                            "action" => strtoupper($response["result"]->action),
-                            "protocol" => strtoupper($response["result"]->protocol),
-                            "destination" => $response["result"]->destination,
-                            "sourcePort" => (is_null($response["result"]->sourcePort) ? "-" : $response["result"]->sourcePort),
-                            "destinationPort" => is_null($response["result"]->destinationPort) ? "-" : $response["result"]->destinationPort,
+                            "sequence" => (int) $response["result"]->sequence,
+                            "action" => SoyoustartServer::escapeHtml(strtoupper($response["result"]->action)),
+                            "protocol" => SoyoustartServer::escapeHtml(strtoupper($response["result"]->protocol)),
+                            "destination" => SoyoustartServer::escapeHtml($response["result"]->destination),
+                            "sourcePort" => (is_null($response["result"]->sourcePort) ? "-" : SoyoustartServer::escapeHtml($response["result"]->sourcePort)),
+                            "destinationPort" => is_null($response["result"]->destinationPort) ? "-" : SoyoustartServer::escapeHtml($response["result"]->destinationPort),
                             "tcpOption" => ($response["result"]->fragments) ? "Fragments" : "-",
                             "state" => $state,
                             "delete" => $action,
@@ -1007,6 +1066,15 @@ function soyoustart_ClientArea(array $params)
 
                 exit;
             } elseif ($whmcs->get_req_var("ftp_backup")) {
+                if (soyoustart_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Backup_Storage", "backupStorage")) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                    exit;
+                }
+                $ftpAction = $whmcs->get_req_var("ftpAction");
+                if ($ftpAction && !in_array($ftpAction, ["getAuthorizableBlocks", "getIpBlockData", "FTPBackupStaus"], true) && !soyoustart_verifyCsrf()) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "Invalid or missing CSRF token."]]);
+                    exit;
+                }
                 if ($whmcs->get_req_var("ftpAction") == "enableACL") {
                     $data = html_entity_decode($whmcs->get_req_var("data"));
                     parse_str($data, $dataArray);
@@ -1094,6 +1162,14 @@ function soyoustart_ClientArea(array $params)
                 }
                 exit;
             } elseif ($whmcs->get_req_var("monitoring")) {
+                if (!soyoustart_verifyCsrf()) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "Invalid or missing CSRF token."]]);
+                    exit;
+                }
+                if (soyoustart_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Monitoring", "monitoring")) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                    exit;
+                }
 
                 if ($whmcs->get_req_var("monitoringAction") == "EnableWithProactive") {
                     $data = ["monitoring" => true, "noIntervention" => true];
@@ -1109,10 +1185,25 @@ function soyoustart_ClientArea(array $params)
                 echo json_encode($response);
                 exit;
             } elseif ($whmcs->get_req_var("power")) {
+                if (soyoustart_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Power", "power")) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                    exit;
+                }
                 $type = $whmcs->get_req_var("type");
+                $boot = $whmcs->get_req_var("boot");
+                if (in_array($boot, ["hardreboot", "netBoot", "re-install os"], true) || $type == "cancleReinstallation") {
+                    if (!soyoustart_verifyCsrf()) {
+                        echo json_encode(["httpcode" => 403, "result" => ["message" => "Invalid or missing CSRF token."]]);
+                        exit;
+                    }
+                }
                 $selectnetwork = '';
 
                 if ($whmcs->get_req_var("boot") == "hardreboot") {
+                    if (soyoustart_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Reboot", "reboot")) {
+                        echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                        exit;
+                    }
                     $response = $apiCall->post("/dedicated/server/{$ovhServerName}/reboot", $accountId, $location, [], "reBooting server", true);
                     if ($response["httpcode"] != 200) {
                         echo json_encode($response);
@@ -1127,6 +1218,11 @@ function soyoustart_ClientArea(array $params)
                     echo json_encode($response);
                     exit;
                 } elseif ($whmcs->get_req_var("boot") == "netBoot") {
+                    if (soyoustart_isFeatureDisabled($enableSettings, $enableSettingsAddon, "NetBoot", "netboot")
+                        && soyoustart_isFeatureDisabled($enableSettings, $enableSettingsAddon, "Rescue", "Rescue")) {
+                        echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                        exit;
+                    }
 
                     if ($whmcs->get_req_var("rootdevice") == "none") {
                         $data = ['bootId' => (int)$whmcs->get_req_var("bootid")];
@@ -1140,6 +1236,10 @@ function soyoustart_ClientArea(array $params)
                     exit;
                 }
                 /* getting compatible os */ elseif ($type == "reInstall") {
+                    if (soyoustart_isFeatureDisabled($enableSettings, $enableSettingsAddon, "reInstall", "Reinstall")) {
+                        echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                        exit;
+                    }
                     $compatibleOs = $apiCall->get("/dedicated/server/{$ovhServerName}/install/compatibleTemplates", $accountId, $location, "Getting compatible OS", true);
                     $installationStatus = $apiCall->get("/dedicated/server/{$ovhServerName}/install/status", $accountId, $location, "Getting installation status", true);
 
@@ -1166,6 +1266,10 @@ function soyoustart_ClientArea(array $params)
                     exit;
                 }
                 /* re-installing os */ elseif ($whmcs->get_req_var("boot") == "re-install os") {
+                    if (soyoustart_isFeatureDisabled($enableSettings, $enableSettingsAddon, "reInstall", "Reinstall")) {
+                        echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                        exit;
+                    }
 
                     $response = $apiCall->post("/dedicated/server/{$ovhServerName}/install/start", $accountId, $location, ["templateName" => $whmcs->get_req_var("templateName")], "reinstalling os", true);
 
@@ -1176,8 +1280,15 @@ function soyoustart_ClientArea(array $params)
                     exit;
                 }
                 /* cancel re-installing os */ elseif ($whmcs->get_req_var("type") == "cancleReinstallation") {
-
-                    $taskId = (!isset($_SESSION["installationTaskId"]) ? 12345 : $_SESSION["installationTaskId"]);
+                    if (soyoustart_isFeatureDisabled($enableSettings, $enableSettingsAddon, "reInstall", "Reinstall")) {
+                        echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                        exit;
+                    }
+                    $taskId = (int) ($_SESSION["installationTaskId"] ?? 0);
+                    if ($taskId < 1) {
+                        echo json_encode(["httpcode" => 400, "result" => ["message" => "No active installation task."]]);
+                        exit;
+                    }
                     $response = $apiCall->post("/dedicated/server/{$ovhServerName}/task/{$taskId}/cancel", $accountId, $location, [], "Cancel Re-intallation", true);
                     echo json_encode($response);
                     exit;
@@ -1207,6 +1318,14 @@ function soyoustart_ClientArea(array $params)
                 echo json_encode(["type" => $type, "html" => $PowerHtml]);
                 exit;
             } elseif ($whmcs->get_req_var("impi")) {
+                if (soyoustart_isFeatureDisabled($enableSettings, $enableSettingsAddon, "IMPI", "impi")) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "This feature is disabled for this service."]]);
+                    exit;
+                }
+                if ($whmcs->get_req_var("impiAction") != "impiTaskStaus" && !soyoustart_verifyCsrf()) {
+                    echo json_encode(["httpcode" => 403, "result" => ["message" => "Invalid or missing CSRF token."]]);
+                    exit;
+                }
 
                 if ($whmcs->get_req_var("impiAction") == "testImpi") {
                     $data = html_entity_decode($whmcs->get_req_var("data"));
@@ -1222,6 +1341,10 @@ function soyoustart_ClientArea(array $params)
                 } elseif ($whmcs->get_req_var("impiAction") == "openImpi") {
                     $type = $whmcs->get_req_var("type");
                     $ip = $whmcs->get_req_var("ip");
+                    if (!is_string($ip) || filter_var($ip, FILTER_VALIDATE_IP) === false) {
+                        $remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '';
+                        $ip = (is_string($remoteAddr) && filter_var($remoteAddr, FILTER_VALIDATE_IP) !== false) ? $remoteAddr : '';
+                    }
                     if ($type == "browserImpi") {
                         $type = "kvmipHtml5URL";
                     } elseif ($type == "htmlImpi") {
@@ -1299,6 +1422,7 @@ function soyoustart_ClientArea(array $params)
                     'ovhReveserDNSCustomHostname' => empty($ovhReveserDNSCustomHostname) ? ($serverInfo["result"]->reverse ?? '') : $ovhReveserDNSCustomHostname,
                     'aclSettingsDedicated' => $enableSettings,
                     'enableSettingsAddon' => $enableSettingsAddon,
+                    'csrfToken' => soyoustart_csrfToken(),
                     'clientareatemplate' => $params["clientareatemplate"],
                 ),
             );

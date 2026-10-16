@@ -141,11 +141,18 @@ class CloudHost247ToolsSecurity
             return strtolower($host);
         }
 
-        // IDN -> punycode where the extension is available.
-        if (preg_match('/[^\x20-\x7f]/', $host) && function_exists('idn_to_ascii')) {
-            $converted = @idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
-            if ($converted) {
-                $host = $converted;
+        // IDN -> punycode where the extension is available, with RFC 3492 fallback when ext-intl is absent.
+        if (preg_match('/[^\x20-\x7f]/', $host)) {
+            if (function_exists('idn_to_ascii')) {
+                $converted = @idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+                if ($converted) {
+                    $host = $converted;
+                }
+            } else {
+                $converted = self::punycodeDomainToAscii($host);
+                if ($converted !== false) {
+                    $host = $converted;
+                }
             }
         }
 
@@ -156,6 +163,136 @@ class CloudHost247ToolsSecurity
         }
 
         return $host;
+    }
+
+    /**
+     * Pure-PHP RFC 3492 Punycode fallback for environments without ext-intl.
+     *
+     * @param string $host
+     * @return string|false
+     */
+    private static function punycodeDomainToAscii($host)
+    {
+        if (!preg_match('//u', $host)) {
+            return false;
+        }
+        $lower = function_exists('mb_strtolower') ? mb_strtolower($host, 'UTF-8') : strtolower($host);
+        $labels = explode('.', $lower);
+        $out = [];
+        foreach ($labels as $label) {
+            if ($label === '') {
+                return false;
+            }
+            if (!preg_match('/[^\x20-\x7f]/', $label)) {
+                $out[] = $label;
+                continue;
+            }
+            $encoded = self::punycodeEncodeLabel($label);
+            if ($encoded === false) {
+                return false;
+            }
+            $out[] = 'xn--' . $encoded;
+        }
+        return implode('.', $out);
+    }
+
+    /**
+     * Encode a single UTF-8 DNS label using RFC 3492 Bootstring.
+     *
+     * @param string $label
+     * @return string|false
+     */
+    private static function punycodeEncodeLabel($label)
+    {
+        $chars = preg_split('//u', $label, -1, PREG_SPLIT_NO_EMPTY);
+        if (!is_array($chars) || empty($chars)) {
+            return false;
+        }
+        $codepoints = [];
+        $basic = '';
+        foreach ($chars as $ch) {
+            $cp = self::utf8Ord($ch);
+            if ($cp === false) {
+                return false;
+            }
+            $codepoints[] = $cp;
+            if ($cp < 0x80) {
+                $basic .= $ch;
+            }
+        }
+        $b = strlen($basic);
+        $h = $b;
+        $output = $basic;
+        if ($b > 0) {
+            $output .= '-';
+        }
+        $n = 0x80;
+        $delta = 0;
+        $bias = 72;
+        $total = count($codepoints);
+        while ($h < $total) {
+            $m = 0x10FFFF;
+            foreach ($codepoints as $cp) {
+                if ($cp >= $n && $cp < $m) {
+                    $m = $cp;
+                }
+            }
+            $delta += ($m - $n) * ($h + 1);
+            $n = $m;
+            foreach ($codepoints as $cp) {
+                if ($cp < $n) {
+                    $delta++;
+                } elseif ($cp === $n) {
+                    $q = $delta;
+                    for ($k = 36; ; $k += 36) {
+                        $t = $k <= $bias ? 1 : ($k >= $bias + 26 ? 26 : $k - $bias);
+                        if ($q < $t) {
+                            break;
+                        }
+                        $digit = $t + (($q - $t) % (36 - $t));
+                        $output .= $digit < 26 ? chr(97 + $digit) : chr(22 + $digit);
+                        $q = intdiv($q - $t, 36 - $t);
+                    }
+                    $output .= $q < 26 ? chr(97 + $q) : chr(22 + $q);
+                    $bias = self::punycodeAdapt($delta, $h + 1, $h === $b);
+                    $delta = 0;
+                    $h++;
+                }
+            }
+            $delta++;
+            $n++;
+        }
+        return $output;
+    }
+
+    private static function punycodeAdapt($delta, $numPoints, $firstTime)
+    {
+        $delta = $firstTime ? intdiv($delta, 700) : intdiv($delta, 2);
+        $delta += intdiv($delta, $numPoints);
+        $k = 0;
+        while ($delta > 455) {
+            $delta = intdiv($delta, 35);
+            $k += 36;
+        }
+        return $k + intdiv(36 * $delta, $delta + 38);
+    }
+
+    private static function utf8Ord($ch)
+    {
+        $b0 = ord($ch[0]);
+        if ($b0 < 0x80) {
+            return $b0;
+        }
+        if (($b0 & 0xE0) === 0xC0 && strlen($ch) >= 2) {
+            return (($b0 & 0x1F) << 6) | (ord($ch[1]) & 0x3F);
+        }
+        if (($b0 & 0xF0) === 0xE0 && strlen($ch) >= 3) {
+            return (($b0 & 0x0F) << 12) | ((ord($ch[1]) & 0x3F) << 6) | (ord($ch[2]) & 0x3F);
+        }
+        if (($b0 & 0xF8) === 0xF0 && strlen($ch) >= 4) {
+            return (($b0 & 0x07) << 18) | ((ord($ch[1]) & 0x3F) << 12) | ((ord($ch[2]) & 0x3F) << 6) | (ord($ch[3]) & 0x3F);
+        }
+        return false;
     }
 
     /**

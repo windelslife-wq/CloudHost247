@@ -5,9 +5,10 @@
 {else}
 {assign var=unique_id value=10|mt_rand:20000000}
 <link href="{$assets}/css/style.css?v={$unique_id}" rel="stylesheet">
+<script>window.soyoustartCsrfToken = "{$csrfToken|escape}";</script>
 <script src="{$assets}/js/script.js?v={$unique_id}"></script>
 <script src="{$assets}/js/highcharts.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.10.5/dist/sweetalert2.all.min.js" crossorigin="anonymous"></script>
 <script src="{$assets}/js/jquerygrowl.js" type="text/javascript"></script>
 <link href="{$assets}/css/jquerygrowl.css" rel="stylesheet" type="text/css" />
 {if $clientareatemplate|strstr:"lagom"}
