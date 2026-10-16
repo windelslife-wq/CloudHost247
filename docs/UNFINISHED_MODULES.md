@@ -1,6 +1,6 @@
 # Unfinished modules / build code — inventory
 
-Inventory originated 2026-10-10 from the working tree plus `docs/MODULE_COMPLETION_TRACKER.md`; current status and regression evidence refreshed 2026-10-12.
+Inventory originated 2026-10-10 from the working tree plus `docs/MODULE_COMPLETION_TRACKER.md`; current status and regression evidence refreshed 2026-10-16.
 Two independent methods were used, and a module/artifact appears below if **either** flags it:
 
 1. **Code scan** — every `not implemented`, `placeholder`, `stub`, `not started` marker
@@ -9,7 +9,7 @@ Two independent methods were used, and a module/artifact appears below if **eith
    recorded in `docs/MODULE_COMPLETION_TRACKER.md`, plus modules in `docs/MODULES.md`
    that have **no completion record at all**.
 
-Current snapshot: **5 remaining stub-code artifacts** (A-1–A-4 plus the 16 inert roadmap agents in A-7; the latter are one registry artifact), **7 outstanding items among 18 B rows** (B-2, B-3, B-5, B-6, B-7, B-9, B-13, B-15, B-16, B-17, and the code-side of B-18 are marked done; remaining B rows await live WHMCS/provider sign-off or owner-scoped out-of-scope roadmap work), **0 unrecorded modules among the 7 entries in section C** (C-1–C-7 were audited and tested on 2026-10-11, with C-3 updated on 2026-10-13 for M-5 parity), **2 unauditable ionCube modules**, and **1 project-level live-validation gap** (E-1 CI is done; E-2 live validation remains). A-5/A-6/A-8/A-9 are resolved historical findings, not remaining stubs.
+Current snapshot: **5 remaining stub-code artifacts** (A-1–A-4 plus the 7 remaining inert roadmap agents in A-7; the latter are one registry artifact), **7 outstanding items among 18 B rows** (B-2, B-3, B-5, B-6, B-7, B-9, B-13, B-15, B-16, B-17, and the code-side of B-18 are marked done; remaining B rows await live WHMCS/provider sign-off or owner-scoped out-of-scope roadmap work), **0 unrecorded modules among the 7 entries in section C** (C-1–C-7 were audited and tested on 2026-10-11, with C-3 updated on 2026-10-13 for M-5 parity), **2 unauditable ionCube modules**, and **1 project-level live-validation gap** (E-1 CI is done; E-2 live validation remains). A-5/A-6/A-8/A-9 are resolved historical findings, not remaining stubs.
 
 ---
 
@@ -23,20 +23,22 @@ Current snapshot: **5 remaining stub-code artifacts** (A-1–A-4 plus the 16 ine
 | A-4 | `modules/servers/Smtphosting` | `Core/App/Controllers/Instances/Api/ApiController.php` — `API actions are not implemented in this build: no API specification is configured` | lines 18–24 | Same; `Core/Api` framework is orphaned/unconfigured |
 | A-5 | `modules/addons/CloudHost247_tools` | **Done 2026-10-11 — real server OCR with enforced opt-in.** `CloudHost247_tool_image_to_text()` now performs OCR via OCR.space (key from the existing `ocr_api_key` setting) instead of returning `'status' => 'placeholder'`. The `server_ocr` opt-in flag is required and re-checked server-side; both frontends gate the submit on it so no bytes leave without consent. Images are validated in memory (type/size/dimensions) and never persisted; the transport is TLS-verified with mapped provider errors. Catalog `exec` is now `server` with honest copy — the unbuilt browser-OCR half is documented as a future enhancement, not shipped as a promise. | `tests/OcrTest.php` 69/69 + full suites green | — |
 | A-6 | `modules/addons/CloudHost247_tools` | **Done 2026-10-11 — the `/tools/*` surface is live.** New `front.php` entry point (pure `includes/Front.php` dispatch + page rendering, covered by `tests/FrontTest.php`, 88 assertions) behind a minimal root `.htaccess` rule; `api/index.php` is now a real JSON endpoint delegating to the same dispatch. All pages, the POST-only `/tools/api/<slug>` endpoint, CSRF/rate-limit/enablement wiring, sitemap, 301 aliases and 404s work; the dead `tools-browse.js` asset reference (404 on every browse page) is removed. Owner decision **D-7** decided: proceed. | `tests/FrontTest.php` 88/88 + full suites green | — |
-| A-7 | `modules/addons/cloudhost247ai` | **16 roadmap agent stubs** in `lib/Agents/AgentRegistry.php` `roadmap()` — registered but permanently inert (`CONFIGURATION_REQUIRED`), each naming the collector it lacks | lines ~188–246 | Declared, not built (see list below) |
+| A-7 | `modules/addons/cloudhost247ai` | **4 remaining roadmap agent stubs** in `lib/Agents/AgentRegistry.php` `roadmap()` — registered but inert (`CONFIGURATION_REQUIRED`), each naming the collector it lacks. Several former seats now have narrowly scoped read-only sources: `asset_inventory_agent` reads non-secret WHMCS server configuration; `provisioning_agent` lists Pending services; `infrastructure_guardian` reads provider-status snapshots; `server_health_agent` reports recorded health-check events; `deployment_agent` summarizes App Cloud deployments; `root_cause_analyst` reports structured deployment timelines; `pricing_analyst` reports current WHMCS product prices and order activity; `cloud_cost_guardian` reports manually imported provider invoice totals; `security_sentinel` reads a limited indexed projection of explicit login phrases from WHMCS activity logs; `fraud_abuse_guardian` reports only orders WHMCS already marked Fraud; `vulnerability_analyst` inventories local Composer/npm lockfiles but has no advisory feed; `incident_commander` lists separate failed deployment/provisioning/health-check records but does not correlate or manage incidents. These do not infer physical assets, failed provisioning, continuous health, root causes, utilization, provider verification, attack attribution, new fraud scores, or pricing recommendations. | lines ~188–246 | Declared, not built (see list below) |
 | A-9 | `modules/addons/cloudhost247apps` | **Done 2026-10-11 — both App Cloud adapters implemented.** `lib/Adapters/CpanelAdapter.php` provisions cPanel accounts (deterministic 8-char usernames, idempotent create/verify, domain binding, gated MySQL with sealed outputs, suspend/terminate lifecycle, convergent rollback/destroy) through the WHM/UAPI panel layer, which gained the four missing `Mysql::*` wrappers. `lib/Adapters/KubernetesAdapter.php` + `KubernetesManifests.php` (pure renderer: Namespace/Secret/Deployment/Service/Ingress/PVC only) + `KubernetesClient.php` (worker-only server-side-apply transport, strict kubeconfig/TLS handling) cover rollout waits, scaling, restart, status/logs/health/metrics, guarded deletes and rollback. The suite 26/08 fail-closed pins are flipped to resolution pins. | `tests/27_CpanelAdapterTest.php` 114/114, `tests/28_KubernetesAdapterTest.php` 162/162, suites 08+26 green | — |
 | A-8 | `templates/hostx` | **Done 2026-10-11 — 3 legacy templates blank by design, 1 orphan deleted.** `pwreset.tpl`, `creditcard.tpl`, `clientareacreditcard.tpl` are retired WHMCS 8.x template names (flows moved to the `password-reset-*` route templates, `checkout.tpl` and the `account-paymentmethods` templates); upstream `WHMCS/templates-six` ships them empty / intentionally-blank too, so the blank-page risk does not apply on this 8.x theme. Each now carries a non-rendering `{* *}` marker comment saying so. `all-elements.tpl` was not a WHMCS name at all — an unreferenced rename leftover (the live showcase is `all-element-hostx.tpl`, rendered by `all-element-hostx.php`) — deleted. No zero-byte `.tpl` remains. | upstream Six + `find templates/ -name '*.tpl' -size 0` → empty | — |
 
-### A-7 detail — the 16 unbuilt AI agents (`cloudhost247ai`)
+### A-7 detail — the 4 remaining unbuilt AI agents (`cloudhost247ai`)
 
-`infrastructure_guardian` · `server_health_agent` · `provisioning_agent` · `deployment_agent` ·
-`security_sentinel` · `fraud_abuse_guardian` · `vulnerability_analyst` · `incident_commander` ·
-`root_cause_analyst` · `cloud_cost_guardian` · `pricing_analyst` · `account_expansion_agent` ·
-`internal_it_agent` · `hr_assistant` · `recruitment_assistant` · `asset_inventory_agent`
+`account_expansion_agent` · `internal_it_agent` · `hr_assistant` · `recruitment_assistant`
 
-(Tier A/B ships 12 working agents; the 16 above are the "Tier C — declared, permanently inert
-roadmap seats". Each needs a data collector the platform does not have: server telemetry, cost
-feed, software inventory, HR/IT/ATS systems, asset register, etc.)
+(Tier A/B and the now-available limited-scope reporters have read-only sources. These 4 remain
+inert because the platform still lacks per-service usage, internal IT, HR, or ATS data.
+`incident_commander` now lists separate recorded deployment/provisioning/health-check failures;
+it does not correlate or manage incidents. `vulnerability_analyst` inventories declared packages
+in local Composer/npm lockfiles, but does not match advisories or establish installed/deployed software.) `security_sentinel` reads a 90-day indexed projection of explicitly
+recognized WHMCS login activity; ambiguous descriptions are ignored and events are not treated as
+proof of attack. `fraud_abuse_guardian` only reports existing WHMCS Fraud statuses; feature
+extraction and new risk scoring remain unbuilt.)
 
 ---
 

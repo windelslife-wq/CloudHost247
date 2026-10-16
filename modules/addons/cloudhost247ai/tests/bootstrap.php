@@ -137,6 +137,16 @@ function ch247ai_fixture_tables(PDO $pdo)
         "CREATE TABLE tblpricing (id INTEGER PRIMARY KEY, type TEXT, currency INTEGER, relid INTEGER, monthly TEXT, annually TEXT)",
         "CREATE TABLE tbltickets (id INTEGER PRIMARY KEY, tid TEXT, userid INTEGER, did INTEGER DEFAULT 1, title TEXT, status TEXT DEFAULT 'Open', urgency TEXT DEFAULT 'Medium', lastreply TEXT, date TEXT)",
         "CREATE TABLE tbldomains (id INTEGER PRIMARY KEY, userid INTEGER, domain TEXT, registrar TEXT DEFAULT '', status TEXT DEFAULT 'Active', expirydate TEXT, nextduedate TEXT, donotrenew INTEGER DEFAULT 0, ispremium INTEGER DEFAULT 0)",
+        "CREATE TABLE tblservers (id INTEGER PRIMARY KEY, name TEXT, hostname TEXT, ipaddress TEXT, type TEXT, active INTEGER DEFAULT 1, maxaccounts INTEGER DEFAULT 0, statusaddress TEXT, username TEXT, password TEXT, accesshash TEXT)",
+        "CREATE TABLE mod_chs_module_servers (id INTEGER PRIMARY KEY, client_id INTEGER, hostname TEXT, ip_address TEXT, status TEXT, provider_id INTEGER, provisioned_at TEXT, updated_at TEXT, provider_server_id TEXT)",
+        "CREATE TABLE mod_chs_audit_log (id INTEGER PRIMARY KEY, actor_type TEXT, actor_id INTEGER, action TEXT, context TEXT, ip_hash TEXT, created_at TEXT)",
+        "CREATE TABLE mod_ch247apps_deployments (id INTEGER PRIMARY KEY, reference TEXT, action TEXT, status TEXT, adapter TEXT, progress INTEGER, current_step TEXT, steps_total INTEGER, steps_completed INTEGER, attempts INTEGER, error_code TEXT, queued_at TEXT, started_at TEXT, completed_at TEXT, created_at TEXT, duration_ms INTEGER, payload TEXT, error_message TEXT, customer_id INTEGER)",
+        "CREATE TABLE mod_chs_provisioning_jobs (id INTEGER PRIMARY KEY, type TEXT, status TEXT, error_code TEXT, module_server_id INTEGER, failed_at TEXT, created_at TEXT, updated_at TEXT)",
+        "CREATE TABLE mod_ch247apps_deployment_steps (id INTEGER PRIMARY KEY, deployment_id INTEGER, step_order INTEGER, name TEXT, `key` TEXT, status TEXT, error_code TEXT, started_at TEXT, completed_at TEXT, duration_ms INTEGER, output TEXT, error TEXT, context TEXT)",
+
+
+
+        "CREATE TABLE tblactivitylog (id INTEGER PRIMARY KEY, date TEXT, description TEXT, user TEXT, userid INTEGER, ipaddr TEXT)",
         "CREATE TABLE tbladmins (id INTEGER PRIMARY KEY, username TEXT, roleid INTEGER DEFAULT 1)",
         "CREATE TABLE tbladdonmodules (id INTEGER PRIMARY KEY, module TEXT, setting TEXT, value TEXT)",
         "CREATE TABLE tbladminroles (id INTEGER PRIMARY KEY, name TEXT)",
@@ -149,6 +159,25 @@ function ch247ai_fixture_tables(PDO $pdo)
     foreach ($ddl as $sql) {
         $pdo->exec($sql);
     }
+
+    $pdo->exec("INSERT INTO tblservers (id, name, hostname, ipaddress, type, active, maxaccounts, statusaddress, username, password, accesshash) VALUES
+        (1, 'Production cPanel', 'cpanel.example.test', '192.0.2.10', 'cpanel', 1, 250, 'https://cpanel.example.test/status', 'root', 'DO_NOT_EXPOSE_PASSWORD', 'DO_NOT_EXPOSE_HASH'),
+        (2, 'Disabled node', 'old.example.test', '192.0.2.11', 'plesk', 0, 0, '', 'admin', 'SECRET', 'SECRET_HASH')");
+    $pdo->exec("INSERT INTO mod_chs_module_servers (id, client_id, hostname, ip_address, status, provider_id, provisioned_at, updated_at, provider_server_id) VALUES
+        (9, 11, 'vps.example.test', '198.51.100.9', 'active', 2, '2026-09-20 10:00:00', '2026-10-06 11:00:00', 'provider-secret-id'),
+        (10, 22, 'stopped.example.test', '198.51.100.10', 'stopped', 2, '2026-09-21 10:00:00', '2026-10-06 10:00:00', 'another-secret-id')");
+    $pdo->exec("INSERT INTO mod_chs_audit_log (id, actor_type, actor_id, action, context, ip_hash, created_at) VALUES
+        (501, 'system', 0, 'server.health_check_passed', '{\"module_server_id\":9,\"provider_status\":\"active\"}', '', '2026-10-06 11:00:00'),
+        (502, 'system', 0, 'server.health_check_failed', '{\"module_server_id\":10,\"error_code\":\"PROVIDER_TIMEOUT\"}', '', '2026-10-06 10:00:00'),
+        (503, 'client', 11, 'server.console_opened', '{\"module_server_id\":9}', 'redacted-hash', '2026-10-06 09:00:00')");
+    $pdo->exec("INSERT INTO mod_ch247apps_deployments (id, reference, action, status, adapter, progress, current_step, steps_total, steps_completed, attempts, error_code, queued_at, started_at, completed_at, created_at, duration_ms, payload, error_message, customer_id) VALUES
+        (701, 'DEP-TEST-701', 'install', 'succeeded', 'docker', 100, 'verify_health', 5, 5, 1, '', '2026-10-05 10:00:00', '2026-10-05 10:01:00', '2026-10-05 10:03:00', '2026-10-05 10:00:00', 120000, '{\"secret\":\"DO_NOT_EXPOSE_PAYLOAD\"}', 'DO_NOT_EXPOSE_ERROR', 11),
+        (702, 'DEP-TEST-702', 'update', 'failed', 'kubernetes', 60, 'rollout', 4, 2, 2, 'ROLLOUT_TIMEOUT', '2026-10-06 10:00:00', '2026-10-06 10:01:00', '', '2026-10-06 10:00:00', 60000, '{\"secret\":\"OTHER_SECRET\"}', 'DO_NOT_EXPOSE_ERROR_TOO', 22)");
+    $pdo->exec("INSERT INTO mod_chs_provisioning_jobs (id, type, status, error_code, module_server_id, failed_at, created_at, updated_at) VALUES
+        (801, 'PROVISION', 'FAILED', 'PROVIDER_TIMEOUT', 10, '2026-10-06 09:30:00', '2026-10-06 09:00:00', '2026-10-06 09:30:00')");
+    $pdo->exec("INSERT INTO mod_ch247apps_deployment_steps (id, deployment_id, step_order, name, `key`, status, error_code, started_at, completed_at, duration_ms, output, error, context) VALUES
+        (1, 702, 1, 'Validate manifest', 'validate_manifest', 'succeeded', '', '2026-10-06 10:01:00', '2026-10-06 10:01:02', 2000, 'DO_NOT_EXPOSE_OUTPUT', '', '{}'),
+        (2, 702, 2, 'Wait for rollout', 'wait_rollout', 'failed', 'ROLLOUT_TIMEOUT', '2026-10-06 10:01:02', '2026-10-06 10:02:02', 60000, 'DO_NOT_EXPOSE_STEP_OUTPUT', 'DO_NOT_EXPOSE_STEP_ERROR', '{\"secret\":\"STEP_CONTEXT_SECRET\"}')");
 
     $pdo->exec("INSERT INTO tbladmins (id, username, roleid) VALUES (1, 'root', 1), (2, 'sam', 2), (3, 'nia', 3)");
     $pdo->exec("INSERT INTO tbladminroles (id, name) VALUES (1, 'Super Admin'), (2, 'Support'), (3, 'Billing')");
@@ -170,11 +199,13 @@ function ch247ai_fixture_tables(PDO $pdo)
 
     $pdo->exec("INSERT INTO tblorders (id, ordernum, userid, status, amount, date, invoiceid) VALUES
         (201, 'ORD-201', 11, 'Active', '120.00', '2026-10-05', 101),
-        (202, 'ORD-202', 22, 'Pending', '80.50', '2026-09-28', 102)");
+        (202, 'ORD-202', 22, 'Pending', '80.50', '2026-09-28', 102),
+        (203, 'ORD-203', 33, 'Fraud', '50.00', '2026-09-01', 105)");
 
-    $pdo->exec("INSERT INTO tblhosting (id, userid, packageid, domain, domainstatus, nextduedate, amount) VALUES
-        (301, 11, 1, 'ava.test', 'Active', '2026-11-05', '25.00'),
-        (302, 22, 2, 'ben.test', 'Suspended', '2026-10-08', '18.00')");
+    $pdo->exec("INSERT INTO tblhosting (id, userid, packageid, domain, domainstatus, regdate, nextduedate, amount, server) VALUES
+        (301, 11, 1, 'ava.test', 'Active', '2026-09-20', '2026-11-05', '25.00', 1),
+        (302, 22, 2, 'ben.test', 'Suspended', '2026-09-21', '2026-10-08', '18.00', 2),
+        (303, 33, 1, 'pending.test', 'Pending', '2026-10-01', '0000-00-00', '25.00', 1)");
 
     $pdo->exec("INSERT INTO tblproducts (id, gid, type, name) VALUES (1, 1, 'hostingaccount', 'Cloud Starter'), (2, 1, 'hostingaccount', 'Cloud Pro')");
     $pdo->exec("INSERT INTO tblproductgroups (id, name) VALUES (1, 'Cloud Hosting')");

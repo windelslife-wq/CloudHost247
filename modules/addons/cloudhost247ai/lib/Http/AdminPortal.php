@@ -25,6 +25,7 @@ use Ch247Ai\Core\RateLimiter;
 use Ch247Ai\Core\Redaction;
 use Ch247Ai\Core\Settings;
 use Ch247Ai\Core\Validator;
+use Ch247Ai\Cost\CostCsvImporter;
 use Ch247Ai\Knowledge\KnowledgeService;
 use Ch247Ai\Model\ModelRouter;
 use Ch247Ai\Tools\Bootstrap as ToolBootstrap;
@@ -64,6 +65,7 @@ class AdminPortal
                 case 'copilot': $this->copilot(); break;
                 case 'agents': $this->agents(); break;
                 case 'tools': $this->tools(); break;
+                case 'costs': $this->costs(); break;
                 case 'knowledge': $this->knowledge(); break;
                 case 'knowledge-edit': $this->knowledgeEdit(); break;
                 case 'board': $this->board(); break;
@@ -109,6 +111,25 @@ class AdminPortal
         };
 
         switch ($action) {
+            case 'import_infrastructure_costs':
+                $manage();
+                $file = isset($_FILES['cost_csv']) && is_array($_FILES['cost_csv']) ? $_FILES['cost_csv'] : [];
+                if (!isset($file['error']) || (int) $file['error'] !== UPLOAD_ERR_OK || empty($file['tmp_name'])) {
+                    throw new \Ch247Ai\Core\ValidationException('Choose a readable CSV file to import.');
+                }
+                $size = isset($file['size']) ? (int) $file['size'] : 0;
+                $actualSize = @filesize((string) $file['tmp_name']);
+                if ($size < 1 || $size > CostCsvImporter::MAX_BYTES || $actualSize === false || $actualSize > CostCsvImporter::MAX_BYTES) {
+                    throw new \Ch247Ai\Core\ValidationException('CSV must be non-empty and no larger than 1 MiB.');
+                }
+                $csv = file_get_contents((string) $file['tmp_name']);
+                if ($csv === false) {
+                    throw new \Ch247Ai\Core\ValidationException('Unable to read the uploaded CSV.');
+                }
+                $count = CostCsvImporter::import($csv, (int) Identity::adminId());
+                Audit::admin((int) Identity::adminId(), 'ai.infrastructure_costs.imported', ['entity_type' => 'infrastructure_costs', 'entity_id' => 0, 'context' => ['row_count' => $count]]);
+                $this->success = $count . ' infrastructure cost row(s) imported.';
+                return;
             case 'save_settings':
                 $manage();
                 $this->saveSettings();
@@ -340,6 +361,7 @@ class AdminPortal
             'agents' => 'Agents',
             'board' => 'Executive board',
             'tools' => 'Tools',
+            'costs' => 'Infrastructure costs',
             'knowledge' => 'Knowledge',
             'approvals' => 'Approvals' . ($this->pendingApprovals() ? ' <span class="badge">' . $this->pendingApprovals() . '</span>' : ''),
             'runs' => 'Runs &amp; usage',
@@ -494,7 +516,48 @@ class AdminPortal
             echo '</td></tr>';
         }
         echo '</tbody></table></div>';
-        echo '<div class="alert alert-info small">Tier B agents (Infrastructure Guardian, Provisioning, Security Sentinel, Fraud) are deliberately not registered: their data collectors (server telemetry, deployment events) do not exist yet. They will be added by extending this registry, not by prompt changes.</div>';
+        echo '<div class="alert alert-info small">Agents without a trustworthy data source remain inert and fail closed. Several roadmap agents now have deliberately narrow read-only sources; each listing describes its limits. Enabling an agent does not add data collectors or provider coverage.</div>';
+    }
+
+    protected function costs()
+    {
+        $this->nav();
+        if (!Rbac::adminCan(Rbac::AI_READ)) {
+            echo '<div class="alert alert-danger">You need AI read permission to view infrastructure costs.</div>';
+            return;
+        }
+        echo '<h2>Infrastructure costs</h2>'
+            . '<p>Manually import provider invoice totals. Entries are not independently verified and must not be treated as live provider cost or usage data.</p>';
+        if (Rbac::adminCan(Rbac::AI_MANAGE)) {
+            echo '<form method="post" enctype="multipart/form-data" class="well">' . Csrf::field()
+                . '<input type="hidden" name="ch247ai_action" value="import_infrastructure_costs">'
+                . '<div class="form-group"><label for="cost-csv">Provider invoice CSV (maximum 1 MiB, 500 rows)</label>'
+                . '<input id="cost-csv" type="file" name="cost_csv" accept=".csv,text/csv" required></div>'
+                . '<p class="small">Required exact header: <code>provider,invoice_reference,period_start,period_end,amount,currency</code>. Dates use YYYY-MM-DD; amounts are non-negative decimals with up to four fractional digits; currency is a three-letter code. One invoice reference per provider; duplicate imports are rejected.</p>'
+                . '<button class="btn btn-primary" type="submit">Import costs</button></form>';
+        }
+        try {
+            $data = \Ch247Ai\Tools\Readers\ch247ai_infrastructure_cost_summary(['limit' => 500]);
+            echo '<p class="text-muted small">Showing ' . (int) $data['count'] . ' most recent invoice rows. Totals are grouped by exact provider, currency, and billing-period dates.</p>';
+            echo '<h3>Period totals</h3><div class="table-responsive"><table class="table table-striped"><thead><tr><th>Provider</th><th>Billing period</th><th>Invoices</th><th>Total</th><th>Currency</th></tr></thead><tbody>';
+            foreach ($data['summary'] as $group) {
+                echo '<tr><td>' . $this->e($group['provider']) . '</td><td>' . $this->e($group['period_start']) . ' – ' . $this->e($group['period_end'])
+                    . '</td><td>' . (int) $group['invoice_count'] . '</td><td>' . $this->e($group['total']) . '</td><td>' . $this->e($group['currency']) . '</td></tr>';
+            }
+            if (!$data['summary']) {
+                echo '<tr><td colspan="5">No provider costs have been imported.</td></tr>';
+            }
+            echo '</tbody></table></div><h3>Invoice rows</h3><div class="table-responsive"><table class="table table-striped"><thead><tr><th>Provider</th><th>Invoice reference</th><th>Period</th><th>Amount</th><th>Currency</th></tr></thead><tbody>';
+            foreach ($data['costs'] as $row) {
+                echo '<tr><td>' . $this->e($row['provider']) . '</td><td>' . $this->e($row['invoice_reference']) . '</td><td>'
+                    . $this->e($row['period_start']) . ' – ' . $this->e($row['period_end']) . '</td><td>' . $this->e($row['amount'])
+                    . '</td><td>' . $this->e($row['currency']) . '</td></tr>';
+            }
+            echo '</tbody></table></div>';
+        } catch (\Throwable $e) {
+            echo '<div class="alert alert-warning">The cost ledger is not ready. Complete the addon database migration, then reload this page.</div>';
+            Logger::error('infrastructure cost ledger unavailable', ['reason' => get_class($e)]);
+        }
     }
 
     protected function tools()

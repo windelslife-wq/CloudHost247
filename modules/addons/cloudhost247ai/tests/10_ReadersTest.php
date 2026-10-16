@@ -44,10 +44,24 @@ $r = $exec('read_payments', ['days' => 30]);
 T::eq('two payments in window', 2, $r->data['count']);
 $r = $exec('read_orders', ['status' => 'Pending']);
 T::eq('pending order found', 202, (int) $r->data['orders'][0]['id']);
+$r = $exec('read_fraud_review_queue', []);
+T::eq('only WHMCS Fraud orders appear', 1, $r->data['count']);
+T::eq('already-flagged order id', 203, (int) $r->data['orders'][0]['id']);
+T::ok('reader does not claim a fresh fraud assessment', strpos($r->data['interpretation'], 'does not calculate risk') !== false);
+T::ok('fraud review citation names tblorders', strpos($r->citations[0], 'tblorders') !== false);
+$r = $exec('read_incident_failure_signals', ['window_hours' => 24, 'limit' => 20]);
+T::eq('structured deployment/provisioning/health failures gathered', 3, $r->data['count']);
+$sources = array_column($r->data['signals'], 'source');
+T::ok('deployment failure source included', in_array('app_cloud_deployment', $sources, true));
+T::ok('provisioning failure source included', in_array('infrastructure_provisioning', $sources, true));
+T::ok('health-check failure source included', in_array('infrastructure_health_check', $sources, true));
+T::ok('signals not misrepresented as correlated incidents', strpos($r->data['interpretation'], 'not correlated or confirmed incidents') !== false);
+$limitedSignals = $exec('read_incident_failure_signals', ['limit' => 1]);
+T::eq('combined failure result is bounded', 1, $limitedSignals->data['count']);
 
 T::section('read_services / read_products');
 $r = $exec('read_services', []);
-T::eq('two services', 2, $r->data['count']);
+T::eq('three services including the pending provisioning fixture', 3, $r->data['count']);
 T::ok('product name joined', $r->data['services'][0]['product'] === 'Cloud Starter' || $r->data['services'][0]['product'] === 'Cloud Pro');
 T::ok('telemetry caveat present', strpos(json_encode($r->data), 'telemetry') !== false);
 $r = $exec('read_products', []);
@@ -62,6 +76,74 @@ T::eq('domain lookup', 601, (int) $r->data['domains'][0]['id']);
 T::ok('expiry included', $r->data['domains'][0]['expirydate'] === '2026-10-20');
 $r = $exec('read_credit', ['client_id' => 33]);
 T::ok('credit balance from tblclients', array_key_exists('credit_balance', $r->data));
+
+T::section('read_deployment_timeline');
+$r = $exec('read_deployment_timeline', ['deployment_id' => 702]);
+T::eq('deployment reference returned', 'DEP-TEST-702', $r->data['deployment']['reference']);
+T::eq('ordered structured steps returned', 2, count($r->data['steps']));
+T::eq('step ordering is preserved', 1, (int) $r->data['steps'][0]['step_order']);
+T::eq('failed step key returned', 'wait_rollout', $r->data['steps'][1]['step_key']);
+T::eq('failed step error code returned', 'ROLLOUT_TIMEOUT', $r->data['steps'][1]['error_code']);
+$timelineJson = json_encode($r->data);
+foreach (['DO_NOT_EXPOSE_OUTPUT', 'DO_NOT_EXPOSE_STEP_OUTPUT', 'DO_NOT_EXPOSE_STEP_ERROR', 'STEP_CONTEXT_SECRET'] as $privateValue) {
+    T::ok("timeline excludes {$privateValue}", strpos($timelineJson, $privateValue) === false);
+}
+T::ok('tool warns that failure point is not root cause', strpos($r->data['interpretation'], 'do not by themselves establish') !== false);
+T::throws('unknown deployment timeline is not disclosed', function () use ($exec) {
+    $exec('read_deployment_timeline', ['deployment_id' => 99999]);
+}, \Ch247Ai\Core\NotFoundException::class);
+
+T::section('read_deployment_status');
+$r = $exec('read_deployment_status', []);
+T::eq('deployment records returned', 2, $r->data['count']);
+T::eq('latest deployment first', 'DEP-TEST-702', $r->data['deployments'][0]['reference']);
+T::eq('deployment status and progress included', 'failed', $r->data['deployments'][0]['status']);
+T::eq('machine error code included', 'ROLLOUT_TIMEOUT', $r->data['deployments'][0]['error_code']);
+$deploymentJson = json_encode($r->data);
+T::ok('deployment payload omitted', strpos($deploymentJson, 'DO_NOT_EXPOSE_PAYLOAD') === false && strpos($deploymentJson, 'OTHER_SECRET') === false);
+T::ok('free-text deployment errors omitted', strpos($deploymentJson, 'DO_NOT_EXPOSE_ERROR') === false);
+T::ok('customer identifiers omitted', !array_key_exists('customer_id', $r->data['deployments'][0]));
+T::ok('application health caveat included', strpos($r->data['limitations'], 'not external application availability') !== false);
+T::ok('deployment query citation present', strpos($r->citations[0], 'mod_ch247apps_deployments') !== false);
+
+T::section('read_server_health_checks');
+$r = $exec('read_server_health_checks', []);
+T::eq('passed and failed health-check events returned', 2, $r->data['count']);
+T::eq('newest audit event first', 502, $r->data['events'][0]['event_id']);
+T::eq('failed provider event normalized', 'failed', $r->data['events'][0]['result']);
+T::eq('provider error code extracted', 'PROVIDER_TIMEOUT', $r->data['events'][0]['error_code']);
+T::eq('passed result and provider status extracted', 'active', $r->data['events'][1]['provider_status']);
+T::ok('non-health audit events excluded', strpos(json_encode($r->data), 'console_opened') === false);
+T::ok('actor and IP fields excluded', strpos(json_encode($r->data), 'redacted-hash') === false);
+T::ok('no continuous telemetry claim', strpos($r->data['limitations'], 'CPU, memory, disk') !== false);
+
+T::section('read_infrastructure_status');
+$r = $exec('read_infrastructure_status', []);
+T::eq('CloudHost247 Services status records returned', 2, $r->data['count']);
+T::eq('provider-synced status reported', 'active', $r->data['servers'][0]['status']);
+T::eq('newest status record first', 9, (int) $r->data['servers'][0]['id']);
+T::ok('provider instance identifiers excluded', strpos(json_encode($r->data), 'provider-secret-id') === false);
+T::ok('independent health and telemetry limitations explicit', strpos($r->data['limitations'], 'not an independent uptime probe') !== false);
+T::ok('query citation names addon table', strpos($r->citations[0], 'mod_chs_module_servers') !== false);
+
+T::section('read_provisioning_queue');
+$r = $exec('read_provisioning_queue', []);
+T::eq('only Pending services returned', 1, $r->data['count']);
+T::eq('pending service id', 303, (int) $r->data['services'][0]['id']);
+T::eq('registration age measured from regdate', 5, $r->data['services'][0]['age_days_since_regdate']);
+T::ok('no unsupported stuck-job conclusion', strpos($r->data['interpretation'], 'not proof') !== false);
+T::ok('citation includes tblhosting query', strpos($r->citations[0], 'tblhosting') !== false);
+
+T::section('read_server_inventory');
+$r = $exec('read_server_inventory', []);
+T::eq('configured server rows returned', 2, $r->data['count']);
+T::eq('configured hostname included', 'cpanel.example.test', $r->data['servers'][0]['hostname']);
+T::ok('inactive configured servers remain visible', (int) $r->data['servers'][1]['active'] === 0);
+$encodedServers = json_encode($r->data);
+T::ok('password is never returned', strpos($encodedServers, 'DO_NOT_EXPOSE_PASSWORD') === false);
+T::ok('accesshash is never returned', strpos($encodedServers, 'DO_NOT_EXPOSE_HASH') === false);
+T::ok('no health or telemetry claim', strpos($r->data['scope'], 'not live reachability') !== false);
+T::ok('query citation names tblservers', strpos($r->citations[0], 'tblservers') !== false);
 
 T::section('read_metrics');
 $r = $exec('read_metrics', ['windows' => 'today,7d']);

@@ -18,6 +18,12 @@ if (php_sapi_name() !== 'cli') {
 }
 
 require_once dirname(__DIR__) . '/autoload.php';
+$whmcsInit = CH247AI_ROOT . '/init.php';
+if (!is_file($whmcsInit)) {
+    fwrite(STDERR, "WHMCS init.php not found; AI cron cannot access its database.\n");
+    exit(1);
+}
+require_once $whmcsInit;
 
 use Ch247Ai\Agents\AgentRegistry;
 use Ch247Ai\Agents\AgentRuntime;
@@ -29,6 +35,7 @@ use Ch247Ai\Core\Logger;
 use Ch247Ai\Core\Settings;
 use Ch247Ai\Event\EventBus;
 use Ch247Ai\Memory\Memory;
+use Ch247Ai\Security\AuthEventCollector;
 use Ch247Ai\Tools\Bootstrap as ToolBootstrap;
 
 ToolBootstrap::register();
@@ -44,6 +51,15 @@ $log = function ($message) use ($quiet) {
 
 $exit = 0;
 try {
+    // 0. Auth event projection — scan the activity log by primary-key cursor;
+    // only explicit login success/failure descriptions are retained.
+    try {
+        $auth = AuthEventCollector::collect(500);
+        $log('auth event collector: ' . $auth['rows_scanned'] . ' rows scanned, ' . $auth['events_added'] . ' events added');
+    } catch (\Ch247Ai\Core\ServiceUnavailableException $e) {
+        $log('auth event collector: unavailable — ' . $e->getMessage());
+    }
+
     // 1. Event drain — pending events become agent memories (no model calls).
     $drained = EventBus::drain(100);
     $log('event drain: ' . $drained['processed'] . ' processed, ' . $drained['failed'] . ' failed/dead');

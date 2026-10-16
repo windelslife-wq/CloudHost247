@@ -199,22 +199,22 @@ T::ok('unavailable seats are listed with reasons', count($summary['unavailable']
 
 /* ------------------------------------------------- roadmap agent gate -- */
 
-T::section('Roadmap agents cannot run, even if someone enables them');
-$stub = AgentRegistry::find('infrastructure_guardian');
+T::section('Roadmap agents without data sources cannot run, even if someone enables them');
+$stub = AgentRegistry::find('account_expansion_agent');
 T::ok('roadmap agent is registered', $stub !== null);
 T::ok('roadmap agent declares itself unavailable', !$stub->isAvailable());
-T::ok('roadmap agent names its collector', stripos($stub->missingCollector, 'telemetry') !== false);
-Db::update('agents', ['agent' => 'infrastructure_guardian'], ['enabled' => 1]);
-T::ok('forcing enabled=1 in the database does not help', AgentRegistry::isEnabled('infrastructure_guardian'));
+T::ok('roadmap agent names its collector', stripos($stub->missingCollector, 'Per-service resource usage metering') !== false);
+Db::update('agents', ['agent' => 'account_expansion_agent'], ['enabled' => 1]);
+T::ok('forcing enabled=1 in the database does not help', AgentRegistry::isEnabled('account_expansion_agent'));
 $refused = '';
 try {
-    AgentRuntime::run('infrastructure_guardian', 'report server health', ['source' => 'cron', 'actor_type' => 'system']);
+    AgentRuntime::run('account_expansion_agent', 'identify upgrade candidates', ['source' => 'cron', 'actor_type' => 'system']);
 } catch (\Throwable $e) {
     $refused = $e->getMessage();
 }
 T::ok('runtime still refuses it', stripos($refused, 'CONFIGURATION_REQUIRED') !== false);
-T::ok('refusal names what is missing', stripos($refused, 'telemetry') !== false);
-Db::update('agents', ['agent' => 'infrastructure_guardian'], ['enabled' => 0]);
+T::ok('refusal names what is missing', stripos($refused, 'Per-service resource usage metering') !== false);
+Db::update('agents', ['agent' => 'account_expansion_agent'], ['enabled' => 0]);
 
 T::section('Operable agents are unaffected by the roadmap gate');
 foreach (AgentRegistry::available() as $def) {
